@@ -1,0 +1,335 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  GREENWICH
+  WOWSTORG
+}
+
+enum ItemType {
+  ASSET
+  BULK
+  CONSUMABLE
+}
+
+enum OrderSource {
+  GREENWICH_INTERNAL
+  WOWSTORG_EXTERNAL
+}
+
+enum OrderStatus {
+  SUBMITTED
+  ESTIMATE_SENT
+  CHANGES_REQUESTED
+  APPROVED_BY_GREENWICH
+  PICKING
+  ISSUED
+  RETURN_DECLARED
+  CLOSED
+  CANCELLED
+}
+
+enum Condition {
+  OK
+  NEEDS_REPAIR
+  BROKEN
+  MISSING
+}
+
+enum ReturnPhase {
+  DECLARED
+  CHECKED_IN
+}
+
+enum LossStatus {
+  OPEN
+  FOUND
+  WRITTEN_OFF
+}
+
+model User {
+  id           String  @id @default(cuid())
+  login        String  @unique
+  passwordHash String
+  role         Role
+  displayName  String
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordersCreated   Order[]   @relation("order_created_by")
+  ordersGreenwich Order[]   @relation("order_greenwich_user")
+  sessions        Session[]
+
+  @@index([role, isActive])
+}
+
+model Session {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Храним только хеш токена, сырой токен живёт в httpOnly cookie.
+  tokenHash String   @unique
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model Customer {
+  id       String  @id @default(cuid())
+  name     String
+  isActive Boolean @default(true)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([isActive, name])
+}
+
+model Category {
+  id    String @id @default(cuid())
+  name  String
+  slug  String @unique
+  order Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ItemCategory[]
+}
+
+model Item {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        ItemType
+  isActive    Boolean  @default(true)
+
+  /// Полная цена/сутки. Для Greenwich применяется коэффициент 0.76 на уровне заказа/сметы.
+  pricePerDay Decimal @db.Decimal(12, 2)
+
+  /// Доступные количества учитываются через “ведра”.
+  total    Int @default(0)
+  inRepair Int @default(0)
+  broken   Int @default(0)
+  missing  Int @default(0)
+
+  /// Складской “внутренний инвентарь” (скотч/инструмент): не показывать в публичном каталоге.
+  internalOnly Boolean @default(false)
+
+  photo1Key String?
+  photo2Key String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categories  ItemCategory[]
+  kitLines    KitLine[]
+  orderLines  OrderLine[]
+  lossRecords LossRecord[]
+
+  @@index([isActive, internalOnly])
+  @@index([name])
+}
+
+model ItemCategory {
+  itemId     String
+  categoryId String
+
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, categoryId])
+  @@index([categoryId])
+}
+
+model Kit {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines      KitLine[]
+  orderLines OrderLine[]
+}
+
+model KitLine {
+  id         String @id @default(cuid())
+  kitId      String
+  itemId     String
+  defaultQty Int
+
+  kit  Kit  @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  item Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([kitId, itemId])
+  @@index([kitId])
+}
+
+model Order {
+  id     String      @id @default(cuid())
+  source OrderSource
+  status OrderStatus @default(SUBMITTED)
+
+  createdById String
+  createdBy   User   @relation("order_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  /// Для заявок “для Greenwich” (создал ли Greenwich сам, или склад создал за него).
+  greenwichUserId String?
+  greenwichUser   User?   @relation("order_greenwich_user", fields: [greenwichUserId], references: [id], onDelete: Restrict)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  eventName String?
+  comment   String?
+
+  /// date-only (в коде нормализуем к полуночи и валидируем формат)
+  readyByDate DateTime
+  startDate   DateTime
+  endDate     DateTime
+
+  deliveryEnabled  Boolean @default(false)
+  deliveryComment  String?
+  montageEnabled   Boolean @default(false)
+  montageComment   String?
+  demontageEnabled Boolean @default(false)
+  demontageComment String?
+
+  /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
+  /// чтобы изменения правил не ломали историю.
+  payMultiplier Decimal @db.Decimal(5, 4)
+
+  estimateSentAt       DateTime?
+  estimateSentSnapshot Json?
+  estimateFileKey      String?
+
+  greenwichConfirmedAt       DateTime?
+  greenwichConfirmedSnapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines        OrderLine[]
+  returnSplits ReturnSplit[]
+  incidents    Incident[]
+  lossRecords  LossRecord[]
+
+  @@index([status, readyByDate])
+  @@index([source, status])
+  @@index([customerId])
+  @@index([greenwichUserId])
+}
+
+model OrderLine {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  /// Если строка пришла из кита — сохраняем источник, чтобы в смете/диффах можно было группировать.
+  sourceKitId String?
+  sourceKit   Kit?    @relation(fields: [sourceKitId], references: [id], onDelete: SetNull)
+
+  requestedQty Int
+  approvedQty  Int?
+  issuedQty    Int?
+
+  /// Снэпшот цены на момент формирования строки/сметы
+  pricePerDaySnapshot Decimal @db.Decimal(12, 2)
+
+  /// Комментарии
+  greenwichComment String?
+  warehouseComment String?
+
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  returnSplits ReturnSplit[]
+  incidents    Incident[]
+  lossRecords  LossRecord[]
+
+  @@index([orderId, position])
+  @@index([itemId])
+}
+
+/// Разбиение количества по состояниям для возврата/приёмки.
+/// Используется и для декларации Greenwich, и для факта склада.
+model ReturnSplit {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  orderLineId String
+  orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+
+  phase     ReturnPhase
+  condition Condition
+  qty       Int
+  comment   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, phase])
+  @@index([orderLineId, phase])
+}
+
+model Incident {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  orderLineId String
+  orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+
+  condition Condition
+  qty       Int
+  comment   String?
+
+  createdAt DateTime @default(now())
+}
+
+/// Учёт недостач с жизненным циклом “найдено/списано”.
+model LossRecord {
+  id     String     @id @default(cuid())
+  status LossStatus @default(OPEN)
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  orderLineId String?
+  orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
+
+  qty   Int
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([itemId, status])
+}

@@ -1,0 +1,154 @@
+import { z } from "zod";
+
+import { prisma } from "@/server/db";
+import { requireRole } from "@/server/auth/require";
+import { jsonError, jsonOk } from "@/server/http";
+import { DateOnlySchema, parseDateOnlyToUtcMidnight } from "@/server/dates";
+import { getReservedQtyByItemId } from "@/server/orders/reserve";
+
+const LineSchema = z.object({
+  itemId: z.string().trim().min(1),
+  qty: z.number().int().positive().max(100000),
+  comment: z.string().trim().max(2000).optional(),
+  sourceKitId: z.string().trim().min(1).optional(),
+});
+
+const BodySchema = z.object({
+  customerId: z.string().trim().min(1),
+  readyByDate: DateOnlySchema,
+  startDate: DateOnlySchema,
+  endDate: DateOnlySchema,
+  eventName: z.string().trim().max(200).optional(),
+  comment: z.string().trim().max(5000).optional(),
+
+  deliveryEnabled: z.boolean().optional(),
+  deliveryComment: z.string().trim().max(2000).optional(),
+  montageEnabled: z.boolean().optional(),
+  montageComment: z.string().trim().max(2000).optional(),
+  demontageEnabled: z.boolean().optional(),
+  demontageComment: z.string().trim().max(2000).optional(),
+
+  lines: z.array(LineSchema).min(1).max(500),
+});
+
+export async function POST(req: Request) {
+  const auth = await requireRole("GREENWICH");
+  if (!auth.ok) return auth.response;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "Invalid JSON body");
+  }
+
+  const parsed = BodySchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(400, "Invalid input", parsed.error.flatten());
+  }
+
+  const data = parsed.data;
+  const readyByDate = parseDateOnlyToUtcMidnight(data.readyByDate);
+  const startDate = parseDateOnlyToUtcMidnight(data.startDate);
+  const endDate = parseDateOnlyToUtcMidnight(data.endDate);
+
+  if (!(readyByDate.getTime() <= startDate.getTime())) {
+    return jsonError(400, "readyByDate must be <= startDate");
+  }
+  if (!(startDate.getTime() < endDate.getTime())) {
+    return jsonError(400, "startDate must be < endDate");
+  }
+
+  // Нормализуем строки: группируем по (itemId, sourceKitId) чтобы не плодить дубли.
+  const grouped = new Map<string, (typeof data.lines)[number] & { qty: number }>();
+  for (const l of data.lines) {
+    const key = `${l.itemId}::${l.sourceKitId ?? ""}`;
+    const prev = grouped.get(key);
+    if (prev) {
+      prev.qty += l.qty;
+      if (l.comment) prev.comment = prev.comment ? `${prev.comment}\n${l.comment}` : l.comment;
+    } else {
+      grouped.set(key, { ...l });
+    }
+  }
+  const lines = [...grouped.values()];
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Проверяем заказчика
+    const customer = await tx.customer.findFirst({
+      where: { id: data.customerId, isActive: true },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new Error("CUSTOMER_NOT_FOUND");
+    }
+
+    // Загружаем товары
+    const itemIds = [...new Set(lines.map((l) => l.itemId))];
+    const items = await tx.item.findMany({
+      where: { id: { in: itemIds }, isActive: true, internalOnly: false },
+      select: {
+        id: true,
+        pricePerDay: true,
+        total: true,
+        inRepair: true,
+        broken: true,
+        missing: true,
+      },
+    });
+    if (items.length !== itemIds.length) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
+    const itemById = new Map(items.map((i) => [i.id, i]));
+
+    // Проверка доступности по датам (резервирование)
+    const reserved = await getReservedQtyByItemId({ db: tx, startDate, endDate });
+    for (const l of lines) {
+      const item = itemById.get(l.itemId)!;
+      const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
+      const reservedQty = reserved.get(l.itemId) ?? 0;
+      const availableForDates = Math.max(0, availableTotal - reservedQty);
+      if (l.qty > availableForDates) {
+        throw new Error(`EXCEEDS_AVAILABILITY:${l.itemId}:${availableForDates}`);
+      }
+    }
+
+    const order = await tx.order.create({
+      data: {
+        source: "GREENWICH_INTERNAL",
+        status: "SUBMITTED",
+        createdById: auth.user.id,
+        greenwichUserId: auth.user.id,
+        customerId: data.customerId,
+        eventName: data.eventName,
+        comment: data.comment,
+        readyByDate,
+        startDate,
+        endDate,
+        deliveryEnabled: data.deliveryEnabled ?? false,
+        deliveryComment: data.deliveryComment,
+        montageEnabled: data.montageEnabled ?? false,
+        montageComment: data.montageComment,
+        demontageEnabled: data.demontageEnabled ?? false,
+        demontageComment: data.demontageComment,
+        payMultiplier: "0.76",
+        lines: {
+          create: lines.map((l, idx) => ({
+            itemId: l.itemId,
+            sourceKitId: l.sourceKitId,
+            requestedQty: l.qty,
+            pricePerDaySnapshot: itemById.get(l.itemId)!.pricePerDay,
+            greenwichComment: l.comment,
+            position: idx,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+
+    return order;
+  });
+
+  return jsonOk({ orderId: result.id });
+}
+

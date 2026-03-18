@@ -1,0 +1,245 @@
+.cart-section {
+  font-family: "Lato", system-ui, sans-serif;
+  color: #111827;
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
+.cart-head {
+  margin-bottom: 1.5rem;
+}
+
+.cart-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin: 0 0 0.35rem 0;
+}
+
+.cart-subtitle {
+  color: #6b7280;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.cart-muted {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.cart-empty {
+  padding: 2rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 16px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.cart-empty .cart-btn {
+  margin-top: 1rem;
+  display: inline-block;
+}
+
+.cart-list-head {
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.cart-clearAll {
+  font-size: 0.9rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.25rem 0;
+}
+.cart-clearAll:hover {
+  color: #b91c1c;
+}
+
+.cart-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem 0;
+}
+
+.cart-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+  margin-bottom: 0.6rem;
+}
+
+.cart-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cart-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.cart-meta {
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+.cart-unit {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.cart-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cart-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 10px;
+  padding: 0.35rem 0.5rem;
+  background: #fff;
+}
+
+.cart-qty button {
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(124, 58, 237, 0.1);
+  color: #6d28d9;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.cart-qty button:hover {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+.cart-remove {
+  font-size: 0.85rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.cart-remove:hover {
+  color: #111827;
+}
+
+.cart-footer {
+  padding: 1.25rem;
+  background: linear-gradient(
+    135deg,
+    rgba(124, 58, 237, 0.08),
+    rgba(250, 204, 21, 0.06)
+  );
+  border-radius: 16px;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.cart-total {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+.cart-total-detail {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.cart-note {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.cart-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cart-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.cart-btn-secondary {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  color: #111827;
+}
+
+.cart-btn-secondary:hover {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.08);
+}
+
+.cart-btn-primary {
+  background: linear-gradient(
+    135deg,
+    rgba(124, 58, 237, 0.9),
+    rgba(124, 58, 237, 0.75)
+  );
+  color: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.5);
+}
+
+.cart-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
+}
+
+/* Плавающая кнопка «В каталог» — слева, всегда видна */
+.cart-floatCatalog {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 9998;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(124, 58, 237, 0.95),
+    rgba(124, 58, 237, 0.85)
+  );
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 8px 28px rgba(124, 58, 237, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.cart-floatCatalog:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(124, 58, 237, 0.5);
+  color: #fff;
+}

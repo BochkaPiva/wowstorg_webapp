@@ -46,9 +46,19 @@ Response 200 JSON:
 ### `GET /api/catalog/kits`
 Список пакетов (kit + lines).
 
-## Orders (Greenwich)
+## Users (склад)
+### `GET /api/users/greenwich`
+Список сотрудников Greenwich (id, displayName) для выбора «заявка на кого». Только WOWSTORG.
+
+Response 200 JSON: `{ users: Array<{ id, displayName }> }`
+
+## Orders (Greenwich и склад)
 ### `POST /api/orders`
-Создание заказа из корзины.
+Создание заказа из корзины. Могут вызывать GREENWICH и WOWSTORG.
+
+Body (общее): customerId, readyByDate, startDate, endDate, eventName?, comment?, deliveryEnabled?, deliveryComment?, deliveryPrice?, montageEnabled?, montageComment?, montagePrice?, demontageEnabled?, demontageComment?, demontagePrice?, lines.
+
+Для WOWSTORG дополнительно: source (`GREENWICH_INTERNAL` | `WOWSTORG_EXTERNAL`), при source=GREENWICH_INTERNAL обязателен greenwichUserId.
 
 ### `GET /api/orders/my`
 Список “мои заявки”.
@@ -59,24 +69,30 @@ Response 200 JSON:
 ### `PATCH /api/orders/:id`
 Редактирование заказа (только пока разрешено статусом).
 
-## Warehouse workflow
+### `POST /api/orders/:id/send-estimate`
+Отправить смету (склад). Только статус SUBMITTED → ESTIMATE_SENT.
+
+### `POST /api/orders/:id/approve`
+Согласовать заявку (склад). SUBMITTED или ESTIMATE_SENT → APPROVED_BY_GREENWICH. Body: `{ lines?: [{ orderLineId, approvedQty }] }`.
+
+### `POST /api/orders/:id/issue`
+Выдать заказ (склад). APPROVED_BY_GREENWICH или PICKING → ISSUED.
+
+### `POST /api/orders/:id/return-declared`
+Greenwich отправил возврат на приёмку. ISSUED → RETURN_DECLARED. Только свой заказ (greenwichUserId).
+
+### `POST /api/orders/:id/check-in`
+Складская приёмка. RETURN_DECLARED → CLOSED. Body: `{ lines: [{ orderLineId, condition: "OK"|"NEEDS_REPAIR"|"BROKEN"|"MISSING", qty }] }`.
+
+### `POST /api/orders/:id/cancel`
+Отменить заявку. Только статусы SUBMITTED, ESTIMATE_SENT, CHANGES_REQUESTED. Greenwich — свой заказ, склад — любой.
+
+## Warehouse
 ### `GET /api/warehouse/queue`
-Очередь.
+Очередь (только актуальные статусы, без CLOSED/CANCELLED).
 
-### `POST /api/workflow/:id/send-estimate`
-Отправить смету + snapshot + xlsx.
-
-### `POST /api/workflow/:id/approve-by-warehouse`
-Запуск сборки / approve (в зависимости от статуса).
-
-### `POST /api/workflow/:id/issue`
-Выдать заказ.
-
-### `POST /api/workflow/:id/return-declared`
-Greenwich отправил на приёмку (quick/by-line).
-
-### `POST /api/workflow/:id/check-in`
-Складская приёмка (финальная).
+### `GET /api/warehouse/archive`
+Архив (только CLOSED и CANCELLED).
 
 ## Incidents / Loss
 ### `GET /api/incidents`

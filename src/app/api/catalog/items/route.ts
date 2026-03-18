@@ -4,11 +4,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { parseDateOnlyToUtcMidnight } from "@/server/dates";
+import { getReservedQtyByItemId } from "@/server/orders/reserve";
+import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 
 const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
-  category: z.string().trim().min(1).max(128).optional(), // categoryId or slug (v1: accept both)
+  category: z.string().trim().min(1).max(128).optional(),
   internalOnly: z.enum(["true", "false"]).optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  excludeOrderId: z.string().trim().min(1).max(64).optional(),
+  ids: z.string().trim().max(2000).optional(), // comma-separated item ids for cart
 });
 
 function computeAvailableNow(item: {
@@ -29,14 +36,17 @@ export async function GET(req: Request) {
     query: url.searchParams.get("query") ?? undefined,
     category: url.searchParams.get("category") ?? undefined,
     internalOnly: url.searchParams.get("internalOnly") ?? undefined,
+    startDate: url.searchParams.get("startDate") ?? undefined,
+    endDate: url.searchParams.get("endDate") ?? undefined,
+    excludeOrderId: url.searchParams.get("excludeOrderId") ?? undefined,
+    ids: url.searchParams.get("ids") ?? undefined,
   });
   if (!parsed.success) {
     return jsonError(400, "Invalid query", parsed.error.flatten());
   }
 
-  const { query, category, internalOnly } = parsed.data;
+  const { query, category, internalOnly, startDate, endDate, excludeOrderId, ids } = parsed.data;
 
-  // GREENWICH никогда не должен видеть internalOnly
   const internalOnlyBool =
     auth.user.role === "GREENWICH"
       ? false
@@ -48,11 +58,14 @@ export async function GET(req: Request) {
     isActive: true,
     internalOnly: internalOnlyBool,
     ...(query
-      ? {
-          name: { contains: query, mode: "insensitive" },
-        }
+      ? { name: { contains: query, mode: "insensitive" } }
       : {}),
   };
+
+  if (ids?.trim()) {
+    const idList = ids.split(",").map((s) => s.trim()).filter(Boolean);
+    if (idList.length) where.id = { in: idList };
+  }
 
   if (category) {
     where.OR = [
@@ -81,13 +94,50 @@ export async function GET(req: Request) {
     },
   });
 
+  let reservedByItemId: Map<string, number> = new Map();
+  if (startDate && endDate) {
+    try {
+      const start = parseDateOnlyToUtcMidnight(startDate);
+      const end = parseDateOnlyToUtcMidnight(endDate);
+      if (start.getTime() < end.getTime()) {
+        reservedByItemId = await getReservedQtyByItemId({
+          db: prisma,
+          startDate: start,
+          endDate: end,
+          ...(excludeOrderId ? { excludeOrderId } : {}),
+        });
+      }
+    } catch {
+      // invalid dates: keep reserved empty
+    }
+  }
+
+  const isGreenwich = auth.user.role === "GREENWICH";
+  const priceMultiplier = isGreenwich ? PAY_MULTIPLIER_GREENWICH : 1;
+
   return jsonOk({
-    items: items.map((i) => ({
-      ...i,
-      availability: {
-        availableNow: computeAvailableNow(i),
-      },
-    })),
+    items: items.map((i) => {
+      const availableNow = computeAvailableNow(i);
+      const reserved = reservedByItemId.get(i.id) ?? 0;
+      const availableForDates =
+        startDate && endDate
+          ? Math.max(0, availableNow - reserved)
+          : undefined;
+      const basePrice = Number(i.pricePerDay);
+      const pricePerDay =
+        priceMultiplier !== 1
+          ? Math.round(basePrice * priceMultiplier * 100) / 100
+          : i.pricePerDay;
+
+      return {
+        ...i,
+        pricePerDay,
+        availability: {
+          availableNow,
+          ...(availableForDates !== undefined && { availableForDates }),
+        },
+      };
+    }),
   });
 }
 

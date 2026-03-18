@@ -10,7 +10,7 @@ export default function Home() {
   const { state } = useAuth();
 
   useEffect(() => {
-    if (state.status === "authenticated") router.replace("/catalog");
+    if (state.status === "authenticated") router.replace("/home");
     if (state.status === "anonymous") router.replace("/login");
   }, [router, state.status]);
 

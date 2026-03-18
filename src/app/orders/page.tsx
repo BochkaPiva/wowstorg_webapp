@@ -23,6 +23,7 @@ type OrderCard = {
   endDate: string;
   createdAt: string;
   customer: { id: string; name: string };
+  totalAmount?: number;
 };
 
 const STATUS_LABEL: Record<OrderCard["status"], string> = {
@@ -37,26 +38,70 @@ const STATUS_LABEL: Record<OrderCard["status"], string> = {
   CANCELLED: "Отменена",
 };
 
+const CANCELLABLE: OrderCard["status"][] = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"];
+
+function statusHeaderClass(status: OrderCard["status"]): string {
+  return status === "CANCELLED"
+    ? "bg-zinc-500 text-white"
+    : status === "CLOSED"
+      ? "bg-green-600 text-white"
+      : status === "ISSUED" || status === "RETURN_DECLARED"
+        ? "bg-amber-500 text-white"
+        : status === "APPROVED_BY_GREENWICH" || status === "PICKING"
+          ? "bg-indigo-600 text-white"
+          : status === "ESTIMATE_SENT" || status === "CHANGES_REQUESTED"
+            ? "bg-violet-500 text-white"
+            : "bg-violet-600 text-white";
+}
+
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = React.useState<OrderCard[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [cancellingId, setCancellingId] = React.useState<string | null>(null);
+
+  const loadOrders = React.useCallback(() => {
+    fetch("/api/orders/my", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { orders?: OrderCard[] }) => setOrders(data.orders ?? []));
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
-    async function run() {
-      setLoading(true);
-      const res = await fetch("/api/orders/my", { cache: "no-store" });
-      const data = (await res.json()) as { orders: OrderCard[] };
-      if (!cancelled) {
-        setOrders(data.orders ?? []);
-        setLoading(false);
-      }
-    }
-    void run();
+    setLoading(true);
+    fetch("/api/orders/my", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { orders?: OrderCard[] }) => {
+        if (!cancelled) setOrders(data.orders ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function cancelOrder(orderId: string) {
+    if (!confirm("Отменить заявку? Она попадёт в архив.")) return;
+    setCancellingId(orderId);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/cancel`, { method: "POST" });
+      const data = (await res.json()) as { ok?: boolean; error?: { message?: string } };
+      if (res.ok) {
+        loadOrders();
+      } else {
+        alert(data?.error?.message ?? "Не удалось отменить заявку");
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   return (
     <AppShell title="Мои заявки">
@@ -65,32 +110,46 @@ export default function OrdersPage() {
       ) : orders.length === 0 ? (
         <div className="text-sm text-zinc-600">Пока нет заявок.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="space-y-3">
           {orders.map((o) => (
             <div
               key={o.id}
-              className="rounded-2xl border border-zinc-200 p-4"
+              className="rounded-2xl border border-zinc-200 bg-white overflow-hidden shadow-sm hover:border-violet-200 transition"
             >
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{o.customer.name}</div>
-                  <div className="mt-1 text-xs text-zinc-600">
-                    Статус:{" "}
-                    <span className="font-medium text-zinc-900">
-                      {STATUS_LABEL[o.status]}
+              <div className={`px-4 py-2 text-sm font-bold ${statusHeaderClass(o.status)}`}>
+                {STATUS_LABEL[o.status]}
+              </div>
+              <div className="p-4">
+                <div className="text-sm font-semibold text-zinc-900">{o.customer.name}</div>
+                <div className="mt-2 text-sm text-zinc-600">
+                  Готовность к: <span className="font-semibold">{fmtDate(o.readyByDate)}</span>
+                  {" · "}
+                  Период: <span className="font-semibold">{fmtDate(o.startDate)}</span> —{" "}
+                  <span className="font-semibold">{fmtDate(o.endDate)}</span>
+                  {o.totalAmount != null ? (
+                    <span className="ml-2 font-semibold text-zinc-800">
+                      · {o.totalAmount.toLocaleString("ru-RU")} ₽
                     </span>
-                    {" · "}Готово к:{" "}
-                    <span className="font-medium">
-                      {new Date(o.readyByDate).toLocaleDateString("ru-RU")}
-                    </span>
-                  </div>
+                  ) : null}
                 </div>
-                <Link
-                  href={`/orders/${o.id}`}
-                  className="inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm hover:bg-zinc-50"
-                >
-                  Подробнее
-                </Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href={`/orders/${o.id}`}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100"
+                  >
+                    Открыть заявку
+                  </Link>
+                  {CANCELLABLE.includes(o.status) && (
+                    <button
+                      type="button"
+                      disabled={cancellingId === o.id}
+                      onClick={() => cancelOrder(o.id)}
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      {cancellingId === o.id ? "…" : "Отменить заявку"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -99,4 +158,3 @@ export default function OrdersPage() {
     </AppShell>
   );
 }
-

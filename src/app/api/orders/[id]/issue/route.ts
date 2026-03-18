@@ -1,0 +1,57 @@
+import { prisma } from "@/server/db";
+import { requireRole } from "@/server/auth/require";
+import { jsonError, jsonOk } from "@/server/http";
+
+export async function POST(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id } = await ctx.params;
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { lines: true },
+  });
+
+  if (!order) return jsonError(404, "Not found");
+  if (order.status !== "PICKING") {
+    return jsonError(400, "Выдать можно только после начала сборки (статус «Сборка»)");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const line of order.lines) {
+      const qty = line.approvedQty ?? line.requestedQty;
+      await tx.orderLine.update({
+        where: { id: line.id },
+        data: { issuedQty: qty },
+      });
+    }
+    await tx.order.update({
+      where: { id },
+      data: { status: "ISSUED" },
+    });
+  });
+
+  const fullOrder = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      customer: { select: { name: true } },
+      greenwichUser: { select: { displayName: true } },
+      lines: {
+        orderBy: [{ position: "asc" }],
+        include: { item: { select: { name: true } } },
+      },
+    },
+  });
+  if (fullOrder) {
+    const { notifyIssued } = await import("@/server/notifications/order-notifications");
+    void notifyIssued(fullOrder as Parameters<typeof notifyIssued>[0]).catch((e) =>
+      console.error("[issue] notifyIssued failed:", e),
+    );
+  }
+
+  return jsonOk({ ok: true });
+}

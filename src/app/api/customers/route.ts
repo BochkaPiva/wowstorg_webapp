@@ -4,18 +4,25 @@ import { prisma } from "@/server/db";
 import { requireRole, requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
+  const url = new URL(req.url);
+  const all = url.searchParams.get("all") === "true" && auth.user.role === "WOWSTORG";
+
   const customers = await prisma.customer.findMany({
-    where: { isActive: true },
+    where: all ? undefined : { isActive: true },
     orderBy: [{ name: "asc" }],
-    select: { id: true, name: true },
+    select: { id: true, name: true, isActive: true, notes: true },
     take: 1000,
   });
 
-  return jsonOk({ customers });
+  return jsonOk({
+    customers: customers.map((c) =>
+      all ? { id: c.id, name: c.name, isActive: c.isActive, notes: c.notes } : { id: c.id, name: c.name },
+    ),
+  });
 }
 
 const CreateSchema = z.object({

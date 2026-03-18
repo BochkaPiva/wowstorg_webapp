@@ -20,15 +20,16 @@ export async function getReservedQtyByItemId(args: {
 }) {
   const { db, startDate, endDate, excludeOrderId } = args;
 
-  // Пересечение диапазонов: [startDate, endDate)
-  // overlap если other.start < end && other.end > start
+  // Пересечение диапазонов (инклюзивно по дням).
+  // Любое пересечение дат считается занятостью, включая граничные дни:
+  // overlap если other.start <= end && other.end >= start
   const lines = await db.orderLine.findMany({
     where: {
       order: {
         status: { in: ACTIVE_STATUSES },
         ...(excludeOrderId ? { id: { not: excludeOrderId } } : {}),
-        startDate: { lt: endDate },
-        endDate: { gt: startDate },
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
       },
     },
     select: {

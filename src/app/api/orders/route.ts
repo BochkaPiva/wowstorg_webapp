@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
-import { requireRole } from "@/server/auth/require";
+import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { DateOnlySchema, parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
+import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -12,6 +13,8 @@ const LineSchema = z.object({
   comment: z.string().trim().max(2000).optional(),
   sourceKitId: z.string().trim().min(1).optional(),
 });
+
+const OrderSourceSchema = z.enum(["GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"]);
 
 const BodySchema = z.object({
   customerId: z.string().trim().min(1),
@@ -23,17 +26,26 @@ const BodySchema = z.object({
 
   deliveryEnabled: z.boolean().optional(),
   deliveryComment: z.string().trim().max(2000).optional(),
+  deliveryPrice: z.number().min(0).optional(),
   montageEnabled: z.boolean().optional(),
   montageComment: z.string().trim().max(2000).optional(),
+  montagePrice: z.number().min(0).optional(),
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).optional(),
+  demontagePrice: z.number().min(0).optional(),
+
+  source: OrderSourceSchema.optional(),
+  greenwichUserId: z.string().trim().min(1).optional(),
 
   lines: z.array(LineSchema).min(1).max(500),
 });
 
 export async function POST(req: Request) {
-  const auth = await requireRole("GREENWICH");
+  const auth = await requireUser();
   if (!auth.ok) return auth.response;
+  if (auth.user.role !== "GREENWICH" && auth.user.role !== "WOWSTORG") {
+    return jsonError(403, "Only Greenwich or warehouse can create orders");
+  }
 
   let body: unknown;
   try {
@@ -73,8 +85,30 @@ export async function POST(req: Request) {
   }
   const lines = [...grouped.values()];
 
+  const isWarehouse = auth.user.role === "WOWSTORG";
+  let source: "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL";
+  let greenwichUserId: string | null;
+  let payMultiplier: string;
+
+  if (isWarehouse) {
+    source = data.source ?? "WOWSTORG_EXTERNAL";
+    if (source === "GREENWICH_INTERNAL") {
+      if (!data.greenwichUserId?.trim()) {
+        return jsonError(400, "Укажите сотрудника Greenwich для заявки");
+      }
+      greenwichUserId = data.greenwichUserId.trim();
+      payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
+    } else {
+      greenwichUserId = null;
+      payMultiplier = "1";
+    }
+  } else {
+    source = "GREENWICH_INTERNAL";
+    greenwichUserId = auth.user.id;
+    payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
+  }
+
   const result = await prisma.$transaction(async (tx) => {
-    // Проверяем заказчика
     const customer = await tx.customer.findFirst({
       where: { id: data.customerId, isActive: true },
       select: { id: true },
@@ -83,10 +117,9 @@ export async function POST(req: Request) {
       throw new Error("CUSTOMER_NOT_FOUND");
     }
 
-    // Загружаем товары
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
     const items = await tx.item.findMany({
-      where: { id: { in: itemIds }, isActive: true, internalOnly: false },
+      where: { id: { in: itemIds }, isActive: true, internalOnly: isWarehouse ? undefined : false },
       select: {
         id: true,
         pricePerDay: true,
@@ -94,14 +127,17 @@ export async function POST(req: Request) {
         inRepair: true,
         broken: true,
         missing: true,
+        internalOnly: true,
       },
     });
     if (items.length !== itemIds.length) {
       throw new Error("ITEM_NOT_FOUND");
     }
+    if (!isWarehouse && items.some((i) => i.internalOnly)) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
     const itemById = new Map(items.map((i) => [i.id, i]));
 
-    // Проверка доступности по датам (резервирование)
     const reserved = await getReservedQtyByItemId({ db: tx, startDate, endDate });
     for (const l of lines) {
       const item = itemById.get(l.itemId)!;
@@ -115,10 +151,10 @@ export async function POST(req: Request) {
 
     const order = await tx.order.create({
       data: {
-        source: "GREENWICH_INTERNAL",
+        source,
         status: "SUBMITTED",
         createdById: auth.user.id,
-        greenwichUserId: auth.user.id,
+        greenwichUserId,
         customerId: data.customerId,
         eventName: data.eventName,
         comment: data.comment,
@@ -127,11 +163,14 @@ export async function POST(req: Request) {
         endDate,
         deliveryEnabled: data.deliveryEnabled ?? false,
         deliveryComment: data.deliveryComment,
+        deliveryPrice: data.deliveryPrice != null ? data.deliveryPrice : undefined,
         montageEnabled: data.montageEnabled ?? false,
         montageComment: data.montageComment,
+        montagePrice: data.montagePrice != null ? data.montagePrice : undefined,
         demontageEnabled: data.demontageEnabled ?? false,
         demontageComment: data.demontageComment,
-        payMultiplier: "0.76",
+        demontagePrice: data.demontagePrice != null ? data.demontagePrice : undefined,
+        payMultiplier,
         lines: {
           create: lines.map((l, idx) => ({
             itemId: l.itemId,
@@ -148,6 +187,25 @@ export async function POST(req: Request) {
 
     return order;
   });
+
+  const createdOrder = await prisma.order.findUnique({
+    where: { id: result.id },
+    include: {
+      customer: { select: { name: true } },
+      createdBy: { select: { displayName: true } },
+      greenwichUser: { select: { displayName: true } },
+      lines: {
+        orderBy: [{ position: "asc" }],
+        include: { item: { select: { name: true } } },
+      },
+    },
+  });
+  if (createdOrder) {
+    const { notifyOrderCreated } = await import("@/server/notifications/order-notifications");
+    void notifyOrderCreated(createdOrder as Parameters<typeof notifyOrderCreated>[0]).catch((e) =>
+      console.error("[orders] notifyOrderCreated failed:", e),
+    );
+  }
 
   return jsonOk({ orderId: result.id });
 }

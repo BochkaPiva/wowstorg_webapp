@@ -54,12 +54,13 @@ enum LossStatus {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  login        String  @unique
-  passwordHash String
-  role         Role
-  displayName  String
-  isActive     Boolean @default(true)
+  id             String   @id @default(cuid())
+  login          String   @unique
+  passwordHash   String
+  role           Role
+  displayName    String   /// ФИО
+  telegramChatId String?  /// ID чата в Telegram для уведомлений
+  isActive       Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -206,12 +207,15 @@ model Order {
   startDate   DateTime
   endDate     DateTime
 
-  deliveryEnabled  Boolean @default(false)
+  deliveryEnabled  Boolean  @default(false)
   deliveryComment  String?
-  montageEnabled   Boolean @default(false)
+  deliveryPrice    Decimal? @db.Decimal(12, 2)
+  montageEnabled   Boolean  @default(false)
   montageComment   String?
-  demontageEnabled Boolean @default(false)
+  montagePrice     Decimal? @db.Decimal(12, 2)
+  demontageEnabled Boolean  @default(false)
   demontageComment String?
+  demontagePrice   Decimal? @db.Decimal(12, 2)
 
   /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
   /// чтобы изменения правил не ломали историю.
@@ -223,6 +227,9 @@ model Order {
 
   greenwichConfirmedAt       DateTime?
   greenwichConfirmedSnapshot Json?
+
+  /// Внутренняя заметка склада (только для сотрудников склада, не для клиента).
+  warehouseInternalNote String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

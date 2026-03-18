@@ -1,0 +1,403 @@
+@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap");
+
+.co-section {
+  font-family: "Lato", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: #111827;
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
+.co-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+}
+
+.co-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.co-subtitle {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.co-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1rem 0 1.2rem;
+}
+
+.co-datePill {
+  border-radius: 9999px;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  background: rgba(124, 58, 237, 0.06);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.co-link {
+  margin-left: auto;
+  text-decoration: none;
+  font-weight: 700;
+  color: rgba(124, 58, 237, 0.95);
+}
+.co-link:hover {
+  text-decoration: underline;
+}
+
+.co-orderType {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+}
+.co-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.88);
+}
+.co-radio input {
+  width: 1.1em;
+  height: 1.1em;
+  accent-color: rgba(124, 58, 237, 0.9);
+}
+
+/* Flip-switch (Тип заявки) — адаптация под наш дизайн */
+.co-flipSwitchContainer {
+  width: 100%;
+}
+.co-flipSwitch {
+  --co-switch-height: 72px;
+  --co-radius: 18px;
+  --co-border: rgba(124, 58, 237, 0.18);
+  --co-bg: rgba(124, 58, 237, 0.06);
+  --co-card-bg: linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(124, 58, 237, 0.12));
+  --co-text: rgba(17, 24, 39, 0.9);
+  --co-muted: rgba(107, 114, 128, 0.9);
+  --co-active: rgba(124, 58, 237, 0.95);
+
+  position: relative;
+  width: 100%;
+  height: var(--co-switch-height);
+  display: flex;
+  border-radius: var(--co-radius);
+  border: 1px solid var(--co-border);
+  background: var(--co-bg);
+  box-shadow: 0 10px 30px rgba(17, 24, 39, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  perspective: 1000px;
+  overflow: hidden;
+}
+.co-flipSwitch input[type="radio"] {
+  display: none;
+}
+.co-switchButton {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  color: var(--co-muted);
+  font-weight: 800;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 180ms ease, transform 180ms ease;
+  text-align: center;
+  padding: 0.4rem 0.6rem;
+}
+.co-switchButton svg {
+  color: currentColor;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 220ms ease;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.18));
+}
+.co-switchButton:hover {
+  color: var(--co-text);
+}
+.co-switchButton:hover svg {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.18));
+}
+.co-switchSub {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(107, 114, 128, 0.85);
+}
+
+.co-flipSwitch #co-orderType-greenwich:checked ~ label[for="co-orderType-greenwich"],
+.co-flipSwitch #co-orderType-external:checked ~ label[for="co-orderType-external"] {
+  color: var(--co-text);
+}
+.co-flipSwitch #co-orderType-greenwich:checked ~ label[for="co-orderType-greenwich"] .co-switchSub,
+.co-flipSwitch #co-orderType-external:checked ~ label[for="co-orderType-external"] .co-switchSub {
+  color: rgba(124, 58, 237, 0.9);
+}
+
+.co-switchCard {
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  height: 100%;
+  z-index: 1;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.co-cardFace {
+  position: absolute;
+  inset: 6px;
+  border-radius: calc(var(--co-radius) - 8px);
+  background: var(--co-card-bg);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 10px 22px rgba(124, 58, 237, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.co-cardBack {
+  transform: rotateY(180deg);
+}
+
+.co-flipSwitch #co-orderType-external:checked ~ .co-switchCard {
+  animation: coFlipRight 520ms cubic-bezier(0.76, 0, 0.24, 1) forwards;
+}
+.co-flipSwitch #co-orderType-greenwich:checked ~ .co-switchCard {
+  animation: coFlipLeft 520ms cubic-bezier(0.76, 0, 0.24, 1) forwards;
+}
+
+@keyframes coFlipRight {
+  0% {
+    transform: translateX(0%) rotateY(0deg);
+  }
+  50% {
+    transform: translateX(50%) rotateY(90deg) scale(1.02);
+  }
+  100% {
+    transform: translateX(100%) rotateY(180deg);
+  }
+}
+@keyframes coFlipLeft {
+  0% {
+    transform: translateX(100%) rotateY(180deg);
+  }
+  50% {
+    transform: translateX(50%) rotateY(90deg) scale(1.02);
+  }
+  100% {
+    transform: translateX(0%) rotateY(0deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .co-flipSwitch #co-orderType-external:checked ~ .co-switchCard,
+  .co-flipSwitch #co-orderType-greenwich:checked ~ .co-switchCard {
+    animation: none;
+    transform: translateX(0%);
+  }
+  .co-flipSwitch #co-orderType-external:checked ~ .co-switchCard {
+    transform: translateX(100%) rotateY(180deg);
+  }
+}
+
+.co-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+@media (min-width: 768px) {
+  .co-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.co-field {
+  display: block;
+}
+
+.co-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.85);
+  margin-bottom: 0.35rem;
+}
+
+.co-input {
+  width: 100%;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  padding: 0.8rem 0.95rem;
+  outline: none;
+}
+select.co-input {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+  overflow: hidden;
+}
+.co-input::placeholder {
+  color: rgba(107, 114, 128, 0.85);
+}
+.co-input:focus::placeholder {
+  color: transparent;
+}
+.co-input:focus {
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12);
+}
+
+.co-textarea {
+  width: 100%;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
+  padding: 0.8rem 0.95rem;
+  min-height: 110px;
+  outline: none;
+}
+.co-textarea::placeholder {
+  color: rgba(107, 114, 128, 0.85);
+}
+.co-textarea:focus::placeholder {
+  color: transparent;
+}
+.co-textarea:focus {
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.12);
+}
+.co-textarea--compact {
+  min-height: 86px;
+  margin-top: 0.6rem;
+}
+
+.co-help {
+  margin-top: 0.35rem;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.co-services {
+  margin-top: 1.2rem;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1rem;
+}
+
+.co-servicesTitle {
+  font-weight: 900;
+  margin-bottom: 0.6rem;
+}
+
+.co-serviceRow {
+  padding: 0.65rem 0;
+  border-top: 1px solid rgba(17, 24, 39, 0.06);
+}
+.co-serviceRow:first-of-type {
+  border-top: none;
+}
+.co-serviceRow .co-textarea--compact {
+  margin-top: 0.5rem;
+}
+.co-priceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  cursor: default;
+}
+.co-priceLabel {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(17, 24, 39, 0.8);
+  flex-shrink: 0;
+}
+.co-input--price {
+  width: 8rem;
+  max-width: 100%;
+}
+
+.co-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.co-toggleLabel {
+  font-weight: 700;
+  color: rgba(17, 24, 39, 0.88);
+  text-align: left;
+}
+.co-toggleTrack {
+  width: 52px;
+  height: 30px;
+  border-radius: 9999px;
+  background: rgba(17, 24, 39, 0.12);
+  position: relative;
+  transition: background 160ms ease;
+  flex-shrink: 0;
+}
+.co-toggleThumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: white;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  box-shadow: 0 6px 14px rgba(17, 24, 39, 0.18);
+  transition: transform 160ms ease;
+}
+.co-toggle--on .co-toggleTrack {
+  background: rgba(124, 58, 237, 0.75);
+}
+.co-toggle--on .co-toggleThumb {
+  transform: translateX(22px);
+}
+
+.co-error {
+  margin-top: 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08);
+  padding: 0.75rem 0.85rem;
+  color: rgba(127, 29, 29, 0.95);
+  font-size: 0.95rem;
+}
+
+.co-btn {
+  margin-top: 1.2rem;
+  width: 100%;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  font-weight: 900;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  cursor: pointer;
+}
+.co-btn--primary {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.95), rgba(124, 58, 237, 0.78));
+  color: white;
+  border-color: rgba(124, 58, 237, 0.45);
+}
+.co-btn--primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

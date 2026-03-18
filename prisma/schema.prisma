@@ -53,6 +53,11 @@ enum LossStatus {
   WRITTEN_OFF
 }
 
+enum IncidentStatus {
+  OPEN
+  CLOSED
+}
+
 model User {
   id             String   @id @default(cuid())
   login          String   @unique
@@ -225,6 +230,9 @@ model Order {
   estimateSentSnapshot Json?
   estimateFileKey      String?
 
+  /// Снэпшот заявки в момент «Запрошены изменения» (без цен доп. услуг) — для сравнения при отправке сметы.
+  changesRequestedSnapshot Json?
+
   greenwichConfirmedAt       DateTime?
   greenwichConfirmedSnapshot Json?
 
@@ -312,9 +320,16 @@ model Incident {
 
   condition Condition
   qty       Int
+  repairedQty Int @default(0)
+  utilizedQty Int @default(0)
+  status IncidentStatus @default(OPEN)
   comment   String?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  resolvedAt DateTime?
+
+  @@index([status, condition])
 }
 
 /// Учёт недостач с жизненным циклом “найдено/списано”.
@@ -332,7 +347,10 @@ model LossRecord {
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
   qty   Int
+  foundQty Int @default(0)
+  writtenOffQty Int @default(0)
   notes String?
+  resolvedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

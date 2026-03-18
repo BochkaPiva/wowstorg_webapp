@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   if (auth.user.role !== "GREENWICH" && auth.user.role !== "WOWSTORG") {
-    return jsonError(403, "Only Greenwich or warehouse can create orders");
+    return jsonError(403, "Создавать заявки могут только Grinvich или склад");
   }
 
   let body: unknown;
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
     source = data.source ?? "WOWSTORG_EXTERNAL";
     if (source === "GREENWICH_INTERNAL") {
       if (!data.greenwichUserId?.trim()) {
-        return jsonError(400, "Укажите сотрудника Greenwich для заявки");
+        return jsonError(400, "Укажите сотрудника Grinvich для заявки");
       }
       greenwichUserId = data.greenwichUserId.trim();
       payMultiplier = String(PAY_MULTIPLIER_GREENWICH);

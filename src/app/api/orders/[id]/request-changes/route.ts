@@ -18,7 +18,7 @@ export async function POST(
 
   if (!order) return jsonError(404, "Not found");
   if (order.greenwichUserId !== auth.user.id) {
-    return jsonError(403, "Запросить правки может только сотрудник Greenwich, на которого оформлена заявка");
+    return jsonError(403, "Запросить правки может только сотрудник Grinvich, на которого оформлена заявка");
   }
   if (order.status !== "ESTIMATE_SENT" && order.status !== "CHANGES_REQUESTED") {
     return jsonError(

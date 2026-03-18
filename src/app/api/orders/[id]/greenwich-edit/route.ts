@@ -30,18 +30,19 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireUser();
-  if (!auth.ok) return auth.response;
-  if (auth.user.role !== "GREENWICH") return jsonError(403, "Forbidden");
-
-  const { id } = await ctx.params;
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return jsonError(400, "Invalid JSON");
-  }
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+    if (auth.user.role !== "GREENWICH") return jsonError(403, "Forbidden");
+
+    const { id } = await ctx.params;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonError(400, "Invalid JSON");
+    }
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
@@ -102,6 +103,31 @@ export async function PATCH(
 
   const shouldRequestChanges = order.status === "ESTIMATE_SENT" || order.status === "APPROVED_BY_GREENWICH";
 
+  const changesRequestedSnapshot =
+    shouldRequestChanges
+      ? ({
+          eventName: data.eventName !== undefined ? (data.eventName.trim() || null) : order.eventName,
+          comment: data.comment !== undefined ? (data.comment.trim() || null) : order.comment,
+          deliveryEnabled: data.deliveryEnabled ?? order.deliveryEnabled,
+          deliveryComment: data.deliveryComment !== undefined ? (data.deliveryComment.trim() || null) : order.deliveryComment,
+          montageEnabled: data.montageEnabled ?? order.montageEnabled,
+          montageComment: data.montageComment !== undefined ? (data.montageComment.trim() || null) : order.montageComment,
+          demontageEnabled: data.demontageEnabled ?? order.demontageEnabled,
+          demontageComment: data.demontageComment !== undefined ? (data.demontageComment.trim() || null) : order.demontageComment,
+          lines: [...data.lines]
+            .map((l) => ({
+              itemId: l.itemId,
+              requestedQty: l.requestedQty,
+              greenwichComment: (l.greenwichComment ?? "").trim() || null,
+            }))
+            .sort((a, b) =>
+              a.itemId.localeCompare(b.itemId) ||
+              a.requestedQty - b.requestedQty ||
+              (a.greenwichComment ?? "").localeCompare(b.greenwichComment ?? ""),
+            ),
+        } as const)
+      : undefined;
+
   await prisma.$transaction(async (tx) => {
     for (const line of toDelete) {
       await tx.orderLine.delete({ where: { id: line.id } });
@@ -145,7 +171,7 @@ export async function PATCH(
         ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
         ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
         ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
-        ...(shouldRequestChanges ? { status: "CHANGES_REQUESTED" } : {}),
+        ...(shouldRequestChanges ? { status: "CHANGES_REQUESTED", changesRequestedSnapshot: changesRequestedSnapshot as unknown as object } : {}),
       },
     });
   });
@@ -162,16 +188,19 @@ export async function PATCH(
       },
     },
   });
-  if (after) {
-    const { notifyGreenwichEdited } = await import("@/server/notifications/order-notifications");
-    // Уведомление в фоне — не блокируем ответ, сохранение остаётся быстрым
-    void notifyGreenwichEdited({
-      before: order as Parameters<typeof notifyGreenwichEdited>[0]["before"],
-      after: after as Parameters<typeof notifyGreenwichEdited>[0]["after"],
-      requiresResendEstimate: shouldRequestChanges,
-    }).catch((e) => console.error("[greenwich-edit] notifyGreenwichEdited failed:", e));
-  }
+    if (after) {
+      const { notifyGreenwichEdited } = await import("@/server/notifications/order-notifications");
+      void notifyGreenwichEdited({
+        before: order as Parameters<typeof notifyGreenwichEdited>[0]["before"],
+        after: after as Parameters<typeof notifyGreenwichEdited>[0]["after"],
+        requiresResendEstimate: shouldRequestChanges,
+      }).catch((e) => console.error("[greenwich-edit] notifyGreenwichEdited failed:", e));
+    }
 
-  return jsonOk({ ok: true });
+    return jsonOk({ ok: true });
+  } catch (e) {
+    console.error("[greenwich-edit] unexpected error:", e);
+    return jsonError(500, e instanceof Error ? e.message : "Ошибка при сохранении");
+  }
 }
 

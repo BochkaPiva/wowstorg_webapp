@@ -54,6 +54,7 @@ type Order = {
   demontageComment: string | null;
   demontagePrice: number | null;
   warehouseInternalNote?: string | null;
+  estimateFileKey?: string | null;
   lines: OrderLine[];
   returnSplits?: ReturnSplit[];
 };
@@ -119,6 +120,8 @@ function lineIssuedQty(l: OrderLine): number {
 }
 
 type SplitRow = { condition: ReturnSplit["condition"]; qty: number };
+/** Сырые строки черновика: qty может быть "" для возможности стереть поле. */
+type SplitRowRaw = { condition: ReturnSplit["condition"]; qty: number | "" };
 
 function nextDefaultCondition(used: ReturnSplit["condition"][]): ReturnSplit["condition"] {
   if (!used.includes("OK")) return "OK";
@@ -126,7 +129,7 @@ function nextDefaultCondition(used: ReturnSplit["condition"][]): ReturnSplit["co
   return next ?? "OK";
 }
 
-function normalizeRows(total: number, rows: SplitRow[]): SplitRow[] {
+function normalizeRows(total: number, rows: SplitRowRaw[]): SplitRow[] {
   const clean = rows
     .filter((r) => CONDITIONS.includes(r.condition))
     .map((r) => ({ condition: r.condition, qty: Math.max(0, Math.floor(Number(r.qty) || 0)) }));
@@ -424,7 +427,7 @@ export default function OrderDetailsPage() {
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  type ReturnLineDraft = { comment: string; rows: SplitRow[] };
+  type ReturnLineDraft = { comment: string; rows: SplitRowRaw[] };
   const [declareOpen, setDeclareOpen] = React.useState(false);
   const [declareDraft, setDeclareDraft] = React.useState<Record<string, ReturnLineDraft>>({});
   const [checkInDraft, setCheckInDraft] = React.useState<Record<string, ReturnLineDraft>>({});
@@ -687,7 +690,13 @@ export default function OrderDetailsPage() {
           })),
         }),
       });
-      const data = (await res.json()) as { error?: { message?: string } };
+      const text = await res.text();
+      let data: { error?: { message?: string } } = {};
+      try {
+        if (text) data = JSON.parse(text) as { error?: { message?: string } };
+      } catch {
+        data = {};
+      }
       if (!res.ok) {
         setActionError(data?.error?.message ?? "Ошибка сохранения");
         return;
@@ -818,6 +827,17 @@ export default function OrderDetailsPage() {
               <p className="mt-2 text-sm font-semibold text-zinc-800">
                 Сумма заявки: {orderTotal(order).toLocaleString("ru-RU")} ₽
               </p>
+              {order.estimateFileKey ? (
+                <p className="mt-3">
+                  <a
+                    href={`/api/orders/${order.id}/estimate`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    download
+                  >
+                    📥 Скачать смету (xlsx)
+                  </a>
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -869,7 +889,7 @@ export default function OrderDetailsPage() {
                       <th className="text-left px-5 py-3 font-semibold text-zinc-700">Позиция</th>
                       <th className="text-right px-5 py-3 font-semibold text-zinc-700 w-36">Кол-во</th>
                       <th className="text-left px-5 py-3 font-semibold text-zinc-700">
-                        {isWarehouse ? "Коммент. склада (для Greenwich)" : "Комментарий (для склада)"}
+                        {isWarehouse ? "Коммент. склада (для Grinvich)" : "Комментарий (для склада)"}
                       </th>
                       <th className="w-24 px-5 py-3" />
                     </tr>
@@ -1010,7 +1030,7 @@ export default function OrderDetailsPage() {
                       <th className="text-right p-3 font-semibold text-zinc-700">Соглас.</th>
                       <th className="text-right p-3 font-semibold text-zinc-700">Выдано</th>
                       <th className="text-right p-3 font-semibold text-zinc-700">Цена/сут</th>
-                      <th className="text-left p-3 font-semibold text-zinc-700">Коммент. Greenwich</th>
+                      <th className="text-left p-3 font-semibold text-zinc-700">Коммент. Grinvich</th>
                       <th className="text-left p-3 font-semibold text-zinc-700">Коммент. склада</th>
                     </tr>
                   </thead>
@@ -1072,7 +1092,7 @@ export default function OrderDetailsPage() {
         {isWarehouse && order.status === "RETURN_DECLARED" && !isEditing ? (
           <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
             <div className="border-b border-zinc-200 bg-zinc-50/80 px-4 py-2 text-sm font-semibold text-zinc-700">
-              Приёмка (как отправил Greenwich)
+              Приёмка (как отправил Grinvich)
             </div>
             <div className="p-4 space-y-4">
               {order.lines.filter((l) => lineIssuedQty(l) > 0).map((l) => {
@@ -1115,15 +1135,28 @@ export default function OrderDetailsPage() {
                             </select>
                             {r.condition !== "OK" ? (
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="numeric"
                                 min={0}
                                 max={remaining}
-                                value={r.qty}
+                                value={draft.rows[idx]?.qty === "" ? "" : String(r.qty)}
                                 onChange={(e) => {
-                                  const v = Math.max(0, Math.min(remaining, Math.floor(Number(e.target.value) || 0)));
-                                  const nextRows = rows.slice();
-                                  nextRows[idx] = { ...r, qty: v };
+                                  const raw = e.target.value;
+                                  if (raw !== "" && !/^\d*$/.test(raw)) return;
+                                  const v =
+                                    raw === ""
+                                      ? ""
+                                      : Math.max(0, Math.min(remaining, Math.floor(Number(raw) || 0)));
+                                  const nextRows = draft.rows.slice();
+                                  nextRows[idx] = { condition: r.condition, qty: v };
                                   updateLineDraft("checkin", l.id, { ...draft, rows: nextRows });
+                                }}
+                                onBlur={() => {
+                                  if (draft.rows[idx]?.qty === "") {
+                                    const nextRows = draft.rows.slice();
+                                    nextRows[idx] = { condition: r.condition, qty: Math.min(1, remaining) };
+                                    updateLineDraft("checkin", l.id, { ...draft, rows: nextRows });
+                                  }
                                 }}
                                 className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                               />
@@ -1276,15 +1309,28 @@ export default function OrderDetailsPage() {
                                 </select>
                                 {r.condition !== "OK" ? (
                                   <input
-                                    type="number"
+                                    type="text"
+                                    inputMode="numeric"
                                     min={0}
                                     max={remaining}
-                                    value={r.qty}
+                                    value={draft.rows[idx]?.qty === "" ? "" : String(r.qty)}
                                     onChange={(e) => {
-                                      const v = Math.max(0, Math.min(remaining, Math.floor(Number(e.target.value) || 0)));
-                                      const nextRows = rows.slice();
-                                      nextRows[idx] = { ...r, qty: v };
+                                      const raw = e.target.value;
+                                      if (raw !== "" && !/^\d*$/.test(raw)) return;
+                                      const v =
+                                        raw === ""
+                                          ? ""
+                                          : Math.max(0, Math.min(remaining, Math.floor(Number(raw) || 0)));
+                                      const nextRows = draft.rows.slice();
+                                      nextRows[idx] = { condition: r.condition, qty: v };
                                       updateLineDraft("declare", l.id, { ...draft, rows: nextRows });
+                                    }}
+                                    onBlur={() => {
+                                      if (draft.rows[idx]?.qty === "") {
+                                        const nextRows = draft.rows.slice();
+                                        nextRows[idx] = { condition: r.condition, qty: Math.min(1, remaining) };
+                                        updateLineDraft("declare", l.id, { ...draft, rows: nextRows });
+                                      }
                                     }}
                                     className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                                   />
@@ -1359,7 +1405,7 @@ export default function OrderDetailsPage() {
                 onClick={saveOrderEdit}
                 className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
               >
-                {busy ? "…" : "Сохранить"}
+                {busy ? "…" : isGreenwich ? "Запросить изменения" : "Сохранить"}
               </button>
               <button
                 type="button"
@@ -1372,9 +1418,9 @@ export default function OrderDetailsPage() {
             </>
           )}
           {sendEstimateBlocked ? (
-            <p className="text-sm text-amber-700">
-              Чтобы отправить смету, укажите цены для всех включённых доп. услуг (в режиме редактирования).
-            </p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+              <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
+            </div>
           ) : null}
           {isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") && !isEditing && (
             <button
@@ -1406,25 +1452,15 @@ export default function OrderDetailsPage() {
               {busy ? "…" : "Выдать"}
             </button>
           )}
-          {isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => doAction("POST", `/api/orders/${orderId}/approve`, {})}
-                className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-              >
-                {busy ? "…" : "Согласовать смету"}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => doAction("POST", `/api/orders/${orderId}/request-changes`)}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-              >
-                {busy ? "…" : "Запросить правки"}
-              </button>
-            </>
+          {isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && !isEditing && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/approve`, {})}
+              className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {busy ? "…" : "Согласовать смету"}
+            </button>
           )}
           {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
           {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === state.user?.id && (

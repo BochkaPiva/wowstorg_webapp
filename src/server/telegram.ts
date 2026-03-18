@@ -97,6 +97,67 @@ export async function sendTelegramMessage(
   }
 }
 
+const TELEGRAM_CAPTION_MAX_LENGTH = 1024;
+
+/**
+ * Отправляет документ в чат. Не бросает ошибки — логирует и выходит (best-effort).
+ */
+export async function sendTelegramDocument(
+  chatId: string,
+  documentBuffer: Buffer,
+  fileName: string,
+  options?: {
+    caption?: string;
+    messageThreadId?: number | string;
+  },
+): Promise<boolean> {
+  const token = getBotToken();
+  if (!token || !chatId) return false;
+  const url = `https://api.telegram.org/bot${token}/sendDocument`;
+  const caption = options?.caption
+    ? (options.caption.length > TELEGRAM_CAPTION_MAX_LENGTH
+        ? options.caption.slice(0, TELEGRAM_CAPTION_MAX_LENGTH - 3) + "…"
+        : options.caption)
+    : undefined;
+  const form = new FormData();
+  form.append("chat_id", chatId);
+  form.append("document", new Blob([documentBuffer]), fileName);
+  if (caption) form.append("caption", caption);
+  if (options?.messageThreadId != null) {
+    form.append(
+      "message_thread_id",
+      typeof options.messageThreadId === "string"
+        ? options.messageThreadId
+        : String(options.messageThreadId),
+    );
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("[Telegram] sendDocument failed:", res.status, err);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("abort")) {
+      console.warn("[Telegram] sendDocument timeout after", SEND_TIMEOUT_MS, "ms");
+    } else {
+      console.error("[Telegram] sendDocument error:", e);
+    }
+    return false;
+  }
+}
+
 /** Экранирование для HTML-режима Telegram (в сообщениях не используем < > & для пользовательского ввода). */
 export function escapeTelegramHtml(s: string): string {
   return s

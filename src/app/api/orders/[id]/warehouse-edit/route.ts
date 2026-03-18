@@ -102,31 +102,8 @@ export async function PATCH(
   const existingIds = new Set(order.lines.map((l) => l.id));
   const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
   const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
-  const oldLineById = new Map(order.lines.map((l) => [l.id, l]));
 
   const wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
-  const lineDiffs: Array<{ name: string; oldQty?: number; newQty?: number; added?: boolean; removed?: boolean; comment?: string | null }> = [];
-
-  // Всегда считаем diff и уведомляем Greenwich (до начала сборки)
-  for (const line of toDelete) {
-    lineDiffs.push({ name: (line as { item?: { name: string } }).item?.name ?? "Позиция", removed: true });
-  }
-  for (const row of data.lines) {
-    const name = itemById.get(row.itemId)!.name;
-    if (!row.id || !existingIds.has(row.id)) {
-      lineDiffs.push({ name, added: true, newQty: row.requestedQty, comment: row.warehouseComment?.trim() || null });
-    } else {
-      const old = oldLineById.get(row.id);
-      if (old && (old.requestedQty !== row.requestedQty || (old.warehouseComment ?? "") !== (row.warehouseComment?.trim() ?? ""))) {
-        lineDiffs.push({
-          name,
-          oldQty: old.requestedQty,
-          newQty: row.requestedQty,
-          comment: row.warehouseComment?.trim() || null,
-        });
-      }
-    }
-  }
 
   await prisma.$transaction(async (tx) => {
     for (const line of toDelete) {
@@ -178,37 +155,6 @@ export async function PATCH(
       },
     });
   });
-
-  const fullOrder = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      customer: { select: { name: true } },
-      greenwichUser: { select: { displayName: true } },
-      lines: {
-        orderBy: [{ position: "asc" }],
-        include: { item: { select: { name: true } } },
-      },
-    },
-  });
-  if (fullOrder) {
-    const services: string[] = [];
-    if (data.deliveryEnabled !== undefined)
-      services.push(`Доставка: ${data.deliveryEnabled ? "да" : "нет"}`);
-    if (data.montageEnabled !== undefined)
-      services.push(`Монтаж: ${data.montageEnabled ? "да" : "нет"}`);
-    if (data.demontageEnabled !== undefined)
-      services.push(`Демонтаж: ${data.demontageEnabled ? "да" : "нет"}`);
-    const { notifyWarehouseEdited } = await import("@/server/notifications/order-notifications");
-    void notifyWarehouseEdited(
-      fullOrder as Parameters<typeof notifyWarehouseEdited>[0],
-      {
-        lines: lineDiffs,
-        eventName: data.eventName,
-        comment: data.comment,
-        services: services.length ? services : undefined,
-      },
-    ).catch((e) => console.error("[warehouse-edit] notifyWarehouseEdited failed:", e));
-  }
 
   return jsonOk({ ok: true });
 }

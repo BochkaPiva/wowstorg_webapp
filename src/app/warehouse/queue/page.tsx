@@ -38,7 +38,7 @@ function statusRu(s: string) {
     case "CHANGES_REQUESTED":
       return "Запрошены изменения";
     case "APPROVED_BY_GREENWICH":
-      return "Согласовано Greenwich";
+      return "Согласовано Grinvich";
     case "PICKING":
       return "Сборка";
     case "ISSUED":

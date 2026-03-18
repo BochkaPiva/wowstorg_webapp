@@ -92,16 +92,58 @@ export async function POST(
           if (s.qty <= 0) continue;
           if (seen.has(s.condition)) continue;
           seen.add(s.condition);
+          const actualQty = Math.min(s.qty, maxQty);
+          if (actualQty <= 0) continue;
           await tx.returnSplit.create({
             data: {
               orderId: id,
               orderLineId: l.orderLineId,
               phase: "CHECKED_IN",
               condition: s.condition,
-              qty: Math.min(s.qty, maxQty),
+              qty: actualQty,
               comment: l.comment?.trim() || null,
             },
           });
+
+          // Движения в “базы” по статусам (кроме OK)
+          if (s.condition === "NEEDS_REPAIR" || s.condition === "BROKEN") {
+            await tx.incident.create({
+              data: {
+                orderId: id,
+                orderLineId: l.orderLineId,
+                condition: s.condition,
+                qty: actualQty,
+                comment: l.comment?.trim() || null,
+              },
+            });
+            const itemId = line.itemId;
+            if (s.condition === "NEEDS_REPAIR") {
+              await tx.item.update({
+                where: { id: itemId },
+                data: { inRepair: { increment: actualQty } },
+              });
+            } else {
+              await tx.item.update({
+                where: { id: itemId },
+                data: { broken: { increment: actualQty } },
+              });
+            }
+          } else if (s.condition === "MISSING") {
+            await tx.lossRecord.create({
+              data: {
+                status: "OPEN",
+                itemId: line.itemId,
+                orderId: id,
+                orderLineId: l.orderLineId,
+                qty: actualQty,
+                notes: l.comment?.trim() || null,
+              },
+            });
+            await tx.item.update({
+              where: { id: line.itemId },
+              data: { missing: { increment: actualQty } },
+            });
+          }
         }
       }
     } else {
@@ -121,6 +163,42 @@ export async function POST(
             qty: actualQty,
           },
         });
+
+        if (condition === "NEEDS_REPAIR" || condition === "BROKEN") {
+          await tx.incident.create({
+            data: {
+              orderId: id,
+              orderLineId,
+              condition,
+              qty: actualQty,
+            },
+          });
+          if (condition === "NEEDS_REPAIR") {
+            await tx.item.update({
+              where: { id: line.itemId },
+              data: { inRepair: { increment: actualQty } },
+            });
+          } else {
+            await tx.item.update({
+              where: { id: line.itemId },
+              data: { broken: { increment: actualQty } },
+            });
+          }
+        } else if (condition === "MISSING") {
+          await tx.lossRecord.create({
+            data: {
+              status: "OPEN",
+              itemId: line.itemId,
+              orderId: id,
+              orderLineId,
+              qty: actualQty,
+            },
+          });
+          await tx.item.update({
+            where: { id: line.itemId },
+            data: { missing: { increment: actualQty } },
+          });
+        }
       }
     }
     await tx.order.update({

@@ -1,7 +1,49 @@
+import { mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
+
 import { prisma } from "@/server/db";
+import { buildEstimateXlsx } from "@/server/estimate-xlsx";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { notifyEstimateSent } from "@/server/notifications/order-notifications";
+
+const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
+
+/** Снимок заявки без цен доп. услуг — для сравнения «склад ничего не менял после запроса изменений». */
+function buildOrderSnapshotForCompare(order: {
+  eventName: string | null;
+  comment: string | null;
+  deliveryEnabled: boolean;
+  deliveryComment: string | null;
+  montageEnabled: boolean;
+  montageComment: string | null;
+  demontageEnabled: boolean;
+  demontageComment: string | null;
+  lines: Array<{ itemId: string; requestedQty: number; greenwichComment: string | null }>;
+}): string {
+  const lines = [...order.lines]
+    .map((l) => ({
+      itemId: l.itemId,
+      requestedQty: l.requestedQty,
+      greenwichComment: (l.greenwichComment ?? "").trim() || null,
+    }))
+    .sort((a, b) =>
+      a.itemId.localeCompare(b.itemId) ||
+      a.requestedQty - b.requestedQty ||
+      (a.greenwichComment ?? "").localeCompare(b.greenwichComment ?? ""),
+    );
+  return JSON.stringify({
+    eventName: order.eventName ?? null,
+    comment: (order.comment ?? "").trim() || null,
+    deliveryEnabled: order.deliveryEnabled,
+    deliveryComment: (order.deliveryComment ?? "").trim() || null,
+    montageEnabled: order.montageEnabled,
+    montageComment: (order.montageComment ?? "").trim() || null,
+    demontageEnabled: order.demontageEnabled,
+    demontageComment: (order.demontageComment ?? "").trim() || null,
+    lines,
+  });
+}
 
 export async function POST(
   _req: Request,
@@ -11,57 +53,6 @@ export async function POST(
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
-
-  const order = await prisma.order.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      deliveryEnabled: true,
-      deliveryPrice: true,
-      montageEnabled: true,
-      montagePrice: true,
-      demontageEnabled: true,
-      demontagePrice: true,
-      lines: { select: { id: true, itemId: true, requestedQty: true, pricePerDaySnapshot: true } },
-    },
-  });
-
-  if (!order) return jsonError(404, "Not found");
-  const allowedStatuses = ["SUBMITTED", "CHANGES_REQUESTED"] as const;
-  if (!allowedStatuses.includes(order.status as (typeof allowedStatuses)[number])) {
-    return jsonError(400, "Смету можно отправить только для заявки в статусе «Новая» или «Запрошены изменения»");
-  }
-
-  const missing: string[] = [];
-  if (order.deliveryEnabled && (order.deliveryPrice == null || Number(order.deliveryPrice) <= 0))
-    missing.push("Доставка");
-  if (order.montageEnabled && (order.montagePrice == null || Number(order.montagePrice) <= 0))
-    missing.push("Монтаж");
-  if (order.demontageEnabled && (order.demontagePrice == null || Number(order.demontagePrice) <= 0))
-    missing.push("Демонтаж");
-  if (missing.length > 0) {
-    return jsonError(
-      400,
-      `Укажите цену для включённых доп. услуг: ${missing.join(", ")}`,
-    );
-  }
-
-  const snapshot = order.lines.map((l) => ({
-    orderLineId: l.id,
-    itemId: l.itemId,
-    requestedQty: l.requestedQty,
-    pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
-  }));
-
-  await prisma.order.update({
-    where: { id },
-    data: {
-      status: "ESTIMATE_SENT",
-      estimateSentAt: new Date(),
-      estimateSentSnapshot: snapshot as unknown as object,
-    },
-  });
 
   const fullOrder = await prisma.order.findUnique({
     where: { id },
@@ -75,11 +66,107 @@ export async function POST(
       },
     },
   });
-  if (fullOrder) {
-    void notifyEstimateSent(fullOrder as Parameters<typeof notifyEstimateSent>[0]).catch((e) =>
-      console.error("[send-estimate] notifyEstimateSent failed:", e),
+
+  if (!fullOrder) return jsonError(404, "Not found");
+  const allowedStatuses = ["SUBMITTED", "CHANGES_REQUESTED"] as const;
+  if (!allowedStatuses.includes(fullOrder.status as (typeof allowedStatuses)[number])) {
+    return jsonError(400, "Смету можно отправить только для заявки в статусе «Новая» или «Запрошены изменения»");
+  }
+
+  const missing: string[] = [];
+  if (fullOrder.deliveryEnabled && (fullOrder.deliveryPrice == null || Number(fullOrder.deliveryPrice) <= 0))
+    missing.push("Доставка");
+  if (fullOrder.montageEnabled && (fullOrder.montagePrice == null || Number(fullOrder.montagePrice) <= 0))
+    missing.push("Монтаж");
+  if (fullOrder.demontageEnabled && (fullOrder.demontagePrice == null || Number(fullOrder.demontagePrice) <= 0))
+    missing.push("Демонтаж");
+  if (missing.length > 0) {
+    return jsonError(
+      400,
+      `Укажите цену для включённых доп. услуг: ${missing.join(", ")}`,
     );
   }
+
+  const estimateSentSnapshot = fullOrder.lines.map((l) => ({
+    orderLineId: l.id,
+    itemId: l.itemId,
+    requestedQty: l.requestedQty,
+    pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+  }));
+
+  const estimateFileKey = `${id}.xlsx`;
+  let xlsxBuffer: Buffer;
+  try {
+    mkdirSync(ESTIMATES_DIR, { recursive: true });
+    xlsxBuffer = buildEstimateXlsx(fullOrder as Parameters<typeof buildEstimateXlsx>[0]);
+    writeFileSync(join(ESTIMATES_DIR, estimateFileKey), xlsxBuffer);
+  } catch (e) {
+    console.error("[send-estimate] failed to write xlsx:", e);
+    return jsonError(500, "Не удалось сформировать файл сметы");
+  }
+
+  let newStatus: "ESTIMATE_SENT" | "APPROVED_BY_GREENWICH" = "ESTIMATE_SENT";
+  if (fullOrder.status === "CHANGES_REQUESTED" && fullOrder.changesRequestedSnapshot != null) {
+    const currentStr = buildOrderSnapshotForCompare({
+      eventName: fullOrder.eventName,
+      comment: fullOrder.comment,
+      deliveryEnabled: fullOrder.deliveryEnabled,
+      deliveryComment: fullOrder.deliveryComment,
+      montageEnabled: fullOrder.montageEnabled,
+      montageComment: fullOrder.montageComment,
+      demontageEnabled: fullOrder.demontageEnabled,
+      demontageComment: fullOrder.demontageComment,
+      lines: fullOrder.lines.map((l) => ({
+        itemId: l.itemId,
+        requestedQty: l.requestedQty,
+        greenwichComment: l.greenwichComment,
+      })),
+    });
+    const r = fullOrder.changesRequestedSnapshot as Record<string, unknown> | null;
+    if (r && typeof r === "object" && Array.isArray(r.lines)) {
+      const requestedStr = buildOrderSnapshotForCompare({
+        eventName: (r.eventName as string) ?? null,
+        comment: (r.comment as string) ?? null,
+        deliveryEnabled: Boolean(r.deliveryEnabled),
+        deliveryComment: (r.deliveryComment as string) ?? null,
+        montageEnabled: Boolean(r.montageEnabled),
+        montageComment: (r.montageComment as string) ?? null,
+        demontageEnabled: Boolean(r.demontageEnabled),
+        demontageComment: (r.demontageComment as string) ?? null,
+        lines: (r.lines as Array<{ itemId: string; requestedQty: number; greenwichComment?: string | null }>).map(
+          (l) => ({
+            itemId: l.itemId,
+            requestedQty: l.requestedQty,
+            greenwichComment: l.greenwichComment ?? null,
+          }),
+        ),
+      });
+      if (currentStr === requestedStr) {
+        newStatus = "APPROVED_BY_GREENWICH";
+      }
+    }
+  }
+
+  await prisma.order.update({
+    where: { id },
+    data: {
+      status: newStatus,
+      estimateSentAt: new Date(),
+      estimateSentSnapshot: estimateSentSnapshot as unknown as object,
+      estimateFileKey,
+      ...(newStatus === "APPROVED_BY_GREENWICH"
+        ? {
+            greenwichConfirmedAt: new Date(),
+            greenwichConfirmedSnapshot: estimateSentSnapshot as unknown as object,
+          }
+        : {}),
+    },
+  });
+
+  void notifyEstimateSent(
+    fullOrder as Parameters<typeof notifyEstimateSent>[0],
+    { buffer: xlsxBuffer, fileName: `smeta-${id}.xlsx` },
+  ).catch((e) => console.error("[send-estimate] notifyEstimateSent failed:", e));
 
   return jsonOk({ ok: true });
 }

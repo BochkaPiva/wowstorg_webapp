@@ -36,6 +36,9 @@ yarn-error.log*
 # notification debug log (see notification-debug.log after testing)
 notification-debug.log
 
+# generated estimate files
+/data/
+
 # vercel
 .vercel
 

@@ -8,6 +8,7 @@ import { join } from "path";
 
 import {
   sendTelegramMessage,
+  sendTelegramDocument,
   escapeTelegramHtml,
   getWarehouseChatId,
   getWarehouseTopicId,
@@ -208,7 +209,7 @@ export async function notifyGreenwichEdited(args: {
       link(`/orders/${after.id}`, "Открыть заявку"),
     ].filter(Boolean);
 
-    const text = `📝 <b>Правки от Greenwich</b>\n\n${blocks.join("\n\n")}`;
+    const text = `📝 <b>Правки от Grinvich</b>\n\n${blocks.join("\n\n")}`;
     const ok = await sendTelegramMessage(chatId, text, {
       messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
     });
@@ -283,9 +284,11 @@ function buildEstimateBody(o: OrderForNotify): string {
   return block;
 }
 
-async function sendToGreenwichUsers(text: string): Promise<void> {
+async function sendToGreenwichUsers(
+  text: string,
+  estimateFile?: { buffer: Buffer; fileName: string },
+): Promise<void> {
   // Личные сообщения всем активным GREENWICH пользователям с указанным telegramChatId.
-  // Используем raw-запрос, чтобы не зависеть от наличия telegramChatId в сгенерированном Prisma-клиенте.
   try {
     const rows = await prisma.$queryRaw<
       Array<{ telegramChatId: string | null }>
@@ -293,8 +296,27 @@ async function sendToGreenwichUsers(text: string): Promise<void> {
     const ids = Array.from(
       new Set((rows ?? []).map((r) => (r.telegramChatId ?? "").trim()).filter(Boolean)),
     );
-    await Promise.all(ids.map((id) => sendTelegramMessage(id, text)));
+    notifyDebugLog(`[sendToGreenwichUsers] recipients: ${ids.length}`);
+    if (ids.length === 0) {
+      notifyDebugLog("[sendToGreenwichUsers] 0 получателей — укажите Telegram ID сотрудникам Grinvich в админке (Пользователи)");
+      return;
+    }
+    const results = await Promise.all(ids.map((id) => sendTelegramMessage(id, text)));
+    const failed = results.filter((ok) => !ok).length;
+    if (failed > 0) {
+      notifyDebugLog(`[sendToGreenwichUsers] не доставлено: ${failed} из ${ids.length}`);
+    }
+    if (estimateFile?.buffer?.length) {
+      await Promise.all(
+        ids.map((id) =>
+          sendTelegramDocument(id, estimateFile.buffer, estimateFile.fileName, {
+            caption: "Файл сметы во вложении",
+          }),
+        ),
+      );
+    }
   } catch (e) {
+    notifyDebugLog(`[sendToGreenwichUsers] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notify] sendToGreenwichUsers failed:", e);
   }
 }
@@ -343,31 +365,55 @@ export async function notifyOrderCreated(order: OrderForNotify): Promise<void> {
   }
 }
 
-/** Смета отправлена → Greenwich + чат склада (с полным текстом сметы) */
-export async function notifyEstimateSent(order: OrderForNotify): Promise<void> {
+/** Смета отправлена → Grinvich (в личку) + чат склада. Для Grinvich добавляем напоминание проверить позиции. При передаче estimateFile — прикрепляем файл сметы. */
+export async function notifyEstimateSent(
+  order: OrderForNotify,
+  estimateFile?: { buffer: Buffer; fileName: string },
+): Promise<void> {
   try {
+    notifyDebugLog(`[notifyEstimateSent] called for order ${order?.id}`);
+    if (!order?.customer) {
+      notifyDebugLog("[notifyEstimateSent] skip: no customer");
+      return;
+    }
+    if (!Array.isArray(order.lines)) {
+      notifyDebugLog("[notifyEstimateSent] skip: no lines");
+      return;
+    }
     const estimateBlock = buildEstimateBody(order);
-    const body =
+    const bodyWarehouse =
       `📤 <b>Смета отправлена</b>\n\n` +
       `${orderHeader(order)}\n\n` +
       `${estimateBlock}\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
 
+    const bodyGrinvich =
+      bodyWarehouse +
+      `\n\n⚠️ Проверьте все позиции — склад мог внести правки. Согласуйте смету или запросите изменения.`;
+
     const warehouseChatId = getWarehouseChatId();
+    const topicId = getWarehouseTopicId();
+    const threadOpt = { messageThreadId: topicId ? parseInt(topicId, 10) : undefined };
+
     if (warehouseChatId) {
-      const topicId = getWarehouseTopicId();
-      await sendTelegramMessage(warehouseChatId, body, {
-        messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
-      });
+      await sendTelegramMessage(warehouseChatId, bodyWarehouse, threadOpt);
+      if (estimateFile?.buffer?.length) {
+        await sendTelegramDocument(warehouseChatId, estimateFile.buffer, estimateFile.fileName, {
+          caption: `Смета по заявке ${order.id}`,
+          ...threadOpt,
+        });
+      }
     }
 
-    await sendToGreenwichUsers(body);
+    await sendToGreenwichUsers(bodyGrinvich, estimateFile);
+    notifyDebugLog(`[notifyEstimateSent] sent to warehouse and Grinvich for order ${order.id}`);
   } catch (e) {
+    notifyDebugLog(`[notifyEstimateSent] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notifyEstimateSent] unexpected error:", e);
   }
 }
 
-/** Greenwich запросил правки → склад */
+/** Grinvich запросил правки → склад */
 export async function notifyChangesRequested(order: OrderForNotify): Promise<void> {
   try {
     const chatId = getWarehouseChatId();
@@ -378,7 +424,7 @@ export async function notifyChangesRequested(order: OrderForNotify): Promise<voi
       buildLinesBlock(order),
       buildServicesBlock(order),
       buildCommentBlock(order),
-      `Greenwich внёс правки. Нужно проверить состав и отправить смету заново.`,
+      `Grinvich внёс правки. Нужно проверить состав и отправить смету заново.`,
       link(`/orders/${order.id}`, "Открыть заявку"),
     ].filter(Boolean);
     const text =
@@ -391,7 +437,7 @@ export async function notifyChangesRequested(order: OrderForNotify): Promise<voi
   }
 }
 
-/** Greenwich согласовал смету → склад */
+/** Grinvich согласовал смету → склад */
 export async function notifyEstimateApproved(order: OrderForNotify): Promise<void> {
   try {
     const chatId = getWarehouseChatId();
@@ -423,53 +469,7 @@ type LineDiff = {
   comment?: string | null;
 };
 
-/** Склад отредактировал заявку после согласования → Greenwich (что изменилось) */
-export async function notifyWarehouseEdited(
-  order: OrderForNotify,
-  diff: { lines: LineDiff[]; eventName?: string; comment?: string; services?: string[] },
-): Promise<void> {
-  try {
-    const parts: string[] = [];
-    if (diff.eventName !== undefined) {
-      parts.push(`Мероприятие: ${escapeTelegramHtml(String(diff.eventName || "—"))}`);
-    }
-    if (diff.comment !== undefined) {
-      parts.push(`Комментарий: ${escapeTelegramHtml(String(diff.comment || "—").slice(0, 200))}`);
-    }
-    for (const s of diff.services ?? []) {
-      parts.push(s);
-    }
-    const orderChanges = parts.length ? `\n\n📝 Изменения по заявке:\n${parts.join("\n")}` : "";
-    const lineChanges: string[] = [];
-    for (const l of diff.lines) {
-      if (l.added) {
-        lineChanges.push(`  ➕ ${escapeTelegramHtml(l.name)} — ${l.newQty ?? 0} шт.`);
-      } else if (l.removed) {
-        lineChanges.push(`  ➖ ${escapeTelegramHtml(l.name)} — убрано`);
-      } else if (l.oldQty !== l.newQty) {
-        lineChanges.push(
-          `  ✏️ ${escapeTelegramHtml(l.name)}: ${l.oldQty} → ${l.newQty} шт.${l.comment ? ` (коммент. склада: ${escapeTelegramHtml(l.comment.slice(0, 80))})` : ""}`,
-        );
-      } else if (l.comment) {
-        lineChanges.push(`  💬 ${escapeTelegramHtml(l.name)}: комментарий склада — ${escapeTelegramHtml(l.comment.slice(0, 100))}`);
-      }
-    }
-    const lineBlock =
-      lineChanges.length > 0
-        ? `\n\n📦 Состав:\n${lineChanges.join("\n")}`
-        : "";
-    const text =
-      `🔄 <b>Склад внёс изменения</b>\n\n` +
-      `${orderHeader(order)}${orderChanges}${lineBlock}\n\n` +
-      `Требуется повторное согласование сметы.\n\n` +
-      `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToGreenwichUsers(text);
-  } catch (e) {
-    console.error("[notifyWarehouseEdited] unexpected error:", e);
-  }
-}
-
-/** Склад начал сборку → Greenwich */
+/** Склад начал сборку → Grinvich */
 export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
   try {
     const text =
@@ -483,7 +483,7 @@ export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
   }
 }
 
-/** Склад выдал заказ → Greenwich */
+/** Склад выдал заказ → Grinvich */
 export async function notifyIssued(order: OrderForNotify): Promise<void> {
   try {
     const text =
@@ -498,7 +498,7 @@ export async function notifyIssued(order: OrderForNotify): Promise<void> {
   }
 }
 
-/** Greenwich отправил на приёмку → склад */
+/** Grinvich отправил на приёмку → склад */
 export async function notifyReturnDeclared(order: OrderForNotify): Promise<void> {
   try {
     const chatId = getWarehouseChatId();
@@ -509,7 +509,7 @@ export async function notifyReturnDeclared(order: OrderForNotify): Promise<void>
       buildLinesBlock(order),
       buildServicesBlock(order),
       buildCommentBlock(order),
-      `Greenwich отправил заявку на приёмку. Проведите приёмку по позициям.`,
+      `Grinvich отправил заявку на приёмку. Проведите приёмку по позициям.`,
       link(`/orders/${order.id}`, "Открыть заявку"),
     ].filter(Boolean);
     const text =
@@ -522,7 +522,7 @@ export async function notifyReturnDeclared(order: OrderForNotify): Promise<void>
   }
 }
 
-/** Склад закрыл приёмку → Greenwich */
+/** Склад закрыл приёмку → Grinvich */
 export async function notifyCheckInClosed(order: OrderForNotify): Promise<void> {
   try {
     const text =
@@ -537,7 +537,7 @@ export async function notifyCheckInClosed(order: OrderForNotify): Promise<void> 
   }
 }
 
-/** Заявка отменена → склад (и Greenwich при наличии чата) */
+/** Заявка отменена → склад (и Grinvich при наличии чата) */
 export async function notifyOrderCancelled(order: OrderForNotify): Promise<void> {
   try {
     const bodyBlocks = [

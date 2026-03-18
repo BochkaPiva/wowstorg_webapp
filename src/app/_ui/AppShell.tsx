@@ -235,6 +235,18 @@ export function AppShell({
                   >
                     Инвентарь
                   </NavLink>
+                  <NavLink
+                    href="/inventory/repair"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Ремонт / сломано
+                  </NavLink>
+                  <NavLink
+                    href="/inventory/losses"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Утерянное
+                  </NavLink>
                   <NavLink href="/admin" onClick={() => setNavOpen(false)}>
                     Админка
                   </NavLink>

@@ -425,7 +425,7 @@ export default function CartPage() {
                           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
                             <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path>
                           </svg>
-                          <span>Greenwich</span>
+                          <span>Grinvich</span>
                           <span className="co-switchSub">на сотрудника</span>
                         </label>
 
@@ -449,7 +449,7 @@ export default function CartPage() {
                 <div className="co-grid">
                   {isWarehouse && orderType === "greenwich" ? (
                     <label className="co-field">
-                      <div className="co-label">Сотрудник Greenwich *</div>
+                      <div className="co-label">Сотрудник Grinvich *</div>
                       <select
                         value={greenwichUserId}
                         onChange={(e) => setGreenwichUserId(e.target.value)}
@@ -463,7 +463,7 @@ export default function CartPage() {
                         ))}
                       </select>
                       {greenwichUsers.length === 0 ? (
-                        <div className="co-help">Нет активных сотрудников Greenwich.</div>
+                        <div className="co-help">Нет активных сотрудников Grinvich.</div>
                       ) : null}
                     </label>
                   ) : null}
@@ -639,7 +639,7 @@ export default function CartPage() {
                   )}
                 </div>
                 <p className="cart-muted cart-note">
-                  Оформление заявки доступно только для Greenwich. Перейди в каталог, чтобы продолжить.
+                  Оформление заявки доступно только для Grinvich. Перейди в каталог, чтобы продолжить.
                 </p>
               </div>
             )}

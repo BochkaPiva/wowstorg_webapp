@@ -20,7 +20,7 @@ export async function POST(
   if (order.status !== "APPROVED_BY_GREENWICH") {
     return jsonError(
       400,
-      "Начать сборку можно только после согласования сметы Greenwich (статус «Согласована»)",
+      "Начать сборку можно только после согласования сметы Grinvich (статус «Согласована»)",
     );
   }
 

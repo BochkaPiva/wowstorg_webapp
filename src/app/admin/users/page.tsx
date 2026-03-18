@@ -215,7 +215,7 @@ export default function AdminUsersPage() {
                       <td className="p-3 text-zinc-600">{u.login}</td>
                       <td className="p-3">
                         <span className={u.role === "WOWSTORG" ? "text-violet-600" : "text-zinc-600"}>
-                          {u.role === "WOWSTORG" ? "Склад" : "Greenwich"}
+                          {u.role === "WOWSTORG" ? "Склад" : "Grinvich"}
                         </span>
                       </td>
                       <td className="p-3 text-zinc-500 font-mono text-xs">{u.telegramChatId ?? "—"}</td>
@@ -288,7 +288,7 @@ export default function AdminUsersPage() {
                       onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as "GREENWICH" | "WOWSTORG" }))}
                       className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     >
-                      <option value="GREENWICH">Greenwich</option>
+                      <option value="GREENWICH">Grinvich</option>
                       <option value="WOWSTORG">Склад (WOWSTORG)</option>
                     </select>
                   </div>
@@ -352,7 +352,7 @@ export default function AdminUsersPage() {
                       onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as "GREENWICH" | "WOWSTORG" }))}
                       className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     >
-                      <option value="GREENWICH">Greenwich</option>
+                      <option value="GREENWICH">Grinvich</option>
                       <option value="WOWSTORG">Склад (WOWSTORG)</option>
                     </select>
                   </div>

@@ -74,6 +74,28 @@ function GreenwichRatingCard() {
 
   return (
     <div className="rounded-3xl border border-violet-200 bg-white p-4 shadow-sm">
+      <style jsx>{`
+        @keyframes dinoBounce {
+          0% {
+            transform: translateY(0px) rotate(-6deg) scale(1);
+          }
+          25% {
+            transform: translateY(-10px) rotate(10deg) scale(1.08);
+          }
+          55% {
+            transform: translateY(-5px) rotate(-12deg) scale(1.03);
+          }
+          80% {
+            transform: translateY(-8px) rotate(8deg) scale(1.02);
+          }
+          100% {
+            transform: translateY(0px) rotate(-6deg) scale(1);
+          }
+        }
+        .dinoBounce {
+          animation: dinoBounce 1.2s ease-in-out 1;
+        }
+      `}</style>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-zinc-900">Рейтинг</div>
@@ -101,27 +123,35 @@ function GreenwichRatingCard() {
             <div className="h-3 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
               <div
                 className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all"
-                style={{ width: `${pct}%` }}
+                style={{
+                  width: `${pct}%`,
+                  boxShadow: riding ? "0 0 18px rgba(124,58,237,0.45)" : undefined,
+                }}
               />
             </div>
 
-            <button
-              type="button"
-              onClick={rideDino}
-              className="absolute top-[-18px] left-0 h-12 w-12 rounded-full bg-white border border-violet-100 shadow-sm flex items-center justify-center"
+            <div
+              className="absolute top-[-24px]"
               style={{
                 left: `${dinoPct}%`,
-                transform: `translateX(-50%) ${riding ? "translateY(-2px) rotate(8deg) scale(1.05)" : "translateY(0px) rotate(-6deg) scale(1)"}`,
-                transition: riding ? "transform 1.2s ease-in-out" : "transform 250ms ease-in-out",
+                transform: "translateX(-50%)",
                 pointerEvents: "auto",
               }}
-              aria-label="Покатать динозаврика"
-              title="Нажми"
             >
-              <div className="relative h-9 w-9">
-                <Image src="/dino.png" alt="" fill className="object-contain" sizes="36px" />
-              </div>
-            </button>
+              <button
+                type="button"
+                onClick={rideDino}
+                aria-label="Покатать динозаврика"
+                title="Нажми"
+                className="h-10 w-10 flex items-center justify-center p-0 bg-transparent border-0"
+              >
+                <div className={riding ? "dinoBounce" : ""}>
+                  <div className="relative h-10 w-10">
+                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="40px" />
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
 
           <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">

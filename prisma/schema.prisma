@@ -241,6 +241,10 @@ model Order {
   greenwichUserId String?
   greenwichUser   User?   @relation("order_greenwich_user", fields: [greenwichUserId], references: [id], onDelete: Restrict)
 
+  /// Быстрая доп.-выдача (Quick Supplement): если заполнено, заявка является “дополнением” к parentOrder.
+  /// Считаем признаком quick доп.-выдачи `parentOrderId != null`.
+  parentOrderId String?
+
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
@@ -299,6 +303,7 @@ model Order {
   @@index([source, status])
   @@index([customerId])
   @@index([greenwichUserId])
+  @@index([parentOrderId])
 }
 
 model OrderLine {

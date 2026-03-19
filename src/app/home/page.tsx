@@ -44,6 +44,7 @@ function dinoPhrase(score: number) {
 function GreenwichRatingCard() {
   const [score, setScore] = React.useState<number | null>(null);
   const [expanded, setExpanded] = React.useState(false);
+  const [riding, setRiding] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -62,67 +63,115 @@ function GreenwichRatingCard() {
 
   const s = score ?? 100;
   const pct = Math.max(0, Math.min(100, s));
+  const phrase = dinoPhrase(s);
+
+  function rideDino() {
+    setRiding(true);
+    window.setTimeout(() => setRiding(false), 1600);
+  }
 
   return (
-    <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
-      <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-zinc-900">Рейтинг Greenwich</div>
-            <div className="mt-1 text-xs text-zinc-500">Твой прогресс за приёмки и сроки возврата</div>
+    <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">Дашборд Greenwich</div>
+          <div className="mt-1 text-xs text-zinc-600">
+            Рейтинг зависит от дедлайнов возврата и состояния реквизита при приёмке
           </div>
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="shrink-0 rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-50"
-            aria-expanded={expanded}
-            title="Показать, как начисляется рейтинг"
-          >
-            {expanded ? "Скрыть" : "Как считается"}
-          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-50 transition"
+          aria-expanded={expanded}
+          title="Показать кратко, как начисляется рейтинг"
+        >
+          {expanded ? "Скрыть" : "Как считается"}
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
+        <div className="md:col-span-5">
+          <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white p-3">
+            <style jsx global>{`
+              @keyframes dinoRide {
+                0% {
+                  transform: translateX(0px) translateY(0px) rotate(-8deg);
+                }
+                35% {
+                  transform: translateX(70px) translateY(-6px) rotate(8deg);
+                }
+                70% {
+                  transform: translateX(130px) translateY(-1px) rotate(-6deg);
+                }
+                100% {
+                  transform: translateX(160px) translateY(0px) rotate(-8deg);
+                }
+              }
+            `}</style>
+
+            <div className="absolute left-3 top-3 right-3 h-10 rounded-xl bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(250,204,21,0.10))]" />
+            <button
+              type="button"
+              onClick={rideDino}
+              className="relative z-10 mx-auto block h-14 w-14 md:h-16 md:w-16"
+              title="Нажми, чтобы динозаврик покатался"
+            >
+              <div
+                className="relative h-full w-full transition-transform"
+                style={{ willChange: "transform" }}
+              >
+                <div style={riding ? ({ animation: "dinoRide 1.6s ease-in-out 1" } as React.CSSProperties) : undefined}>
+                  <div className="relative h-full w-full">
+                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="64px" />
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <div className="mt-2 text-center text-xs text-zinc-600">
+              Подсказка: динозаврик ускоряет, когда всё в порядке
+            </div>
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-violet-100 bg-white hover:shadow-md transition"
-            title="Динозаврик отвечает"
-          >
-            <Image src="/dino.png" alt="" fill className="object-contain p-1" sizes="64px" />
-          </button>
+        <div className="md:col-span-7">
+          <div className="rounded-2xl border border-violet-100 bg-white p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="text-xs font-semibold text-violet-900/70">Текущий рейтинг</div>
+              <div className="rounded-full bg-violet-50 border border-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">
+                0–100
+              </div>
+            </div>
+            <div className="mt-2 text-4xl font-extrabold tabular-nums text-violet-800 drop-shadow-sm">
+              {s}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-zinc-800">{phrase}</div>
 
-          <div className="min-w-0 flex-1">
-            <div className="text-3xl font-bold tabular-nums text-violet-800">{s}</div>
-            <div className="mt-1 text-sm text-zinc-700">{dinoPhrase(s)}</div>
-
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
+            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
               <div
-                className="h-full bg-violet-600 transition-all"
+                className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all"
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <div className="mt-1 text-xs text-zinc-500 flex items-center justify-between">
+
+            <div className="mt-2 text-xs text-zinc-600 flex items-center justify-between">
               <span>0</span>
-              <span className="font-semibold text-zinc-700">100</span>
+              <span className="font-semibold text-violet-800">100</span>
             </div>
           </div>
         </div>
-
-        {expanded ? (
-          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
-            <div className="text-sm font-semibold text-zinc-900">Правила рейтинга (MVP)</div>
-            <div className="mt-2 text-sm text-zinc-600 space-y-1">
-              <div>• Старт: <span className="font-semibold text-zinc-900">100</span></div>
-              <div>• Идеальный возврат: <span className="font-semibold text-emerald-700">+10</span></div>
-              <div>• Сломано (не расходники): <span className="font-semibold text-red-700">−1</span> за штуку</div>
-              <div>• Потеряно (не расходники): <span className="font-semibold text-red-700">−3</span> за штуку</div>
-              <div>• Просрочка: <span className="font-semibold text-red-700">−7</span> за каждый день (после <span className="font-semibold">endDate + 1</span>)</div>
-              <div>• CONSUMABLE не штрафуют за поломки/потери</div>
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      {expanded ? (
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-3">
+          <div className="text-sm font-semibold text-zinc-900">Кратко</div>
+          <div className="mt-2 text-sm text-zinc-700 space-y-1">
+            <div>• Дедлайны возврата: <span className="font-semibold text-red-700">−7/день</span> после <span className="font-semibold">endDate + 1</span></div>
+            <div>• Состояние реквизита (кроме CONSUMABLE): <span className="font-semibold text-red-700">−1</span> (сломано) и <span className="font-semibold text-red-700">−3</span> (потеряно)</div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

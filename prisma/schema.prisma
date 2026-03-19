@@ -72,9 +72,20 @@ model User {
 
   ordersCreated   Order[]   @relation("order_created_by")
   ordersGreenwich Order[]   @relation("order_greenwich_user")
+  greenwichRating GreenwichRating?
   sessions        Session[]
 
   @@index([role, isActive])
+}
+
+/// Текущий рейтинг сотрудника Greenwich (0..100).
+model GreenwichRating {
+  userId String @id
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  score     Int      @default(100)
+  updatedAt DateTime @updatedAt
 }
 
 model Session {
@@ -266,6 +277,14 @@ model Order {
 
   /// Внутренняя заметка склада (только для сотрудников склада, не для клиента).
   warehouseInternalNote String?
+
+  /// Компонент просрочки для рейтинга Greenwich.
+  /// Считается на `return-declared` (когда Greenwich отправил возврат на приёмку).
+  greenwichRatingOverdueDelta Int @default(0)
+
+  /// Компонент инцидентов для рейтинга Greenwich.
+  /// Считается на `check-in` (когда склад подтвердил фактические статусы возврата).
+  greenwichRatingIncidentsDelta Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

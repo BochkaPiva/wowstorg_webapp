@@ -17,7 +17,7 @@ type QueueOrder = {
   endDate: string;
   createdAt: string;
   customer: { id: string; name: string };
-  greenwichUser: { id: string; displayName: string } | null;
+  greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   warehouseInternalNote?: string | null;
   totalAmount?: number;
 };
@@ -156,7 +156,13 @@ export default function WarehouseQueuePage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-zinc-900">
                         {o.customer.name}
-                        {o.greenwichUser ? ` · ${o.greenwichUser.displayName}` : ""}
+                        {o.greenwichUser
+                          ? ` · ${o.greenwichUser.displayName}${
+                              o.greenwichUser.ratingScore != null
+                                ? ` · рейтинг ${o.greenwichUser.ratingScore}`
+                                : ""
+                            }`
+                          : ""}
                       </div>
                     </div>
                     <div className="mt-2 text-sm text-zinc-600">

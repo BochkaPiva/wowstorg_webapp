@@ -1,7 +1,13 @@
 import { z } from "zod";
+import type { Condition, ItemType } from "@prisma/client";
+
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import {
+  computeGreenwichIncidentsDelta,
+  recomputeGreenwichRatingScore,
+} from "@/server/ratings/greenwich-rating";
 
 const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
 
@@ -48,7 +54,11 @@ export async function POST(
 
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { lines: true },
+    include: {
+      lines: {
+        include: { item: { select: { type: true } } },
+      },
+    },
   });
 
   if (!order) return jsonError(404, "Not found");
@@ -81,6 +91,8 @@ export async function POST(
     }
   }
 
+  const ratingRows: Array<{ condition: Condition; qty: number; itemType: ItemType }> = [];
+
   await prisma.$transaction(async (tx) => {
     await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "CHECKED_IN" } });
 
@@ -97,6 +109,13 @@ export async function POST(
           seen.add(s.condition);
           const actualQty = Math.min(s.qty, maxQty);
           if (actualQty <= 0) continue;
+          if (order.greenwichUserId) {
+            ratingRows.push({
+              condition: s.condition,
+              qty: actualQty,
+              itemType: line.item.type,
+            });
+          }
           await tx.returnSplit.create({
             data: {
               orderId: id,
@@ -157,6 +176,13 @@ export async function POST(
         const maxQty = line.issuedQty ?? line.approvedQty ?? line.requestedQty;
         const actualQty = Math.min(qty, maxQty);
         if (actualQty <= 0) continue;
+        if (order.greenwichUserId) {
+          ratingRows.push({
+            condition,
+            qty: actualQty,
+            itemType: line.item.type,
+          });
+        }
         await tx.returnSplit.create({
           data: {
             orderId: id,
@@ -204,10 +230,23 @@ export async function POST(
         }
       }
     }
+    const incidentsDelta = order.greenwichUserId
+      ? computeGreenwichIncidentsDelta(ratingRows)
+      : 0;
+
     await tx.order.update({
       where: { id },
-      data: { status: "CLOSED" },
+      data: {
+        status: "CLOSED",
+        ...(order.greenwichUserId != null
+          ? { greenwichRatingIncidentsDelta: incidentsDelta }
+          : {}),
+      },
     });
+
+    if (order.greenwichUserId) {
+      await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+    }
   });
 
   const fullOrder = await prisma.order.findUnique({

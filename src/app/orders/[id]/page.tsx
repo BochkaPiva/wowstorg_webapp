@@ -45,7 +45,7 @@ type Order = {
   customer: { id: string; name: string };
   createdBy: { id: string; displayName: string };
   greenwichUserId?: string | null;
-  greenwichUser: { id: string; displayName: string } | null;
+  greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   deliveryEnabled: boolean;
   deliveryComment: string | null;
   deliveryPrice: number | null;
@@ -817,7 +817,13 @@ export default function OrderDetailsPage() {
             <div className="space-y-1">
               <div className="text-lg font-semibold text-zinc-900">
                 {order.customer.name}
-                {order.greenwichUser ? ` · ${order.greenwichUser.displayName}` : ""}
+                {order.greenwichUser
+                  ? ` · ${order.greenwichUser.displayName}${
+                      isWarehouse && order.greenwichUser.ratingScore != null
+                        ? ` · рейтинг ${order.greenwichUser.ratingScore}`
+                        : ""
+                    }`
+                  : ""}
               </div>
               {order.eventName ? (
                 <p className="text-sm text-zinc-600">Мероприятие: {order.eventName}</p>

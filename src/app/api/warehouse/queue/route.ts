@@ -34,7 +34,13 @@ export async function GET() {
       montagePrice: true,
       demontagePrice: true,
       customer: { select: { id: true, name: true } },
-      greenwichUser: { select: { id: true, displayName: true } },
+      greenwichUser: {
+        select: {
+          id: true,
+          displayName: true,
+          greenwichRating: { select: { score: true } },
+        },
+      },
       lines: {
         select: { requestedQty: true, pricePerDaySnapshot: true },
       },
@@ -71,7 +77,13 @@ export async function GET() {
       createdAt: o.createdAt.toISOString(),
       warehouseInternalNote: o.warehouseInternalNote ?? null,
       customer: o.customer,
-      greenwichUser: o.greenwichUser,
+      greenwichUser: o.greenwichUser
+        ? {
+            id: o.greenwichUser.id,
+            displayName: o.greenwichUser.displayName,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+          }
+        : null,
       totalAmount,
     };
   });

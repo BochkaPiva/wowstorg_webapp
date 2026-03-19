@@ -18,7 +18,7 @@ type ArchiveOrder = {
   createdAt: string;
   updatedAt: string;
   customer: { id: string; name: string };
-  greenwichUser: { id: string; displayName: string } | null;
+  greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
 };
 
 function fmtDateRu(iso: string) {
@@ -118,7 +118,13 @@ export default function WarehouseArchivePage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-zinc-900">
                         {o.customer.name}
-                        {o.greenwichUser ? ` · ${o.greenwichUser.displayName}` : ""}
+                        {o.greenwichUser
+                          ? ` · ${o.greenwichUser.displayName}${
+                              o.greenwichUser.ratingScore != null
+                                ? ` · рейтинг ${o.greenwichUser.ratingScore}`
+                                : ""
+                            }`
+                          : ""}
                       </div>
                     </div>
                     <div className="mt-2 text-sm text-zinc-600">

@@ -3,6 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import {
+  computeGreenwichOverdueDelta,
+  recomputeGreenwichRatingScore,
+} from "@/server/ratings/greenwich-rating";
 
 const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
 
@@ -87,6 +91,8 @@ export async function POST(
     }
   }
 
+  const declaredAt = new Date();
+
   await prisma.$transaction(async (tx) => {
     await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "DECLARED" } });
 
@@ -106,10 +112,22 @@ export async function POST(
       }
     }
 
+    const overdueDelta =
+      order.greenwichUserId != null
+        ? computeGreenwichOverdueDelta(order.endDate, declaredAt)
+        : 0;
+
     await tx.order.update({
       where: { id },
-      data: { status: "RETURN_DECLARED" },
+      data: {
+        status: "RETURN_DECLARED",
+        ...(order.greenwichUserId != null ? { greenwichRatingOverdueDelta: overdueDelta } : {}),
+      },
     });
+
+    if (order.greenwichUserId) {
+      await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+    }
   });
 
   const fullOrder = await prisma.order.findUnique({

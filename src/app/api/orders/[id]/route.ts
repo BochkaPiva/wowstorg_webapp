@@ -16,7 +16,13 @@ export async function GET(
     include: {
       customer: { select: { id: true, name: true } },
       createdBy: { select: { id: true, displayName: true } },
-      greenwichUser: { select: { id: true, displayName: true } },
+      greenwichUser: {
+        select: {
+          id: true,
+          displayName: true,
+          greenwichRating: { select: { score: true } },
+        },
+      },
       lines: {
         orderBy: [{ position: "asc" }],
         include: { item: { select: { id: true, name: true, type: true } } },
@@ -42,8 +48,10 @@ export async function GET(
     return jsonError(403, "Forbidden");
   }
 
+  const { greenwichUser, lines, returnSplits, ...orderBase } = order;
+
   const serialized: Record<string, unknown> = {
-    ...order,
+    ...orderBase,
     readyByDate: order.readyByDate.toISOString().slice(0, 10),
     startDate: order.startDate.toISOString().slice(0, 10),
     endDate: order.endDate.toISOString().slice(0, 10),
@@ -55,13 +63,20 @@ export async function GET(
     montagePrice: order.montagePrice != null ? Number(order.montagePrice) : null,
     demontagePrice: order.demontagePrice != null ? Number(order.demontagePrice) : null,
     payMultiplier: order.payMultiplier != null ? Number(order.payMultiplier) : null,
-    lines: order.lines.map((l) => ({
+    greenwichUser: greenwichUser
+      ? {
+          id: greenwichUser.id,
+          displayName: greenwichUser.displayName,
+          ratingScore: greenwichUser.greenwichRating?.score ?? 100,
+        }
+      : null,
+    lines: lines.map((l) => ({
       ...l,
       pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
       warehouseComment: l.warehouseComment ?? null,
       greenwichComment: l.greenwichComment ?? null,
     })),
-    returnSplits: order.returnSplits.map((s) => ({
+    returnSplits: returnSplits.map((s) => ({
       ...s,
       createdAt: s.createdAt.toISOString(),
     })),

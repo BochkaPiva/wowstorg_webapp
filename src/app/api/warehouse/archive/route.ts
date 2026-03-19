@@ -22,10 +22,32 @@ export async function GET() {
       createdAt: true,
       updatedAt: true,
       customer: { select: { id: true, name: true } },
-      greenwichUser: { select: { id: true, displayName: true } },
+      greenwichUser: {
+        select: {
+          id: true,
+          displayName: true,
+          greenwichRating: { select: { score: true } },
+        },
+      },
     },
   });
 
-  return jsonOk({ orders });
+  return jsonOk({
+    orders: orders.map((o) => ({
+      ...o,
+      readyByDate: o.readyByDate.toISOString(),
+      startDate: o.startDate.toISOString(),
+      endDate: o.endDate.toISOString(),
+      createdAt: o.createdAt.toISOString(),
+      updatedAt: o.updatedAt.toISOString(),
+      greenwichUser: o.greenwichUser
+        ? {
+            id: o.greenwichUser.id,
+            displayName: o.greenwichUser.displayName,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+          }
+        : null,
+    })),
+  });
 }
 

@@ -33,6 +33,7 @@ function CardLink({
 }
 
 function dinoPhrase(score: number) {
+  if (score >= 100) return "Идеально! Так держать.";
   if (score >= 95) return "Почти идеально! Так держать.";
   if (score >= 80) return "Хороший результат, ещё чуть-чуть до топа.";
   if (score >= 50) return "Есть куда расти. Возвращай вовремя и в порядке.";
@@ -42,6 +43,7 @@ function dinoPhrase(score: number) {
 
 function GreenwichRatingCard() {
   const [score, setScore] = React.useState<number | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -59,18 +61,67 @@ function GreenwichRatingCard() {
   }, []);
 
   const s = score ?? 100;
+  const pct = Math.max(0, Math.min(100, s));
 
   return (
-    <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm">
-      <div className="text-sm font-semibold text-zinc-900">Рейтинг Greenwich</div>
-      <div className="mt-3 flex flex-wrap items-center gap-4">
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-violet-100 bg-white">
-          <Image src="/dino.png" alt="" fill className="object-contain p-1" sizes="64px" />
+    <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Рейтинг Greenwich</div>
+            <div className="mt-1 text-xs text-zinc-500">Твой прогресс за приёмки и сроки возврата</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="shrink-0 rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-50"
+            aria-expanded={expanded}
+            title="Показать, как начисляется рейтинг"
+          >
+            {expanded ? "Скрыть" : "Как считается"}
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-3xl font-bold tabular-nums text-violet-800">{s}</div>
-          <div className="mt-1 text-sm text-zinc-600">{dinoPhrase(s)}</div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-violet-100 bg-white hover:shadow-md transition"
+            title="Динозаврик отвечает"
+          >
+            <Image src="/dino.png" alt="" fill className="object-contain p-1" sizes="64px" />
+          </button>
+
+          <div className="min-w-0 flex-1">
+            <div className="text-3xl font-bold tabular-nums text-violet-800">{s}</div>
+            <div className="mt-1 text-sm text-zinc-700">{dinoPhrase(s)}</div>
+
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
+              <div
+                className="h-full bg-violet-600 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <div className="mt-1 text-xs text-zinc-500 flex items-center justify-between">
+              <span>0</span>
+              <span className="font-semibold text-zinc-700">100</span>
+            </div>
+          </div>
         </div>
+
+        {expanded ? (
+          <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+            <div className="text-sm font-semibold text-zinc-900">Правила рейтинга (MVP)</div>
+            <div className="mt-2 text-sm text-zinc-600 space-y-1">
+              <div>• Старт: <span className="font-semibold text-zinc-900">100</span></div>
+              <div>• Идеальный возврат: <span className="font-semibold text-emerald-700">+10</span></div>
+              <div>• Сломано (не расходники): <span className="font-semibold text-red-700">−1</span> за штуку</div>
+              <div>• Потеряно (не расходники): <span className="font-semibold text-red-700">−3</span> за штуку</div>
+              <div>• Просрочка: <span className="font-semibold text-red-700">−7</span> за каждый день (после <span className="font-semibold">endDate + 1</span>)</div>
+              <div>• CONSUMABLE не штрафуют за поломки/потери</div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -382,9 +433,13 @@ export default function HomeDashboardPage() {
         </div>
 
         {isGreenwich ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <GreenwichDashboardBlock isGreenwich={isGreenwich} />
-            <GreenwichRatingCard />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div className="md:col-span-8">
+              <GreenwichDashboardBlock isGreenwich={isGreenwich} />
+            </div>
+            <div className="md:col-span-4">
+              <GreenwichRatingCard />
+            </div>
           </div>
         ) : null}
 

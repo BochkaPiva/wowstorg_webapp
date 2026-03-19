@@ -11,6 +11,11 @@ const UpdateSchema = z.object({
   telegramChatId: z.string().trim().max(64).nullable().optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(6).max(512).optional(),
+  // Ручная правка рейтинга Greenwich.
+  // Если задано `greenwichRatingAuto=true` — выключаем ручную блокировку и применяем авто-пересчёт.
+  // Если задано `greenwichRatingScore` — ставим manualLocked=true и фиксируем score.
+  greenwichRatingScore: z.number().int().min(0).max(100).optional(),
+  greenwichRatingAuto: z.boolean().optional(),
 });
 
 /** Обновить пользователя. Только WOWSTORG. */
@@ -65,6 +70,46 @@ export async function PATCH(
         UPDATE "User"
         SET "telegramChatId" = ${telegramChatId}
         WHERE "id" = ${id}
+      `;
+    }
+
+    if (
+      parsed.data.greenwichRatingScore !== undefined ||
+      parsed.data.greenwichRatingAuto === true
+    ) {
+      if (updated.role !== "GREENWICH") {
+        return jsonError(400, "Рейтинг доступен только пользователям роли GREENWICH");
+      }
+
+      const orders = await prisma.order.findMany({
+        where: { greenwichUserId: id },
+        select: {
+          greenwichRatingOverdueDelta: true,
+          greenwichRatingIncidentsDelta: true,
+        },
+      });
+
+      const sum = orders.reduce(
+        (s, o) => s + o.greenwichRatingOverdueDelta + o.greenwichRatingIncidentsDelta,
+        0,
+      );
+
+      const clamp0to100 = (n: number) => Math.max(0, Math.min(100, n));
+      const base = 100 + sum;
+
+      const score = parsed.data.greenwichRatingAuto === true
+        ? clamp0to100(base)
+        : clamp0to100(parsed.data.greenwichRatingScore ?? base);
+
+      const manualLocked = parsed.data.greenwichRatingAuto === true ? false : true;
+
+      await prisma.$executeRaw`
+        INSERT INTO "GreenwichRating" ("userId", "score", "manualLocked", "updatedAt")
+        VALUES (${id}, ${score}, ${manualLocked}, NOW())
+        ON CONFLICT ("userId") DO UPDATE
+        SET "score" = EXCLUDED."score",
+            "manualLocked" = EXCLUDED."manualLocked",
+            "updatedAt" = NOW()
       `;
     }
 

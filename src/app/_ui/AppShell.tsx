@@ -168,7 +168,9 @@ export function AppShell({
                 {title}
               </div>
               <div className="text-xs text-zinc-600">
-                {state.user.displayName} · {state.user.role}
+                {state.user.role === "GREENWICH"
+                  ? state.user.displayName
+                  : `${state.user.displayName} · ${state.user.role}`}
               </div>
             </div>
           </div>

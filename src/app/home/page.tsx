@@ -339,8 +339,8 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   }, [isWowstorg]);
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+      <div className="md:col-span-8 rounded-2xl bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-zinc-900">Заявки</div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
@@ -354,7 +354,11 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         </div>
 
         {loading ? <div className="mt-4 text-sm text-zinc-600">Загрузка…</div> : null}
-        {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
+        {error ? (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+            {error}
+          </div>
+        ) : null}
 
         {!loading && !error ? (
           <div className="mt-4">
@@ -367,7 +371,9 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-semibold text-zinc-900">
                       {data.nearest.customerName}
-                      {data.nearest.greenwichUser ? ` · ${data.nearest.greenwichUser.displayName} · рейтинг ${data.nearest.greenwichUser.ratingScore}` : ""}
+                      {data.nearest.greenwichUser
+                        ? ` · ${data.nearest.greenwichUser.displayName} · рейтинг ${data.nearest.greenwichUser.ratingScore}`
+                        : ""}
                     </div>
                     <div className="shrink-0">
                       <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
@@ -397,43 +403,54 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         ) : null}
       </div>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <div className="md:col-span-4 rounded-2xl bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
-          <Link
-            href="/inventory/warehouse-items"
-            className="text-sm font-medium text-violet-800 hover:text-violet-900"
-          >
-            Открыть склад
-          </Link>
+          {data?.equipment.endedPositions.length ? (
+            <Link
+              href="/inventory/warehouse-items"
+              className="text-sm font-medium text-violet-800 hover:text-violet-900"
+            >
+              Открыть склад
+            </Link>
+          ) : null}
         </div>
 
         {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка…</div> : null}
         {!loading && !error && data ? (
-          <div className="mt-3 space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
-                Ремонт: <span className="font-semibold">{data.equipment.inRepairQty}</span>
-              </span>
-              <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-900">
-                Сломано: <span className="font-semibold">{data.equipment.brokenQty}</span>
-              </span>
-              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-800">
-                Потеряно: <span className="font-semibold">{data.equipment.lostQty}</span>
-              </span>
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs text-violet-900">
-                В наличии позиций: <span className="font-semibold">{data.equipment.positionsInStockCount}</span>
-              </span>
+          <div className="mt-3 space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-amber-900">Ремонт</div>
+                <div className="mt-1 text-lg font-bold text-amber-900">{data.equipment.inRepairQty}</div>
+              </div>
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-red-900">Сломано</div>
+                <div className="mt-1 text-lg font-bold text-red-900">{data.equipment.brokenQty}</div>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-zinc-800">Потеряно</div>
+                <div className="mt-1 text-lg font-bold text-zinc-900">{data.equipment.lostQty}</div>
+              </div>
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-violet-900">В наличии позиций</div>
+                <div className="mt-1 text-lg font-bold text-violet-900">{data.equipment.positionsInStockCount}</div>
+              </div>
             </div>
 
             {data.equipment.endedPositions.length > 0 ? (
-              <div className="mt-1">
-                <div className="text-xs font-semibold text-red-800 mb-2">Закончившиеся позиции</div>
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="text-sm font-semibold text-red-900">Закончившиеся позиции</div>
+                  {data.equipment.endedPositions.length > 8 ? (
+                    <div className="text-xs text-red-800">+{data.equipment.endedPositions.length - 8}</div>
+                  ) : null}
+                </div>
                 <div className="space-y-2">
                   {data.equipment.endedPositions.slice(0, 8).map((p) => (
                     <div
                       key={p.id}
-                      className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 flex items-center justify-between gap-2"
+                      className="rounded-lg border border-red-200 bg-white/60 px-2.5 py-2 flex items-center justify-between gap-2"
                     >
                       <div className="min-w-0 text-sm font-medium text-red-900 truncate">{p.name}</div>
                       <Link
@@ -445,13 +462,12 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                     </div>
                   ))}
                 </div>
-                {data.equipment.endedPositions.length > 8 ? (
-                  <div className="text-xs text-zinc-600 mt-2">
-                    Ещё {data.equipment.endedPositions.length - 8}…
-                  </div>
-                ) : null}
               </div>
-            ) : null}
+            ) : (
+              <div className="text-sm text-zinc-600">
+                Пока всё есть в наличии (складские позиции не закончились).
+              </div>
+            )}
           </div>
         ) : null}
       </div>
@@ -474,7 +490,7 @@ export default function HomeDashboardPage() {
           <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
-                <div className="text-sm font-semibold text-zinc-900">Дашборд Greenwich</div>
+                <div className="text-sm font-semibold text-zinc-900">Дашборд Grinvich</div>
                 <div className="mt-1 text-xs text-zinc-600">
                   Держи темп: возвращай вовремя и в норме на приёмке
                 </div>
@@ -492,7 +508,17 @@ export default function HomeDashboardPage() {
           </div>
         ) : null}
 
-        {isWowstorg ? <WowstorgDashboardBlock isWowstorg={isWowstorg} /> : null}
+        {isWowstorg ? (
+          <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-sm font-semibold text-zinc-900">Дашборд</div>
+                <div className="mt-1 text-xs text-zinc-600">Статус заявок и реквизита на сегодня</div>
+              </div>
+            </div>
+            <WowstorgDashboardBlock isWowstorg={isWowstorg} />
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <CardLink

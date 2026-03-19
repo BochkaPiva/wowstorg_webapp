@@ -76,10 +76,33 @@ export async function recomputeGreenwichRatingScore(
     (s, o) => s + o.greenwichRatingOverdueDelta + o.greenwichRatingIncidentsDelta,
     0,
   );
+
+  // До применения миграции колонка может отсутствовать.
+  // В этом случае считаем, что manualLocked=false и выполняем авто-пересчёт.
+  let manualLocked = false;
+  try {
+    const ratingRows = await tx.$queryRaw<Array<{ manualLocked: boolean | null }>>`
+      SELECT "manualLocked"
+      FROM "GreenwichRating"
+      WHERE "userId" = ${userId}
+      LIMIT 1
+    `;
+    manualLocked = ratingRows?.[0]?.manualLocked ?? false;
+  } catch {
+    manualLocked = false;
+  }
+
+  // Если админ зафиксировал рейтинг вручную, авто-пересчёт не должен его перетирать.
+  if (manualLocked) return;
+
   const score = Math.max(0, Math.min(100, 100 + sum));
-  await tx.greenwichRating.upsert({
-    where: { userId },
-    create: { userId, score },
-    update: { score },
-  });
+
+  await tx.$executeRaw`
+    INSERT INTO "GreenwichRating" ("userId", "score", "manualLocked", "updatedAt")
+    VALUES (${userId}, ${score}, false, NOW())
+    ON CONFLICT ("userId") DO UPDATE
+    SET "score" = EXCLUDED."score",
+        "manualLocked" = false,
+        "updatedAt" = NOW()
+  `;
 }

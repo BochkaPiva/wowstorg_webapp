@@ -85,6 +85,7 @@ model GreenwichRating {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   score     Int      @default(100)
+  manualLocked Boolean @default(false)
   updatedAt DateTime @updatedAt
 }
 

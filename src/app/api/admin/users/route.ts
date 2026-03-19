@@ -30,10 +30,36 @@ export async function GET() {
     >`SELECT "id", "telegramChatId" FROM "User"`) ?? [];
     const telegramById = new Map(telegramRows.map((r) => [r.id, r.telegramChatId]));
 
+    const userIds = users.map((u) => u.id);
+    let ratingRows:
+      | Array<{ userId: string; score: number; manualLocked: boolean }>
+      | Array<{ userId: string; score: number }> = [];
+
+    if (userIds.length) {
+      try {
+        ratingRows = await prisma.$queryRaw<
+          Array<{ userId: string; score: number; manualLocked: boolean }>
+        >`SELECT "userId", "score", "manualLocked" FROM "GreenwichRating" WHERE "userId" = ANY(${userIds}::text[])`;
+      } catch {
+        // Если миграция с колонкой manualLocked ещё не применена, не ломаем админку.
+        ratingRows = await prisma.$queryRaw<
+          Array<{ userId: string; score: number }>
+        >`SELECT "userId", "score" FROM "GreenwichRating" WHERE "userId" = ANY(${userIds}::text[])`;
+      }
+    }
+
+    const ratingByUserId = new Map(
+      (ratingRows as Array<{ userId: string; score: number; manualLocked?: boolean }>).map((r) => [
+        r.userId,
+        { score: r.score, manualLocked: r.manualLocked ?? false },
+      ]),
+    );
+
     return jsonOk({
       users: users.map((u) => ({
         ...u,
         telegramChatId: telegramById.get(u.id) ?? null,
+        greenwichRating: ratingByUserId.get(u.id) ?? null,
         createdAt: u.createdAt.toISOString(),
       })),
     });

@@ -59,7 +59,7 @@ export async function GET() {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
 
-  const [activeCount, completedCount, nearestOrder, catalogAgg, warehouseItems] = await Promise.all([
+  const [activeCount, completedCount, nearestOrder, catalogAgg, catalogItems, warehouseItems] = await Promise.all([
     prisma.order.count({
       where: { status: { in: [...ACTIVE_STATUSES] } },
     }),
@@ -94,6 +94,10 @@ export async function GET() {
       _sum: { broken: true, missing: true, inRepair: true },
     }),
     prisma.item.findMany({
+      where: { internalOnly: false, isActive: true },
+      select: { id: true, name: true, total: true, inRepair: true, broken: true, missing: true },
+    }),
+    prisma.item.findMany({
       where: { internalOnly: true, isActive: true },
       select: { id: true, name: true, total: true, inRepair: true, broken: true, missing: true },
     }),
@@ -107,16 +111,24 @@ export async function GET() {
     endDate: todayUtc,
   });
 
-  const positions = warehouseItems.map((it) => {
+  const catalogPositions = catalogItems.map((it) => {
     const baseAvailable = computeBaseAvailableNow(it);
     const reserved = reservedByItemId.get(it.id) ?? 0;
     const availableNow = Math.max(0, baseAvailable - reserved);
     return { ...it, baseAvailable, reserved, availableNow };
   });
 
-  const positionsInStockCount = positions.filter((p) => p.availableNow > 0).length;
-  const endedPositions = positions
-    .filter((p) => p.baseAvailable === 0)
+  const positionsInStockCount = catalogPositions.filter((p) => p.availableNow > 0).length;
+
+  const warehousePositions = warehouseItems.map((it) => {
+    const baseAvailable = computeBaseAvailableNow(it);
+    const reserved = reservedByItemId.get(it.id) ?? 0;
+    const availableNow = Math.max(0, baseAvailable - reserved);
+    return { ...it, baseAvailable, reserved, availableNow };
+  });
+
+  const endedPositions = warehousePositions
+    .filter((p) => p.availableNow === 0)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
   const nearest = nearestOrder

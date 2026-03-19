@@ -144,12 +144,40 @@ model Item {
   updatedAt DateTime @updatedAt
 
   categories  ItemCategory[]
+  collections CollectionItem[]
   kitLines    KitLine[]
   orderLines  OrderLine[]
   lossRecords LossRecord[]
 
   @@index([isActive, internalOnly])
   @@index([name])
+}
+
+model Collection {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CollectionItem[]
+
+  @@index([isActive, name])
+}
+
+model CollectionItem {
+  collectionId String
+  itemId       String
+  position     Int @default(0)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  item       Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, itemId])
+  @@index([itemId])
+  @@index([collectionId, position])
 }
 
 model ItemCategory {

@@ -121,7 +121,11 @@ export async function sendTelegramDocument(
     : undefined;
   const form = new FormData();
   form.append("chat_id", chatId);
-  form.append("document", new Blob([documentBuffer]), fileName);
+  form.append(
+    "document",
+    new Blob([new Uint8Array(documentBuffer as ArrayBuffer | ArrayLike<number>)]),
+    fileName,
+  );
   if (caption) form.append("caption", caption);
   if (options?.messageThreadId != null) {
     form.append(

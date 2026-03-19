@@ -4,6 +4,8 @@ import React from "react";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
+import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 
 type QueueOrder = {
@@ -52,22 +54,17 @@ function statusRu(s: string) {
 
 function statusHeaderClass(status: string): string {
   return status === "CANCELLED"
-    ? "bg-zinc-500 text-white"
+    ? "bg-[#5b0b17]/10 text-[#5b0b17]"
     : status === "CLOSED"
-      ? "bg-green-600 text-white"
-      : status === "ISSUED" || status === "RETURN_DECLARED"
-        ? "bg-amber-500 text-white"
-        : status === "APPROVED_BY_GREENWICH" || status === "PICKING"
-          ? "bg-indigo-600 text-white"
-          : status === "ESTIMATE_SENT" || status === "CHANGES_REQUESTED"
-            ? "bg-violet-500 text-white"
-            : "bg-violet-600 text-white";
+      ? "bg-violet-50 text-violet-900"
+    : "bg-white";
 }
 
 export default function WarehouseQueuePage() {
   const { state } = useAuth();
+  const role = state.status === "authenticated" ? state.user.role : null;
   const forbidden =
-    state.status === "authenticated" && state.user.role !== "WOWSTORG";
+    state.status === "authenticated" && role !== "WOWSTORG";
 
   const [orders, setOrders] = React.useState<QueueOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -76,14 +73,14 @@ export default function WarehouseQueuePage() {
   const [noteSaveBusy, setNoteSaveBusy] = React.useState(false);
 
   const loadOrders = React.useCallback(() => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     fetch("/api/warehouse/queue", { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { orders?: QueueOrder[] }) => setOrders(data.orders ?? []));
-  }, [state.status, state.user.role]);
+  }, [state.status, role]);
 
   React.useEffect(() => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     let cancelled = false;
     setLoading(true);
     fetch("/api/warehouse/queue", { cache: "no-store" })
@@ -97,7 +94,7 @@ export default function WarehouseQueuePage() {
     return () => {
       cancelled = true;
     };
-  }, [state.status, state.user.role]);
+  }, [state.status, role]);
 
   async function saveInternalNote(orderId: string) {
     setNoteSaveBusy(true);
@@ -145,10 +142,15 @@ export default function WarehouseQueuePage() {
               {orders.map((o) => (
                 <div
                   key={o.id}
-                  className="rounded-2xl border border-zinc-200 bg-white overflow-hidden shadow-sm hover:border-violet-200 transition"
+                  className={[
+                    "rounded-2xl border overflow-hidden shadow-sm transition",
+                    o.status === "CANCELLED"
+                      ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03] hover:border-[#5b0b17]/40"
+                      : "border-zinc-200 bg-white hover:border-violet-200",
+                  ].join(" ")}
                 >
-                  <div className={`px-4 py-2 text-sm font-bold ${statusHeaderClass(o.status)}`}>
-                    {statusRu(o.status)}
+                  <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
+                    <OrderStatusStepper status={o.status as OrderStatus} />
                   </div>
                   <div className="p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -162,7 +164,7 @@ export default function WarehouseQueuePage() {
                       · Период: <span className="font-semibold">{fmtDateRu(o.startDate)}</span> —{" "}
                       <span className="font-semibold">{fmtDateRu(o.endDate)}</span>
                       {o.totalAmount != null ? (
-                        <span className="ml-2 font-semibold text-zinc-800">
+                        <span className="ml-2 rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                           · {o.totalAmount.toLocaleString("ru-RU")} ₽
                         </span>
                       ) : null}

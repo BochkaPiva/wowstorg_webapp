@@ -57,7 +57,10 @@ export async function POST(
   }
 
   const lineById = new Map(order.lines.map((l) => [l.id, l]));
-  const isV2 = (parsed.data as z.infer<typeof BodySchemaV2>).lines?.[0] && "splits" in (parsed.data as any).lines[0];
+  const maybeFirstLine = (parsed.data as unknown as { lines?: unknown[] })?.lines?.[0];
+  const isV2 =
+    Boolean(maybeFirstLine) &&
+    Array.isArray((maybeFirstLine as { splits?: unknown })?.splits);
 
   // Валидация нового формата до транзакции (чтобы не возвращать Response из transaction callback)
   if (isV2) {
@@ -215,6 +218,10 @@ export async function POST(
       lines: {
         orderBy: [{ position: "asc" }],
         include: { item: { select: { name: true } } },
+      },
+      returnSplits: {
+        where: { phase: "CHECKED_IN" },
+        include: { orderLine: { include: { item: { select: { name: true } } } } },
       },
     },
   });

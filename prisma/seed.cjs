@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { hash } = require("bcryptjs");
 const { PrismaClient } = require("@prisma/client");
 
@@ -87,7 +88,9 @@ async function main() {
   ];
 
   const categoryBySlug = new Map();
+  const slugToName = new Map();
   for (const c of categoriesSeed) {
+    slugToName.set(c.slug, c.name);
     const cat = await prisma.category.upsert({
       where: { slug: c.slug },
       update: { name: c.name, order: c.order },
@@ -95,6 +98,22 @@ async function main() {
       select: { id: true, slug: true },
     });
     categoryBySlug.set(cat.slug, cat.id);
+  }
+
+  // Подборки (Collections) = те же названия, что и категории — чтобы в CRUD подборок и в каталоге было единообразие
+  const collectionByName = new Map();
+  for (const c of categoriesSeed) {
+    let col = await prisma.collection.findFirst({
+      where: { name: c.name },
+      select: { id: true },
+    });
+    if (!col) {
+      col = await prisma.collection.create({
+        data: { name: c.name, isActive: true },
+        select: { id: true },
+      });
+    }
+    collectionByName.set(c.name, col.id);
   }
 
   // Items for testing (more positions)
@@ -162,6 +181,15 @@ async function main() {
         where: { itemId_categoryId: { itemId: item.id, categoryId: catId } },
         update: {},
         create: { itemId: item.id, categoryId: catId },
+      });
+    }
+    const catName = slugToName.get(it.cat);
+    const collectionId = catName ? collectionByName.get(catName) : null;
+    if (collectionId) {
+      await prisma.collectionItem.upsert({
+        where: { collectionId_itemId: { collectionId, itemId: item.id } },
+        update: {},
+        create: { collectionId, itemId: item.id, position: 0 },
       });
     }
   }

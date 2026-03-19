@@ -69,7 +69,7 @@ export default function HomeDashboardPage() {
               <CardLink
                 href="/inventory/items"
                 title="Инвентарь"
-                description="CRUD позиций, категории/подборки, пакеты, списки ремонта/утерь."
+                description="CRUD позиций, категории, пакеты, списки ремонта/утерь."
               />
               <CardLink
                 href="/admin"

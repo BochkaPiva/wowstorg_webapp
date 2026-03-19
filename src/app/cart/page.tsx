@@ -76,6 +76,9 @@ export default function CartPage() {
 
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [customerId, setCustomerId] = React.useState("");
+  const [customerInput, setCustomerInput] = React.useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = React.useState(false);
+  const customerInputRef = React.useRef<HTMLInputElement>(null);
   const [eventName, setEventName] = React.useState("");
   const [comment, setComment] = React.useState("");
   const [deliveryEnabled, setDeliveryEnabled] = React.useState(false);
@@ -115,10 +118,7 @@ export default function CartPage() {
     fetch("/api/customers", { cache: "no-store" })
       .then((res) => res.json())
       .then((data: { customers: Customer[] }) => {
-        if (!cancelled) {
-          setCustomers(data.customers ?? []);
-          if (!customerId && data.customers?.[0]?.id) setCustomerId(data.customers[0].id);
-        }
+        if (!cancelled) setCustomers(data.customers ?? []);
       });
     return () => {
       cancelled = true;
@@ -126,7 +126,22 @@ export default function CartPage() {
   }, []);
 
   React.useEffect(() => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    if (!customerDropdownOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      const el = e.target as Node;
+      if (
+        customerInputRef.current?.contains(el)
+      )
+        return;
+      setCustomerDropdownOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [customerDropdownOpen]);
+
+  React.useEffect(() => {
+    const role = state.status === "authenticated" ? state.user.role : null;
+    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     let cancelled = false;
     fetch("/api/users/greenwich", { cache: "no-store" })
       .then((res) => res.json())
@@ -136,7 +151,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [state.status, state.user.role]);
+  }, [state.status]);
 
   React.useEffect(() => {
     if (cart.length === 0) {
@@ -180,6 +195,18 @@ export default function CartPage() {
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
   const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
+  const customerInputTrim = customerInput.trim();
+  const matchedCustomer =
+    customerInputTrim &&
+    customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
+  const canSubmitCustomer = Boolean(customerInputTrim);
+  const customerFiltered =
+    !customerInputTrim
+      ? customers
+      : customers.filter((c) =>
+          c.name.toLowerCase().includes(customerInputTrim.toLowerCase())
+        );
+
   const itemMap = new Map(items.map((i) => [i.id, i]));
   const lines = cart
     .map((l) => ({ line: l, item: itemMap.get(l.itemId) }))
@@ -214,22 +241,23 @@ export default function CartPage() {
     totalForPeriod + deliveryPriceNum + montagePriceNum + demontagePriceNum;
 
   const canCheckoutGreenwich =
-    isGreenwich && cart.length > 0 && Boolean(customerId);
+    isGreenwich && cart.length > 0 && canSubmitCustomer;
   const canCheckoutWarehouse =
     isWarehouse &&
     cart.length > 0 &&
-    Boolean(customerId) &&
+    canSubmitCustomer &&
     (orderType !== "greenwich" || Boolean(greenwichUserId));
   const canCheckout =
     (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
 
   async function submit() {
-    if (!startDate || !endDate || !readyByDate) return;
+    if (!startDate || !endDate || !readyByDate || !customerInputTrim) return;
+    const match = customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
     setError(null);
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
-        customerId,
+        ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
         readyByDate,
         startDate,
         endDate,
@@ -467,24 +495,72 @@ export default function CartPage() {
                       ) : null}
                     </label>
                   ) : null}
-                  <label className="co-field">
+                  <div className="co-field">
                     <div className="co-label">Заказчик *</div>
-                    <select
-                      value={customerId}
-                      onChange={(e) => setCustomerId(e.target.value)}
-                      className="co-input"
+                    <div
+                      className="co-combobox"
+                      ref={customerInputRef}
                     >
-                      <option value="">Выберите заказчика</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    {customers.length === 0 ? (
-                      <div className="co-help">Нет заказчиков. Создайте в админке.</div>
+                      <input
+                        type="text"
+                        value={customerInput}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCustomerInput(v);
+                          const t = v.trim();
+                          const match = t && customers.find((c) => c.name.localeCompare(t, undefined, { sensitivity: "accent" }) === 0);
+                          setCustomerId(match ? match.id : "");
+                          setCustomerDropdownOpen(true);
+                        }}
+                        onFocus={() => setCustomerDropdownOpen(true)}
+                        onBlur={() => {
+                          setTimeout(() => setCustomerDropdownOpen(false), 180);
+                        }}
+                        className="co-input"
+                        placeholder="Выберите из списка или введите название заказчика"
+                        autoComplete="off"
+                        aria-expanded={customerDropdownOpen}
+                        aria-haspopup="listbox"
+                        aria-autocomplete="list"
+                      />
+                      {customerDropdownOpen ? (
+                        <div
+                          className="co-combobox-dropdown"
+                          role="listbox"
+                        >
+                          {customerFiltered.length === 0 ? (
+                            <div className="co-combobox-empty">
+                              {customerInputTrim
+                                ? "Нет совпадений — будет создан новый заказчик"
+                                : "Нет заказчиков в списке"}
+                            </div>
+                          ) : (
+                            customerFiltered.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                role="option"
+                                className="co-combobox-option"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setCustomerInput(c.name);
+                                  setCustomerId(c.id);
+                                  setCustomerDropdownOpen(false);
+                                }}
+                              >
+                                {c.name}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    {customerInputTrim && !matchedCustomer ? (
+                      <div className="co-combobox-hint">
+                        Будет создан новый заказчик «{customerInputTrim}»
+                      </div>
                     ) : null}
-                  </label>
+                  </div>
                   <label className="co-field">
                     <div className="co-label">Название мероприятия</div>
                     <input
@@ -615,7 +691,7 @@ export default function CartPage() {
                   </p>
                   <button
                     type="button"
-                    disabled={!canCheckout || submitting || customers.length === 0}
+                    disabled={!canCheckout || submitting}
                     onClick={submit}
                     className="co-btn co-btn--primary"
                   >

@@ -474,14 +474,22 @@ export default function CatalogPage() {
             <article key={it.id} className="mk-card">
               <div className="mk-cardInner">
                 <div className="mk-box">
-                  {/* v1: пока нет реальных фото URL — показываем красивую заглушку */}
-                  <div className="mk-placeholder">
-                    <div className="mk-placeholderBadge">
-                      <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
-                      <span style={{ opacity: 0.7 }}>·</span>
-                      <span>без фото</span>
+                  {it.photo1Key ? (
+                    <img
+                      src={`/api/inventory/positions/${it.id}/photo`}
+                      alt=""
+                      className="mk-cardPhoto"
+                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }}
+                    />
+                  ) : (
+                    <div className="mk-placeholder">
+                      <div className="mk-placeholderBadge">
+                        <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
+                        <span style={{ opacity: 0.7 }}>·</span>
+                        <span>без фото</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="mk-corner">
@@ -579,13 +587,22 @@ export default function CatalogPage() {
                 <article key={it.id} className="mk-card">
                   <div className="mk-cardInner">
                     <div className="mk-box">
-                      <div className="mk-placeholder">
-                        <div className="mk-placeholderBadge">
-                          <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
-                          <span style={{ opacity: 0.7 }}>·</span>
-                          <span>без фото</span>
+                      {it.photo1Key ? (
+                        <img
+                          src={`/api/inventory/positions/${it.id}/photo`}
+                          alt=""
+                          className="mk-cardPhoto"
+                          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }}
+                        />
+                      ) : (
+                        <div className="mk-placeholder">
+                          <div className="mk-placeholderBadge">
+                            <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
+                            <span style={{ opacity: 0.7 }}>·</span>
+                            <span>без фото</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                     <div className="mk-corner">
                       <button

@@ -17,7 +17,8 @@ const LineSchema = z.object({
 const OrderSourceSchema = z.enum(["GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"]);
 
 const BodySchema = z.object({
-  customerId: z.string().trim().min(1),
+  customerId: z.string().trim().min(1).optional(),
+  customerName: z.string().trim().min(1).max(200).optional(),
   readyByDate: DateOnlySchema,
   startDate: DateOnlySchema,
   endDate: DateOnlySchema,
@@ -60,6 +61,11 @@ export async function POST(req: Request) {
   }
 
   const data = parsed.data;
+  const hasCustomerId = Boolean(data.customerId?.trim());
+  const hasCustomerName = Boolean(data.customerName?.trim());
+  if (!hasCustomerId && !hasCustomerName) {
+    return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");
+  }
   const readyByDate = parseDateOnlyToUtcMidnight(data.readyByDate);
   const startDate = parseDateOnlyToUtcMidnight(data.startDate);
   const endDate = parseDateOnlyToUtcMidnight(data.endDate);
@@ -109,12 +115,29 @@ export async function POST(req: Request) {
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const customer = await tx.customer.findFirst({
-      where: { id: data.customerId, isActive: true },
-      select: { id: true },
-    });
-    if (!customer) {
-      throw new Error("CUSTOMER_NOT_FOUND");
+    let customerIdToUse: string;
+    if (hasCustomerName) {
+      const name = data.customerName!.trim();
+      const existing = await tx.customer.findFirst({
+        where: { name: { equals: name, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (existing) {
+        customerIdToUse = existing.id;
+      } else {
+        const created = await tx.customer.create({
+          data: { name },
+          select: { id: true },
+        });
+        customerIdToUse = created.id;
+      }
+    } else {
+      const customer = await tx.customer.findFirst({
+        where: { id: data.customerId!, isActive: true },
+        select: { id: true },
+      });
+      if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
+      customerIdToUse = customer.id;
     }
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
@@ -155,7 +178,7 @@ export async function POST(req: Request) {
         status: "SUBMITTED",
         createdById: auth.user.id,
         greenwichUserId,
-        customerId: data.customerId,
+        customerId: customerIdToUse,
         eventName: data.eventName,
         comment: data.comment,
         readyByDate,

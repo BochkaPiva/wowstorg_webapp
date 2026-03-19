@@ -19,7 +19,8 @@ type LossRow = {
 
 export default function WarehouseLossesBasePage() {
   const { state } = useAuth();
-  const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
+  const user = state.status === "authenticated" ? state.user : null;
+  const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
   const [rows, setRows] = React.useState<LossRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -28,7 +29,7 @@ export default function WarehouseLossesBasePage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    if (state.status !== "authenticated" || user?.role !== "WOWSTORG") return;
     setLoading(true);
     setError(null);
     try {
@@ -38,7 +39,7 @@ export default function WarehouseLossesBasePage() {
     } finally {
       setLoading(false);
     }
-  }, [state.status, state.user.role]);
+  }, [state.status, user?.role]);
 
   React.useEffect(() => {
     void load();

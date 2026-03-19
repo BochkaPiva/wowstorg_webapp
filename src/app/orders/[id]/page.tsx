@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 
 type OrderLine = {
@@ -32,7 +33,7 @@ type ReturnSplit = {
 
 type Order = {
   id: string;
-  status: string;
+  status: OrderStatus;
   source: string;
   readyByDate: string;
   startDate: string;
@@ -43,6 +44,7 @@ type Order = {
   comment: string | null;
   customer: { id: string; name: string };
   createdBy: { id: string; displayName: string };
+  greenwichUserId?: string | null;
   greenwichUser: { id: string; displayName: string } | null;
   deliveryEnabled: boolean;
   deliveryComment: string | null;
@@ -53,6 +55,7 @@ type Order = {
   demontageEnabled: boolean;
   demontageComment: string | null;
   demontagePrice: number | null;
+  payMultiplier?: number | null;
   warehouseInternalNote?: string | null;
   estimateFileKey?: string | null;
   lines: OrderLine[];
@@ -98,7 +101,7 @@ function orderTotal(order: {
   lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
-  payMultiplier: number | null;
+  payMultiplier?: number | null;
   deliveryPrice: number | null;
   montagePrice: number | null;
   demontagePrice: number | null;
@@ -202,7 +205,7 @@ function AddLineRow({
   onAdd: (itemId: string, itemName: string, qty: number, maxForDates?: number) => void;
 }) {
   const [search, setSearch] = React.useState("");
-  const [selected, setSelected] = React.useState<{ id: string; name: string } | null>(null);
+  const [selected, setSelected] = React.useState<{ id: string; name: string; availableForDates?: number } | null>(null);
   const [qty, setQty] = React.useState<number | "">(1);
   const [open, setOpen] = React.useState(false);
   const available = catalogItems.filter((i) => !existingItemIds.includes(i.id));
@@ -448,8 +451,9 @@ export default function OrderDetailsPage() {
   const [editDemontagePrice, setEditDemontagePrice] = React.useState<number | "">("");
   const [catalogItems, setCatalogItems] = React.useState<{ id: string; name: string; availableForDates?: number }[]>([]);
 
-  const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
-  const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
+  const user = state.status === "authenticated" ? state.user : null;
+  const isGreenwich = user?.role === "GREENWICH";
+  const isWarehouse = user?.role === "WOWSTORG";
   const from = searchParams.get("from");
   const warehouseBackHref = from === "warehouse-archive" ? "/warehouse/archive" : "/warehouse/queue";
   const warehouseBackLabel = from === "warehouse-archive" ? "В архив" : "В очередь";
@@ -459,8 +463,8 @@ export default function OrderDetailsPage() {
         ((isWarehouse &&
           ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH", "PICKING"].includes(order.status)) ||
           (isGreenwich &&
-            state.user &&
-            order.greenwichUserId === state.user.id &&
+            user &&
+            order.greenwichUserId === user.id &&
             ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status))),
     );
 
@@ -739,7 +743,7 @@ export default function OrderDetailsPage() {
   const canCancel =
     order &&
     ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"].includes(order.status) &&
-    (isWarehouse || (isGreenwich && state.user && order.greenwichUserId === state.user.id));
+    (isWarehouse || (isGreenwich && user && order.greenwichUserId === user.id));
 
   const canSendEstimate =
     (order?.status === "SUBMITTED" || order?.status === "CHANGES_REQUESTED") &&
@@ -751,7 +755,7 @@ export default function OrderDetailsPage() {
     isWarehouse &&
     !canSendEstimate &&
     (order.deliveryEnabled || order.montageEnabled || order.demontageEnabled);
-  const isOrderGreenwichUser = order && state.user && order.greenwichUserId === state.user.id;
+  const isOrderGreenwichUser = order && user && order.greenwichUserId === user.id;
 
   if (loading) {
     return (
@@ -781,16 +785,10 @@ export default function OrderDetailsPage() {
 
   const statusHeaderClass =
     order.status === "CANCELLED"
-      ? "bg-zinc-500 text-white"
+      ? "bg-[#5b0b17]/10 text-[#5b0b17]"
       : order.status === "CLOSED"
-        ? "bg-green-600 text-white"
-        : order.status === "ISSUED" || order.status === "RETURN_DECLARED"
-          ? "bg-amber-500 text-white"
-          : order.status === "APPROVED_BY_GREENWICH" || order.status === "PICKING"
-            ? "bg-indigo-600 text-white"
-            : order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED"
-              ? "bg-violet-500 text-white"
-              : "bg-violet-600 text-white";
+        ? "bg-violet-50 text-violet-900"
+      : "bg-white";
 
   return (
     <AppShell title={`Заявка ${order.id.slice(0, 8)}`}>
@@ -804,9 +802,16 @@ export default function OrderDetailsPage() {
           </Link>
         </div>
 
-        <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
-          <div className={`px-4 py-2.5 text-sm font-bold ${statusHeaderClass}`}>
-            {statusLabel}
+        <div
+          className={[
+            "rounded-2xl border overflow-hidden shadow-sm",
+            order.status === "CANCELLED"
+              ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03]"
+              : "border-zinc-200 bg-white",
+          ].join(" ")}
+        >
+          <div className={["px-4 py-5", statusHeaderClass].join(" ")}>
+            <OrderStatusStepper status={order.status} />
           </div>
           <div className="p-4">
             <div className="space-y-1">
@@ -824,8 +829,11 @@ export default function OrderDetailsPage() {
               <p className="text-xs text-zinc-400">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}
               </p>
-              <p className="mt-2 text-sm font-semibold text-zinc-800">
-                Сумма заявки: {orderTotal(order).toLocaleString("ru-RU")} ₽
+              <p className="mt-2 text-sm">
+                Сумма заявки:{" "}
+                <span className="rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
+                  {orderTotal(order).toLocaleString("ru-RU")} ₽
+                </span>
               </p>
               {order.estimateFileKey ? (
                 <p className="mt-3">
@@ -1463,7 +1471,7 @@ export default function OrderDetailsPage() {
             </button>
           )}
           {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
-          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === state.user?.id && (
+          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && (
             <>
               <button
                 type="button"

@@ -18,33 +18,48 @@ type IncidentRow = {
   item?: { id: string; name: string } | null;
 };
 
-function conditionRu(c: IncidentRow["condition"]) {
+type RepairItemRow = {
+  id: string;
+  name: string;
+  qty: number;
+  condition: "NEEDS_REPAIR" | "BROKEN";
+};
+
+function conditionRu(c: "NEEDS_REPAIR" | "BROKEN") {
   return c === "NEEDS_REPAIR" ? "Требует ремонта" : "Сломано";
 }
 
 export default function WarehouseRepairBasePage() {
   const { state } = useAuth();
-  const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
+  const user = state.status === "authenticated" ? state.user : null;
+  const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
-  const [tab, setTab] = React.useState<IncidentRow["condition"]>("NEEDS_REPAIR");
+  const [tab, setTab] = React.useState<"NEEDS_REPAIR" | "BROKEN">("NEEDS_REPAIR");
   const [rows, setRows] = React.useState<IncidentRow[]>([]);
+  const [itemRows, setItemRows] = React.useState<RepairItemRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [busyItemId, setBusyItemId] = React.useState<string | null>(null);
   const [qtyById, setQtyById] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    if (state.status !== "authenticated" || user?.role !== "WOWSTORG") return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/warehouse/incidents?condition=${tab}`, { cache: "no-store" });
-      const data = (await res.json()) as { incidents?: IncidentRow[] };
-      setRows(data.incidents ?? []);
+      const [incRes, itemsRes] = await Promise.all([
+        fetch(`/api/warehouse/incidents?condition=${tab}`, { cache: "no-store" }),
+        fetch(`/api/warehouse/repair-items?condition=${tab}`, { cache: "no-store" }),
+      ]);
+      const incData = (await incRes.json()) as { incidents?: IncidentRow[] };
+      const itemsData = (await itemsRes.json()) as { items?: RepairItemRow[] };
+      setRows(incData.incidents ?? []);
+      setItemRows(itemsData.items ?? []);
     } finally {
       setLoading(false);
     }
-  }, [state.status, state.user.role, tab]);
+  }, [state.status, user?.role, tab]);
 
   React.useEffect(() => {
     void load();
@@ -79,6 +94,32 @@ export default function WarehouseRepairBasePage() {
       await load();
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function returnItemToCatalog(itemId: string) {
+    setBusyItemId(itemId);
+    setError(null);
+    try {
+      const payload = tab === "NEEDS_REPAIR" ? { inRepair: 0 } : { broken: 0 };
+      const res = await fetch(`/api/inventory/positions/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const j = JSON.parse(text) as { error?: { message?: string } };
+          setError(j?.error?.message ?? "Ошибка");
+        } catch {
+          setError("Ошибка операции");
+        }
+        return;
+      }
+      await load();
+    } finally {
+      setBusyItemId(null);
     }
   }
 
@@ -128,9 +169,37 @@ export default function WarehouseRepairBasePage() {
       <div className="mt-4">
         {loading ? (
           <div className="text-sm text-zinc-600">Загрузка…</div>
-        ) : rows.length === 0 ? (
+        ) : null}
+
+        {!loading && itemRows.length > 0 ? (
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-zinc-700 mb-2">По позициям (вне заявок)</h3>
+            <p className="text-xs text-zinc-500 mb-2">
+              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Вернуть в каталог — обнулить это количество.
+            </p>
+            <div className="space-y-2">
+              {itemRows.map((r) => (
+                <div key={r.id} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-zinc-900">{r.name}</span>
+                  <span className="text-xs text-zinc-600">{r.qty} шт.</span>
+                  <button
+                    type="button"
+                    disabled={busyItemId === r.id}
+                    onClick={() => returnItemToCatalog(r.id)}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    {busyItemId === r.id ? "…" : "Вернуть в каталог"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!loading ? <h3 className="text-sm font-semibold text-zinc-700 mb-2">По заявкам</h3> : null}
+        {!loading && rows.length === 0 && itemRows.length === 0 ? (
           <div className="text-sm text-zinc-600">Пусто.</div>
-        ) : (
+        ) : !loading && rows.length > 0 ? (
           <div className="space-y-3">
             {rows.map((r) => (
               <div key={r.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
@@ -185,7 +254,7 @@ export default function WarehouseRepairBasePage() {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </AppShell>
   );

@@ -288,7 +288,7 @@ async function sendToGreenwichUsers(
   text: string,
   estimateFile?: { buffer: Buffer; fileName: string },
 ): Promise<void> {
-  // Личные сообщения всем активным GREENWICH пользователям с указанным telegramChatId.
+  // Личные сообщения всем активным GREENWICH пользователям. Сначала всегда текст (информация + «проверьте смету»), затем файл.
   try {
     const rows = await prisma.$queryRaw<
       Array<{ telegramChatId: string | null }>
@@ -301,19 +301,17 @@ async function sendToGreenwichUsers(
       notifyDebugLog("[sendToGreenwichUsers] 0 получателей — укажите Telegram ID сотрудникам Grinvich в админке (Пользователи)");
       return;
     }
-    const results = await Promise.all(ids.map((id) => sendTelegramMessage(id, text)));
-    const failed = results.filter((ok) => !ok).length;
-    if (failed > 0) {
-      notifyDebugLog(`[sendToGreenwichUsers] не доставлено: ${failed} из ${ids.length}`);
+    // Сначала гарантированно отправляем текстовое сообщение каждому, затем файл.
+    for (const chatId of ids) {
+      const ok = await sendTelegramMessage(chatId, text);
+      if (!ok) notifyDebugLog(`[sendToGreenwichUsers] text not sent to ${chatId}`);
     }
     if (estimateFile?.buffer?.length) {
-      await Promise.all(
-        ids.map((id) =>
-          sendTelegramDocument(id, estimateFile.buffer, estimateFile.fileName, {
-            caption: "Файл сметы во вложении",
-          }),
-        ),
-      );
+      for (const chatId of ids) {
+        await sendTelegramDocument(chatId, estimateFile.buffer, estimateFile.fileName, {
+          caption: "Файл сметы во вложении",
+        });
+      }
     }
   } catch (e) {
     notifyDebugLog(`[sendToGreenwichUsers] error: ${e instanceof Error ? e.message : String(e)}`);
@@ -395,11 +393,16 @@ export async function notifyEstimateSent(
     const topicId = getWarehouseTopicId();
     const threadOpt = { messageThreadId: topicId ? parseInt(topicId, 10) : undefined };
 
+    const estimateCaption =
+      order.eventName?.trim() || order.customer?.name
+        ? `Смета: ${escapeTelegramHtml((order.eventName?.trim() || order.customer?.name) ?? "")}`
+        : "Файл сметы";
+
     if (warehouseChatId) {
       await sendTelegramMessage(warehouseChatId, bodyWarehouse, threadOpt);
       if (estimateFile?.buffer?.length) {
         await sendTelegramDocument(warehouseChatId, estimateFile.buffer, estimateFile.fileName, {
-          caption: `Смета по заявке ${order.id}`,
+          caption: estimateCaption,
           ...threadOpt,
         });
       }
@@ -522,14 +525,59 @@ export async function notifyReturnDeclared(order: OrderForNotify): Promise<void>
   }
 }
 
-/** Склад закрыл приёмку → Grinvich */
-export async function notifyCheckInClosed(order: OrderForNotify): Promise<void> {
+const CONDITION_LABEL: Record<string, string> = {
+  OK: "В норме",
+  NEEDS_REPAIR: "Ремонт",
+  BROKEN: "Сломано",
+  MISSING: "Потеряно",
+};
+
+type ReturnSplitForNotify = {
+  orderLineId: string;
+  condition: string;
+  qty: number;
+  orderLine?: { item?: { name?: string } };
+};
+
+/** Склад закрыл приёмку → Grinvich (сводка по статусам позиций) */
+export async function notifyCheckInClosed(
+  order: OrderForNotify & {
+    returnSplits?: ReturnSplitForNotify[];
+  },
+): Promise<void> {
   try {
+    let statusBlock = "";
+    const splits = order.returnSplits ?? [];
+    if (splits.length > 0) {
+      const byLine = new Map<string, Array<{ condition: string; qty: number }>>();
+      const lineNames = new Map<string, string>();
+      for (const s of splits) {
+        const lineId = s.orderLineId ?? "";
+        const name = s.orderLine?.item?.name ?? "Позиция";
+        lineNames.set(lineId, name);
+        if (!byLine.has(lineId)) byLine.set(lineId, []);
+        byLine.get(lineId)!.push({ condition: s.condition, qty: s.qty });
+      }
+      const lines: string[] = [];
+      for (const [lineId, parts] of byLine) {
+        const name = escapeTelegramHtml(lineNames.get(lineId) ?? "Позиция");
+        const sumParts = parts
+          .filter((p) => p.qty > 0)
+          .map((p) => `${CONDITION_LABEL[p.condition] ?? p.condition}: ${p.qty}`)
+          .join(", ");
+        if (sumParts) lines.push(`  • ${name} — ${sumParts}`);
+      }
+      if (lines.length) {
+        statusBlock = `\n\n📋 <b>По позициям:</b>\n${lines.join("\n")}`;
+      }
+    }
+
     const text =
       `🔒 <b>Приёмка завершена</b>\n\n` +
       `${orderHeader(order)}\n\n` +
-      `${buildLinesBlock(order)}\n\n` +
-      `Заявка закрыта.\n\n` +
+      `${buildLinesBlock(order)}` +
+      statusBlock +
+      `\n\nЗаявка закрыта.\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
     await sendToGreenwichUsers(text);
   } catch (e) {

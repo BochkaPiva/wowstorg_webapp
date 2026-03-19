@@ -236,6 +236,30 @@ export function AppShell({
                     Инвентарь
                   </NavLink>
                   <NavLink
+                    href="/inventory/positions"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Позиции
+                  </NavLink>
+                  <NavLink
+                    href="/inventory/collections"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Категории
+                  </NavLink>
+                  <NavLink
+                    href="/inventory/packages"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Пакеты
+                  </NavLink>
+                  <NavLink
+                    href="/inventory/warehouse-items"
+                    onClick={() => setNavOpen(false)}
+                  >
+                    Складской реквизит
+                  </NavLink>
+                  <NavLink
                     href="/inventory/repair"
                     onClick={() => setNavOpen(false)}
                   >

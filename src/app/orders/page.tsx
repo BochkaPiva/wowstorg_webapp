@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 
 type OrderCard = {
   id: string;
@@ -42,16 +43,10 @@ const CANCELLABLE: OrderCard["status"][] = ["SUBMITTED", "ESTIMATE_SENT", "CHANG
 
 function statusHeaderClass(status: OrderCard["status"]): string {
   return status === "CANCELLED"
-    ? "bg-zinc-500 text-white"
+    ? "bg-[#5b0b17]/10 text-[#5b0b17]"
     : status === "CLOSED"
-      ? "bg-green-600 text-white"
-      : status === "ISSUED" || status === "RETURN_DECLARED"
-        ? "bg-amber-500 text-white"
-        : status === "APPROVED_BY_GREENWICH" || status === "PICKING"
-          ? "bg-indigo-600 text-white"
-          : status === "ESTIMATE_SENT" || status === "CHANGES_REQUESTED"
-            ? "bg-violet-500 text-white"
-            : "bg-violet-600 text-white";
+      ? "bg-violet-50 text-violet-900"
+    : "bg-white";
 }
 
 function fmtDate(iso: string) {
@@ -114,10 +109,15 @@ export default function OrdersPage() {
           {orders.map((o) => (
             <div
               key={o.id}
-              className="rounded-2xl border border-zinc-200 bg-white overflow-hidden shadow-sm hover:border-violet-200 transition"
+              className={[
+                "rounded-2xl border overflow-hidden shadow-sm transition",
+                o.status === "CANCELLED"
+                  ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03] hover:border-[#5b0b17]/40"
+                  : "border-zinc-200 bg-white hover:border-violet-200",
+              ].join(" ")}
             >
-              <div className={`px-4 py-2 text-sm font-bold ${statusHeaderClass(o.status)}`}>
-                {STATUS_LABEL[o.status]}
+              <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
+                <OrderStatusStepper status={o.status} />
               </div>
               <div className="p-4">
                 <div className="text-sm font-semibold text-zinc-900">{o.customer.name}</div>
@@ -127,8 +127,8 @@ export default function OrdersPage() {
                   Период: <span className="font-semibold">{fmtDate(o.startDate)}</span> —{" "}
                   <span className="font-semibold">{fmtDate(o.endDate)}</span>
                   {o.totalAmount != null ? (
-                    <span className="ml-2 font-semibold text-zinc-800">
-                      · {o.totalAmount.toLocaleString("ru-RU")} ₽
+                    <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
+                      {o.totalAmount.toLocaleString("ru-RU")} ₽
                     </span>
                   ) : null}
                 </div>

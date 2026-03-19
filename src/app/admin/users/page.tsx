@@ -128,7 +128,7 @@ export default function AdminUsersPage() {
 
   async function updateUser(e: React.FormEvent) {
     e.preventDefault();
-    if (typeof modal !== "object" || !modal.id) return;
+    if (!modal || modal === "create" || !("id" in modal)) return;
     setError(null);
     setSaving(true);
     try {

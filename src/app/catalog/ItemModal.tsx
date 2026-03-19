@@ -9,6 +9,7 @@ type CatalogItem = {
   description: string | null;
   type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
+  photo1Key?: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
 
@@ -55,9 +56,17 @@ export function ItemModal({
       <div className="mk-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="mk-modalGrid">
           <div className="mk-modalMedia">
-            <div className="mk-placeholder" style={{ position: "absolute" }}>
-              <div className="mk-placeholderBadge">WOWSTORG · PREVIEW</div>
-            </div>
+            {item.photo1Key ? (
+              <img
+                src={`/api/inventory/positions/${item.id}/photo`}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0, borderRadius: "inherit" }}
+              />
+            ) : (
+              <div className="mk-placeholder" style={{ position: "absolute" }}>
+                <div className="mk-placeholderBadge">WOWSTORG · PREVIEW</div>
+              </div>
+            )}
           </div>
           <div className="mk-modalBody">
             <div className="mk-modalTop">

@@ -48,9 +48,24 @@ export default function InventoryItemsPage() {
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CardLink
-              href="/inventory/items"
-              title="Позиции (в разработке)"
-              description="CRUD позиций/категорий/пакетов — добавим следующим шагом."
+              href="/inventory/positions"
+              title="Позиции"
+              description="CRUD позиций: фото (опционально), название, описание, цена, количества и принадлежность к категориям."
+            />
+            <CardLink
+              href="/inventory/collections"
+              title="Категории"
+              description="Категории позиций для каталога: одна позиция может входить в несколько категорий."
+            />
+            <CardLink
+              href="/inventory/packages"
+              title="Пакеты"
+              description="Пакеты (наборы реквизита): при добавлении в корзину раскладываются на позиции."
+            />
+            <CardLink
+              href="/inventory/warehouse-items"
+              title="Складской реквизит"
+              description="Внутренний реквизит склада (скотч/инструмент и т.п.). Отдельная база, не показывается в каталоге."
             />
             <CardLink
               href="/inventory/repair"

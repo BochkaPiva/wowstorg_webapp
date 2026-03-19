@@ -70,105 +70,74 @@ function GreenwichRatingCard() {
     window.setTimeout(() => setRiding(false), 1600);
   }
 
+  const dinoPct = Math.max(3, Math.min(97, pct));
+
   return (
-    <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="rounded-3xl border border-violet-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-zinc-900">Дашборд Greenwich</div>
-          <div className="mt-1 text-xs text-zinc-600">
-            Рейтинг зависит от дедлайнов возврата и состояния реквизита при приёмке
-          </div>
+          <div className="text-sm font-semibold text-zinc-900">Рейтинг</div>
+          <div className="mt-1 text-xs text-zinc-500">Зависит от дедлайнов возврата и состояния реквизита</div>
         </div>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-50 transition"
+          className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition"
           aria-expanded={expanded}
-          title="Показать кратко, как начисляется рейтинг"
+          title="Как считается"
         >
-          {expanded ? "Скрыть" : "Как считается"}
+          {expanded ? "Свернуть" : "Как считается"}
         </button>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
-        <div className="md:col-span-5">
-          <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white p-3">
-            <style jsx global>{`
-              @keyframes dinoRide {
-                0% {
-                  transform: translateX(0px) translateY(0px) rotate(-8deg);
-                }
-                35% {
-                  transform: translateX(70px) translateY(-6px) rotate(8deg);
-                }
-                70% {
-                  transform: translateX(130px) translateY(-1px) rotate(-6deg);
-                }
-                100% {
-                  transform: translateX(160px) translateY(0px) rotate(-8deg);
-                }
-              }
-            `}</style>
-
-            <div className="absolute left-3 top-3 right-3 h-10 rounded-xl bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(250,204,21,0.10))]" />
-            <button
-              type="button"
-              onClick={rideDino}
-              className="relative z-10 mx-auto block h-14 w-14 md:h-16 md:w-16"
-              title="Нажми, чтобы динозаврик покатался"
-            >
-              <div
-                className="relative h-full w-full transition-transform"
-                style={{ willChange: "transform" }}
-              >
-                <div style={riding ? ({ animation: "dinoRide 1.6s ease-in-out 1" } as React.CSSProperties) : undefined}>
-                  <div className="relative h-full w-full">
-                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="64px" />
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <div className="mt-2 text-center text-xs text-zinc-600">
-              Подсказка: динозаврик ускоряет, когда всё в порядке
-            </div>
-          </div>
+      <div className="mt-4 flex items-start gap-4">
+        <div className="min-w-[72px] text-4xl font-extrabold tabular-nums text-violet-800 leading-none drop-shadow-sm">
+          {s}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-zinc-800">{phrase}</div>
 
-        <div className="md:col-span-7">
-          <div className="rounded-2xl border border-violet-100 bg-white p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="text-xs font-semibold text-violet-900/70">Текущий рейтинг</div>
-              <div className="rounded-full bg-violet-50 border border-violet-100 px-3 py-1 text-xs font-semibold text-violet-800">
-                0–100
-              </div>
-            </div>
-            <div className="mt-2 text-4xl font-extrabold tabular-nums text-violet-800 drop-shadow-sm">
-              {s}
-            </div>
-            <div className="mt-1 text-sm font-semibold text-zinc-800">{phrase}</div>
-
-            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
+          <div className="mt-3 relative">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
               <div
                 className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all"
                 style={{ width: `${pct}%` }}
               />
             </div>
 
-            <div className="mt-2 text-xs text-zinc-600 flex items-center justify-between">
-              <span>0</span>
-              <span className="font-semibold text-violet-800">100</span>
-            </div>
+            <button
+              type="button"
+              onClick={rideDino}
+              className="absolute top-[-18px] left-0 h-12 w-12 rounded-full bg-white border border-violet-100 shadow-sm flex items-center justify-center"
+              style={{
+                left: `${dinoPct}%`,
+                transform: `translateX(-50%) ${riding ? "translateY(-2px) rotate(8deg) scale(1.05)" : "translateY(0px) rotate(-6deg) scale(1)"}`,
+                transition: riding ? "transform 1.2s ease-in-out" : "transform 250ms ease-in-out",
+                pointerEvents: "auto",
+              }}
+              aria-label="Покатать динозаврика"
+              title="Нажми"
+            >
+              <div className="relative h-9 w-9">
+                <Image src="/dino.png" alt="" fill className="object-contain" sizes="36px" />
+              </div>
+            </button>
+          </div>
+
+          <div className="mt-2 text-[11px] text-zinc-500 flex items-center justify-between">
+            <span>0</span>
+            <span className="font-semibold text-violet-800">100</span>
           </div>
         </div>
       </div>
 
       {expanded ? (
         <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-3">
-          <div className="text-sm font-semibold text-zinc-900">Кратко</div>
-          <div className="mt-2 text-sm text-zinc-700 space-y-1">
-            <div>• Дедлайны возврата: <span className="font-semibold text-red-700">−7/день</span> после <span className="font-semibold">endDate + 1</span></div>
-            <div>• Состояние реквизита (кроме CONSUMABLE): <span className="font-semibold text-red-700">−1</span> (сломано) и <span className="font-semibold text-red-700">−3</span> (потеряно)</div>
+          <div className="text-sm font-semibold text-zinc-900">Как считается</div>
+          <div className="mt-1 text-sm text-zinc-700 space-y-1">
+            <div>• Возврат вовремя → больше баллов</div>
+            <div>• На приёмке нашли поломки/потери → меньше</div>
+            <div>• Расходники не штрафуются</div>
           </div>
         </div>
       ) : null}
@@ -471,23 +440,24 @@ export default function HomeDashboardPage() {
   return (
     <AppShell title="Главная">
       <div className="space-y-6">
-        <div className="rounded-2xl border border-zinc-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(250,204,21,0.10))] p-4">
-          <div className="text-sm font-semibold text-zinc-900">
-            Быстрые разделы
-          </div>
-          <div className="mt-1 text-sm text-zinc-600">
-            Здесь позже добавим дашборды: активные заявки, ближайшие даты, топ
-            позиций.
-          </div>
-        </div>
-
         {isGreenwich ? (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div className="md:col-span-8">
-              <GreenwichDashboardBlock isGreenwich={isGreenwich} />
+          <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-sm font-semibold text-zinc-900">Дашборд Greenwich</div>
+                <div className="mt-1 text-xs text-zinc-600">
+                  Держи темп: возвращай вовремя и в норме на приёмке
+                </div>
+              </div>
             </div>
-            <div className="md:col-span-4">
-              <GreenwichRatingCard />
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+              <div className="md:col-span-8">
+                <GreenwichDashboardBlock isGreenwich={isGreenwich} />
+              </div>
+              <div className="md:col-span-4">
+                <GreenwichRatingCard />
+              </div>
             </div>
           </div>
         ) : null}

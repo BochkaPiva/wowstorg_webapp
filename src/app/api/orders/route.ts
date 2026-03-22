@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
@@ -114,7 +115,12 @@ export async function POST(req: Request) {
     payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  // Serializable: снижает риск overbooking при параллельных POST с пересекающимися датами/позициями
+  // (два запроса не «прочитают» одинаковый reserved до коммита другого).
+  let result: { id: string };
+  try {
+    result = await prisma.$transaction(
+      async (tx) => {
     let customerIdToUse: string;
     if (hasCustomerName) {
       const name = data.customerName!.trim();
@@ -209,7 +215,31 @@ export async function POST(req: Request) {
     });
 
     return order;
-  });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
+      return jsonError(409, "Конфликт при резервировании. Повторите попытку.");
+    }
+    if (e instanceof Error) {
+      if (e.message === "CUSTOMER_NOT_FOUND") {
+        return jsonError(400, "Заказчик не найден или неактивен");
+      }
+      if (e.message === "ITEM_NOT_FOUND") {
+        return jsonError(400, "Одна или несколько позиций недоступны");
+      }
+      const m = /^EXCEEDS_AVAILABILITY:[^:]+:(\d+)$/.exec(e.message);
+      if (m) {
+        return jsonError(400, `Недостаточно свободных единиц на выбранные даты (доступно ${m[1]})`);
+      }
+    }
+    throw e;
+  }
 
   const createdOrder = await prisma.order.findUnique({
     where: { id: result.id },

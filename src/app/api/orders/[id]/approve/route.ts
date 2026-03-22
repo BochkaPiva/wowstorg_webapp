@@ -44,10 +44,15 @@ export async function POST(
   const lineUpdates = parsed.data.lines ?? order.lines.map((l) => ({ orderLineId: l.id, approvedQty: l.requestedQty }));
   const lineById = new Map(order.lines.map((l) => [l.id, l]));
 
+  for (const { orderLineId } of lineUpdates) {
+    if (!lineById.has(orderLineId)) {
+      return jsonError(400, "Неизвестная строка заявки", { orderLineId });
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const { orderLineId, approvedQty } of lineUpdates) {
-      const line = lineById.get(orderLineId);
-      if (!line) continue;
+      const line = lineById.get(orderLineId)!;
       const qty = Math.min(approvedQty, line.requestedQty);
       await tx.orderLine.update({
         where: { id: orderLineId },

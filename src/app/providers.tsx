@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { readJsonSafe } from "@/lib/fetchJson";
+
 export type MeUser = {
   id: string;
   login: string;
@@ -27,10 +29,14 @@ export function useAuth() {
 }
 
 async function fetchMe(): Promise<MeUser | null> {
-  const res = await fetch("/api/auth/me", { cache: "no-store" });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { user: MeUser | null };
-  return data.user;
+  try {
+    const res = await fetch("/api/auth/me", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await readJsonSafe<{ user: MeUser | null }>(res)) ?? { user: null };
+    return data.user;
+  } catch {
+    return null;
+  }
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {

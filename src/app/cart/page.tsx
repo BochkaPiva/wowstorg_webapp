@@ -400,6 +400,9 @@ export default function CartPage() {
       clearCart(cartScope);
       setCart([]);
       router.replace(`/orders/${data?.orderId ?? ""}`);
+    } catch (e) {
+      console.error("cart submit failed", e);
+      setError(e instanceof Error ? e.message : "Не удалось отправить заявку");
     } finally {
       setSubmitting(false);
     }

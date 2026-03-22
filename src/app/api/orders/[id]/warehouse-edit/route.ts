@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
@@ -49,124 +50,158 @@ export async function PATCH(
 
   const data = parsed.data;
 
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      customer: { select: { name: true } },
-      greenwichUser: { select: { displayName: true } },
-      lines: {
-        orderBy: [{ position: "asc" }],
-        include: { item: { select: { name: true } } },
+  let wasCycleStatus = false;
+
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id },
+          include: {
+            customer: { select: { name: true } },
+            greenwichUser: { select: { displayName: true } },
+            lines: {
+              orderBy: [{ position: "asc" }],
+              include: { item: { select: { name: true } } },
+            },
+          },
+        });
+
+        if (!order) throw new Error("NOT_FOUND");
+
+        const quickRow = await tx.$queryRaw<Array<{ parentOrderId: string | null }>>`
+          SELECT "parentOrderId"
+          FROM "Order"
+          WHERE "id" = ${id}
+          LIMIT 1
+        `;
+        if (quickRow?.[0]?.parentOrderId) {
+          throw new Error("FORBIDDEN_QUICK");
+        }
+
+        if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
+          throw new Error("BAD_STATUS");
+        }
+
+        const itemIds = [...new Set(data.lines.map((l) => l.itemId))];
+        const items = await tx.item.findMany({
+          where: { id: { in: itemIds }, isActive: true },
+          select: {
+            id: true,
+            name: true,
+            pricePerDay: true,
+            total: true,
+            inRepair: true,
+            broken: true,
+            missing: true,
+          },
+        });
+        const itemById = new Map(items.map((i) => [i.id, i]));
+        if (items.length !== itemIds.length) {
+          throw new Error("ITEM_NOT_FOUND");
+        }
+
+        const requestedByItemId = new Map<string, number>();
+        for (const row of data.lines) {
+          requestedByItemId.set(row.itemId, (requestedByItemId.get(row.itemId) ?? 0) + row.requestedQty);
+        }
+        const reserved = await getReservedQtyByItemId({
+          db: tx,
+          startDate: order.startDate,
+          endDate: order.endDate,
+          excludeOrderId: id,
+        });
+        for (const [itemId, requestedTotal] of requestedByItemId) {
+          const item = itemById.get(itemId)!;
+          const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
+          const reservedQty = reserved.get(itemId) ?? 0;
+          const availableForDates = Math.max(0, availableTotal - reservedQty);
+          if (requestedTotal > availableForDates) {
+            throw new Error(`AVAILABILITY:${item.name}:${availableForDates}:${requestedTotal}`);
+          }
+        }
+
+        const existingIds = new Set(order.lines.map((l) => l.id));
+        const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
+        const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
+
+        wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
+
+        for (const line of toDelete) {
+          await tx.orderLine.delete({ where: { id: line.id } });
+        }
+
+        let position = 0;
+        for (const row of data.lines) {
+          const price = itemById.get(row.itemId)!.pricePerDay;
+          if (row.id && existingIds.has(row.id)) {
+            await tx.orderLine.update({
+              where: { id: row.id },
+              data: {
+                requestedQty: row.requestedQty,
+                warehouseComment: row.warehouseComment?.trim() || null,
+                position,
+              },
+            });
+          } else {
+            await tx.orderLine.create({
+              data: {
+                orderId: id,
+                itemId: row.itemId,
+                requestedQty: row.requestedQty,
+                pricePerDaySnapshot: price,
+                warehouseComment: row.warehouseComment?.trim() || null,
+                position,
+              },
+            });
+          }
+          position++;
+        }
+
+        await tx.order.update({
+          where: { id },
+          data: {
+            ...(data.eventName !== undefined ? { eventName: data.eventName.trim() || null } : {}),
+            ...(data.comment !== undefined ? { comment: data.comment.trim() || null } : {}),
+            ...(data.deliveryEnabled !== undefined ? { deliveryEnabled: data.deliveryEnabled } : {}),
+            ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment.trim() || null } : {}),
+            ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
+            ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
+            ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
+            ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
+            ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
+            ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
+            ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
+            ...(wasCycleStatus ? { status: "SUBMITTED" } : {}),
+          },
+        });
       },
-    },
-  });
-
-  if (!order) return jsonError(404, "Not found");
-
-  // Quick supplement (быстрая доп.-выдача) нельзя редактировать обычными формами.
-  const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
-    SELECT "parentOrderId"
-    FROM "Order"
-    WHERE "id" = ${id}
-    LIMIT 1
-  `;
-  if (quickRow?.[0]?.parentOrderId) {
-    return jsonError(400, "Быстрая доп.-заявка не редактируется");
-  }
-
-  if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
-    return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
-  }
-
-  const itemIds = [...new Set(data.lines.map((l) => l.itemId))];
-  const items = await prisma.item.findMany({
-    where: { id: { in: itemIds }, isActive: true },
-    select: { id: true, name: true, pricePerDay: true, total: true, inRepair: true, broken: true, missing: true },
-  });
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  if (items.length !== itemIds.length) {
-    return jsonError(400, "Одна или несколько позиций не найдены");
-  }
-
-  const requestedByItemId = new Map<string, number>();
-  for (const row of data.lines) {
-    requestedByItemId.set(row.itemId, (requestedByItemId.get(row.itemId) ?? 0) + row.requestedQty);
-  }
-  const reserved = await getReservedQtyByItemId({
-    db: prisma,
-    startDate: order.startDate,
-    endDate: order.endDate,
-    excludeOrderId: id,
-  });
-  for (const [itemId, requestedTotal] of requestedByItemId) {
-    const item = itemById.get(itemId)!;
-    const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
-    const reservedQty = reserved.get(itemId) ?? 0;
-    const availableForDates = Math.max(0, availableTotal - reservedQty);
-    if (requestedTotal > availableForDates) {
-      return jsonError(
-        400,
-        `«${item.name}»: доступно ${availableForDates} шт. на выбранные даты, запрошено ${requestedTotal}`,
-      );
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
+      return jsonError(409, "Конфликт при сохранении. Повторите попытку.");
     }
-  }
-
-  const existingIds = new Set(order.lines.map((l) => l.id));
-  const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
-  const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
-
-  const wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
-
-  await prisma.$transaction(async (tx) => {
-    for (const line of toDelete) {
-      await tx.orderLine.delete({ where: { id: line.id } });
-    }
-
-    let position = 0;
-    for (const row of data.lines) {
-      const price = itemById.get(row.itemId)!.pricePerDay;
-      if (row.id && existingIds.has(row.id)) {
-        await tx.orderLine.update({
-          where: { id: row.id },
-          data: {
-            requestedQty: row.requestedQty,
-            warehouseComment: row.warehouseComment?.trim() || null,
-            position,
-          },
-        });
-      } else {
-        await tx.orderLine.create({
-          data: {
-            orderId: id,
-            itemId: row.itemId,
-            requestedQty: row.requestedQty,
-            pricePerDaySnapshot: price,
-            warehouseComment: row.warehouseComment?.trim() || null,
-            position,
-          },
-        });
+    if (e instanceof Error) {
+      if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
+      if (e.message === "FORBIDDEN_QUICK") return jsonError(400, "Быстрая доп.-заявка не редактируется");
+      if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
+      if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
+      const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);
+      if (m) {
+        return jsonError(
+          400,
+          `«${m[1]}»: доступно ${m[2]} шт. на выбранные даты, запрошено ${m[3]}`,
+        );
       }
-      position++;
     }
-
-    await tx.order.update({
-      where: { id },
-      data: {
-        ...(data.eventName !== undefined ? { eventName: data.eventName.trim() || null } : {}),
-        ...(data.comment !== undefined ? { comment: data.comment.trim() || null } : {}),
-        ...(data.deliveryEnabled !== undefined ? { deliveryEnabled: data.deliveryEnabled } : {}),
-        ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment.trim() || null } : {}),
-        ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
-        ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
-        ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
-        ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
-        ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
-        ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
-        ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
-        ...(wasCycleStatus ? { status: "SUBMITTED" } : {}),
-      },
-    });
-  });
+    console.error("[warehouse-edit] transaction error:", e);
+    return jsonError(500, e instanceof Error ? e.message : "Ошибка при сохранении");
+  }
 
   return jsonOk({ ok: true });
 }

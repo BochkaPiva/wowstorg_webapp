@@ -63,9 +63,12 @@ export function AppShell({
   }, [router, state.status]);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    await refresh();
-    router.replace("/login");
+    try {
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+    } finally {
+      await refresh();
+      router.replace("/login");
+    }
   }
 
   if (state.status !== "authenticated") {

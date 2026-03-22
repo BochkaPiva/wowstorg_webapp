@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -72,123 +73,152 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
-  const parent = await prisma.order.findUnique({
-    where: { id: parentOrderId },
-    select: {
-      id: true,
-      status: true,
-      customerId: true,
-      eventName: true,
-      comment: true,
-      customer: { select: { name: true } },
-      greenwichUserId: true,
-      readyByDate: true,
-      startDate: true,
-      endDate: true,
-      payMultiplier: true,
-    },
-  });
-
-  if (!parent) return jsonError(404, "Parent order not found");
-  if (parent.status !== "ISSUED") return jsonError(400, "Quick supplement can be created only for ISSUED orders");
-  if (!parent.greenwichUserId) return jsonError(400, "Parent must have assigned Grinvich employee");
-
-  const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
-    SELECT "parentOrderId"
-    FROM "Order"
-    WHERE "id" = ${parentOrderId}
-    LIMIT 1
-  `;
-  if (quickRow?.[0]?.parentOrderId) {
-    return jsonError(400, "Quick supplement can be created only for main orders");
-  }
-
-  // Quick supplement MUST NOT use extra services.
   const disabledServices = {
     deliveryEnabled: false,
     montageEnabled: false,
     demontageEnabled: false,
   } as const;
 
-  const itemIds = [...new Set(parsed.data.lines.map((l) => l.itemId))];
-  const items = await prisma.item.findMany({
-    where: { id: { in: itemIds }, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      pricePerDay: true,
-      total: true,
-      inRepair: true,
-      broken: true,
-      missing: true,
-    },
-  });
-  if (items.length !== itemIds.length) return jsonError(400, "One or more items not found");
+  let created: { id: string };
+  try {
+    created = await prisma.$transaction(
+      async (tx) => {
+        const parent = await tx.order.findUnique({
+          where: { id: parentOrderId },
+          select: {
+            id: true,
+            status: true,
+            customerId: true,
+            eventName: true,
+            comment: true,
+            customer: { select: { name: true } },
+            greenwichUserId: true,
+            readyByDate: true,
+            startDate: true,
+            endDate: true,
+            payMultiplier: true,
+          },
+        });
 
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  const reservedByItemId = await getReservedQtyByItemId({
-    db: prisma,
-    startDate: parent.startDate,
-    endDate: parent.endDate,
-  });
+        if (!parent) throw new Error("NOT_FOUND");
+        if (parent.status !== "ISSUED") throw new Error("NOT_ISSUED");
+        if (!parent.greenwichUserId) throw new Error("NO_GREENWICH");
 
-  const requestedTotalByItemId = new Map<string, number>();
-  for (const l of parsed.data.lines) {
-    requestedTotalByItemId.set(l.itemId, (requestedTotalByItemId.get(l.itemId) ?? 0) + l.qty);
-  }
+        const quickRow = await tx.$queryRaw<Array<{ parentOrderId: string | null }>>`
+          SELECT "parentOrderId"
+          FROM "Order"
+          WHERE "id" = ${parentOrderId}
+          LIMIT 1
+        `;
+        if (quickRow?.[0]?.parentOrderId) {
+          throw new Error("NOT_MAIN");
+        }
 
-  for (const [itemId, requestedTotal] of requestedTotalByItemId) {
-    const item = itemById.get(itemId);
-    if (!item) return jsonError(400, "Item not found");
-    const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
-    const reservedQty = reservedByItemId.get(itemId) ?? 0;
-    const availableForDates = Math.max(0, availableTotal - reservedQty);
-    if (requestedTotal > availableForDates) {
-      return jsonError(400, `EXCEEDS_AVAILABILITY:${item.id}:${availableForDates}`);
-    }
-  }
+        const itemIds = [...new Set(parsed.data.lines.map((l) => l.itemId))];
+        const items = await tx.item.findMany({
+          where: { id: { in: itemIds }, isActive: true },
+          select: {
+            id: true,
+            name: true,
+            pricePerDay: true,
+            total: true,
+            inRepair: true,
+            broken: true,
+            missing: true,
+          },
+        });
+        if (items.length !== itemIds.length) throw new Error("ITEM_NOT_FOUND");
 
-  const created = await prisma.$transaction(async (tx) => {
-    const createdOrder = await tx.order.create({
-      data: {
-        source: "GREENWICH_INTERNAL",
-        status: "PICKING",
-        createdById: auth.user.id,
-        greenwichUserId: parent.greenwichUserId,
-        customerId: parent.customerId,
-        eventName: parent.eventName,
-        comment: parent.comment,
-        readyByDate: parent.readyByDate,
-        startDate: parent.startDate,
-        endDate: parent.endDate,
-        payMultiplier: parent.payMultiplier,
-        deliveryEnabled: disabledServices.deliveryEnabled,
-        montageEnabled: disabledServices.montageEnabled,
-        demontageEnabled: disabledServices.demontageEnabled,
-        lines: {
-          create: parsed.data.lines.map((l, idx) => {
-            const item = itemById.get(l.itemId)!;
-            return {
-              itemId: l.itemId,
-              requestedQty: l.qty,
-              position: idx,
-              pricePerDaySnapshot: item.pricePerDay,
-              warehouseComment: null,
-            };
-          }),
-        },
+        const itemById = new Map(items.map((i) => [i.id, i]));
+        const reservedByItemId = await getReservedQtyByItemId({
+          db: tx,
+          startDate: parent.startDate,
+          endDate: parent.endDate,
+        });
+
+        const requestedTotalByItemId = new Map<string, number>();
+        for (const l of parsed.data.lines) {
+          requestedTotalByItemId.set(l.itemId, (requestedTotalByItemId.get(l.itemId) ?? 0) + l.qty);
+        }
+
+        for (const [itemId, requestedTotal] of requestedTotalByItemId) {
+          const item = itemById.get(itemId);
+          if (!item) throw new Error("ITEM_NOT_FOUND");
+          const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
+          const reservedQty = reservedByItemId.get(itemId) ?? 0;
+          const availableForDates = Math.max(0, availableTotal - reservedQty);
+          if (requestedTotal > availableForDates) {
+            throw new Error(`AVAILABILITY:${item.name}:${availableForDates}:${requestedTotal}`);
+          }
+        }
+
+        const createdOrder = await tx.order.create({
+          data: {
+            source: "GREENWICH_INTERNAL",
+            status: "PICKING",
+            createdById: auth.user.id,
+            greenwichUserId: parent.greenwichUserId,
+            customerId: parent.customerId,
+            eventName: parent.eventName,
+            comment: parent.comment,
+            readyByDate: parent.readyByDate,
+            startDate: parent.startDate,
+            endDate: parent.endDate,
+            payMultiplier: parent.payMultiplier,
+            deliveryEnabled: disabledServices.deliveryEnabled,
+            montageEnabled: disabledServices.montageEnabled,
+            demontageEnabled: disabledServices.demontageEnabled,
+            lines: {
+              create: parsed.data.lines.map((l, idx) => {
+                const item = itemById.get(l.itemId)!;
+                return {
+                  itemId: l.itemId,
+                  requestedQty: l.qty,
+                  position: idx,
+                  pricePerDaySnapshot: item.pricePerDay,
+                  warehouseComment: null,
+                };
+              }),
+            },
+          },
+          select: { id: true },
+        });
+
+        await tx.$executeRaw`
+          UPDATE "Order"
+          SET "parentOrderId" = ${parentOrderId}
+          WHERE "id" = ${createdOrder.id}
+        `;
+
+        return createdOrder;
       },
-      select: { id: true },
-    });
-
-    await tx.$executeRaw`
-      UPDATE "Order"
-      SET "parentOrderId" = ${parentOrderId}
-      WHERE "id" = ${createdOrder.id}
-    `;
-
-    return createdOrder;
-  });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
+      return jsonError(409, "Конфликт при резервировании. Повторите попытку.");
+    }
+    if (e instanceof Error) {
+      if (e.message === "NOT_FOUND") return jsonError(404, "Parent order not found");
+      if (e.message === "NOT_ISSUED") return jsonError(400, "Quick supplement can be created only for ISSUED orders");
+      if (e.message === "NO_GREENWICH") return jsonError(400, "Parent must have assigned Grinvich employee");
+      if (e.message === "NOT_MAIN") return jsonError(400, "Quick supplement can be created only for main orders");
+      if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "One or more items not found");
+      const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);
+      if (m) {
+        return jsonError(
+          400,
+          `«${m[1]}»: доступно ${m[2]} шт. на выбранные даты, запрошено ${m[3]}`,
+        );
+      }
+    }
+    console.error("[quick-supplement/warehouse]", e);
+    return jsonError(500, e instanceof Error ? e.message : "Ошибка");
+  }
 
   if (isTelegramConfigured()) {
     const warehouseChatId = getWarehouseChatId();

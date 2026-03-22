@@ -476,13 +476,18 @@ export default function OrderDetailsPage() {
     setError(null);
     try {
       const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
-      const data = (await res.json()) as { order?: Order; error?: { message?: string } };
+      const data = (await res.json().catch(() => null)) as
+        | { order?: Order; error?: { message?: string } }
+        | null;
       if (!res.ok) {
         setOrder(null);
         setError(data?.error?.message ?? "Не удалось загрузить заявку");
         return;
       }
-      setOrder(data.order ?? null);
+      setOrder(data?.order ?? null);
+    } catch {
+      setOrder(null);
+      setError("Не удалось загрузить заявку");
     } finally {
       setLoading(false);
     }
@@ -535,7 +540,9 @@ export default function OrderDetailsPage() {
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
-      const data = (await res.json()) as { ok?: boolean; error?: { message?: string } };
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: { message?: string } }
+        | null;
       if (!res.ok) {
         setActionError(data?.error?.message ?? "Ошибка операции");
         return;
@@ -545,6 +552,8 @@ export default function OrderDetailsPage() {
         if (isWarehouse) router.push("/warehouse/queue");
         else if (isGreenwich) router.push("/orders");
       }
+    } catch {
+      setActionError("Ошибка сети или ответа сервера");
     } finally {
       setBusy(false);
     }
@@ -710,6 +719,8 @@ export default function OrderDetailsPage() {
       }
       await loadOrder();
       setIsEditing(false);
+    } catch {
+      setActionError("Ошибка сети или ответа сервера");
     } finally {
       setBusy(false);
     }

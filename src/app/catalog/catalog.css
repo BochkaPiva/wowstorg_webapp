@@ -153,6 +153,7 @@
   color: transparent;
 }
 .mk-dateBtn {
+  position: relative;
   width: 44px;
   min-height: 42px;
   display: inline-flex;
@@ -167,17 +168,26 @@
 .mk-dateBtn:hover {
   background: rgba(124, 58, 237, 0.18);
 }
+.mk-dateBtnFace {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
 .mk-dateBtn svg {
   width: 18px;
   height: 18px;
   fill: rgba(17, 24, 39, 0.75);
 }
+/* Нативный date поверх иконки — без showPicker(), иначе Chromium → unhandledrejection с Event */
 .mk-dateNative {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
-  width: 1px;
-  height: 1px;
+  cursor: pointer;
+  z-index: 1;
 }
 
 .mk-tabs {

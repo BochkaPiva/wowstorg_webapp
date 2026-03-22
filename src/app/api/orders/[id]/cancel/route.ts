@@ -1,6 +1,11 @@
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import {
+  makeQueuedOrderCancelledResult,
+  type OrderCancelledNotifyResult,
+} from "@/server/notifications/order-notifications";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const CANCELLABLE = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"] as const;
 
@@ -43,12 +48,16 @@ export async function POST(
       },
     },
   });
+  let notification: OrderCancelledNotifyResult | undefined;
   if (fullOrder) {
-    const { notifyOrderCancelled } = await import("@/server/notifications/order-notifications");
-    void notifyOrderCancelled(fullOrder as Parameters<typeof notifyOrderCancelled>[0]).catch((e) =>
-      console.error("[cancel] notifyOrderCancelled failed:", e),
-    );
+    type NotifyCancelled = typeof import("@/server/notifications/order-notifications").notifyOrderCancelled;
+    const payload = fullOrder as Parameters<NotifyCancelled>[0];
+    notification = makeQueuedOrderCancelledResult();
+    scheduleAfterResponse("notifyOrderCancelled", async () => {
+      const { notifyOrderCancelled } = await import("@/server/notifications/order-notifications");
+      await notifyOrderCancelled(payload);
+    });
   }
 
-  return jsonOk({ ok: true });
+  return jsonOk({ ok: true, notification });
 }

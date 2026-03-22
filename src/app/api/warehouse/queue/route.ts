@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
-import { jsonOk } from "@/server/http";
+import { jsonError, jsonOk } from "@/server/http";
 
 const QUEUE_STATUSES = [
   "SUBMITTED",
@@ -13,14 +14,113 @@ const QUEUE_STATUSES = [
   "RETURN_DECLARED",
 ] as const;
 
-export async function GET() {
+type QueueStatus = (typeof QUEUE_STATUSES)[number];
+
+const SORT_VALUES = [
+  "smart",
+  "readyBy_asc",
+  "readyBy_desc",
+  "created_desc",
+  "created_asc",
+  "startDate_asc",
+  "startDate_desc",
+] as const;
+
+const SOURCE_VALUES = ["all", "GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"] as const;
+
+const QuerySchema = z.object({
+  sort: z.enum(SORT_VALUES).optional().default("readyBy_asc"),
+  /** Список статусов через запятую; пусто = все статусы очереди */
+  status: z.string().max(500).optional(),
+  q: z.string().trim().max(120).optional(),
+  source: z.enum(SOURCE_VALUES).optional().default("all"),
+});
+
+/** Приоритет для режима smart (как на странице «Мои заявки»). */
+const STATUS_PRIORITY: Record<string, number> = {
+  ISSUED: 0,
+  RETURN_DECLARED: 1,
+  PICKING: 2,
+  APPROVED_BY_GREENWICH: 3,
+  CHANGES_REQUESTED: 4,
+  ESTIMATE_SENT: 5,
+  SUBMITTED: 6,
+};
+
+function parseStatusFilter(raw: string | undefined): QueueStatus[] {
+  if (!raw?.trim()) return [...QUEUE_STATUSES];
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const allowed = new Set<string>(QUEUE_STATUSES);
+  const picked = parts.filter((p): p is QueueStatus => allowed.has(p));
+  return picked.length > 0 ? picked : [...QUEUE_STATUSES];
+}
+
+function orderByFromSort(sort: (typeof SORT_VALUES)[number]): Prisma.OrderOrderByWithRelationInput[] {
+  switch (sort) {
+    case "smart":
+      return [{ readyByDate: "asc" }, { createdAt: "desc" }];
+    case "readyBy_desc":
+      return [{ readyByDate: "desc" }, { createdAt: "desc" }];
+    case "created_desc":
+      return [{ createdAt: "desc" }];
+    case "created_asc":
+      return [{ createdAt: "asc" }];
+    case "startDate_asc":
+      return [{ startDate: "asc" }, { readyByDate: "asc" }];
+    case "startDate_desc":
+      return [{ startDate: "desc" }, { readyByDate: "desc" }];
+    case "readyBy_asc":
+    default:
+      return [{ readyByDate: "asc" }, { createdAt: "desc" }];
+  }
+}
+
+export async function GET(req: Request) {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
 
+  const url = new URL(req.url);
+  const parsed = QuerySchema.safeParse({
+    sort: url.searchParams.get("sort") ?? undefined,
+    status: url.searchParams.get("status") ?? undefined,
+    q: url.searchParams.get("q") ?? undefined,
+    source: url.searchParams.get("source") ?? undefined,
+  });
+  if (!parsed.success) {
+    return jsonError(400, "Некорректные параметры запроса", parsed.error.flatten());
+  }
+
+  const { sort, q, source } = parsed.data;
+  const statusIn = parseStatusFilter(parsed.data.status);
+
+  const searchWhere: Prisma.OrderWhereInput | undefined =
+    q && q.length > 0
+      ? {
+          OR: [
+            { customer: { name: { contains: q, mode: "insensitive" } } },
+            { greenwichUser: { displayName: { contains: q, mode: "insensitive" } } },
+            { id: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : undefined;
+
+  const sourceWhere: Prisma.OrderWhereInput | undefined =
+    source === "all"
+      ? undefined
+      : { source: source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL" };
+
+  const where: Prisma.OrderWhereInput = {
+    AND: [
+      { status: { in: statusIn } },
+      ...(sourceWhere ? [sourceWhere] : []),
+      ...(searchWhere ? [searchWhere] : []),
+    ],
+  };
+
   const orders = await prisma.order.findMany({
-    where: { status: { in: [...QUEUE_STATUSES] } },
-    orderBy: [{ readyByDate: "asc" }, { createdAt: "desc" }],
-    take: 200,
+    where,
+    orderBy: orderByFromSort(sort),
+    take: 500,
     select: {
       id: true,
       status: true,
@@ -90,6 +190,17 @@ export async function GET() {
     };
   });
 
+  if (sort === "smart") {
+    serialized.sort((a, b) => {
+      const pa = STATUS_PRIORITY[a.status] ?? 99;
+      const pb = STATUS_PRIORITY[b.status] ?? 99;
+      if (pa !== pb) return pa - pb;
+      const ra = new Date(a.readyByDate).getTime();
+      const rb = new Date(b.readyByDate).getTime();
+      return ra - rb;
+    });
+  }
+
   const ids = serialized.map((o) => o.id);
   if (ids.length > 0) {
     const quickRows = await prisma.$queryRaw<Array<{ id: string; parentOrderId: string | null }>>`
@@ -105,4 +216,3 @@ export async function GET() {
 
   return jsonOk({ orders: serialized });
 }
-

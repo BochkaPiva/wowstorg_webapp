@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const BodySchema = z.object({
   lines: z.array(z.object({
@@ -84,10 +85,12 @@ export async function POST(
     },
   });
   if (fullOrder) {
-    const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
-    void notifyEstimateApproved(fullOrder as Parameters<typeof notifyEstimateApproved>[0]).catch((e) =>
-      console.error("[approve] notifyEstimateApproved failed:", e),
-    );
+    type Fn = typeof import("@/server/notifications/order-notifications").notifyEstimateApproved;
+    const payload = fullOrder as Parameters<Fn>[0];
+    scheduleAfterResponse("notifyEstimateApproved", async () => {
+      const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
+      await notifyEstimateApproved(payload);
+    });
   }
 
   return jsonOk({ ok: true });

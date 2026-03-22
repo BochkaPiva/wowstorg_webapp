@@ -56,6 +56,11 @@ export default function AdminIndexPage() {
             title="Аналитика"
             description="Топ реквизита по сдачам и прибыли, топ заказчиков."
           />
+          <AdminCard
+            href="/admin/telegram"
+            title="Telegram"
+            description="Статус бота, тест в чат склада и в личку."
+          />
         </div>
       )}
     </AppShell>

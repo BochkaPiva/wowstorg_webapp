@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { buildEstimateXlsx } from "@/server/estimate-xlsx";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
-import { notifyEstimateSent } from "@/server/notifications/order-notifications";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
 
@@ -163,10 +163,14 @@ export async function POST(
     },
   });
 
-  void notifyEstimateSent(
-    fullOrder as Parameters<typeof notifyEstimateSent>[0],
-    { buffer: xlsxBuffer, fileName: `smeta-${id}.xlsx` },
-  ).catch((e) => console.error("[send-estimate] notifyEstimateSent failed:", e));
+  const orderForNotify = fullOrder as Parameters<
+    typeof import("@/server/notifications/order-notifications").notifyEstimateSent
+  >[0];
+  const estimateFile = { buffer: xlsxBuffer, fileName: `smeta-${id}.xlsx` };
+  scheduleAfterResponse("notifyEstimateSent", async () => {
+    const { notifyEstimateSent } = await import("@/server/notifications/order-notifications");
+    await notifyEstimateSent(orderForNotify, estimateFile);
+  });
 
   return jsonOk({ ok: true });
 }

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 
 const LineSchema = z.object({
@@ -242,12 +243,19 @@ export async function PATCH(
       },
     });
     if (after && orderBefore) {
-      const { notifyGreenwichEdited } = await import("@/server/notifications/order-notifications");
-      void notifyGreenwichEdited({
-        before: orderBefore as Parameters<typeof notifyGreenwichEdited>[0]["before"],
-        after: after as Parameters<typeof notifyGreenwichEdited>[0]["after"],
-        requiresResendEstimate: shouldRequestChanges,
-      }).catch((err) => console.error("[greenwich-edit] notifyGreenwichEdited failed:", err));
+      const before = orderBefore;
+      const afterOrder = after;
+      const resend = shouldRequestChanges;
+      type Args = Parameters<typeof import("@/server/notifications/order-notifications").notifyGreenwichEdited>[0];
+      const payload: Args = {
+        before: before as Args["before"],
+        after: afterOrder as Args["after"],
+        requiresResendEstimate: resend,
+      };
+      scheduleAfterResponse("notifyGreenwichEdited", async () => {
+        const { notifyGreenwichEdited } = await import("@/server/notifications/order-notifications");
+        await notifyGreenwichEdited(payload);
+      });
     }
 
     return jsonOk({ ok: true });

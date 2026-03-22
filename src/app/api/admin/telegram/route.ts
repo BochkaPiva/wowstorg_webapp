@@ -4,10 +4,13 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import {
+  getSendTimeoutMs,
+  getTelegramProxyLabel,
   getWarehouseChatId,
   getWarehouseTopicId,
   isTelegramConfigured,
-  sendTelegramMessage,
+  isTelegramProxyConfigured,
+  sendTelegramMessageDetailed,
 } from "@/server/telegram";
 
 export async function GET() {
@@ -29,6 +32,9 @@ export async function GET() {
       hasBotToken: isTelegramConfigured(),
       warehouseChatId,
       warehouseTopicId,
+      sendTimeoutMs: getSendTimeoutMs(),
+      proxyEnabled: isTelegramProxyConfigured(),
+      proxyLabel: getTelegramProxyLabel(),
     },
     greenwich: {
       activeUsers: totalGreenwich,
@@ -68,17 +74,21 @@ export async function POST(req: Request) {
     const chatId = getWarehouseChatId();
     if (!chatId) return jsonError(400, "Warehouse chat id is missing (TELEGRAM_NOTIFICATION_CHAT_ID)");
     const topicId = getWarehouseTopicId();
-    const ok = await sendTelegramMessage(chatId, text, {
+    const result = await sendTelegramMessageDetailed(chatId, text, {
       messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
     });
-    if (!ok) return jsonError(400, "Telegram send failed (check bot permissions/chatId/topicId)");
+    if (!result.ok) {
+      return jsonError(400, result.error, { hint: "warehouse_group" });
+    }
     return jsonOk({ ok: true });
   }
 
   const dmChatId = parsed.data.chatId;
   if (!dmChatId) return jsonError(400, "chatId is required for dm");
-  const ok = await sendTelegramMessage(dmChatId, text);
-  if (!ok) return jsonError(400, "Telegram send failed (user might not have started the bot yet)");
+  const dmResult = await sendTelegramMessageDetailed(dmChatId, text);
+  if (!dmResult.ok) {
+    return jsonError(400, dmResult.error, { hint: "dm" });
+  }
   return jsonOk({ ok: true });
 }
 

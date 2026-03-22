@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
+import { catalogDatesFromStorage } from "@/lib/catalogDates";
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import "./cart.css";
 import "../checkout/checkout.css";
@@ -66,7 +67,10 @@ type GreenwichUser = { id: string; displayName: string };
 export default function CartPage() {
   const router = useRouter();
   const { state } = useAuth();
-  const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
+  const [quickParentId, setQuickParentId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("quickParentId");
+  });
   const isQuickSupplement = Boolean(quickParentId);
   const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
@@ -166,9 +170,13 @@ export default function CartPage() {
   React.useEffect(() => {
     if (isQuickSupplement) return;
     if (typeof window === "undefined") return;
-    setStartDate(localStorage.getItem("catalog_startDate"));
-    setEndDate(localStorage.getItem("catalog_endDate"));
-    setReadyByDate(localStorage.getItem("catalog_readyByDate"));
+    const n = catalogDatesFromStorage();
+    setStartDate(n.startDate);
+    setEndDate(n.endDate);
+    setReadyByDate(n.readyByDate);
+    localStorage.setItem("catalog_readyByDate", n.readyByDate);
+    localStorage.setItem("catalog_startDate", n.startDate);
+    localStorage.setItem("catalog_endDate", n.endDate);
   }, [isQuickSupplement]);
 
   React.useEffect(() => {
@@ -391,11 +399,19 @@ export default function CartPage() {
         body: JSON.stringify(payload),
       });
       const data = (await res.json().catch(() => null)) as
-        | { orderId?: string; error?: { message?: string } }
+        | {
+            orderId?: string;
+            notification?: { queued?: boolean; sent?: boolean; message?: string };
+            error?: { message?: string };
+          }
         | null;
       if (!res.ok) {
         setError(data?.error?.message ?? "Не удалось создать заявку");
         return;
+      }
+      const n = data?.notification;
+      if (n && !n.queued && "sent" in n && n.sent === false && n.message) {
+        alert(`Заявка создана.\n\n⚠️ ${n.message}`);
       }
       clearCart(cartScope);
       setCart([]);

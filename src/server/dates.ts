@@ -11,3 +11,9 @@ export function parseDateOnlyToUtcMidnight(value: string) {
   return dt;
 }
 
+/** Сегодняшняя дата по UTC в формате YYYY-MM-DD (согласовано с хранением date-only в БД). */
+export function utcTodayDateOnlyString(): string {
+  const n = new Date();
+  return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}-${String(n.getUTCDate()).padStart(2, "0")}`;
+}
+

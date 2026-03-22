@@ -284,27 +284,39 @@ function buildEstimateBody(o: OrderForNotify): string {
   return block;
 }
 
+/** Сколько личных сообщений реально ушло в Telegram (текстовая часть). */
 async function sendToGreenwichUsers(
   text: string,
   estimateFile?: { buffer: Buffer; fileName: string },
-): Promise<void> {
+): Promise<number> {
   // Личные сообщения всем активным GREENWICH пользователям. Сначала всегда текст (информация + «проверьте смету»), затем файл.
   try {
-    const rows = await prisma.$queryRaw<
-      Array<{ telegramChatId: string | null }>
-    >`SELECT "telegramChatId" FROM "User" WHERE "role" = 'GREENWICH' AND "isActive" = true AND "telegramChatId" IS NOT NULL`;
+    const rows = await prisma.user.findMany({
+      where: {
+        role: "GREENWICH",
+        isActive: true,
+        telegramChatId: { not: null },
+      },
+      select: { telegramChatId: true },
+    });
     const ids = Array.from(
-      new Set((rows ?? []).map((r) => (r.telegramChatId ?? "").trim()).filter(Boolean)),
+      new Set(
+        (rows ?? [])
+          .map((r) => (r.telegramChatId ?? "").trim())
+          .filter(Boolean),
+      ),
     );
     notifyDebugLog(`[sendToGreenwichUsers] recipients: ${ids.length}`);
     if (ids.length === 0) {
       notifyDebugLog("[sendToGreenwichUsers] 0 получателей — укажите Telegram ID сотрудникам Grinvich в админке (Пользователи)");
-      return;
+      return 0;
     }
+    let textOk = 0;
     // Сначала гарантированно отправляем текстовое сообщение каждому, затем файл.
     for (const chatId of ids) {
       const ok = await sendTelegramMessage(chatId, text);
-      if (!ok) notifyDebugLog(`[sendToGreenwichUsers] text not sent to ${chatId}`);
+      if (ok) textOk += 1;
+      else notifyDebugLog(`[sendToGreenwichUsers] text not sent to ${chatId}`);
     }
     if (estimateFile?.buffer?.length) {
       for (const chatId of ids) {
@@ -313,33 +325,99 @@ async function sendToGreenwichUsers(
         });
       }
     }
+    return textOk;
   } catch (e) {
     notifyDebugLog(`[sendToGreenwichUsers] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notify] sendToGreenwichUsers failed:", e);
+    return 0;
   }
 }
 
+/** Для ответа API: почему в Telegram тишина (без секретов). */
+export type OrderCreatedNotifyResult = {
+  sent: boolean;
+  message: string;
+  /** Уведомление ушло в фон (`after`), фактический результат только в логах */
+  queued?: boolean;
+  code?: "no_customer" | "no_bot_token" | "no_warehouse_chat" | "telegram_failed" | "exception";
+};
+
+export type OrderCancelledNotifyResult = {
+  sent: boolean;
+  warehouseSent: boolean;
+  greenwichDmSent: number;
+  message: string;
+  queued?: boolean;
+};
+
+/** Текст в JSON, когда отправка Telegram отложена (не ждём в запросе). */
+export const TELEGRAM_QUEUED_MESSAGE =
+  "Уведомление в Telegram отправляется в фоне после ответа сервера.";
+
+export function makeQueuedOrderCreatedResult(): OrderCreatedNotifyResult {
+  return {
+    queued: true,
+    sent: false,
+    message: TELEGRAM_QUEUED_MESSAGE,
+  };
+}
+
+export function makeQueuedOrderCancelledResult(): OrderCancelledNotifyResult {
+  return {
+    queued: true,
+    sent: false,
+    warehouseSent: false,
+    greenwichDmSent: 0,
+    message: TELEGRAM_QUEUED_MESSAGE,
+  };
+}
+
 /** Новая заявка создана (Greenwich или склад) → уведомить склад */
-export async function notifyOrderCreated(order: OrderForNotify): Promise<void> {
+export async function notifyOrderCreated(order: OrderForNotify): Promise<OrderCreatedNotifyResult> {
   try {
+    notifyDebugLog(`[notifyOrderCreated] order=${order?.id ?? "?"}`);
+    const hasToken = isTelegramConfigured();
+    const warehouseId = getWarehouseChatId();
+    console.info(
+      "[notifyOrderCreated] диагностика:",
+      JSON.stringify({
+        orderId: order?.id,
+        hasBotToken: hasToken,
+        hasWarehouseChatId: Boolean(warehouseId),
+      }),
+    );
     if (!order?.customer) {
+      notifyDebugLog(`[notifyOrderCreated] skip: no customer order=${order?.id}`);
       console.warn("[notifyOrderCreated] skip: order has no customer", order?.id);
-      return;
+      return {
+        sent: false,
+        message: "Внутренняя ошибка: у заявки нет заказчика.",
+        code: "no_customer",
+      };
     }
-    const chatId = getWarehouseChatId();
+    const chatId = warehouseId;
     if (!chatId) {
-      console.warn("[notifyOrderCreated] skip: chatId empty (check TELEGRAM_NOTIFICATION_CHAT_ID)");
-      return;
-    }
-    if (!isTelegramConfigured()) {
-      console.warn("[notifyOrderCreated] Telegram is not configured: TELEGRAM_BOT_TOKEN is missing");
-      return;
-    }
-    if (!chatId) {
+      notifyDebugLog("[notifyOrderCreated] skip: TELEGRAM_NOTIFICATION_CHAT_ID empty");
       console.warn(
-        "[notifyOrderCreated] Warehouse chat id is missing (set TELEGRAM_NOTIFICATION_CHAT_ID or TELEGRAM_WAREHOUSE_CHAT_ID)",
+        "[notifyOrderCreated] ПРОПУСК: нет ID чата склада. В .env задайте TELEGRAM_NOTIFICATION_CHAT_ID или TELEGRAM_WAREHOUSE_CHAT_ID (см. docs/telegram-notifications.md).",
       );
-      return;
+      return {
+        sent: false,
+        message:
+          "Уведомление не отправлено: в .env не задан TELEGRAM_NOTIFICATION_CHAT_ID (или TELEGRAM_WAREHOUSE_CHAT_ID) — ID чата/группы склада.",
+        code: "no_warehouse_chat",
+      };
+    }
+    if (!hasToken) {
+      notifyDebugLog("[notifyOrderCreated] skip: TELEGRAM_BOT_TOKEN missing");
+      console.warn(
+        "[notifyOrderCreated] ПРОПУСК: нет TELEGRAM_BOT_TOKEN в .env — бот не может отправить сообщение.",
+      );
+      return {
+        sent: false,
+        message: "Уведомление не отправлено: в .env не задан TELEGRAM_BOT_TOKEN.",
+        code: "no_bot_token",
+      };
     }
     const topicId = getWarehouseTopicId();
     const blocks = [
@@ -356,10 +434,27 @@ export async function notifyOrderCreated(order: OrderForNotify): Promise<void> {
       messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
     });
     if (!ok) {
+      notifyDebugLog(
+        `[notifyOrderCreated] Telegram send FAILED order=${order.id} chatId=${chatId} topicId=${topicId ?? "—"} len=${text.length}`,
+      );
       console.warn("[notifyOrderCreated] Telegram send failed (chatId=%s, topicId=%s, len=%d)", chatId, topicId ?? "—", text.length);
+      return {
+        sent: false,
+        message:
+          "Telegram не принял сообщение: проверьте токен бота, ID чата, TELEGRAM_NOTIFICATION_TOPIC_ID (если форум) и что бот добавлен в группу.",
+        code: "telegram_failed",
+      };
     }
+    notifyDebugLog(`[notifyOrderCreated] ok order=${order.id}`);
+    return { sent: true, message: "Уведомление о новой заявке отправлено в чат склада." };
   } catch (e) {
+    notifyDebugLog(`[notifyOrderCreated] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notifyOrderCreated] unexpected error:", e);
+    return {
+      sent: false,
+      message: e instanceof Error ? e.message : "Ошибка при формировании уведомления.",
+      code: "exception",
+    };
   }
 }
 
@@ -585,9 +680,17 @@ export async function notifyCheckInClosed(
   }
 }
 
-/** Заявка отменена → склад (и Grinvich при наличии чата) */
-export async function notifyOrderCancelled(order: OrderForNotify): Promise<void> {
+/** Заявка отменена → склад (и Grinvich в личку при наличии telegramChatId у пользователей) */
+export async function notifyOrderCancelled(order: OrderForNotify): Promise<OrderCancelledNotifyResult> {
   try {
+    if (!order?.customer) {
+      return {
+        sent: false,
+        warehouseSent: false,
+        greenwichDmSent: 0,
+        message: "Уведомление не отправлено: нет данных заказчика.",
+      };
+    }
     const bodyBlocks = [
       orderHeader(order),
       buildLinesBlock(order),
@@ -597,15 +700,59 @@ export async function notifyOrderCancelled(order: OrderForNotify): Promise<void>
     ].filter(Boolean);
     const body = `❌ <b>Заявка отменена</b>\n\n` + bodyBlocks.join("\n\n");
 
-    const warehouseChatId = getWarehouseChatId();
-    if (warehouseChatId) {
-      const topicId = getWarehouseTopicId();
-      await sendTelegramMessage(warehouseChatId, body, {
-        messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
-      });
+    if (!isTelegramConfigured()) {
+      console.warn("[notifyOrderCancelled] ПРОПУСК: нет TELEGRAM_BOT_TOKEN");
+      return {
+        sent: false,
+        warehouseSent: false,
+        greenwichDmSent: 0,
+        message: "Уведомление не отправлено: в .env не задан TELEGRAM_BOT_TOKEN.",
+      };
     }
-    await sendToGreenwichUsers(body);
+
+    const warehouseChatId = getWarehouseChatId();
+    const topicId = getWarehouseTopicId();
+    let warehouseSent = false;
+    if (warehouseChatId) {
+      warehouseSent = Boolean(
+        await sendTelegramMessage(warehouseChatId, body, {
+          messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
+        }),
+      );
+    }
+    const greenwichDmSent = await sendToGreenwichUsers(body);
+    const sent = warehouseSent || greenwichDmSent > 0;
+
+    if (!sent) {
+      const msg =
+        !warehouseChatId && greenwichDmSent === 0
+          ? "Уведомление не отправлено: не задан TELEGRAM_NOTIFICATION_CHAT_ID и ни у одного сотрудника Grinvich в админке не указан Telegram ID."
+          : "Telegram не доставил сообщение (проверьте чат склада, топик и личные ID Grinvich).";
+      console.warn("[notifyOrderCancelled]", msg);
+      return {
+        sent: false,
+        warehouseSent,
+        greenwichDmSent,
+        message: msg,
+      };
+    }
+
+    const parts: string[] = [];
+    if (warehouseSent) parts.push("чат склада");
+    if (greenwichDmSent > 0) parts.push(`личные сообщения Grinvich (${greenwichDmSent})`);
+    return {
+      sent: true,
+      warehouseSent,
+      greenwichDmSent,
+      message: `Отправлено: ${parts.join(", ")}.`,
+    };
   } catch (e) {
     console.error("[notifyOrderCancelled] unexpected error:", e);
+    return {
+      sent: false,
+      warehouseSent: false,
+      greenwichDmSent: 0,
+      message: e instanceof Error ? e.message : "Ошибка при отправке уведомления об отмене.",
+    };
   }
 }

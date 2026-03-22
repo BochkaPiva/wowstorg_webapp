@@ -99,7 +99,8 @@ export async function GET(req: Request) {
     try {
       const start = parseDateOnlyToUtcMidnight(startDate);
       const end = parseDateOnlyToUtcMidnight(endDate);
-      if (start.getTime() < end.getTime()) {
+      // Включая один день аренды (start === end): пересечение по дням всё равно считается.
+      if (start.getTime() <= end.getTime()) {
         reservedByItemId = await getReservedQtyByItemId({
           db: prisma,
           startDate: start,

@@ -4,9 +4,14 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
-import { DateOnlySchema, parseDateOnlyToUtcMidnight } from "@/server/dates";
+import { DateOnlySchema, parseDateOnlyToUtcMidnight, utcTodayDateOnlyString } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import {
+  makeQueuedOrderCreatedResult,
+  type OrderCreatedNotifyResult,
+} from "@/server/notifications/order-notifications";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -71,11 +76,20 @@ export async function POST(req: Request) {
   const startDate = parseDateOnlyToUtcMidnight(data.startDate);
   const endDate = parseDateOnlyToUtcMidnight(data.endDate);
 
+  const minCalendarDay = utcTodayDateOnlyString();
+  if (
+    data.readyByDate < minCalendarDay ||
+    data.startDate < minCalendarDay ||
+    data.endDate < minCalendarDay
+  ) {
+    return jsonError(400, "Даты не могут быть в прошлом");
+  }
+
   if (!(readyByDate.getTime() <= startDate.getTime())) {
     return jsonError(400, "readyByDate must be <= startDate");
   }
-  if (!(startDate.getTime() < endDate.getTime())) {
-    return jsonError(400, "startDate must be < endDate");
+  if (!(startDate.getTime() <= endDate.getTime())) {
+    return jsonError(400, "Дата окончания не может быть раньше даты начала");
   }
 
   // Нормализуем строки: группируем по (itemId, sourceKitId) чтобы не плодить дубли.
@@ -253,13 +267,17 @@ export async function POST(req: Request) {
       },
     },
   });
+  let notification: OrderCreatedNotifyResult | undefined;
   if (createdOrder) {
-    const { notifyOrderCreated } = await import("@/server/notifications/order-notifications");
-    void notifyOrderCreated(createdOrder as Parameters<typeof notifyOrderCreated>[0]).catch((e) =>
-      console.error("[orders] notifyOrderCreated failed:", e),
-    );
+    type NotifyCreated = typeof import("@/server/notifications/order-notifications").notifyOrderCreated;
+    const orderPayload = createdOrder as Parameters<NotifyCreated>[0];
+    notification = makeQueuedOrderCreatedResult();
+    scheduleAfterResponse("notifyOrderCreated", async () => {
+      const { notifyOrderCreated } = await import("@/server/notifications/order-notifications");
+      await notifyOrderCreated(orderPayload);
+    });
   }
 
-  return jsonOk({ orderId: result.id });
+  return jsonOk({ orderId: result.id, notification });
 }
 

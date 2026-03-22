@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import {
   escapeTelegramHtml,
@@ -226,7 +227,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return jsonError(500, e instanceof Error ? e.message : "Ошибка");
   }
 
-  // Notify warehouse (best-effort).
   if (isTelegramConfigured()) {
     const warehouseChatId = getWarehouseChatId();
     if (warehouseChatId) {
@@ -259,8 +259,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           lines: createdOrder.lines.map((l) => ({ itemName: l.item.name, qty: l.requestedQty })),
         });
 
-        await sendTelegramMessage(warehouseChatId, msg, {
-          messageThreadId: warehouseTopicId ? parseInt(warehouseTopicId, 10) : undefined,
+        const threadId = warehouseTopicId ? parseInt(warehouseTopicId, 10) : undefined;
+        scheduleAfterResponse("quick-supplement-greenwich-telegram", async () => {
+          await sendTelegramMessage(warehouseChatId, msg, {
+            messageThreadId: threadId,
+          });
         });
       }
     }

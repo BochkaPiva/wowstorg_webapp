@@ -2,15 +2,68 @@
 
 Бот отправляет уведомления в чаты при событиях по заявкам. Отправка **best-effort**: ошибки не прерывают операции на сайте.
 
+## Минимум действий с вашей стороны
+
+1. **`.env` в корне проекта** (рядом с `package.json`): задать `TELEGRAM_BOT_TOKEN`, `TELEGRAM_NOTIFICATION_CHAT_ID`; для супергруппы с темами — ещё `TELEGRAM_NOTIFICATION_TOPIC_ID`. Сохранить файл и **перезапустить** `npm run dev` (Next подхватывает env при старте).
+2. **Залогиниться складом** (роль WOWSTORG) → **Админка** → **Telegram** → «Обновить статус» (должны быть токен **да** и виден чат склада) → **«Отправить тест в чат склада»**.
+3. Если тест не пришёл — в окне терминала с `npm run dev` искать строки **`[Telegram]`** (там будет текст ошибки от API Telegram: нет прав, неверный chat_id, не тот топик и т.д.).
+
+Личные уведомления Greenwich: у пользователей с ролью Greenwich в **Админка → Пользователи** должен быть заполнен **Telegram Chat ID** (и пользователь написал боту `/start`).
+
+### Скорость интерфейса
+
+После успешной записи в БД уведомления в Telegram ставятся в очередь **`after()`** (`next/server`): HTTP-ответ клиенту уходит **сразу**, отправка в `api.telegram.org` выполняется **после** ответа (кнопки не ждут сеть Telegram). В ответах создания заявки и отмены в JSON приходит `notification.queued: true` и поясняющий `message` (реальный результат отправки — только в логах сервера: `[notify…]`, `[Telegram]`).
+
+### Фоновый режим уведомлений
+
+**Сейчас используется отложенная отправка** через `scheduleAfterResponse` → `after()` из Next.js. Реализация: `src/server/notifications/schedule-after-response.ts` (обёртка с `try/catch` и логом ошибок).
+
+### Деплой и Россия (ECONNRESET, VPN, `fetch failed`)
+
+**Проблема на вашем ПК** (блокировка/замедление `api.telegram.org`) — это **не** то же самое, что на проде.
+
+| Где крутится приложение | Исходящий запрос к Telegram |
+|-------------------------|------------------------------|
+| **Vercel / EU-US VPS / Railway / Fly.io и т.п.** | Сервер **вне РФ** обычно ходит в `api.telegram.org` **без VPN** — блокировки РФ на него не распространяются. **VPN на сервере не нужен.** |
+| **Сервер в РФ** (свой VPS, локальный хостинг) | Исходящий трафик сервера к Telegram может **снова обрываться** или таймаутиться. Нужен **выход через прокси** (`TELEGRAM_HTTPS_PROXY` / `HTTPS_PROXY` на прокси с зарубежным выходом) или **перенос хостинга** за регион. |
+
+Пользователи из России в браузере открывают сайт как обычно; важно только **где сервер выполняет** `fetch` к `api.telegram.org`.
+
+Для **локальной разработки** в РФ: VPN на ПК или `TELEGRAM_HTTPS_PROXY=http://127.0.0.1:ПОРТ` к локальному прокси из VPN-клиента (см. таблицу переменных ниже).
+
+### Отладка на localhost
+
+1. Зайти под **WOWSTORG** (склад) → **Админка** → **Telegram** (`/admin/telegram`): кнопки «Обновить статус», «Тест в чат склада», при необходимости тест в ЛС по `chat_id`.  
+2. В терминале с `npm run dev` после теста или создания заявки смотреть **`[Telegram]`** (и при необходимости **`[notifyOrderCreated]`** и т.п.).  
+3. Вручную: **GET `/api/admin/telegram`**, **POST** с телом `{"kind":"warehouse"}` или `{"kind":"dm","chatId":"…"}` — то же, что кнопки на странице.  
+4. Файл **`notification-debug.log`** в корне (если сервер может писать на диск).
+
+Если в логах `ПРОПУСК: нет TELEGRAM_BOT_TOKEN` или нет ID чата — проверьте `.env` в корне проекта и перезапустите `next dev`. Если ошибка HTTP от Telegram (например *chat not found*, *bot was blocked*) — проверьте, что бот добавлен в чат, для супергрупп с темами верно `TELEGRAM_NOTIFICATION_TOPIC_ID`.
+
+**Типичные ответы Telegram (теперь в ответе API и в админке видно текст дословно):**
+
+| Текст от API | Что сделать |
+|--------------|-------------|
+| `Bad Request: chat not found` | Неверный `TELEGRAM_NOTIFICATION_CHAT_ID` (для супергрупп ссылка начинается с `-100…`). |
+| `Bad Request: message thread not found` | Неверный `TELEGRAM_NOTIFICATION_TOPIC_ID` или сообщение не в тему (форум). |
+| `Forbidden: bot was kicked…` / `not a member` | Бота удалили из группы или не добавили — добавьте бота и дайте право писать. |
+| `Unauthorized` | Неверный `TELEGRAM_BOT_TOKEN` (перевыпустите у @BotFather). |
+| Таймаут (до 25–120 с) | Запрос к `https://api.telegram.org` не успел за `TELEGRAM_SEND_TIMEOUT_MS`. Часто: **блокировка или фильтрация** API у провайдера, корпоративный фаервол, нужен **VPN/прокси** на машине с сервером. Проверка с той же машины: `curl -sS "https://api.telegram.org/bot<TOKEN>/getMe"` — должен вернуться JSON с `"ok":true`. В `.env` можно задать `TELEGRAM_SEND_TIMEOUT_MS=45000` (макс. 120000) и перезапустить `next dev`. |
+| `fetch failed` (без деталей) | Ошибка **до получения HTTP-ответа** (сеть/TLS/DNS). В логах и в API теперь подставляется цепочка `cause` (например `ENOTFOUND`, `ECONNREFUSED`). Если по-прежнему неясно — с той же машины выполните `curl https://api.telegram.org` и `nslookup api.telegram.org`. |
+
 ## Переменные окружения
 
 | Переменная | Описание |
 |------------|----------|
 | `TELEGRAM_BOT_TOKEN` | Токен бота (получить у [@BotFather](https://t.me/BotFather)). |
-| `TELEGRAM_WAREHOUSE_CHAT_ID` | ID чата склада (куда приходят уведомления для склада). |
-| `TELEGRAM_WAREHOUSE_TOPIC_ID` | ID топика в чате склада (опционально, для супергрупп с темами). |
+| `TELEGRAM_NOTIFICATION_CHAT_ID` | ID чата/группы склада (приоритетное имя; альтернатива — `TELEGRAM_WAREHOUSE_CHAT_ID`). |
+| `TELEGRAM_NOTIFICATION_TOPIC_ID` | ID топика в супергруппе (альтернатива — `TELEGRAM_WAREHOUSE_TOPIC_ID`). |
+| `TELEGRAM_WAREHOUSE_CHAT_ID` | То же, что чат склада (если не задан `TELEGRAM_NOTIFICATION_CHAT_ID`). |
+| `TELEGRAM_WAREHOUSE_TOPIC_ID` | То же, что топик (если не задан `TELEGRAM_NOTIFICATION_TOPIC_ID`). |
 | `TELEGRAM_GREENWICH_CHAT_ID` | ID чата/канала для уведомлений Greenwich (сметы, сборка, выдача, приёмка). |
 | `NEXT_PUBLIC_APP_URL` | Базовый URL сайта (для ссылок «Открыть заявку»), например `https://wowstorg.ru`. |
+| `TELEGRAM_SEND_TIMEOUT_MS` | Таймаут HTTP к Bot API (по умолчанию 25000, максимум 120000). Используется и как **таймаут установки TCP/TLS** к `api.telegram.org` (через undici). |
+| `TELEGRAM_HTTPS_PROXY` | HTTP-прокси для запросов только к Telegram API, например `http://127.0.0.1:7890` (порт «Mixed port» в Clash / аналог). Если до `api.telegram.org` **Connect timeout** без VPN — включите VPN и укажите локальный прокси. Альтернативные имена: `TELEGRAM_PROXY`, `HTTPS_PROXY`. |
 
 Если `TELEGRAM_BOT_TOKEN` не задан, уведомления не отправляются.
 

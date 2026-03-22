@@ -4,6 +4,7 @@ import type { Condition, ItemType } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import {
   computeGreenwichIncidentsDelta,
   recomputeGreenwichRatingScore,
@@ -265,10 +266,12 @@ export async function POST(
     },
   });
   if (fullOrder) {
-    const { notifyCheckInClosed } = await import("@/server/notifications/order-notifications");
-    void notifyCheckInClosed(fullOrder as Parameters<typeof notifyCheckInClosed>[0]).catch((e) =>
-      console.error("[check-in] notifyCheckInClosed failed:", e),
-    );
+    type Fn = typeof import("@/server/notifications/order-notifications").notifyCheckInClosed;
+    const payload = fullOrder as Parameters<Fn>[0];
+    scheduleAfterResponse("notifyCheckInClosed", async () => {
+      const { notifyCheckInClosed } = await import("@/server/notifications/order-notifications");
+      await notifyCheckInClosed(payload);
+    });
   }
 
   return jsonOk({ ok: true });

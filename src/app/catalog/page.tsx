@@ -7,6 +7,12 @@ import Link from "next/link";
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
+import {
+  catalogDatesFromStorage,
+  getDefaultCatalogDates,
+  normalizeCatalogDates,
+  todayDateOnly,
+} from "@/lib/catalogDates";
 import "./catalog.css";
 import { ItemModal } from "@/app/catalog/ItemModal";
 
@@ -31,17 +37,6 @@ type CatalogItem = {
   missing: number;
   availability: { availableNow: number; availableForDates?: number };
 };
-
-function todayDateOnly() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function addDays(dateStr: string, days: number) {
-  const d = new Date(dateStr + "T12:00:00");
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function formatDateRu(dateOnly: string) {
   // dateOnly = YYYY-MM-DD
@@ -91,13 +86,20 @@ function DateField({
   value,
   onChange,
   hint,
+  min,
+  max,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
   hint?: string;
+  min?: string;
+  max?: string;
 }) {
-  const nativeRef = React.useRef<HTMLInputElement | null>(null);
+  const safeMin = min;
+  const safeMax =
+    min && max && max.localeCompare(min) < 0 ? undefined : max;
+
   const hintRef = React.useRef<HTMLSpanElement | null>(null);
   const [text, setText] = React.useState(() => formatDateRu(value));
   const [showHint, setShowHint] = React.useState(false);
@@ -116,22 +118,6 @@ function DateField({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [hint, showHint]);
-
-  function openPicker() {
-    const el = nativeRef.current;
-    if (!el) return;
-    try {
-      const ret = (el as unknown as { showPicker?: () => void | Promise<void> }).showPicker?.();
-      if (ret != null && typeof (ret as Promise<void>).then === "function") {
-        void (ret as Promise<void>).catch(() => {
-          /* showPicker может отклониться без user gesture / в неподдерживаемых режимах */
-        });
-      }
-    } catch {
-      /* ignore */
-    }
-    el.focus();
-  }
 
   return (
     <div className="mk-dateField">
@@ -176,20 +162,27 @@ function DateField({
           placeholder="ДД.ММ.ГГГГ"
           aria-label={label}
         />
-        <button type="button" className="mk-dateBtn" onClick={openPicker} aria-label="Выбрать дату">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10z" />
-          </svg>
-        </button>
-        <input
-          ref={nativeRef}
-          type="date"
-          className="mk-dateNative"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        {/*
+          Не вызываем showPicker() из JS — в Chromium промис иногда отклоняется с Event,
+          Next dev overlay показывает [object Event]. Нативный input поверх иконки открывает календарь без API.
+        */}
+        <label className="mk-dateBtn">
+          <span className="mk-dateBtnFace" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10z" />
+            </svg>
+          </span>
+          <input
+            type="date"
+            className="mk-dateNative"
+            value={value}
+            min={safeMin}
+            max={safeMax}
+            onChange={(e) => onChange(e.target.value)}
+            tabIndex={-1}
+            aria-label="Выбрать дату"
+          />
+        </label>
       </span>
     </div>
   );
@@ -199,6 +192,17 @@ export default function CatalogPage() {
   const { state } = useAuth();
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
   const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
+
+  /** Chromium: showPicker() иногда отклоняет промис с `Event` → Next overlay: [object Event]. */
+  React.useEffect(() => {
+    function onUnhandledRejection(e: PromiseRejectionEvent) {
+      if (e.reason instanceof Event) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => window.removeEventListener("unhandledrejection", onUnhandledRejection);
+  }, []);
   const isQuickSupplement = Boolean(quickParentId);
   const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
@@ -211,24 +215,47 @@ export default function CatalogPage() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [categoryId, setCategoryId] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<CatalogTab>("positions");
-  const [startDate, setStartDate] = React.useState(() => {
-    if (typeof window === "undefined") return todayDateOnly();
-    return localStorage.getItem("catalog_startDate") || todayDateOnly();
-  });
-  const [endDate, setEndDate] = React.useState(() => {
-    if (typeof window === "undefined") return addDays(todayDateOnly(), 3);
-    return localStorage.getItem("catalog_endDate") || addDays(todayDateOnly(), 3);
-  });
-  const [readyByDate, setReadyByDate] = React.useState(() => {
-    if (typeof window === "undefined") return todayDateOnly();
-    return localStorage.getItem("catalog_readyByDate") || todayDateOnly();
-  });
+  // Одинаковые дефолты на SSR и первом кадре клиента — иначе гидратация и «ломаные» min/max у type=date
+  const [startDate, setStartDate] = React.useState(() => getDefaultCatalogDates().startDate);
+  const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
+  const [readyByDate, setReadyByDate] = React.useState(() => getDefaultCatalogDates().readyByDate);
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
+
+  const datesRef = React.useRef({ readyByDate, startDate, endDate });
+  datesRef.current = { readyByDate, startDate, endDate };
+
+  const patchCatalogDates = React.useCallback(
+    (patch: Partial<{ readyByDate: string; startDate: string; endDate: string }>) => {
+      try {
+        const n = normalizeCatalogDates({ ...datesRef.current, ...patch });
+        setReadyByDate(n.readyByDate);
+        setStartDate(n.startDate);
+        setEndDate(n.endDate);
+      } catch (e) {
+        console.error("[catalog] patchCatalogDates", e);
+      }
+    },
+    [],
+  );
+
+  const dateMin = todayDateOnly();
+  /** Конец периода не раньше начала; один и тот же день — допустим. */
+  const endMin = startDate;
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
+  }, []);
+
+  /** После монтирования подставляем даты из localStorage (не в useState — иначе mismatch гидратации). */
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("quickParentId")) return;
+    const n = catalogDatesFromStorage();
+    setStartDate(n.startDate);
+    setEndDate(n.endDate);
+    setReadyByDate(n.readyByDate);
   }, []);
 
   React.useEffect(() => {
@@ -331,7 +358,7 @@ export default function CatalogPage() {
         if (!cancelled) setLoading(false);
       }
     }
-    void run();
+    void run().catch((e) => console.error("catalog fetch", e));
     return () => {
       cancelled = true;
     };
@@ -447,18 +474,33 @@ export default function CatalogPage() {
           {!isQuickSupplement ? (
             <>
               <div className="mk-datesRow">
-                <DateField label="Дата начала" value={startDate} onChange={setStartDate} />
-                <DateField label="Дата окончания" value={endDate} onChange={setEndDate} />
+                <DateField
+                  label="Дата начала"
+                  value={startDate}
+                  onChange={(v) => patchCatalogDates({ startDate: v })}
+                  min={dateMin}
+                />
+                <DateField
+                  label="Дата окончания"
+                  value={endDate}
+                  onChange={(v) => patchCatalogDates({ endDate: v })}
+                  min={endMin >= dateMin ? endMin : dateMin}
+                />
                 {isGreenwich ? (
                   <DateField
                     label="Готовность к дате"
                     value={readyByDate}
-                    onChange={setReadyByDate}
-                    hint="Склад обязуется подготовить реквизит к этой дате"
+                    onChange={(v) => patchCatalogDates({ readyByDate: v })}
+                    min={dateMin}
+                    max={startDate}
+                    hint="Склад обязуется подготовить реквизит к этой дате (не позже начала аренды)"
                   />
                 ) : null}
               </div>
-              <span className="mk-subtitle">Доступность и цены считаются на выбранный период.</span>
+              <span className="mk-subtitle">
+                Доступность и цены считаются на выбранный период. Даты в прошлом недоступны; по умолчанию —
+                готовность сегодня, аренда с завтра до послезавтра.
+              </span>
             </>
           ) : (
             <div className="mk-subtitle">

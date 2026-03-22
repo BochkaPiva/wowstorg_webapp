@@ -215,8 +215,16 @@ export default function OrdersPage() {
     setCancellingId(orderId);
     try {
       const res = await fetch(`/api/orders/${orderId}/cancel`, { method: "POST" });
-      const data = (await res.json()) as { ok?: boolean; error?: { message?: string } };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        notification?: { queued?: boolean; sent?: boolean; message?: string };
+        error?: { message?: string };
+      };
       if (res.ok) {
+        const n = data?.notification;
+        if (n && !n.queued && "sent" in n && n.sent === false && n.message) {
+          alert(`Заявка отменена.\n\n⚠️ ${n.message}`);
+        }
         loadOrders();
       } else {
         alert(data?.error?.message ?? "Не удалось отменить заявку");

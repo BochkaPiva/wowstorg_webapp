@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 export async function POST(
   _req: Request,
@@ -47,10 +48,12 @@ export async function POST(
     },
   });
   if (fullOrder) {
-    const { notifyIssued } = await import("@/server/notifications/order-notifications");
-    void notifyIssued(fullOrder as Parameters<typeof notifyIssued>[0]).catch((e) =>
-      console.error("[issue] notifyIssued failed:", e),
-    );
+    type Fn = typeof import("@/server/notifications/order-notifications").notifyIssued;
+    const payload = fullOrder as Parameters<Fn>[0];
+    scheduleAfterResponse("notifyIssued", async () => {
+      const { notifyIssued } = await import("@/server/notifications/order-notifications");
+      await notifyIssued(payload);
+    });
   }
 
   return jsonOk({ ok: true });

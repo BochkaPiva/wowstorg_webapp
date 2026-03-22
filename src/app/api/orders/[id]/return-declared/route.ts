@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import {
   computeGreenwichOverdueDelta,
   recomputeGreenwichRatingScore,
@@ -142,10 +143,12 @@ export async function POST(
     },
   });
   if (fullOrder) {
-    const { notifyReturnDeclared } = await import("@/server/notifications/order-notifications");
-    void notifyReturnDeclared(fullOrder as Parameters<typeof notifyReturnDeclared>[0]).catch((e) =>
-      console.error("[return-declared] notifyReturnDeclared failed:", e),
-    );
+    type Fn = typeof import("@/server/notifications/order-notifications").notifyReturnDeclared;
+    const payload = fullOrder as Parameters<Fn>[0];
+    scheduleAfterResponse("notifyReturnDeclared", async () => {
+      const { notifyReturnDeclared } = await import("@/server/notifications/order-notifications");
+      await notifyReturnDeclared(payload);
+    });
   }
 
   return jsonOk({ ok: true });

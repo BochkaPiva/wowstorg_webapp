@@ -141,6 +141,14 @@ function normalizeRows(total: number, rows: SplitRowRaw[]): SplitRow[] {
   if (total <= 0) return [{ condition: "OK", qty: 0 }];
   if (clean.length === 0) return [{ condition: "OK", qty: total }];
 
+  // Сначала строки не-OK, затем OK. Иначе при порядке [OK, NEEDS_REPAIR] первая «OK» забирает весь total
+  // и цикл прерывается — дефекты ниже не учитываются (типичный порядок в форме: сначала «В норме»).
+  clean.sort((a, b) => {
+    const ao = a.condition === "OK" ? 1 : 0;
+    const bo = b.condition === "OK" ? 1 : 0;
+    return ao - bo;
+  });
+
   const out: SplitRow[] = [];
   const used: ReturnSplit["condition"][] = [];
   let remaining = total;
@@ -541,11 +549,19 @@ export default function OrderDetailsPage() {
         body: body ? JSON.stringify(body) : undefined,
       });
       const data = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: { message?: string } }
+        | {
+            ok?: boolean;
+            error?: { message?: string };
+            notification?: { queued?: boolean; sent?: boolean; message?: string };
+          }
         | null;
       if (!res.ok) {
         setActionError(data?.error?.message ?? "Ошибка операции");
         return;
+      }
+      const n = data?.notification;
+      if (path.includes("cancel") && n && !n.queued && "sent" in n && n.sent === false && n.message) {
+        alert(`Заявка отменена.\n\n⚠️ ${n.message}`);
       }
       await loadOrder();
       if (path.includes("check-in") || path.includes("cancel")) {
@@ -1496,16 +1512,19 @@ export default function OrderDetailsPage() {
             </button>
           )}
           {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
+          {/* Доп.-заявка: тоже нужна отправка на приёмку; «Быстрая доп.-выдача» только с основной выданной заявки */}
           {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && !order.parentOrderId && (
+            <button
+              type="button"
+              disabled={busy || !order.greenwichUserId}
+              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
+              className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {busy ? "…" : "Быстрая доп.-выдача"}
+            </button>
+          )}
+          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && (
             <>
-              <button
-                type="button"
-                disabled={busy || !order.greenwichUserId}
-                onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
-                className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-              >
-                {busy ? "…" : "Быстрая доп.-выдача"}
-              </button>
               <button
                 type="button"
                 disabled={busy}

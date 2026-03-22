@@ -76,8 +76,9 @@ export default function WarehouseQueuePage() {
   const loadOrders = React.useCallback(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     fetch("/api/warehouse/queue", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { orders?: QueueOrder[] }) => setOrders(data.orders ?? []));
+      .then((r) => r.json().catch(() => null))
+      .then((data: { orders?: QueueOrder[] } | null) => setOrders(data?.orders ?? []))
+      .catch(() => setOrders([]));
   }, [state.status, role]);
 
   React.useEffect(() => {
@@ -85,9 +86,12 @@ export default function WarehouseQueuePage() {
     let cancelled = false;
     setLoading(true);
     fetch("/api/warehouse/queue", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { orders?: QueueOrder[] }) => {
-        if (!cancelled) setOrders(data.orders ?? []);
+      .then((r) => r.json().catch(() => null))
+      .then((data: { orders?: QueueOrder[] } | null) => {
+        if (!cancelled) setOrders(data?.orders ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrders([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

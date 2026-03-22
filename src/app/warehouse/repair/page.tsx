@@ -61,10 +61,15 @@ function RepairPageInner() {
         fetch(`/api/warehouse/incidents?condition=${tab}`, { cache: "no-store" }),
         fetch(`/api/warehouse/repair-items?condition=${tab}`, { cache: "no-store" }),
       ]);
-      const incData = (await incRes.json()) as { incidents?: IncidentRow[] };
-      const itemsData = (await itemsRes.json()) as { items?: RepairItemRow[] };
-      setRows(incData.incidents ?? []);
-      setItemRows(itemsData.items ?? []);
+      const incData = (await incRes.json().catch(() => null)) as { incidents?: IncidentRow[] } | null;
+      const itemsData = (await itemsRes.json().catch(() => null)) as { items?: RepairItemRow[] } | null;
+      setRows(incData?.incidents ?? []);
+      setItemRows(itemsData?.items ?? []);
+    } catch (e) {
+      console.error("warehouse repair load failed", e);
+      setRows([]);
+      setItemRows([]);
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
       setLoading(false);
     }

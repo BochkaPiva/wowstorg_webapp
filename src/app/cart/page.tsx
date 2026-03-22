@@ -174,9 +174,12 @@ export default function CartPage() {
   React.useEffect(() => {
     let cancelled = false;
     fetch("/api/customers", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { customers: Customer[] }) => {
-        if (!cancelled) setCustomers(data.customers ?? []);
+      .then((res) => res.json().catch(() => null))
+      .then((data: { customers?: Customer[] } | null) => {
+        if (!cancelled) setCustomers(data?.customers ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomers([]);
       });
     return () => {
       cancelled = true;
@@ -202,14 +205,19 @@ export default function CartPage() {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     let cancelled = false;
     fetch("/api/users/greenwich", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { users: GreenwichUser[] }) => {
-        if (!cancelled) setGreenwichUsers(data.users ?? []);
+      .then((res) => res.json().catch(() => null))
+      .then((data: { users?: GreenwichUser[] } | null) => {
+        if (!cancelled) setGreenwichUsers(data?.users ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setGreenwichUsers([]);
       });
     return () => {
       cancelled = true;
     };
   }, [state.status]);
+
+  const cartItemIdsKey = React.useMemo(() => cart.map((l) => l.itemId).sort().join(","), [cart]);
 
   React.useEffect(() => {
     if (cart.length === 0) {
@@ -219,20 +227,27 @@ export default function CartPage() {
     }
     let cancelled = false;
     const ids = cart.map((l) => l.itemId).join(",");
-    fetch(`/api/catalog/items?ids=${encodeURIComponent(ids)}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { items: CatalogItem[] }) => {
-        if (!cancelled) {
-          setItems(data.items ?? []);
-        }
-      })
-      .finally(() => {
+
+    async function loadItems() {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/catalog/items?ids=${encodeURIComponent(ids)}`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+        if (!cancelled) setItems(data?.items ?? []);
+      } catch (e) {
+        console.error("[cart] load catalog items failed", e);
+        if (!cancelled) setItems([]);
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    }
+
+    void loadItems();
     return () => {
       cancelled = true;
     };
-  }, [cart.length, cart.map((l) => l.itemId).join(",")]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- грузим позиции только при смене набора id; cart берём из замыкания
+  }, [cartItemIdsKey]);
 
   function setQty(itemId: string, qty: number) {
     const next = cart

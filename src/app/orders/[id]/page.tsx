@@ -632,8 +632,8 @@ export default function OrderDetailsPage() {
       `/api/catalog/items?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&excludeOrderId=${encodeURIComponent(orderId)}`,
       { cache: "no-store" },
     )
-      .then((r) => r.json())
-      .then((data: { items?: { id: string; name: string; availability?: { availableForDates?: number } }[] }) => {
+      .then((r) => r.json().catch(() => null))
+      .then((data: { items?: { id: string; name: string; availability?: { availableForDates?: number } }[] } | null) => {
         setCatalogItems(
           (data?.items ?? []).map((i) => ({
             id: i.id,

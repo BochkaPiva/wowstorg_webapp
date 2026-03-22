@@ -64,9 +64,12 @@ export default function WarehouseArchivePage() {
     let cancelled = false;
     setLoading(true);
     fetch("/api/warehouse/archive", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { orders?: ArchiveOrder[] }) => {
-        if (!cancelled) setOrders(data.orders ?? []);
+      .then((r) => r.json().catch(() => null))
+      .then((data: { orders?: ArchiveOrder[] } | null) => {
+        if (!cancelled) setOrders(data?.orders ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrders([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

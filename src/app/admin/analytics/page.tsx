@@ -22,12 +22,23 @@ export default function AdminAnalyticsPage() {
     if (forbidden) return;
     let cancelled = false;
     fetch("/api/admin/analytics", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { topByIssued?: TopItem[]; topByRevenue?: TopItem[]; topCustomers?: TopCustomer[] }) => {
-        if (!cancelled) {
+      .then((r) => r.json().catch(() => null))
+      .then((data: { topByIssued?: TopItem[]; topByRevenue?: TopItem[]; topCustomers?: TopCustomer[] } | null) => {
+        if (!cancelled && data) {
           setTopByIssued(data.topByIssued ?? []);
           setTopByRevenue(data.topByRevenue ?? []);
           setTopCustomers(data.topCustomers ?? []);
+        } else if (!cancelled) {
+          setTopByIssued([]);
+          setTopByRevenue([]);
+          setTopCustomers([]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTopByIssued([]);
+          setTopByRevenue([]);
+          setTopCustomers([]);
         }
       })
       .finally(() => {

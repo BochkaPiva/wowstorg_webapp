@@ -186,17 +186,21 @@ export default function OrdersPage() {
 
   const loadOrders = React.useCallback(() => {
     fetch("/api/orders/my", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { orders?: OrderCard[] }) => setOrders(data.orders ?? []));
+      .then((r) => r.json().catch(() => null))
+      .then((data: { orders?: OrderCard[] } | null) => setOrders(data?.orders ?? []))
+      .catch(() => setOrders([]));
   }, []);
 
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
     fetch("/api/orders/my", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { orders?: OrderCard[] }) => {
-        if (!cancelled) setOrders(data.orders ?? []);
+      .then((r) => r.json().catch(() => null))
+      .then((data: { orders?: OrderCard[] } | null) => {
+        if (!cancelled) setOrders(data?.orders ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOrders([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

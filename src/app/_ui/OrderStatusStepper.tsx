@@ -149,8 +149,8 @@ export function OrderStatusStepper({
   return (
     <div className={["flex flex-col gap-2", className ?? ""].join(" ")}>
       {/* Десктоп: полный степпер */}
-      <div className="hidden md:flex items-start gap-3 min-w-0">
-        <div className="min-w-0 flex-1">
+      <div className="hidden md:flex flex-col gap-1.5 min-w-0">
+        <div className="min-w-0">
           <Stepper
             steps={STEPS.map((s, i) => ({ id: i + 1, title: STATUS_LABEL[s], subtitle: undefined }))}
             activeStep={activeStep}
@@ -159,7 +159,7 @@ export function OrderStatusStepper({
           />
         </div>
         {owner !== "NONE" ? (
-          <div className={["flex items-center gap-1.5 shrink-0 pt-[11px] text-xs font-medium leading-none", ownerUiData.textClass].join(" ")}>
+          <div className={["flex items-center justify-end gap-1.5 text-xs font-medium leading-none pr-1", ownerUiData.textClass].join(" ")}>
             <span className={["h-1.5 w-1.5 rounded-full", ownerUiData.dotClass].join(" ")} aria-hidden="true" />
             <span>{ownerUiData.label}</span>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
@@ -29,12 +30,20 @@ function conditionRu(c: "NEEDS_REPAIR" | "BROKEN") {
   return c === "NEEDS_REPAIR" ? "Требует ремонта" : "Сломано";
 }
 
-export default function WarehouseRepairBasePage() {
+function RepairPageInner() {
+  const searchParams = useSearchParams();
   const { state } = useAuth();
   const user = state.status === "authenticated" ? state.user : null;
   const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
   const [tab, setTab] = React.useState<"NEEDS_REPAIR" | "BROKEN">("NEEDS_REPAIR");
+
+  React.useEffect(() => {
+    const c = searchParams.get("condition");
+    if (c === "NEEDS_REPAIR" || c === "BROKEN") {
+      setTab(c);
+    }
+  }, [searchParams]);
   const [rows, setRows] = React.useState<IncidentRow[]>([]);
   const [itemRows, setItemRows] = React.useState<RepairItemRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -260,3 +269,16 @@ export default function WarehouseRepairBasePage() {
   );
 }
 
+export default function WarehouseRepairBasePage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell title="Ремонт / сломано">
+          <div className="text-sm text-zinc-600">Загрузка…</div>
+        </AppShell>
+      }
+    >
+      <RepairPageInner />
+    </Suspense>
+  );
+}

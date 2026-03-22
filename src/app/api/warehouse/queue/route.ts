@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
@@ -69,6 +70,7 @@ export async function GET() {
     const totalAmount = Math.round(rental + services);
     return {
       id: o.id,
+      parentOrderId: null as string | null,
       status: o.status,
       source: o.source,
       readyByDate: o.readyByDate.toISOString().slice(0, 10),
@@ -87,6 +89,19 @@ export async function GET() {
       totalAmount,
     };
   });
+
+  const ids = serialized.map((o) => o.id);
+  if (ids.length > 0) {
+    const quickRows = await prisma.$queryRaw<Array<{ id: string; parentOrderId: string | null }>>`
+      SELECT "id", "parentOrderId"
+      FROM "Order"
+      WHERE "id" IN (${Prisma.join(ids)})
+    `;
+    const parentById = new Map(quickRows.map((r) => [r.id, r.parentOrderId]));
+    for (const row of serialized) {
+      row.parentOrderId = parentById.get(row.id) ?? null;
+    }
+  }
 
   return jsonOk({ orders: serialized });
 }

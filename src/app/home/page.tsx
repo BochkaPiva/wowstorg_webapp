@@ -9,6 +9,39 @@ import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 
+import { IssuanceCalendar } from "./IssuanceCalendar";
+
+function EquipmentCardArrowLink({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      title={label}
+      aria-label={label}
+      className="group mt-auto inline-flex h-9 w-full items-center justify-center rounded-lg border border-white/80 bg-white/70 text-zinc-600 shadow-sm backdrop-blur-sm transition hover:border-violet-300/80 hover:bg-violet-50 hover:text-violet-800"
+    >
+      <svg
+        className="h-4 w-4 transition group-hover:translate-x-0.5"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M5 12h14" />
+        <path d="M13 6l6 6-6 6" />
+      </svg>
+    </Link>
+  );
+}
+
 function CardLink({
   href,
   title,
@@ -187,6 +220,7 @@ function fmtDateRu(iso: string) {
 type GreenwichDashboardOrder = {
   id: string;
   status: OrderStatus;
+  parentOrderId?: string | null;
   customerName: string;
   readyByDate: string;
   startDate: string;
@@ -268,13 +302,21 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
                   <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
                   <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href={`/orders/${data.nearest.id}?from=dashboard`}
                     className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
                   >
                     Открыть ближайшую
                   </Link>
+                  {data.nearest.status === "ISSUED" && !data.nearest.parentOrderId ? (
+                    <Link
+                      href={`/catalog?quickParentId=${data.nearest.id}`}
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                    >
+                      Быстрая доп.-выдача
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -294,6 +336,7 @@ type WowstorgDashboardData = {
   nearest: null | {
     id: string;
     status: OrderStatus;
+    parentOrderId?: string | null;
     customerName: string;
     greenwichUser: null | { displayName: string; ratingScore: number };
     readyByDate: string;
@@ -386,13 +429,23 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                     <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
                     <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Link
                       href={`/orders/${data.nearest.id}?from=dashboard`}
                       className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
                     >
                       Открыть ближайшую
                     </Link>
+                    {data.nearest.status === "ISSUED" &&
+                    !data.nearest.parentOrderId &&
+                    data.nearest.greenwichUser ? (
+                      <Link
+                        href={`/catalog?quickParentId=${data.nearest.id}`}
+                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                      >
+                        Быстрая доп.-выдача
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -419,22 +472,26 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка…</div> : null}
         {!loading && !error && data ? (
           <div className="mt-3 space-y-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+            <div className="grid grid-cols-2 gap-2 items-stretch">
+              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-amber-900">Ремонт</div>
-                <div className="mt-1 text-lg font-bold text-amber-900">{data.equipment.inRepairQty}</div>
+                <div className="mt-1 text-lg font-bold tabular-nums text-amber-900">{data.equipment.inRepairQty}</div>
+                <EquipmentCardArrowLink href="/inventory/repair?condition=NEEDS_REPAIR" label="Открыть базу «Требует ремонта»" />
               </div>
-              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-red-200 bg-red-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-red-900">Сломано</div>
-                <div className="mt-1 text-lg font-bold text-red-900">{data.equipment.brokenQty}</div>
+                <div className="mt-1 text-lg font-bold tabular-nums text-red-900">{data.equipment.brokenQty}</div>
+                <EquipmentCardArrowLink href="/inventory/repair?condition=BROKEN" label="Открыть базу «Сломано»" />
               </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-zinc-800">Потеряно</div>
-                <div className="mt-1 text-lg font-bold text-zinc-900">{data.equipment.lostQty}</div>
+                <div className="mt-1 text-lg font-bold tabular-nums text-zinc-900">{data.equipment.lostQty}</div>
+                <EquipmentCardArrowLink href="/inventory/losses" label="Открыть базу утерянного" />
               </div>
-              <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-violet-900">В наличии позиций</div>
-                <div className="mt-1 text-lg font-bold text-violet-900">{data.equipment.positionsInStockCount}</div>
+                <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{data.equipment.positionsInStockCount}</div>
+                <EquipmentCardArrowLink href="/inventory/positions" label="Открыть позиции каталога" />
               </div>
             </div>
 
@@ -516,6 +573,7 @@ export default function HomeDashboardPage() {
                 <div className="mt-1 text-xs text-zinc-600">Статус заявок и реквизита на сегодня</div>
               </div>
             </div>
+            <IssuanceCalendar className="mb-3" />
             <WowstorgDashboardBlock isWowstorg={isWowstorg} />
           </div>
         ) : null}

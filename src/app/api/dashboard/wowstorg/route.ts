@@ -131,10 +131,19 @@ export async function GET() {
     .filter((p) => p.availableNow === 0)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
+  let nearestParentId: string | null = null;
+  if (nearestOrder) {
+    const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
+      SELECT "parentOrderId" FROM "Order" WHERE "id" = ${nearestOrder.id} LIMIT 1
+    `;
+    nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
+  }
+
   const nearest = nearestOrder
     ? {
         id: nearestOrder.id,
         status: nearestOrder.status,
+        parentOrderId: nearestParentId,
         customerName: nearestOrder.customer.name,
         greenwichUser:
           nearestOrder.greenwichUser != null

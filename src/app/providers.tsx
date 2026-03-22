@@ -38,9 +38,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     setState({ status: "loading" });
-    const user = await fetchMe();
-    if (!user) setState({ status: "anonymous" });
-    else setState({ status: "authenticated", user });
+    try {
+      const user = await fetchMe();
+      if (!user) setState({ status: "anonymous" });
+      else setState({ status: "authenticated", user });
+    } catch {
+      setState({ status: "anonymous" });
+    }
   }, []);
 
   React.useEffect(() => {

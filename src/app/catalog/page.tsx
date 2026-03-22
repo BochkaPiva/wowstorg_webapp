@@ -120,7 +120,16 @@ function DateField({
   function openPicker() {
     const el = nativeRef.current;
     if (!el) return;
-    (el as unknown as { showPicker?: () => void }).showPicker?.();
+    try {
+      const ret = (el as unknown as { showPicker?: () => void | Promise<void> }).showPicker?.();
+      if (ret != null && typeof (ret as Promise<void>).then === "function") {
+        void (ret as Promise<void>).catch(() => {
+          /* showPicker может отклониться без user gesture / в неподдерживаемых режимах */
+        });
+      }
+    } catch {
+      /* ignore */
+    }
     el.focus();
   }
 
@@ -189,6 +198,9 @@ function DateField({
 export default function CatalogPage() {
   const { state } = useAuth();
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
+  const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
+  const isQuickSupplement = Boolean(quickParentId);
+  const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
   const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
@@ -214,21 +226,54 @@ export default function CatalogPage() {
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
 
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("catalog_readyByDate", readyByDate);
-    }
-  }, [readyByDate]);
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("catalog_startDate", startDate);
-      localStorage.setItem("catalog_endDate", endDate);
-    }
-  }, [startDate, endDate]);
-
-  React.useEffect(() => {
-    setCart(loadCart());
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setQuickParentId(params.get("quickParentId"));
   }, []);
+
+  React.useEffect(() => {
+    if (!quickParentId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/orders/${quickParentId}/quick-supplement/parent`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as
+          | { startDate?: string; endDate?: string; readyByDate?: string }
+          | null;
+        if (!res.ok || !data) return;
+        if (cancelled) return;
+        if (data.startDate) setStartDate(data.startDate);
+        if (data.endDate) setEndDate(data.endDate);
+        if (data.readyByDate) setReadyByDate(data.readyByDate);
+      } catch {
+        // ignore: page can still work with existing dates
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quickParentId]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (!isQuickSupplement) {
+        localStorage.setItem("catalog_readyByDate", readyByDate);
+      }
+    }
+  }, [readyByDate, isQuickSupplement]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (!isQuickSupplement) {
+        localStorage.setItem("catalog_startDate", startDate);
+        localStorage.setItem("catalog_endDate", endDate);
+      }
+    }
+  }, [startDate, endDate, isQuickSupplement]);
+
+  React.useEffect(() => {
+    setCart(loadCart(cartScope));
+  }, [cartScope]);
 
   React.useEffect(() => {
     function onScroll() {
@@ -255,25 +300,35 @@ export default function CatalogPage() {
     let cancelled = false;
     async function run() {
       setLoading(true);
-      const [catRes, kitRes] = await Promise.all([
-        fetch("/api/catalog/categories", { cache: "no-store" }),
-        fetch("/api/catalog/kits", { cache: "no-store" }),
-      ]);
-      const catData = (await catRes.json()) as { categories: Category[] };
-      const kitData = (await kitRes.json()) as { kits: Kit[] };
+      try {
+        const [catRes, kitRes] = await Promise.all([
+          fetch("/api/catalog/categories", { cache: "no-store" }),
+          fetch("/api/catalog/kits", { cache: "no-store" }),
+        ]);
+        const catData = (await catRes.json().catch(() => null)) as { categories?: Category[] } | null;
+        const kitData = (await kitRes.json().catch(() => null)) as { kits?: Kit[] } | null;
 
-      const url = new URL("/api/catalog/items", window.location.origin);
-      if (query.trim()) url.searchParams.set("query", query.trim());
-      if (fetchCategoryId) url.searchParams.set("category", fetchCategoryId);
-      url.searchParams.set("startDate", startDate);
-      url.searchParams.set("endDate", endDate);
-      const res = await fetch(url.toString(), { cache: "no-store" });
-      const data = (await res.json()) as { items: CatalogItem[] };
-      if (!cancelled) {
-        setCategories(catData.categories ?? []);
-        setKits(kitData.kits ?? []);
-        setItems(data.items ?? []);
-        setLoading(false);
+        const url = new URL("/api/catalog/items", window.location.origin);
+        if (query.trim()) url.searchParams.set("query", query.trim());
+        if (fetchCategoryId) url.searchParams.set("category", fetchCategoryId);
+        url.searchParams.set("startDate", startDate);
+        url.searchParams.set("endDate", endDate);
+        const res = await fetch(url.toString(), { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+        if (!cancelled) {
+          setCategories(catData?.categories ?? []);
+          setKits(kitData?.kits ?? []);
+          setItems(data?.items ?? []);
+        }
+      } catch (e) {
+        console.error("catalog load failed", e);
+        if (!cancelled) {
+          setCategories([]);
+          setKits([]);
+          setItems([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     void run();
@@ -306,7 +361,7 @@ export default function CatalogPage() {
       } else {
         next.push({ itemId, qty: nextQty, pricePerDay: price });
       }
-      saveCart(next);
+      saveCart(next, cartScope);
       return next.filter((l) => l.qty > 0);
     });
   }
@@ -326,7 +381,7 @@ export default function CatalogPage() {
           pricePerDay: item ? Number(item.pricePerDay) : undefined,
         });
       }
-      saveCart(next);
+      saveCart(next, cartScope);
       return next;
     });
   }
@@ -358,7 +413,7 @@ export default function CatalogPage() {
         }
       }
       const cleaned = next.filter((x) => x.qty > 0);
-      saveCart(cleaned);
+      saveCart(cleaned, cartScope);
       return cleaned;
     });
   }
@@ -381,26 +436,35 @@ export default function CatalogPage() {
       <section className="mk-section">
         <div className="mk-head">
           <div className="mk-title">
-            Реквизит, который работает на ваши события
+            {isQuickSupplement ? "Быстрая доп.-выдача" : "Реквизит, который работает на ваши события"}
           </div>
           <div className="mk-subtitle">
-            Ищи позиции, добавляй в корзину, указывай даты — склад подготовит
-            смету и подтвердит доступность.
+            {isQuickSupplement
+              ? "Добавь нужные позиции и оформи доп.-заявку. Даты и заказчик будут взяты из родительской заявки."
+              : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
           </div>
 
-          <div className="mk-datesRow">
-            <DateField label="Дата начала" value={startDate} onChange={setStartDate} />
-            <DateField label="Дата окончания" value={endDate} onChange={setEndDate} />
-            {isGreenwich ? (
-              <DateField
-                label="Готовность к дате"
-                value={readyByDate}
-                onChange={setReadyByDate}
-                hint="Склад обязуется подготовить реквизит к этой дате"
-              />
-            ) : null}
-          </div>
-          <span className="mk-subtitle">Доступность и цены считаются на выбранный период.</span>
+          {!isQuickSupplement ? (
+            <>
+              <div className="mk-datesRow">
+                <DateField label="Дата начала" value={startDate} onChange={setStartDate} />
+                <DateField label="Дата окончания" value={endDate} onChange={setEndDate} />
+                {isGreenwich ? (
+                  <DateField
+                    label="Готовность к дате"
+                    value={readyByDate}
+                    onChange={setReadyByDate}
+                    hint="Склад обязуется подготовить реквизит к этой дате"
+                  />
+                ) : null}
+              </div>
+              <span className="mk-subtitle">Доступность и цены считаются на выбранный период.</span>
+            </>
+          ) : (
+            <div className="mk-subtitle">
+              Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
+            </div>
+          )}
 
           <div className="mk-toolbar">
             <input
@@ -410,7 +474,7 @@ export default function CatalogPage() {
               placeholder="Поиск по каталогу…"
             />
             <div className="flex items-center gap-2 justify-between md:justify-end">
-              <Link href="/cart" className="mk-cartPill">
+              <Link href={isQuickSupplement ? `/cart?quickParentId=${quickParentId}` : "/cart"} className="mk-cartPill">
                 Корзина: <strong>{cartTotalQty}</strong>
                 {cartTotalForPeriod > 0 ? ` · ${Math.round(cartTotalForPeriod)} ₽` : ""}
               </Link>
@@ -731,7 +795,7 @@ export default function CatalogPage() {
       {cartTotalQty > 0 && showFloatingCart && typeof document !== "undefined"
         ? createPortal(
             <Link
-              href="/cart"
+              href={isQuickSupplement ? `/cart?quickParentId=${quickParentId}` : "/cart"}
               className="mk-floatingCart"
               aria-label={`Корзина: ${cartTotalQty} поз., ${Math.round(cartTotalForPeriod)} ₽ за период`}
             >

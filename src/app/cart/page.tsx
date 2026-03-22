@@ -66,6 +66,9 @@ type GreenwichUser = { id: string; displayName: string };
 export default function CartPage() {
   const router = useRouter();
   const { state } = useAuth();
+  const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
+  const isQuickSupplement = Boolean(quickParentId);
+  const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [items, setItems] = React.useState<CatalogItem[]>([]);
@@ -103,15 +106,70 @@ export default function CartPage() {
   }, []);
 
   React.useEffect(() => {
-    setCart(loadCart());
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setQuickParentId(params.get("quickParentId"));
   }, []);
 
   React.useEffect(() => {
+    if (!quickParentId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/orders/${quickParentId}/quick-supplement/parent`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as
+          | { parentId?: string; readyByDate?: string; startDate?: string; endDate?: string; eventName?: string; comment?: string }
+          | null;
+        if (!res.ok || !data) throw new Error(data ? "Parent fetch failed" : "Parent fetch failed");
+
+        if (cancelled) return;
+        setStartDate(data.startDate ?? null);
+        setEndDate(data.endDate ?? null);
+        setReadyByDate(data.readyByDate ?? null);
+        setEventName(data.eventName ?? "");
+        setComment(data.comment ?? "");
+
+        // Quick supplement всегда без доп. услуг.
+        setDeliveryEnabled(false);
+        setMontageEnabled(false);
+        setDemontageEnabled(false);
+        setDeliveryComment("");
+        setMontageComment("");
+        setDemontageComment("");
+        setDeliveryPrice("");
+        setMontagePrice("");
+        setDemontagePrice("");
+
+        // Для расчётов итоговой суммы в quick режиме используем Greenwich-коэффициент.
+        setOrderType("greenwich");
+
+        // Заказчик в quick режиме берём с родительской заявки.
+        setCustomerInput("");
+        setCustomerId("");
+        setCustomerDropdownOpen(false);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Не удалось загрузить родительскую заявку");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [quickParentId]);
+
+  React.useEffect(() => {
+    setCart(loadCart(cartScope));
+  }, [cartScope]);
+
+  React.useEffect(() => {
+    if (isQuickSupplement) return;
     if (typeof window === "undefined") return;
     setStartDate(localStorage.getItem("catalog_startDate"));
     setEndDate(localStorage.getItem("catalog_endDate"));
     setReadyByDate(localStorage.getItem("catalog_readyByDate"));
-  }, []);
+  }, [isQuickSupplement]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -184,12 +242,12 @@ export default function CartPage() {
       next.push({ itemId, qty });
     }
     setCart(next);
-    saveCart(next);
+    saveCart(next, cartScope);
   }
 
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));
-    saveCart(cart.filter((l) => l.itemId !== itemId));
+    saveCart(cart.filter((l) => l.itemId !== itemId), cartScope);
   }
 
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
@@ -199,7 +257,7 @@ export default function CartPage() {
   const matchedCustomer =
     customerInputTrim &&
     customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
-  const canSubmitCustomer = Boolean(customerInputTrim);
+  const canSubmitCustomer = isQuickSupplement ? true : Boolean(customerInputTrim);
   const customerFiltered =
     !customerInputTrim
       ? customers
@@ -247,15 +305,45 @@ export default function CartPage() {
     cart.length > 0 &&
     canSubmitCustomer &&
     (orderType !== "greenwich" || Boolean(greenwichUserId));
-  const canCheckout =
-    (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
+  const canCheckout = isQuickSupplement
+    ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
+    : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
 
   async function submit() {
-    if (!startDate || !endDate || !readyByDate || !customerInputTrim) return;
+    if (!startDate || !endDate || !readyByDate) return;
+    if (!isQuickSupplement && !customerInputTrim) return;
     const match = customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
     setError(null);
     setSubmitting(true);
     try {
+      if (isQuickSupplement && quickParentId) {
+        const endpoint =
+          state.status === "authenticated" && state.user.role === "WOWSTORG"
+            ? `/api/orders/${quickParentId}/quick-supplement/warehouse`
+            : `/api/orders/${quickParentId}/quick-supplement/greenwich`;
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+          }),
+        });
+
+        const data = (await res.json().catch(() => null)) as
+          | { orderId?: string; error?: { message?: string } }
+          | null;
+        if (!res.ok) {
+          setError(data?.error?.message ?? "Не удалось создать быструю доп.-выдачу");
+          return;
+        }
+
+        clearCart(cartScope);
+        setCart([]);
+        router.replace(`/orders/${data?.orderId ?? ""}`);
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
         readyByDate,
@@ -294,7 +382,7 @@ export default function CartPage() {
         setError(data?.error?.message ?? "Не удалось создать заявку");
         return;
       }
-      clearCart();
+      clearCart(cartScope);
       setCart([]);
       router.replace(`/orders/${data?.orderId ?? ""}`);
     } finally {
@@ -335,7 +423,7 @@ export default function CartPage() {
                 type="button"
                 className="cart-clearAll"
                 onClick={() => {
-                  clearCart();
+                  clearCart(cartScope);
                   setCart([]);
                 }}
                 aria-label="Очистить корзину"
@@ -408,9 +496,11 @@ export default function CartPage() {
                 <div className="co-head" style={{ marginTop: "1.5rem" }}>
                   <div className="co-title">Оформление заявки</div>
                   <div className="co-subtitle">
-                    {isWarehouse
-                      ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
-                      : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
+                    {isQuickSupplement
+                      ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки."
+                      : isWarehouse
+                        ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
+                        : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
                   </div>
                 </div>
 
@@ -423,13 +513,15 @@ export default function CartPage() {
                       Период: <strong>{formatDateRu(startDate)}</strong> —{" "}
                       <strong>{formatDateRu(endDate)}</strong>
                     </div>
-                    <Link href="/catalog" className="co-link">
-                      Изменить даты →
-                    </Link>
+                    {!isQuickSupplement ? (
+                      <Link href="/catalog" className="co-link">
+                        Изменить даты →
+                      </Link>
+                    ) : null}
                   </div>
                 ) : null}
 
-                {isWarehouse ? (
+                {!isQuickSupplement && isWarehouse ? (
                   <div className="co-field" style={{ marginBottom: "1rem" }}>
                     <div className="co-label">Тип заявки</div>
                     <div className="co-flipSwitchContainer">
@@ -475,7 +567,7 @@ export default function CartPage() {
                 ) : null}
 
                 <div className="co-grid">
-                  {isWarehouse && orderType === "greenwich" ? (
+                  {!isQuickSupplement && isWarehouse && orderType === "greenwich" ? (
                     <label className="co-field">
                       <div className="co-label">Сотрудник Grinvich *</div>
                       <select
@@ -495,94 +587,100 @@ export default function CartPage() {
                       ) : null}
                     </label>
                   ) : null}
-                  <div className="co-field">
-                    <div className="co-label">Заказчик *</div>
-                    <div
-                      className="co-combobox"
-                      ref={customerInputRef}
-                    >
-                      <input
-                        type="text"
-                        value={customerInput}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setCustomerInput(v);
-                          const t = v.trim();
-                          const match = t && customers.find((c) => c.name.localeCompare(t, undefined, { sensitivity: "accent" }) === 0);
-                          setCustomerId(match ? match.id : "");
-                          setCustomerDropdownOpen(true);
-                        }}
-                        onFocus={() => setCustomerDropdownOpen(true)}
-                        onBlur={() => {
-                          setTimeout(() => setCustomerDropdownOpen(false), 180);
-                        }}
-                        className="co-input"
-                        placeholder="Выберите из списка или введите название заказчика"
-                        autoComplete="off"
-                        aria-expanded={customerDropdownOpen}
-                        aria-haspopup="listbox"
-                        aria-autocomplete="list"
-                      />
-                      {customerDropdownOpen ? (
-                        <div
-                          className="co-combobox-dropdown"
-                          role="listbox"
-                        >
-                          {customerFiltered.length === 0 ? (
-                            <div className="co-combobox-empty">
-                              {customerInputTrim
-                                ? "Нет совпадений — будет создан новый заказчик"
-                                : "Нет заказчиков в списке"}
+                  {!isQuickSupplement ? (
+                    <>
+                      <div className="co-field">
+                        <div className="co-label">Заказчик *</div>
+                        <div className="co-combobox" ref={customerInputRef}>
+                          <input
+                            type="text"
+                            value={customerInput}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setCustomerInput(v);
+                              const t = v.trim();
+                              const match =
+                                t &&
+                                customers.find(
+                                  (c) =>
+                                    c.name.localeCompare(t, undefined, { sensitivity: "accent" }) === 0,
+                                );
+                              setCustomerId(match ? match.id : "");
+                              setCustomerDropdownOpen(true);
+                            }}
+                            onFocus={() => setCustomerDropdownOpen(true)}
+                            onBlur={() => {
+                              setTimeout(() => setCustomerDropdownOpen(false), 180);
+                            }}
+                            className="co-input"
+                            placeholder="Выберите из списка или введите название заказчика"
+                            autoComplete="off"
+                            aria-expanded={customerDropdownOpen}
+                            aria-haspopup="listbox"
+                            aria-autocomplete="list"
+                          />
+                          {customerDropdownOpen ? (
+                            <div className="co-combobox-dropdown" role="listbox">
+                              {customerFiltered.length === 0 ? (
+                                <div className="co-combobox-empty">
+                                  {customerInputTrim
+                                    ? "Нет совпадений — будет создан новый заказчик"
+                                    : "Нет заказчиков в списке"}
+                                </div>
+                              ) : (
+                                customerFiltered.map((c) => (
+                                  <button
+                                    key={c.id}
+                                    type="button"
+                                    role="option"
+                                    className="co-combobox-option"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setCustomerInput(c.name);
+                                      setCustomerId(c.id);
+                                      setCustomerDropdownOpen(false);
+                                    }}
+                                  >
+                                    {c.name}
+                                  </button>
+                                ))
+                              )}
                             </div>
-                          ) : (
-                            customerFiltered.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                role="option"
-                                className="co-combobox-option"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  setCustomerInput(c.name);
-                                  setCustomerId(c.id);
-                                  setCustomerDropdownOpen(false);
-                                }}
-                              >
-                                {c.name}
-                              </button>
-                            ))
-                          )}
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                    {customerInputTrim && !matchedCustomer ? (
-                      <div className="co-combobox-hint">
-                        Будет создан новый заказчик «{customerInputTrim}»
+                        {customerInputTrim && !matchedCustomer ? (
+                          <div className="co-combobox-hint">
+                            Будет создан новый заказчик «{customerInputTrim}»
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
+
+                      <label className="co-field">
+                        <div className="co-label">Название мероприятия</div>
+                        <input
+                          value={eventName}
+                          onChange={(e) => setEventName(e.target.value)}
+                          className="co-input"
+                          placeholder="Название мероприятия"
+                        />
+                      </label>
+                    </>
+                  ) : null}
+
+                {!isQuickSupplement ? (
                   <label className="co-field">
-                    <div className="co-label">Название мероприятия</div>
-                    <input
-                      value={eventName}
-                      onChange={(e) => setEventName(e.target.value)}
-                      className="co-input"
-                      placeholder="Название мероприятия"
+                    <div className="co-label">Комментарий</div>
+                    <textarea
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      className="co-textarea"
+                      placeholder="Комментарий к заявке…"
                     />
                   </label>
-                </div>
+                ) : null}
 
-                <label className="co-field">
-                  <div className="co-label">Комментарий</div>
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    className="co-textarea"
-                    placeholder="Комментарий к заявке…"
-                  />
-                </label>
-
-                <div className="co-services">
+                {!isQuickSupplement ? (
+                  <div className="co-services">
                   <div className="co-servicesTitle">Доп. услуги</div>
                   <div className="co-serviceRow">
                     <Toggle checked={deliveryEnabled} onChange={setDeliveryEnabled} label="Доставка" />
@@ -666,8 +764,11 @@ export default function CartPage() {
                     ) : null}
                   </div>
                 </div>
+                ) : null}
 
-                {error ? <div className="co-error">{error}</div> : null}
+              </div>
+
+              {error ? <div className="co-error">{error}</div> : null}
 
                 <div className="cart-footer" style={{ marginTop: "1.5rem" }}>
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
@@ -695,7 +796,7 @@ export default function CartPage() {
                     onClick={submit}
                     className="co-btn co-btn--primary"
                   >
-                    {submitting ? "Создаём заявку…" : "Создать заявку"}
+                    {submitting ? "Создаём заявку…" : isQuickSupplement ? "Оформить доп.-заявку" : "Создать заявку"}
                   </button>
                 </div>
               </>
@@ -725,7 +826,11 @@ export default function CartPage() {
         {mounted &&
           typeof document !== "undefined" &&
           createPortal(
-            <Link href="/catalog" className="cart-floatCatalog" aria-label="В каталог">
+            <Link
+              href={isQuickSupplement ? `/catalog?quickParentId=${quickParentId}` : "/catalog"}
+              className="cart-floatCatalog"
+              aria-label="В каталог"
+            >
               ← В каталог
             </Link>,
             document.body

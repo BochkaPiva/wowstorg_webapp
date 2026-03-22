@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
@@ -14,6 +15,7 @@ export async function GET() {
         id: true,
         status: true,
         source: true,
+        eventName: true,
         readyByDate: true,
         startDate: true,
         endDate: true,
@@ -52,8 +54,10 @@ export async function GET() {
         (o.demontagePrice != null ? Number(o.demontagePrice) : 0);
       return {
         id: o.id,
+        parentOrderId: null as string | null,
         status: o.status,
         source: o.source,
+        eventName: o.eventName,
         readyByDate: o.readyByDate.toISOString().slice(0, 10),
         startDate: o.startDate.toISOString().slice(0, 10),
         endDate: o.endDate.toISOString().slice(0, 10),
@@ -62,6 +66,20 @@ export async function GET() {
         totalAmount: Math.round(rental + services),
       };
     });
+
+    const ids = withTotal.map((o) => o.id);
+    if (ids.length > 0) {
+      const quickRows = await prisma.$queryRaw<Array<{ id: string; parentOrderId: string | null }>>`
+        SELECT "id", "parentOrderId"
+        FROM "Order"
+        WHERE "id" IN (${Prisma.join(ids)})
+      `;
+      const parentById = new Map(quickRows.map((r) => [r.id, r.parentOrderId]));
+      for (const row of withTotal) {
+        row.parentOrderId = parentById.get(row.id) ?? null;
+      }
+    }
+
     return jsonOk({ orders: withTotal });
   }
 

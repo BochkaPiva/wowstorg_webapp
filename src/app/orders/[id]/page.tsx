@@ -35,6 +35,7 @@ type Order = {
   id: string;
   status: OrderStatus;
   source: string;
+  parentOrderId?: string | null;
   readyByDate: string;
   startDate: string;
   endDate: string;
@@ -460,6 +461,7 @@ export default function OrderDetailsPage() {
   const canEditOrder =
     Boolean(
       order &&
+        !order.parentOrderId &&
         ((isWarehouse &&
           ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH", "PICKING"].includes(order.status)) ||
           (isGreenwich &&
@@ -512,9 +514,10 @@ export default function OrderDetailsPage() {
   React.useEffect(() => {
     if (!order) return;
     if (isWarehouse && order.status === "RETURN_DECLARED") {
-      // стартуем от декларации Greenwich (если есть), иначе всё OK
-      const base = Object.keys(declareDraft).length ? declareDraft : buildDraftFromPhase("DECLARED");
-      setCheckInDraft(base);
+      // Всегда стартуем от текущей декларации Greenwich из order.returnSplits.
+      // Не используем локальный declareDraft, чтобы не подхватить устаревшие данные
+      // при переходе между разными заявками в рамках одной сессии.
+      setCheckInDraft(buildDraftFromPhase("DECLARED"));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.status, isWarehouse]);
@@ -825,6 +828,11 @@ export default function OrderDetailsPage() {
                     }`
                   : ""}
               </div>
+              {order.parentOrderId ? (
+                <p className="text-sm text-violet-700">
+                  Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
+                </p>
+              ) : null}
               {order.eventName ? (
                 <p className="text-sm text-zinc-600">Мероприятие: {order.eventName}</p>
               ) : null}
@@ -1477,8 +1485,16 @@ export default function OrderDetailsPage() {
             </button>
           )}
           {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
-          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && (
+          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && !order.parentOrderId && (
             <>
+              <button
+                type="button"
+                disabled={busy || !order.greenwichUserId}
+                onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
+                className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {busy ? "…" : "Быстрая доп.-выдача"}
+              </button>
               <button
                 type="button"
                 disabled={busy}
@@ -1502,6 +1518,16 @@ export default function OrderDetailsPage() {
                 По позициям…
               </button>
             </>
+          )}
+          {isWarehouse && order.status === "ISSUED" && Boolean(order.greenwichUserId) && !order.parentOrderId && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
+              className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {busy ? "…" : "Быстрая доп.-выдача"}
+            </button>
           )}
           {canCancel && (
             <button

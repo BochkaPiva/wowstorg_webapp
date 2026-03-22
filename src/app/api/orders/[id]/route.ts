@@ -48,6 +48,15 @@ export async function GET(
     return jsonError(403, "Forbidden");
   }
 
+  // parentOrderId is used to mark quick supplements.
+  // We use raw SQL because the Prisma client in this repo may lag schema updates.
+  const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
+    SELECT "parentOrderId"
+    FROM "Order"
+    WHERE "id" = ${id}
+    LIMIT 1
+  `;
+
   const { greenwichUser, lines, returnSplits, ...orderBase } = order;
 
   const serialized: Record<string, unknown> = {
@@ -70,6 +79,7 @@ export async function GET(
           ratingScore: greenwichUser.greenwichRating?.score ?? 100,
         }
       : null,
+    parentOrderId: quickRow?.[0]?.parentOrderId ?? null,
     lines: lines.map((l) => ({
       ...l,
       pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,

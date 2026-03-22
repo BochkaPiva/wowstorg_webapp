@@ -64,20 +64,42 @@ export async function sendTelegramMessage(
     parse_mode: "HTML",
   };
   if (options?.messageThreadId != null) {
-    body.message_thread_id =
+    const parsed =
       typeof options.messageThreadId === "string"
         ? parseInt(options.messageThreadId, 10)
         : options.messageThreadId;
+    if (Number.isFinite(parsed)) body.message_thread_id = parsed;
   }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    // Fallback: if HTML parse failed, resend as plain text.
+    if (!res.ok) {
+      const errText = await res.text();
+      if (
+        body.parse_mode === "HTML" &&
+        errText.toLowerCase().includes("can't parse entities")
+      ) {
+        const plainBody = { ...body };
+        delete plainBody.parse_mode;
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(plainBody),
+          signal: controller.signal,
+        });
+      } else {
+        clearTimeout(timeoutId);
+        console.error("[Telegram] sendMessage failed:", res.status, errText);
+        return false;
+      }
+    }
     clearTimeout(timeoutId);
     if (!res.ok) {
       const err = await res.text();
@@ -128,12 +150,13 @@ export async function sendTelegramDocument(
   );
   if (caption) form.append("caption", caption);
   if (options?.messageThreadId != null) {
-    form.append(
-      "message_thread_id",
+    const parsed =
       typeof options.messageThreadId === "string"
-        ? options.messageThreadId
-        : String(options.messageThreadId),
-    );
+        ? parseInt(options.messageThreadId, 10)
+        : options.messageThreadId;
+    if (Number.isFinite(parsed)) {
+      form.append("message_thread_id", String(parsed));
+    }
   }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);

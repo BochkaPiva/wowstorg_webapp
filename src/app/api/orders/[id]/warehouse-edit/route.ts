@@ -62,6 +62,18 @@ export async function PATCH(
   });
 
   if (!order) return jsonError(404, "Not found");
+
+  // Quick supplement (быстрая доп.-выдача) нельзя редактировать обычными формами.
+  const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
+    SELECT "parentOrderId"
+    FROM "Order"
+    WHERE "id" = ${id}
+    LIMIT 1
+  `;
+  if (quickRow?.[0]?.parentOrderId) {
+    return jsonError(400, "Быстрая доп.-заявка не редактируется");
+  }
+
   if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
     return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
   }

@@ -83,10 +83,19 @@ export async function GET() {
     }),
   ]);
 
+  let nearestParentId: string | null = null;
+  if (nearestOrder) {
+    const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
+      SELECT "parentOrderId" FROM "Order" WHERE "id" = ${nearestOrder.id} LIMIT 1
+    `;
+    nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
+  }
+
   const nearest = nearestOrder
     ? {
         id: nearestOrder.id,
         status: nearestOrder.status,
+        parentOrderId: nearestParentId,
         customerName: nearestOrder.customer.name,
         readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),
         startDate: nearestOrder.startDate.toISOString().slice(0, 10),

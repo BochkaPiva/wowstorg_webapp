@@ -86,8 +86,8 @@ const LEVEL_CLASS: Record<number, string> = {
   0: "bg-zinc-100 dark:bg-zinc-800/50",
   1: "bg-violet-200 dark:bg-violet-900/50",
   2: "bg-violet-400 dark:bg-violet-700/70",
-  3: "bg-violet-600 dark:bg-violet-600",
-  4: "bg-violet-800 dark:bg-violet-500",
+  3: "bg-violet-800 dark:bg-violet-500",
+  4: "bg-violet-600 dark:bg-violet-600",
 };
 
 function fmtDayRu(ymd: string): string {

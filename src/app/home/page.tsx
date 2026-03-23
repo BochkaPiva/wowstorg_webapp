@@ -9,7 +9,9 @@ import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 
+import { BackgroundStackGame } from "./BackgroundStackGame";
 import { IssuanceCalendar } from "./IssuanceCalendar";
+import { RelaxZone } from "./RelaxZone";
 
 function EquipmentCardArrowLink({
   href,
@@ -344,11 +346,25 @@ type WowstorgDashboardData = {
     endDate: string;
     totalAmount: number;
   };
+  activeOrders: Array<{
+    id: string;
+    status: OrderStatus;
+    parentOrderId?: string | null;
+    customerName: string;
+    greenwichUser: null | { displayName: string; ratingScore: number };
+    readyByDate: string;
+    startDate: string;
+    endDate: string;
+    totalAmount: number;
+  }>;
   equipment: {
     brokenQty: number;
     lostQty: number;
     inRepairQty: number;
     positionsInStockCount: number;
+    rentedPositionsCount: number;
+    rentedUnitsTotal: number;
+    nearestReleaseDate: string | null;
     endedPositions: WowstorgDashboardEndedPosition[];
   };
 };
@@ -406,48 +422,86 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         {!loading && !error ? (
           <div className="mt-4">
             {data?.nearest ? (
-              <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
-                <div className="px-4 py-4 bg-zinc-50">
-                  <OrderStatusStepper status={data.nearest.status} />
-                </div>
-                <div className="p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-zinc-900">
-                      {data.nearest.customerName}
-                      {data.nearest.greenwichUser
-                        ? ` · ${data.nearest.greenwichUser.displayName} · рейтинг ${data.nearest.greenwichUser.ratingScore}`
-                        : ""}
-                    </div>
-                    <div className="shrink-0">
-                      <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
-                        {data.nearest.totalAmount.toLocaleString("ru-RU")} ₽
-                      </span>
-                    </div>
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
+                  <div className="px-4 py-4 bg-zinc-50">
+                    <OrderStatusStepper status={data.nearest.status} />
                   </div>
-                  <div className="mt-2 text-sm text-zinc-600">
-                    Готовность: <span className="font-semibold">{fmtDateRu(data.nearest.readyByDate)}</span> · Период:{" "}
-                    <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
-                    <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Link
-                      href={`/orders/${data.nearest.id}?from=dashboard`}
-                      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
-                    >
-                      Открыть ближайшую
-                    </Link>
-                    {data.nearest.status === "ISSUED" &&
-                    !data.nearest.parentOrderId &&
-                    data.nearest.greenwichUser ? (
+                  <div className="p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-zinc-900">
+                        {data.nearest.customerName}
+                        {data.nearest.greenwichUser
+                          ? ` · ${data.nearest.greenwichUser.displayName} · рейтинг ${data.nearest.greenwichUser.ratingScore}`
+                          : ""}
+                      </div>
+                      <div className="shrink-0">
+                        <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
+                          {data.nearest.totalAmount.toLocaleString("ru-RU")} ₽
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-sm text-zinc-600">
+                      Готовность: <span className="font-semibold">{fmtDateRu(data.nearest.readyByDate)}</span> · Период:{" "}
+                      <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
+                      <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <Link
-                        href={`/catalog?quickParentId=${data.nearest.id}`}
-                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                        href={`/orders/${data.nearest.id}?from=dashboard`}
+                        className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
                       >
-                        Быстрая доп.-выдача
+                        Открыть ближайшую
                       </Link>
-                    ) : null}
+                      {data.nearest.status === "ISSUED" &&
+                      !data.nearest.parentOrderId &&
+                      data.nearest.greenwichUser ? (
+                        <Link
+                          href={`/catalog?quickParentId=${data.nearest.id}`}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                        >
+                          Быстрая доп.-выдача
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
+
+                {data.activeOrders.length > 1 ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-600">
+                      Остальные активные заявки
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                      {data.activeOrders
+                        .filter((o) => o.id !== data.nearest?.id)
+                        .map((o) => (
+                          <div
+                            key={o.id}
+                            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 flex items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-zinc-900">{o.customerName}</div>
+                              <div className="text-xs text-zinc-600">
+                                До {fmtDateRu(o.readyByDate)} · {fmtDateRu(o.startDate)} — {fmtDateRu(o.endDate)}
+                              </div>
+                            </div>
+                            <div className="shrink-0 flex items-center gap-2">
+                              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                                {o.totalAmount.toLocaleString("ru-RU")} ₽
+                              </span>
+                              <Link
+                                href={`/orders/${o.id}?from=dashboard`}
+                                className="text-xs font-medium text-violet-700 hover:text-violet-900"
+                              >
+                                Открыть
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="text-sm text-zinc-600 mt-2">Пока нет активных заявок.</div>
@@ -493,6 +547,19 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                 <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{data.equipment.positionsInStockCount}</div>
                 <EquipmentCardArrowLink href="/inventory/positions" label="Открыть позиции каталога" />
               </div>
+              <div className="col-span-2 flex min-h-[7.25rem] flex-col rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-sky-900">В аренде сейчас</div>
+                <div className="mt-1 text-lg font-bold tabular-nums text-sky-900">
+                  {data.equipment.rentedUnitsTotal} шт. · {data.equipment.rentedPositionsCount} поз.
+                </div>
+                <div className="mt-1 text-xs text-sky-800">
+                  Ближайшее освобождение:{" "}
+                  <span className="font-semibold">
+                    {data.equipment.nearestReleaseDate ? fmtDateRu(data.equipment.nearestReleaseDate) : "—"}
+                  </span>
+                </div>
+                <EquipmentCardArrowLink href="/inventory/in-rent" label="Открыть раздел «В аренде»" />
+              </div>
             </div>
 
             {data.equipment.endedPositions.length > 0 ? (
@@ -534,15 +601,43 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
 export default function HomeDashboardPage() {
   const { state } = useAuth();
+  const [hasActiveOrders, setHasActiveOrders] = React.useState<boolean | null>(null);
 
   const isWowstorg =
     state.status === "authenticated" && state.user.role === "WOWSTORG";
   const isGreenwich =
     state.status === "authenticated" && state.user.role === "GREENWICH";
 
+  React.useEffect(() => {
+    if (!isGreenwich && !isWowstorg) {
+      setHasActiveOrders(null);
+      return;
+    }
+    let cancelled = false;
+    const endpoint = isGreenwich ? "/api/dashboard/greenwich" : "/api/dashboard/wowstorg";
+    void fetch(endpoint, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { activeCount?: number }) => {
+        if (cancelled) return;
+        setHasActiveOrders((data.activeCount ?? 0) > 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHasActiveOrders(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGreenwich, isWowstorg]);
+
+  const showBackgroundGame = hasActiveOrders === false;
+
   return (
     <AppShell title="Главная">
-      <div className="space-y-6">
+      <div className="relative space-y-6">
+        <RelaxZone />
+        {showBackgroundGame ? <BackgroundStackGame /> : null}
+        <div className="relative z-10 space-y-6">
         {isGreenwich ? (
           <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -615,6 +710,7 @@ export default function HomeDashboardPage() {
               description="Статусы, детали, согласование, возврат."
             />
           )}
+        </div>
         </div>
       </div>
     </AppShell>

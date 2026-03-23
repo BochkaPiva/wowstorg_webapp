@@ -53,6 +53,11 @@ export default function InventoryItemsPage() {
               description="CRUD позиций: фото (опционально), название, описание, цена, количества и принадлежность к категориям."
             />
             <CardLink
+              href="/inventory/in-rent"
+              title="В аренде"
+              description="Текущий список реквизита в аренде: сколько единиц занято и когда ожидается освобождение."
+            />
+            <CardLink
               href="/inventory/collections"
               title="Категории"
               description="Категории позиций для каталога: одна позиция может входить в несколько категорий."

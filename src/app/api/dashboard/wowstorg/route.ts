@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
@@ -59,7 +60,7 @@ export async function GET() {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
 
-  const [activeCount, completedCount, nearestOrder, catalogAgg, catalogItems, warehouseItems] = await Promise.all([
+  const [activeCount, completedCount, nearestOrder, activeOrdersRaw, catalogAgg, catalogItems, warehouseItems, inRentOrders] = await Promise.all([
     prisma.order.count({
       where: { status: { in: [...ACTIVE_STATUSES] } },
     }),
@@ -69,6 +70,30 @@ export async function GET() {
     prisma.order.findFirst({
       where: { status: { in: [...ACTIVE_STATUSES] } },
       orderBy: [{ readyByDate: "asc" }, { createdAt: "desc" }],
+      select: {
+        id: true,
+        status: true,
+        customer: { select: { name: true } },
+        readyByDate: true,
+        startDate: true,
+        endDate: true,
+        payMultiplier: true,
+        deliveryPrice: true,
+        montagePrice: true,
+        demontagePrice: true,
+        greenwichUser: {
+          select: {
+            displayName: true,
+            greenwichRating: { select: { score: true } },
+          },
+        },
+        lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
+      },
+    }),
+    prisma.order.findMany({
+      where: { status: { in: [...ACTIVE_STATUSES] } },
+      orderBy: [{ readyByDate: "asc" }, { createdAt: "desc" }],
+      take: 80,
       select: {
         id: true,
         status: true,
@@ -101,6 +126,13 @@ export async function GET() {
       where: { internalOnly: true, isActive: true },
       select: { id: true, name: true, total: true, inRepair: true, broken: true, missing: true },
     }),
+    prisma.order.findMany({
+      where: { status: { in: ["ISSUED", "RETURN_DECLARED"] } },
+      select: {
+        endDate: true,
+        lines: { select: { itemId: true, issuedQty: true, requestedQty: true } },
+      },
+    }),
   ]);
 
   const omskTodayYmd = getOmskTodayYmd();
@@ -131,6 +163,20 @@ export async function GET() {
     .filter((p) => p.availableNow === 0)
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
+  const rentedItemIds = new Set<string>();
+  let rentedUnitsTotal = 0;
+  let nearestReleaseDate: string | null = null;
+  for (const o of inRentOrders) {
+    const endYmd = o.endDate.toISOString().slice(0, 10);
+    if (nearestReleaseDate == null || endYmd < nearestReleaseDate) nearestReleaseDate = endYmd;
+    for (const l of o.lines) {
+      const qty = l.issuedQty ?? l.requestedQty;
+      if (qty <= 0) continue;
+      rentedItemIds.add(l.itemId);
+      rentedUnitsTotal += qty;
+    }
+  }
+
   let nearestParentId: string | null = null;
   if (nearestOrder) {
     const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
@@ -138,6 +184,43 @@ export async function GET() {
     `;
     nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
   }
+
+  const activeOrderIds = activeOrdersRaw.map((o) => o.id);
+  let activeParentById = new Map<string, string | null>();
+  if (activeOrderIds.length > 0) {
+    const rows = await prisma.$queryRaw<Array<{ id: string; parentOrderId: string | null }>>`
+      SELECT "id", "parentOrderId"
+      FROM "Order"
+      WHERE "id" IN (${Prisma.join(activeOrderIds)})
+    `;
+    activeParentById = new Map(rows.map((r) => [r.id, r.parentOrderId]));
+  }
+
+  const activeOrders = activeOrdersRaw.map((o) => ({
+    id: o.id,
+    status: o.status,
+    parentOrderId: activeParentById.get(o.id) ?? null,
+    customerName: o.customer.name,
+    greenwichUser:
+      o.greenwichUser != null
+        ? {
+            displayName: o.greenwichUser.displayName,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+          }
+        : null,
+    readyByDate: o.readyByDate.toISOString().slice(0, 10),
+    startDate: o.startDate.toISOString().slice(0, 10),
+    endDate: o.endDate.toISOString().slice(0, 10),
+    totalAmount: calcOrderTotalAmount({
+      startDate: o.startDate,
+      endDate: o.endDate,
+      payMultiplier: o.payMultiplier != null ? Number(o.payMultiplier) : null,
+      deliveryPrice: o.deliveryPrice != null ? Number(o.deliveryPrice) : null,
+      montagePrice: o.montagePrice != null ? Number(o.montagePrice) : null,
+      demontagePrice: o.demontagePrice != null ? Number(o.demontagePrice) : null,
+      lines: o.lines,
+    }),
+  }));
 
   const nearest = nearestOrder
     ? {
@@ -171,11 +254,15 @@ export async function GET() {
     activeCount,
     completedCount,
     nearest,
+    activeOrders,
     equipment: {
       brokenQty: catalogAgg._sum.broken ?? 0,
       lostQty: catalogAgg._sum.missing ?? 0,
       inRepairQty: catalogAgg._sum.inRepair ?? 0,
       positionsInStockCount,
+      rentedPositionsCount: rentedItemIds.size,
+      rentedUnitsTotal,
+      nearestReleaseDate,
       endedPositions: endedPositions.map((p) => ({
         id: p.id,
         name: p.name,

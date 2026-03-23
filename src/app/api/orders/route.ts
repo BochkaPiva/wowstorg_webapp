@@ -12,6 +12,7 @@ import {
   type OrderCreatedNotifyResult,
 } from "@/server/notifications/order-notifications";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -228,6 +229,24 @@ export async function POST(req: Request) {
       select: { id: true },
     });
 
+    // Внешняя заявка склада не ждёт шага Greenwich:
+    // сразу формируем смету и переводим в «Согласована».
+    if (source === "WOWSTORG_EXTERNAL") {
+      const artifacts = await makeEstimateArtifactsForOrder(tx, order.id);
+      const now = new Date();
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: "APPROVED_BY_GREENWICH",
+          estimateSentAt: now,
+          estimateSentSnapshot: artifacts.estimateSentSnapshot as unknown as object,
+          estimateFileKey: artifacts.estimateFileKey,
+          greenwichConfirmedAt: now,
+          greenwichConfirmedSnapshot: artifacts.estimateSentSnapshot as unknown as object,
+        },
+      });
+    }
+
     return order;
       },
       {
@@ -250,6 +269,11 @@ export async function POST(req: Request) {
       const m = /^EXCEEDS_AVAILABILITY:[^:]+:(\d+)$/.exec(e.message);
       if (m) {
         return jsonError(400, `Недостаточно свободных единиц на выбранные даты (доступно ${m[1]})`);
+      }
+      const s = /^MISSING_SERVICE_PRICES:(.+)$/.exec(e.message);
+      if (s) {
+        const parts = s[1].split(",").filter(Boolean);
+        return jsonError(400, `Укажите цену для включённых доп. услуг: ${parts.join(", ")}`);
       }
     }
     throw e;

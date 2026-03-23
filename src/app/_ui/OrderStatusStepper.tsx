@@ -12,6 +12,7 @@ export type OrderStatus =
   | "CANCELLED";
 
 type TurnOwner = "WAREHOUSE" | "GRINVICH" | "NONE";
+type OrderSource = "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL";
 
 import { Stepper } from "@/components/modern-ui/stepper";
 
@@ -50,7 +51,23 @@ const STEPS: OrderStatus[] = [
   "CLOSED",
 ];
 
-function turnOwner(status: OrderStatus): TurnOwner {
+function turnOwner(status: OrderStatus, source?: OrderSource): TurnOwner {
+  if (source === "WOWSTORG_EXTERNAL") {
+    switch (status) {
+      case "SUBMITTED":
+      case "ESTIMATE_SENT":
+      case "CHANGES_REQUESTED":
+      case "APPROVED_BY_GREENWICH":
+      case "PICKING":
+      case "ISSUED":
+      case "RETURN_DECLARED":
+        return "WAREHOUSE";
+      case "CLOSED":
+      case "CANCELLED":
+      default:
+        return "NONE";
+    }
+  }
   switch (status) {
     case "SUBMITTED":
       return "WAREHOUSE";
@@ -98,10 +115,12 @@ function ownerUi(owner: TurnOwner): { label: string; textClass: string; dotClass
 
 export function OrderStatusStepper({
   status,
+  source,
   compactWindow = 5,
   className,
 }: {
   status: OrderStatus;
+  source?: OrderSource;
   compactWindow?: number;
   className?: string;
 }) {
@@ -139,7 +158,7 @@ export function OrderStatusStepper({
     );
   }
 
-  const owner = turnOwner(status);
+  const owner = turnOwner(status, source);
   const ownerUiData = ownerUi(owner);
   const tone: "amber" | "violet" | "slate" =
     owner === "GRINVICH" ? "amber" : owner === "WAREHOUSE" ? "violet" : "slate";

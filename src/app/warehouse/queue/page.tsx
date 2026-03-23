@@ -220,7 +220,7 @@ function WarehouseQueueContent() {
         ].join(" ")}
       >
         <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
-          <OrderStatusStepper status={o.status as OrderStatus} />
+          <OrderStatusStepper status={o.status as OrderStatus} source={o.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
         </div>
         <div className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

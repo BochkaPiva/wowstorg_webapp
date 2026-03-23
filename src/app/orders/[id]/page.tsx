@@ -471,7 +471,7 @@ export default function OrderDetailsPage() {
       order &&
         !order.parentOrderId &&
         ((isWarehouse &&
-          ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH", "PICKING"].includes(order.status)) ||
+          ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status)) ||
           (isGreenwich &&
             user &&
             order.greenwichUserId === user.id &&
@@ -841,7 +841,7 @@ export default function OrderDetailsPage() {
           ].join(" ")}
         >
           <div className={["px-4 py-5", statusHeaderClass].join(" ")}>
-            <OrderStatusStepper status={order.status} />
+            <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
           </div>
           <div className="p-4">
             <div className="space-y-1">
@@ -1557,6 +1557,16 @@ export default function OrderDetailsPage() {
               className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
             >
               {busy ? "…" : "Быстрая доп.-выдача"}
+            </button>
+          )}
+          {isWarehouse && order.status === "ISSUED" && !order.greenwichUserId && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/return-declared`)}
+              className="rounded-lg border border-amber-300 bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {busy ? "…" : "На приёмку"}
             </button>
           )}
           {canCancel && (

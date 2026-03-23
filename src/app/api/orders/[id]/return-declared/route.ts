@@ -56,7 +56,10 @@ export async function POST(
   if (order.status !== "ISSUED") return jsonError(400, "Возврат можно заявить только по выданной заявке");
 
   const isGreenwich = auth.user.role === "GREENWICH" && order.greenwichUserId === auth.user.id;
-  if (!isGreenwich) return jsonError(403, "Только сотрудник Grinvich, на которого оформлена заявка, может отправить возврат на приёмку");
+  const isWarehouseExternal = auth.user.role === "WOWSTORG" && order.greenwichUserId == null;
+  if (!isGreenwich && !isWarehouseExternal) {
+    return jsonError(403, "Отправить возврат на приёмку может только ответственный сотрудник Grinvich или склад для внешней заявки");
+  }
 
   const maxQtyByLineId = new Map(
     order.lines.map((l) => [

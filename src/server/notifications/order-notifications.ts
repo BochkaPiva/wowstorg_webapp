@@ -72,6 +72,10 @@ type OrderForNotify = {
   }>;
 };
 
+function shouldNotifyGreenwich(order: OrderForNotify): boolean {
+  return order.source === "GREENWICH_INTERNAL" && Boolean(order.greenwichUser);
+}
+
 function orderHeader(o: OrderForNotify): string {
   const customer = escapeTelegramHtml(o.customer.name);
   const greenwich = o.greenwichUser ? ` · ${escapeTelegramHtml(o.greenwichUser.displayName)}` : "";
@@ -503,8 +507,12 @@ export async function notifyEstimateSent(
       }
     }
 
-    await sendToGreenwichUsers(bodyGrinvich, estimateFile);
-    notifyDebugLog(`[notifyEstimateSent] sent to warehouse and Grinvich for order ${order.id}`);
+    if (shouldNotifyGreenwich(order)) {
+      await sendToGreenwichUsers(bodyGrinvich, estimateFile);
+      notifyDebugLog(`[notifyEstimateSent] sent to warehouse and Grinvich for order ${order.id}`);
+    } else {
+      notifyDebugLog(`[notifyEstimateSent] external order: warehouse-only for order ${order.id}`);
+    }
   } catch (e) {
     notifyDebugLog(`[notifyEstimateSent] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notifyEstimateSent] unexpected error:", e);
@@ -570,6 +578,7 @@ type LineDiff = {
 /** Склад начал сборку → Grinvich */
 export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
   try {
+    if (!shouldNotifyGreenwich(order)) return;
     const text =
       `📦 <b>Начата сборка</b>\n\n` +
       `${orderHeader(order)}\n\n` +
@@ -584,6 +593,7 @@ export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
 /** Склад выдал заказ → Grinvich */
 export async function notifyIssued(order: OrderForNotify): Promise<void> {
   try {
+    if (!shouldNotifyGreenwich(order)) return;
     const text =
       `✅ <b>Заказ выдан</b>\n\n` +
       `${orderHeader(order)}\n\n` +
@@ -641,6 +651,7 @@ export async function notifyCheckInClosed(
   },
 ): Promise<void> {
   try {
+    if (!shouldNotifyGreenwich(order)) return;
     let statusBlock = "";
     const splits = order.returnSplits ?? [];
     if (splits.length > 0) {
@@ -720,7 +731,7 @@ export async function notifyOrderCancelled(order: OrderForNotify): Promise<Order
         }),
       );
     }
-    const greenwichDmSent = await sendToGreenwichUsers(body);
+    const greenwichDmSent = shouldNotifyGreenwich(order) ? await sendToGreenwichUsers(body) : 0;
     const sent = warehouseSent || greenwichDmSent > 0;
 
     if (!sent) {

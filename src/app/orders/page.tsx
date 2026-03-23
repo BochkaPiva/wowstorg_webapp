@@ -273,7 +273,7 @@ export default function OrdersPage() {
         ].join(" ")}
       >
         <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
-          <OrderStatusStepper status={o.status} />
+          <OrderStatusStepper status={o.status} source={o.source} />
         </div>
         <div className="p-4">
           <div className="text-sm font-semibold text-zinc-900">{o.customer.name}</div>

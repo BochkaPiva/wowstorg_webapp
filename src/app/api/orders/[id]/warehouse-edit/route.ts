@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
+import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
 const LineSchema = z.object({
   id: z.string().optional(),
@@ -27,8 +28,8 @@ const BodySchema = z.object({
   lines: z.array(LineSchema).min(1).max(500),
 });
 
-const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH", "PICKING"] as const;
-const CYCLE_RESET_STATUSES = ["APPROVED_BY_GREENWICH", "PICKING"] as const;
+const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
+const CYCLE_RESET_STATUSES = ["APPROVED_BY_GREENWICH"] as const;
 
 export async function PATCH(
   req: Request,
@@ -172,9 +173,32 @@ export async function PATCH(
             ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
             ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
             ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
-            ...(wasCycleStatus ? { status: "SUBMITTED" } : {}),
+            ...(wasCycleStatus
+              ? {
+                  status:
+                    order.source === "WOWSTORG_EXTERNAL"
+                      ? "APPROVED_BY_GREENWICH"
+                      : "SUBMITTED",
+                }
+              : {}),
           },
         });
+
+        if (order.source === "WOWSTORG_EXTERNAL") {
+          const artifacts = await makeEstimateArtifactsForOrder(tx, id);
+          const now = new Date();
+          await tx.order.update({
+            where: { id },
+            data: {
+              status: "APPROVED_BY_GREENWICH",
+              estimateSentAt: now,
+              estimateSentSnapshot: artifacts.estimateSentSnapshot as unknown as object,
+              estimateFileKey: artifacts.estimateFileKey,
+              greenwichConfirmedAt: now,
+              greenwichConfirmedSnapshot: artifacts.estimateSentSnapshot as unknown as object,
+            },
+          });
+        }
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -197,6 +221,11 @@ export async function PATCH(
           400,
           `«${m[1]}»: доступно ${m[2]} шт. на выбранные даты, запрошено ${m[3]}`,
         );
+      }
+      const s = /^MISSING_SERVICE_PRICES:(.+)$/.exec(e.message);
+      if (s) {
+        const parts = s[1].split(",").filter(Boolean);
+        return jsonError(400, `Укажите цену для включённых доп. услуг: ${parts.join(", ")}`);
       }
     }
     console.error("[warehouse-edit] transaction error:", e);

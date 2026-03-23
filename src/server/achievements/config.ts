@@ -24,7 +24,7 @@ export const ACHIEVEMENTS: AchievementConfig[] = [
     code: "TOWER_SCORE",
     title: "Мастер башни",
     description: "Лучший результат в игре «Башня».",
-    thresholds: { bronze: 15, silver: 20, gold: 25 },
+    thresholds: { bronze: 20, silver: 25, gold: 30 },
   },
   {
     code: "ORDER_VOLUME",

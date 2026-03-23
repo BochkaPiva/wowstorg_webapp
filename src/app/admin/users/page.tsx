@@ -14,6 +14,7 @@ type UserRow = {
   role: string;
   telegramChatId: string | null;
   isActive: boolean;
+  mustSetPassword: boolean;
   createdAt: string;
   greenwichRating: null | { score: number; manualLocked: boolean };
 };
@@ -28,10 +29,10 @@ export default function AdminUsersPage() {
   const [modal, setModal] = React.useState<"create" | UserRow | null>(null);
   const [form, setForm] = React.useState({
     login: "",
-    password: "",
     displayName: "",
     role: "GREENWICH" as "GREENWICH" | "WOWSTORG",
     telegramChatId: "",
+    isActive: true,
   });
   const [editForm, setEditForm] = React.useState({
     displayName: "",
@@ -90,10 +91,10 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           login: form.login.trim(),
-          password: form.password,
           displayName: form.displayName.trim(),
           role: form.role,
           telegramChatId: form.telegramChatId.trim() || undefined,
+          isActive: form.isActive,
         }),
       });
       const text = await res.text();
@@ -109,7 +110,7 @@ export default function AdminUsersPage() {
         return;
       }
       setModal(null);
-      setForm({ login: "", password: "", displayName: "", role: "GREENWICH", telegramChatId: "" });
+      setForm({ login: "", displayName: "", role: "GREENWICH", telegramChatId: "", isActive: true });
       await load();
     } catch (e) {
       setError("Ошибка сети или сервера");
@@ -227,7 +228,7 @@ export default function AdminUsersPage() {
               type="button"
               onClick={() => {
                 setModal("create");
-                setForm({ login: "", password: "", displayName: "", role: "GREENWICH", telegramChatId: "" });
+                setForm({ login: "", displayName: "", role: "GREENWICH", telegramChatId: "", isActive: true });
                 setError(null);
               }}
               className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
@@ -283,10 +284,12 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="p-3 text-zinc-500 font-mono text-xs">{u.telegramChatId ?? "—"}</td>
                       <td className="p-3">
-                        {u.isActive ? (
-                          <span className="text-green-600">Активен</span>
-                        ) : (
+                        {!u.isActive ? (
                           <span className="text-amber-600">Заблокирован</span>
+                        ) : u.mustSetPassword ? (
+                          <span className="text-violet-700">Не активирован</span>
+                        ) : (
+                          <span className="text-green-600">Активирован</span>
                         )}
                       </td>
                       <td className="p-3">
@@ -333,18 +336,6 @@ export default function AdminUsersPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-zinc-500">Пароль</label>
-                    <input
-                      required
-                      type="password"
-                      minLength={6}
-                      value={form.password}
-                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                      placeholder="не менее 6 символов"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-xs font-medium text-zinc-500">Роль</label>
                     <select
                       value={form.role}
@@ -363,6 +354,20 @@ export default function AdminUsersPage() {
                       className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm font-mono"
                       placeholder="опционально"
                     />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.isActive}
+                        onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                        className="rounded border-zinc-300"
+                      />
+                      <span className="text-sm">Аккаунт активен (не заблокирован)</span>
+                    </label>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      Пользователь задаст пароль сам через "Первая авторизация".
+                    </div>
                   </div>
                   {error && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

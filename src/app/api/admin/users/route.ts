@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -19,6 +20,7 @@ export async function GET() {
         displayName: true,
         role: true,
         isActive: true,
+        mustSetPassword: true,
         createdAt: true,
       },
     });
@@ -72,10 +74,10 @@ export async function GET() {
 
 const CreateSchema = z.object({
   login: z.string().trim().min(1).max(128),
-  password: z.string().min(6).max(512),
   displayName: z.string().trim().min(1).max(200),
   role: z.enum(["GREENWICH", "WOWSTORG"]),
   telegramChatId: z.string().trim().max(64).optional(),
+  isActive: z.boolean().optional(),
 });
 
 /** Создать пользователя. Только WOWSTORG. */
@@ -92,17 +94,21 @@ export async function POST(req: Request) {
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
-  const { login, password, displayName, role, telegramChatId } = parsed.data;
+  const { login, displayName, role, telegramChatId, isActive } = parsed.data;
   const existing = await prisma.user.findUnique({ where: { login } });
   if (existing) return jsonError(400, "Пользователь с таким логином уже существует");
 
-  const passwordHash = await hash(password, 10);
+  const tempSecret = `first-login:${randomUUID()}`;
+  const passwordHash = await hash(tempSecret, 10);
   const user = await prisma.user.create({
     data: {
       login,
       passwordHash,
+      mustSetPassword: true,
+      passwordSetAt: null,
       displayName,
       role,
+      isActive: isActive ?? true,
     },
     select: {
       id: true,
@@ -110,6 +116,7 @@ export async function POST(req: Request) {
       displayName: true,
       role: true,
       isActive: true,
+      mustSetPassword: true,
       createdAt: true,
     },
   });

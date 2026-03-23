@@ -44,7 +44,7 @@ export async function GET() {
 }
 
 const PostSchema = z.object({
-  kind: z.enum(["warehouse", "dm"]),
+  kind: z.enum(["warehouse", "dm", "greenwich-broadcast"]),
   text: z.string().trim().min(1).max(4000).optional(),
   chatId: z.string().trim().min(1).max(64).optional(), // only for dm
 });
@@ -69,6 +69,41 @@ export async function POST(req: Request) {
   const text =
     parsed.data.text ??
     `🧪 <b>Тест уведомлений</b>\n\nВремя: ${new Date().toLocaleString("ru-RU")}`;
+
+  if (parsed.data.kind === "greenwich-broadcast") {
+    const users = await prisma.user.findMany({
+      where: {
+        role: "GREENWICH",
+        isActive: true,
+        telegramChatId: { not: null },
+      },
+      select: { telegramChatId: true },
+    });
+    const chatIds = Array.from(
+      new Set(
+        users
+          .map((u) => (u.telegramChatId ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+    if (chatIds.length === 0) {
+      return jsonError(400, "Нет активных пользователей Grinvich с Telegram Chat ID");
+    }
+
+    let sent = 0;
+    const failed: string[] = [];
+    for (const chatId of chatIds) {
+      const result = await sendTelegramMessageDetailed(chatId, text);
+      if (result.ok) sent += 1;
+      else failed.push(chatId);
+    }
+    return jsonOk({
+      ok: failed.length === 0,
+      sent,
+      total: chatIds.length,
+      failed,
+    });
+  }
 
   if (parsed.data.kind === "warehouse") {
     const chatId = getWarehouseChatId();

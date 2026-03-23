@@ -184,6 +184,7 @@
 .wow-input-group input {
   border-radius: var(--base-border-radius);
   padding-left: calc(var(--space-s) + 60px);
+  padding-right: calc(var(--space-s) + 46px);
 }
 .wow-input-group .wow-icon {
   position: absolute;
@@ -193,6 +194,30 @@
   border-top-left-radius: var(--base-border-radius);
   border-bottom-left-radius: var(--base-border-radius);
   pointer-events: none;
+}
+.wow-eyeBtn {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.08);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 180ms ease;
+}
+.wow-eyeBtn:hover {
+  background: rgba(124, 58, 237, 0.16);
+}
+.wow-eyeBtn svg {
+  width: 18px;
+  height: 18px;
+  fill: #6d28d9;
 }
 
 .wow-label {

@@ -12,6 +12,22 @@ import { useAuth } from "@/app/providers";
 import { BackgroundStackGame } from "./BackgroundStackGame";
 import { IssuanceCalendar } from "./IssuanceCalendar";
 import { RelaxZone } from "./RelaxZone";
+import { WowstorgIdleText } from "./WowstorgIdleText";
+
+const DASH_SECTION_SHELL =
+  "rounded-3xl border border-violet-200/90 bg-[linear-gradient(135deg,rgba(124,58,237,0.14),rgba(250,204,21,0.10))] p-4 shadow-sm";
+const DASH_CARD =
+  "rounded-2xl border border-violet-100/90 bg-white/95 p-4 shadow-sm backdrop-blur-[2px]";
+const DASH_SUBCARD = "rounded-2xl border border-zinc-200/90 bg-white/95 overflow-hidden";
+const BTN_PRIMARY =
+  "rounded-lg border border-violet-200/90 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 transition hover:bg-violet-100 inline-flex items-center";
+const BTN_WARM =
+  "rounded-lg border border-amber-300/90 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 inline-flex items-center";
+const BADGE_PRIMARY = "rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800";
+const BADGE_NEUTRAL = "rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-semibold text-zinc-700";
+const LINK_SUBTLE = "rounded-lg border border-violet-200/80 bg-white px-2.5 py-1 text-xs font-semibold text-violet-700 transition hover:bg-violet-50";
+const BTN_ICON_ROUND =
+  "group inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/90 bg-white/90 text-zinc-600 shadow-sm backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-violet-300/80 hover:bg-violet-50 hover:text-violet-800";
 
 function EquipmentCardArrowLink({
   href,
@@ -25,7 +41,7 @@ function EquipmentCardArrowLink({
       href={href}
       title={label}
       aria-label={label}
-      className="group mt-auto inline-flex h-9 w-full items-center justify-center rounded-lg border border-white/80 bg-white/70 text-zinc-600 shadow-sm backdrop-blur-sm transition hover:border-violet-300/80 hover:bg-violet-50 hover:text-violet-800"
+      className={`mt-auto ml-auto ${BTN_ICON_ROUND}`}
     >
       <svg
         className="h-4 w-4 transition group-hover:translate-x-0.5"
@@ -56,7 +72,7 @@ function CardLink({
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group rounded-2xl border border-zinc-200/90 bg-white/95 p-4 shadow-sm backdrop-blur-[2px] transition hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="text-base font-semibold tracking-tight">{title}</div>
       <div className="mt-1 text-sm text-zinc-600">{description}</div>
@@ -252,13 +268,6 @@ type AchievementSnapshot = {
   unreadNotifications: number;
 };
 
-function levelBadgeTone(level: AchievementLevel): string {
-  if (level === "GOLD") return "border-amber-300 bg-amber-50 text-amber-900";
-  if (level === "SILVER") return "border-slate-300 bg-slate-50 text-slate-800";
-  if (level === "BRONZE") return "border-orange-300 bg-orange-50 text-orange-900";
-  return "border-zinc-200 bg-zinc-50 text-zinc-600";
-}
-
 function levelLabel(level: AchievementLevel): string {
   if (level === "GOLD") return "Золото";
   if (level === "SILVER") return "Серебро";
@@ -448,7 +457,7 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
   }, [isGreenwich]);
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <div className={DASH_CARD}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm font-semibold text-zinc-900">Заявки</div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
@@ -467,7 +476,7 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
       {!loading && !error ? (
         <div className="mt-4">
           {data?.nearest ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
+            <div className={DASH_SUBCARD}>
               <div className="px-4 py-4 bg-zinc-50">
                 <OrderStatusStepper status={data.nearest.status} />
               </div>
@@ -490,14 +499,14 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href={`/orders/${data.nearest.id}?from=dashboard`}
-                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
+                    className={BTN_PRIMARY}
                   >
                     Открыть ближайшую
                   </Link>
                   {data.nearest.status === "ISSUED" && !data.nearest.parentOrderId ? (
                     <Link
                       href={`/catalog?quickParentId=${data.nearest.id}`}
-                      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                      className={BTN_WARM}
                     >
                       Быстрая доп.-выдача
                     </Link>
@@ -515,6 +524,141 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
 }
 
 type WowstorgDashboardEndedPosition = { id: string; name: string };
+type InventoryAuditStatus = {
+  id: string;
+  severity: "OK" | "WARNING" | "CRITICAL" | "FAILED";
+  kind: "AUTO" | "MANUAL";
+  startedAt: string;
+  finishedAt: string | null;
+  summaryJson: null | { totalItems?: number; okCount?: number; warningCount?: number; criticalCount?: number };
+  errorText: string | null;
+};
+
+function auditTone(status: InventoryAuditStatus["severity"]) {
+  if (status === "OK") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (status === "WARNING") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (status === "CRITICAL") return "border-red-200 bg-red-50 text-red-900";
+  return "border-zinc-300 bg-zinc-100 text-zinc-800";
+}
+
+function auditDotTone(status: InventoryAuditStatus["severity"]) {
+  if (status === "OK") return "bg-emerald-500 shadow-emerald-300/80";
+  if (status === "WARNING") return "bg-amber-500 shadow-amber-300/80";
+  if (status === "CRITICAL") return "bg-red-500 shadow-red-300/80";
+  return "bg-zinc-500 shadow-zinc-300/80";
+}
+
+function WowstorgAuditStatusCard() {
+  const [row, setRow] = React.useState<InventoryAuditStatus | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetch("/api/admin/inventory-audit/status", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { status?: InventoryAuditStatus }) => {
+        if (!cancelled) setRow(j.status ?? null);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className={DASH_CARD}>
+      <style jsx>{`
+        @keyframes auditPulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.9;
+          }
+          70% {
+            transform: scale(1.5);
+            opacity: 0;
+          }
+          100% {
+            transform: scale(1.5);
+            opacity: 0;
+          }
+        }
+        .auditDotPulse::after {
+          content: "";
+          position: absolute;
+          inset: -1px;
+          border-radius: 9999px;
+          background: currentColor;
+          opacity: 0.4;
+          animation: auditPulse 1.8s ease-out infinite;
+        }
+      `}</style>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
+        <div className="text-sm font-semibold text-zinc-900">Статус аудита инвентаря</div>
+      </div>
+      {loading ? <div className="mt-2 text-sm text-zinc-600">Загрузка…</div> : null}
+      {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
+      {!loading && !error ? (
+        row ? (
+          <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+              <div className="relative grid h-11 w-11 place-items-center rounded-full bg-white shadow-inner">
+                <span
+                  className={[
+                    "auditDotPulse relative block h-5 w-5 rounded-full text-current",
+                    auditDotTone(row.severity),
+                  ].join(" ")}
+                />
+              </div>
+              <div className="min-w-0">
+                <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${auditTone(row.severity)}`}>
+                  {row.severity === "OK"
+                    ? "Все в норме"
+                    : row.severity === "WARNING"
+                      ? "Есть предупреждения"
+                      : row.severity === "CRITICAL"
+                        ? "Есть критичные расхождения"
+                        : "Проверка завершилась с ошибкой"}
+                </div>
+                <div className="mt-1 text-xs text-zinc-600">
+                  Последняя проверка: <span className="font-medium text-zinc-800">{fmtDateRu(row.startedAt)}</span> (
+                  {row.kind === "AUTO" ? "AUTO" : "MANUAL"})
+                </div>
+              </div>
+              </div>
+              <Link href="/admin/inventory-audit" className={BTN_ICON_ROUND} title="Открыть аудит" aria-label="Открыть аудит">
+                <svg
+                  className="h-4 w-4 transition group-hover:translate-x-0.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M5 12h14" />
+                  <path d="M13 6l6 6-6 6" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 text-sm text-zinc-600">Пока не запускался.</div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 type WowstorgDashboardData = {
   activeCount: number;
   completedCount: number;
@@ -582,15 +726,15 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-      <div className="md:col-span-8 rounded-2xl bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className={`${DASH_CARD} md:col-span-8`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
           <div className="text-sm font-semibold text-zinc-900">Заявки</div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
-            <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5">
-              Активных: <span className="font-semibold text-violet-800">{data?.activeCount ?? 0}</span>
+            <span className={BADGE_PRIMARY}>
+              Активных: <span>{data?.activeCount ?? 0}</span>
             </span>
-            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5">
-              Выполненных: <span className="font-semibold text-zinc-900">{data?.completedCount ?? 0}</span>
+            <span className={BADGE_NEUTRAL}>
+              Выполненных: <span>{data?.completedCount ?? 0}</span>
             </span>
           </div>
         </div>
@@ -606,7 +750,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           <div className="mt-4">
             {data?.nearest ? (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
+                <div className={DASH_SUBCARD}>
                   <div className="px-4 py-4 bg-zinc-50">
                     <OrderStatusStepper status={data.nearest.status} />
                   </div>
@@ -632,7 +776,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
                         href={`/orders/${data.nearest.id}?from=dashboard`}
-                        className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 inline-flex items-center"
+                        className={BTN_PRIMARY}
                       >
                         Открыть ближайшую
                       </Link>
@@ -641,7 +785,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                       data.nearest.greenwichUser ? (
                         <Link
                           href={`/catalog?quickParentId=${data.nearest.id}`}
-                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 inline-flex items-center"
+                          className={BTN_WARM}
                         >
                           Быстрая доп.-выдача
                         </Link>
@@ -687,19 +831,22 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                 ) : null}
               </div>
             ) : (
-              <div className="text-sm text-zinc-600 mt-2">Пока нет активных заявок.</div>
+              <div className="mt-2 space-y-3">
+                <div className="text-sm text-zinc-600">Пока нет активных заявок.</div>
+                <WowstorgIdleText />
+              </div>
             )}
           </div>
         ) : null}
       </div>
 
-      <div className="md:col-span-4 rounded-2xl bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className={`${DASH_CARD} md:col-span-4`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
           <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
           {data?.equipment.endedPositions.length ? (
             <Link
               href="/inventory/warehouse-items"
-              className="text-sm font-medium text-violet-800 hover:text-violet-900"
+              className={LINK_SUBTLE}
             >
               Открыть склад
             </Link>
@@ -710,27 +857,27 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         {!loading && !error && data ? (
           <div className="mt-3 space-y-4">
             <div className="grid grid-cols-2 gap-2 items-stretch">
-              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-amber-900">Ремонт</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-amber-900">{data.equipment.inRepairQty}</div>
                 <EquipmentCardArrowLink href="/inventory/repair?condition=NEEDS_REPAIR" label="Открыть базу «Требует ремонта»" />
               </div>
-              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-red-200 bg-red-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-red-900">Сломано</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-red-900">{data.equipment.brokenQty}</div>
                 <EquipmentCardArrowLink href="/inventory/repair?condition=BROKEN" label="Открыть базу «Сломано»" />
               </div>
-              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-zinc-800">Потеряно</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-zinc-900">{data.equipment.lostQty}</div>
                 <EquipmentCardArrowLink href="/inventory/losses" label="Открыть базу утерянного" />
               </div>
-              <div className="flex min-h-[7.25rem] flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-violet-900">В наличии позиций</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{data.equipment.positionsInStockCount}</div>
                 <EquipmentCardArrowLink href="/inventory/positions" label="Открыть позиции каталога" />
               </div>
-              <div className="col-span-2 flex min-h-[7.25rem] flex-col rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+              <div className="col-span-2 flex min-h-[6.8rem] flex-col rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-sky-900">В аренде сейчас</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-sky-900">
                   {data.equipment.rentedUnitsTotal} шт. · {data.equipment.rentedPositionsCount} поз.
@@ -813,16 +960,17 @@ export default function HomeDashboardPage() {
     };
   }, [isGreenwich, isWowstorg]);
 
-  const showBackgroundGame = hasActiveOrders === false;
+  const showBackgroundGame = isGreenwich && hasActiveOrders === false;
+  const showGlobalStars = isGreenwich;
 
   return (
     <AppShell title="Главная">
       <div className="relative space-y-6">
-        <RelaxZone />
+        {showGlobalStars ? <RelaxZone /> : null}
         {showBackgroundGame ? <BackgroundStackGame /> : null}
         <div className="relative z-10 space-y-6">
         {isGreenwich ? (
-          <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
+          <div className={DASH_SECTION_SHELL}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
                 <div className="text-sm font-semibold text-zinc-900">Дашборд Grinvich</div>
@@ -847,14 +995,17 @@ export default function HomeDashboardPage() {
         ) : null}
 
         {isWowstorg ? (
-          <div className="rounded-3xl border border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.08))] p-4 shadow-sm">
+          <div className={DASH_SECTION_SHELL}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
                 <div className="text-sm font-semibold text-zinc-900">Дашборд</div>
                 <div className="mt-1 text-xs text-zinc-600">Статус заявок и реквизита на сегодня</div>
               </div>
             </div>
-            <IssuanceCalendar className="mb-3" />
+            <IssuanceCalendar className="mb-3 border-violet-100/90 shadow-[0_6px_24px_rgba(124,58,237,0.08)]" />
+            <div className="mb-3">
+              <WowstorgAuditStatusCard />
+            </div>
             <WowstorgDashboardBlock isWowstorg={isWowstorg} />
           </div>
         ) : null}

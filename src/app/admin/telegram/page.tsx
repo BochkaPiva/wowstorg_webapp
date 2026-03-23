@@ -75,7 +75,7 @@ export default function AdminTelegramPage() {
     if (!forbidden) void load();
   }, [forbidden, load]);
 
-  async function postTest(kind: "warehouse" | "dm", chatId?: string) {
+  async function postTest(kind: "warehouse" | "dm" | "greenwich-broadcast", chatId?: string) {
     setBusy(kind + (chatId ? "-dm" : ""));
     setLastResult(null);
     setError(null);
@@ -83,6 +83,8 @@ export default function AdminTelegramPage() {
       const body =
         kind === "dm"
           ? { kind: "dm" as const, chatId: chatId ?? "" }
+          : kind === "greenwich-broadcast"
+            ? { kind: "greenwich-broadcast" as const }
           : { kind: "warehouse" as const };
       const res = await fetch("/api/admin/telegram", {
         method: "POST",
@@ -220,6 +222,21 @@ export default function AdminTelegramPage() {
               className="mt-3 rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
             >
               {busy === "dm-dm" ? "Отправка…" : "Отправить тест в ЛС"}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-zinc-800">Тест всем Grinvich</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Отправляет тестовое сообщение всем активным пользователям Grinvich, у которых заполнен Telegram Chat ID.
+            </p>
+            <button
+              type="button"
+              onClick={() => void postTest("greenwich-broadcast")}
+              disabled={Boolean(busy)}
+              className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {busy === "greenwich-broadcast" ? "Отправка…" : "Отправить тест всем Grinvich"}
             </button>
           </div>
 

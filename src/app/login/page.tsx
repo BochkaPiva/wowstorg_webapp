@@ -12,6 +12,12 @@ export default function LoginPage() {
 
   const [login, setLogin] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [firstLoginPassword, setFirstLoginPassword] = React.useState("");
+  const [firstLoginPasswordConfirm, setFirstLoginPasswordConfirm] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showFirstPassword, setShowFirstPassword] = React.useState(false);
+  const [showFirstPasswordConfirm, setShowFirstPasswordConfirm] = React.useState(false);
+  const [mode, setMode] = React.useState<"login" | "first-login">("login");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
@@ -33,7 +39,13 @@ export default function LoginPage() {
         const data = (await res.json().catch(() => null)) as
           | { error?: { message?: string } }
           | null;
-        setError(data?.error?.message ?? "Не удалось войти");
+        const message = data?.error?.message ?? "Не удалось войти";
+        if (message === "FIRST_LOGIN_REQUIRED") {
+          setMode("first-login");
+          setError("Для этого логина сначала выполните первую авторизацию.");
+        } else {
+          setError(message);
+        }
         return;
       }
       await refresh();
@@ -43,9 +55,44 @@ export default function LoginPage() {
     }
   }
 
+  async function onFirstLoginSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/first-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          login,
+          password: firstLoginPassword,
+          passwordConfirm: firstLoginPasswordConfirm,
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setError(data?.error?.message ?? "Не удалось завершить первую авторизацию");
+        return;
+      }
+      setMode("login");
+      setPassword("");
+      setFirstLoginPassword("");
+      setFirstLoginPasswordConfirm("");
+      setError("Пароль установлен. Теперь войдите с новым паролем.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="wow-body">
-      <form className="wow-form" onSubmit={onSubmit} autoComplete="off">
+      <form
+        className="wow-form"
+        onSubmit={mode === "login" ? onSubmit : onFirstLoginSubmit}
+        autoComplete="off"
+      >
         <div className="wow-inner">
           <div className="wow-brand">
             <div className="wow-brandLeft">
@@ -55,7 +102,7 @@ export default function LoginPage() {
                 <div className="wow-subtitle">склад и аренда</div>
               </div>
             </div>
-            <h2 className="wow-h2">Вход</h2>
+            <h2 className="wow-h2">{mode === "login" ? "Вход" : "Первый вход"}</h2>
           </div>
 
           <div className="wow-input-wrapper">
@@ -81,7 +128,7 @@ export default function LoginPage() {
 
           <div className="wow-input-wrapper">
             <label className="wow-label" htmlFor="login-password">
-              Пароль
+              {mode === "login" ? "Пароль" : "Новый пароль"}
             </label>
             <div className="wow-input-group">
               <span className="wow-icon" aria-hidden="true">
@@ -91,27 +138,119 @@ export default function LoginPage() {
               </span>
               <input
                 className="wow-input"
-                type="password"
+                type={
+                  mode === "login"
+                    ? (showPassword ? "text" : "password")
+                    : (showFirstPassword ? "text" : "password")
+                }
                 id="login-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                value={mode === "login" ? password : firstLoginPassword}
+                onChange={(e) =>
+                  mode === "login"
+                    ? setPassword(e.target.value)
+                    : setFirstLoginPassword(e.target.value)
+                }
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
               />
+              <button
+                type="button"
+                className="wow-eyeBtn"
+                onClick={() =>
+                  mode === "login"
+                    ? setShowPassword((v) => !v)
+                    : setShowFirstPassword((v) => !v)
+                }
+                aria-label={
+                  mode === "login"
+                    ? (showPassword ? "Скрыть пароль" : "Показать пароль")
+                    : (showFirstPassword ? "Скрыть пароль" : "Показать пароль")
+                }
+                title={
+                  mode === "login"
+                    ? (showPassword ? "Скрыть пароль" : "Показать пароль")
+                    : (showFirstPassword ? "Скрыть пароль" : "Показать пароль")
+                }
+              >
+                {(mode === "login" ? showPassword : showFirstPassword) ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 3l18 18-1.5 1.5-3.22-3.22A12.7 12.7 0 0 1 12 20c-5.5 0-9.74-3.59-11-8 0 0 1.1-3.3 4.28-5.72L1.5 4.5 3 3zm7.34 7.34A3 3 0 0 0 12 15c.4 0 .78-.08 1.12-.23l-2.78-2.78zM12 4c5.5 0 9.74 3.59 11 8 0 0-.77 2.31-2.9 4.53l-2.2-2.2A5 5 0 0 0 9.67 6.1l-2-2A12.6 12.6 0 0 1 12 4z" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 4c5.5 0 9.74 3.59 11 8-1.26 4.41-5.5 8-11 8S2.26 16.41 1 12c1.26-4.41 5.5-8 11-8zm0 2C7.73 6 4.32 8.67 3.1 12 4.32 15.33 7.73 18 12 18s7.68-2.67 8.9-6C19.68 8.67 16.27 6 12 6zm0 2.5A3.5 3.5 0 1 1 8.5 12 3.5 3.5 0 0 1 12 8.5zm0 2A1.5 1.5 0 1 0 13.5 12 1.5 1.5 0 0 0 12 10.5z" />
+                  </svg>
+                )}
+              </button>
             </div>
           </div>
+
+          {mode === "first-login" ? (
+            <div className="wow-input-wrapper">
+              <label className="wow-label" htmlFor="login-password-repeat">
+                Повторите пароль
+              </label>
+              <div className="wow-input-group">
+                <span className="wow-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z" />
+                  </svg>
+                </span>
+                <input
+                  className="wow-input"
+                  type={showFirstPasswordConfirm ? "text" : "password"}
+                  id="login-password-repeat"
+                  value={firstLoginPasswordConfirm}
+                  onChange={(e) => setFirstLoginPasswordConfirm(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="wow-eyeBtn"
+                  onClick={() => setShowFirstPasswordConfirm((v) => !v)}
+                  aria-label={showFirstPasswordConfirm ? "Скрыть пароль" : "Показать пароль"}
+                  title={showFirstPasswordConfirm ? "Скрыть пароль" : "Показать пароль"}
+                >
+                  {showFirstPasswordConfirm ? (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 3l18 18-1.5 1.5-3.22-3.22A12.7 12.7 0 0 1 12 20c-5.5 0-9.74-3.59-11-8 0 0 1.1-3.3 4.28-5.72L1.5 4.5 3 3zm7.34 7.34A3 3 0 0 0 12 15c.4 0 .78-.08 1.12-.23l-2.78-2.78zM12 4c5.5 0 9.74 3.59 11 8 0 0-.77 2.31-2.9 4.53l-2.2-2.2A5 5 0 0 0 9.67 6.1l-2-2A12.6 12.6 0 0 1 12 4z" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 4c5.5 0 9.74 3.59 11 8-1.26 4.41-5.5 8-11 8S2.26 16.41 1 12c1.26-4.41 5.5-8 11-8zm0 2C7.73 6 4.32 8.67 3.1 12 4.32 15.33 7.73 18 12 18s7.68-2.67 8.9-6C19.68 8.67 16.27 6 12 6zm0 2.5A3.5 3.5 0 1 1 8.5 12 3.5 3.5 0 0 1 12 8.5zm0 2A1.5 1.5 0 1 0 13.5 12 1.5 1.5 0 0 0 12 10.5z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {error ? <div className="wow-error">{error}</div> : null}
 
           <div className="wow-btn-group">
             <button className="wow-btn wow-btn-primary" disabled={loading}>
-              {loading ? "Входим…" : "Войти"}
+              {loading
+                ? mode === "login"
+                  ? "Входим…"
+                  : "Сохраняем…"
+                : mode === "login"
+                  ? "Войти"
+                  : "Установить пароль"}
             </button>
             <button
               className="wow-btn-text"
               type="button"
-              onClick={() => setError("Сброс пароля добавим позже (v1).")}
+              onClick={() => {
+                setError(null);
+                setMode((m) => (m === "login" ? "first-login" : "login"));
+                setPassword("");
+                setFirstLoginPassword("");
+                setFirstLoginPasswordConfirm("");
+                setShowPassword(false);
+                setShowFirstPassword(false);
+                setShowFirstPasswordConfirm(false);
+              }}
             >
-              Забыли пароль?
+              {mode === "login" ? "Первая авторизация" : "Обычный вход"}
             </button>
           </div>
 

@@ -18,7 +18,7 @@ type CatalogItem = {
   name: string;
   type: string;
   pricePerDay: string;
-  availability: { availableNow: number };
+  availability: { availableNow: number; availableForDates?: number };
 };
 
 function formatDateRu(dateOnly: string) {
@@ -168,11 +168,25 @@ export default function CartPage() {
     setCart(loadCart(cartScope));
   }, [cartScope]);
 
+  /**
+   * Синхронизируем черновик поля ввода с корзиной, но не затираем:
+   * - пустую строку (пользователь стирает количество до blur);
+   * - промежуточный ввод, пока число в поле совпадает с qty в корзине.
+   * Раньше использовалось prev ?? String(qty) — при нажатии «+» qty росло, а черновик оставался старым.
+   */
   React.useEffect(() => {
     setQtyDrafts((prev) => {
       const next: Record<string, string> = {};
       for (const l of cart) {
-        next[l.itemId] = prev[l.itemId] ?? String(l.qty);
+        const p = prev[l.itemId];
+        if (p === "") {
+          next[l.itemId] = "";
+        } else if (p !== undefined && p !== "") {
+          const n = Number.parseInt(p, 10);
+          next[l.itemId] = Number.isFinite(n) && n === l.qty ? p : String(l.qty);
+        } else {
+          next[l.itemId] = String(l.qty);
+        }
       }
       return next;
     });
@@ -247,10 +261,20 @@ export default function CartPage() {
     let cancelled = false;
     const ids = cart.map((l) => l.itemId).join(",");
 
+    const params = new URLSearchParams();
+    params.set("ids", ids);
+    if (startDate && endDate) {
+      params.set("startDate", startDate);
+      params.set("endDate", endDate);
+    }
+    if (quickParentId) {
+      params.set("excludeOrderId", quickParentId);
+    }
+
     async function loadItems() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/catalog/items?ids=${encodeURIComponent(ids)}`, { cache: "no-store" });
+        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
         if (!cancelled) setItems(data?.items ?? []);
       } catch (e) {
@@ -265,19 +289,50 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- грузим позиции только при смене набора id; cart берём из замыкания
-  }, [cartItemIdsKey]);
+  }, [cartItemIdsKey, startDate, endDate, quickParentId]);
+
+  function maxQtyForItem(itemId: string): number | null {
+    const inv = items.find((i) => i.id === itemId);
+    if (!inv) return null;
+    const max = inv.availability.availableForDates ?? inv.availability.availableNow;
+    return Math.max(0, max);
+  }
 
   function setQty(itemId: string, qty: number) {
+    const cap = maxQtyForItem(itemId);
+    const clamped =
+      cap === null ? Math.max(0, qty) : cap <= 0 ? 0 : Math.max(0, Math.min(qty, cap));
     const next = cart
-      .map((l) => (l.itemId === itemId ? { ...l, qty } : l))
+      .map((l) => (l.itemId === itemId ? { ...l, qty: clamped } : l))
       .filter((l) => l.qty > 0);
-    if (!next.some((l) => l.itemId === itemId) && qty > 0) {
-      next.push({ itemId, qty });
+    if (!next.some((l) => l.itemId === itemId) && clamped > 0) {
+      next.push({ itemId, qty: clamped });
     }
     setCart(next);
     saveCart(next, cartScope);
   }
+
+  /** После загрузки каталога с датами — подрезаем qty, если в корзине было больше доступного. */
+  React.useEffect(() => {
+    if (items.length === 0) return;
+    setCart((prev) => {
+      let changed = false;
+      const next = prev
+        .map((l) => {
+          const inv = items.find((i) => i.id === l.itemId);
+          if (!inv) return l;
+          const cap = inv.availability.availableForDates ?? inv.availability.availableNow;
+          const max = Math.max(0, cap);
+          const clamped = max <= 0 ? 0 : Math.min(l.qty, max);
+          if (clamped !== l.qty) changed = true;
+          return { ...l, qty: clamped };
+        })
+        .filter((l) => l.qty > 0);
+      if (!changed) return prev;
+      saveCart(next, cartScope);
+      return next;
+    });
+  }, [items, cartScope]);
 
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));
@@ -293,11 +348,13 @@ export default function CartPage() {
     const raw = qtyDrafts[itemId] ?? "";
     if (raw.trim() === "") {
       setQty(itemId, 0);
+      setQtyDrafts((prev) => ({ ...prev, [itemId]: "" }));
       return;
     }
     const parsed = Number.parseInt(raw, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       setQty(itemId, 0);
+      setQtyDrafts((prev) => ({ ...prev, [itemId]: "" }));
       return;
     }
     setQty(itemId, parsed);
@@ -501,6 +558,8 @@ export default function CartPage() {
                 const price = basePrice * displayMultiplier;
                 const lineTotalPerDay = price * line.qty;
                 const lineTotalForPeriod = lineTotalPerDay * (rentalDays || 0);
+                const maxAvail = item.availability.availableForDates ?? item.availability.availableNow;
+                const canInc = maxAvail > 0 && line.qty < maxAvail;
                 return (
                   <li key={item.id} className="cart-row">
                     <div className="cart-row-main">
@@ -538,7 +597,11 @@ export default function CartPage() {
                           pattern="[0-9]*"
                           value={qtyDrafts[item.id] ?? String(line.qty)}
                           onChange={(e) => {
-                            const next = e.target.value.replace(/\D+/g, "");
+                            let next = e.target.value.replace(/\D+/g, "");
+                            if (next !== "" && maxAvail > 0) {
+                              const n = Number.parseInt(next, 10);
+                              if (Number.isFinite(n) && n > maxAvail) next = String(maxAvail);
+                            }
                             setQtyDrafts((prev) => ({ ...prev, [item.id]: next }));
                           }}
                           onBlur={() => commitQtyDraft(item.id)}
@@ -554,6 +617,8 @@ export default function CartPage() {
                           type="button"
                           onClick={() => setQty(item.id, line.qty + 1)}
                           aria-label="Увеличить"
+                          disabled={!canInc}
+                          title={!canInc ? "Достигнут максимум по складу на выбранные даты" : undefined}
                         >
                           +
                         </button>

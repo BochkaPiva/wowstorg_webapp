@@ -78,10 +78,26 @@ enum InAppNotificationType {
   ACHIEVEMENT_UNLOCK
 }
 
+enum InventoryAuditRunKind {
+  AUTO
+  MANUAL
+}
+
+enum InventoryAuditSeverity {
+  OK
+  WARNING
+  CRITICAL
+  FAILED
+}
+
 model User {
   id             String   @id @default(cuid())
   login          String   @unique
   passwordHash   String
+  /// Требуется установить личный пароль через flow "Первая авторизация".
+  mustSetPassword Boolean @default(false)
+  /// Когда пользователь впервые установил личный пароль.
+  passwordSetAt   DateTime?
   role           Role
   displayName    String   /// ФИО
   telegramChatId String?  /// ID чата в Telegram для уведомлений
@@ -98,6 +114,7 @@ model User {
   achievementUnlocks  AchievementUnlock[]
   towerStats          UserTowerStats?
   inAppNotifications  InAppNotification[]
+  inventoryAuditRuns  InventoryAuditRun[]
 
   @@index([role, isActive])
 }
@@ -186,6 +203,7 @@ model Item {
   kitLines    KitLine[]
   orderLines  OrderLine[]
   lossRecords LossRecord[]
+  inventoryAuditResults InventoryAuditItemResult[]
 
   @@index([isActive, internalOnly])
   @@index([name])
@@ -492,4 +510,40 @@ model InAppNotification {
   createdAt DateTime @default(now())
 
   @@index([userId, isRead, createdAt])
+}
+
+model InventoryAuditRun {
+  id        String @id @default(cuid())
+  kind      InventoryAuditRunKind
+  severity  InventoryAuditSeverity
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  summaryJson Json?
+  errorText String?
+
+  createdByUserId String?
+  createdByUser   User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  itemResults InventoryAuditItemResult[]
+
+  @@index([startedAt])
+  @@index([severity, startedAt])
+}
+
+model InventoryAuditItemResult {
+  id      String @id @default(cuid())
+  runId   String
+  run     InventoryAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  itemId  String
+  item    Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  severity InventoryAuditSeverity
+  expectedJson Json
+  actualJson   Json
+  deltaJson    Json
+  explanationJson Json?
+
+  @@index([runId, severity])
+  @@index([itemId])
 }

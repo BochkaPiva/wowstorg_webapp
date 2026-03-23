@@ -239,7 +239,7 @@ export default function CatalogPage() {
       const next = [...prev];
       const idx = next.findIndex((l) => l.itemId === itemId);
       const currentQty = idx >= 0 ? next[idx].qty : 0;
-      const nextQty = Math.min(currentQty + 1, max || currentQty + 1);
+      const nextQty = max <= 0 ? 0 : Math.min(currentQty + 1, max);
       if (idx >= 0) {
         next[idx] = {
           ...next[idx],
@@ -261,7 +261,7 @@ export default function CatalogPage() {
       const max = item
         ? (item.availability.availableForDates ?? item.availability.availableNow)
         : 0;
-      const clamped = Math.max(0, Math.min(qty, max || qty));
+      const clamped = max <= 0 ? 0 : Math.max(0, Math.min(qty, max));
       const next = prev
         .map((l) => (l.itemId === itemId ? { ...l, qty: clamped } : l))
         .filter((l) => l.qty > 0);
@@ -291,7 +291,7 @@ export default function CatalogPage() {
         const idx = next.findIndex((x) => x.itemId === itemId);
         const currentQty = idx >= 0 ? next[idx].qty : 0;
         const desired = currentQty + l.defaultQty;
-        const clamped = Math.min(desired, max || desired);
+        const clamped = max <= 0 ? 0 : Math.min(desired, max);
         if (idx >= 0) {
           next[idx] = {
             ...next[idx],

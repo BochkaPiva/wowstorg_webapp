@@ -29,6 +29,9 @@ export async function POST(req: Request) {
   if (!user || !user.isActive) {
     return jsonError(401, "Wrong credentials");
   }
+  if (user.mustSetPassword) {
+    return jsonError(403, "FIRST_LOGIN_REQUIRED");
+  }
 
   const ok = await compare(password, user.passwordHash);
   if (!ok) {

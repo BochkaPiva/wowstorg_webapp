@@ -10,6 +10,7 @@ const UpdateSchema = z.object({
   role: z.enum(["GREENWICH", "WOWSTORG"]).optional(),
   telegramChatId: z.string().trim().max(64).nullable().optional(),
   isActive: z.boolean().optional(),
+  mustSetPassword: z.boolean().optional(),
   password: z.string().min(6).max(512).optional(),
   // Ручная правка рейтинга Greenwich.
   // Если задано `greenwichRatingAuto=true` — выключаем ручную блокировку и применяем авто-пересчёт.
@@ -44,8 +45,14 @@ export async function PATCH(
     if (parsed.data.displayName !== undefined) data.displayName = parsed.data.displayName;
     if (parsed.data.role !== undefined) data.role = parsed.data.role;
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+    if (parsed.data.mustSetPassword !== undefined) {
+      data.mustSetPassword = parsed.data.mustSetPassword;
+      data.passwordSetAt = parsed.data.mustSetPassword ? null : new Date();
+    }
     if (parsed.data.password !== undefined) {
       data.passwordHash = await hash(parsed.data.password, 10);
+      data.mustSetPassword = false;
+      data.passwordSetAt = new Date();
     }
 
     const telegramChatId = parsed.data.telegramChatId;
@@ -61,6 +68,7 @@ export async function PATCH(
         displayName: true,
         role: true,
         isActive: true,
+        mustSetPassword: true,
         createdAt: true,
       },
     });

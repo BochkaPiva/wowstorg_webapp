@@ -55,14 +55,19 @@ export function ItemModal({
   function commitQty(raw: string) {
     if (raw.trim() === "") {
       onSetQty(0);
+      setQtyDraft("");
       return;
     }
     const parsed = Number.parseInt(raw, 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       onSetQty(0);
+      setQtyDraft("");
       return;
     }
-    onSetQty(parsed);
+    const cap = Math.max(0, available);
+    const capped = cap <= 0 ? 0 : Math.min(parsed, cap);
+    onSetQty(capped);
+    setQtyDraft(capped > 0 ? String(capped) : "");
   }
 
   React.useEffect(() => {
@@ -155,7 +160,11 @@ export function ItemModal({
                       pattern="[0-9]*"
                       value={qtyDraft}
                       onChange={(e) => {
-                        const next = e.target.value.replace(/\D+/g, "");
+                        let next = e.target.value.replace(/\D+/g, "");
+                        if (next !== "" && available > 0) {
+                          const n = Number.parseInt(next, 10);
+                          if (Number.isFinite(n) && n > available) next = String(available);
+                        }
                         setQtyDraft(next);
                       }}
                       onBlur={() => commitQty(qtyDraft)}

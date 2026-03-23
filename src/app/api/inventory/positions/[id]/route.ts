@@ -10,6 +10,7 @@ const UpdateSchema = z.object({
   description: z.string().trim().max(4000).nullable().optional(),
   type: z.enum(["ASSET", "BULK", "CONSUMABLE"]).optional(),
   pricePerDay: z.number().finite().min(0).optional(),
+  purchasePricePerUnit: z.number().finite().min(0).nullable().optional(),
   total: z.number().int().min(0).optional(),
   inRepair: z.number().int().min(0).optional(),
   broken: z.number().int().min(0).optional(),
@@ -36,6 +37,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       isActive: true,
       internalOnly: true,
       pricePerDay: true,
+      purchasePricePerUnit: true,
       total: true,
       inRepair: true,
       broken: true,
@@ -99,6 +101,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     ...(data.description !== undefined ? { description: data.description } : {}),
     ...(data.type != null ? { type: data.type } : {}),
     ...(data.pricePerDay != null ? { pricePerDay: new Prisma.Decimal(data.pricePerDay) } : {}),
+    ...(data.purchasePricePerUnit !== undefined
+      ? {
+          purchasePricePerUnit:
+            data.purchasePricePerUnit == null
+              ? null
+              : new Prisma.Decimal(data.purchasePricePerUnit),
+        }
+      : {}),
     ...(data.total != null ? { total: data.total } : {}),
     ...(data.inRepair != null ? { inRepair: data.inRepair } : {}),
     ...(data.broken != null ? { broken: data.broken } : {}),

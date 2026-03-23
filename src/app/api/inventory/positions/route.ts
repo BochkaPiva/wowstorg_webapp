@@ -10,6 +10,7 @@ const CreateSchema = z.object({
   description: z.string().trim().max(4000).nullable().optional(),
   type: z.enum(["ASSET", "BULK", "CONSUMABLE"]),
   pricePerDay: z.number().finite().min(0),
+  purchasePricePerUnit: z.number().finite().min(0).nullable().optional(),
   total: z.number().int().min(0),
   internalOnly: z.boolean().optional(),
   isActive: z.boolean().optional(),
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
       isActive: true,
       internalOnly: true,
       pricePerDay: true,
+      purchasePricePerUnit: true,
       total: true,
       inRepair: true,
       broken: true,
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid payload", parsed.error.flatten());
 
-  const { name, description, type, pricePerDay, total, internalOnly, isActive } = parsed.data;
+  const { name, description, type, pricePerDay, purchasePricePerUnit, total, internalOnly, isActive } = parsed.data;
 
   const item = await prisma.item.create({
     data: {
@@ -87,6 +89,8 @@ export async function POST(req: Request) {
       description: description ?? null,
       type,
       pricePerDay: new Prisma.Decimal(pricePerDay),
+      purchasePricePerUnit:
+        purchasePricePerUnit == null ? null : new Prisma.Decimal(purchasePricePerUnit),
       total,
       internalOnly: Boolean(internalOnly),
       isActive: isActive ?? true,

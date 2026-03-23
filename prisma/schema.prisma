@@ -139,6 +139,8 @@ model Item {
 
   /// Полная цена/сутки. Для Greenwich применяется коэффициент 0.76 на уровне заказа/сметы.
   pricePerDay Decimal @db.Decimal(12, 2)
+  /// Закупочная цена за 1 единицу (опционально, для расчета рентабельности).
+  purchasePricePerUnit Decimal? @db.Decimal(12, 2)
 
   /// Доступные количества учитываются через “ведра”.
   total    Int @default(0)

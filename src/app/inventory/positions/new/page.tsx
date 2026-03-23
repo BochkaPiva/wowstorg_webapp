@@ -16,6 +16,7 @@ export default function NewPositionPage() {
   const [description, setDescription] = React.useState("");
   const [type, setType] = React.useState<ItemType>("ASSET");
   const [pricePerDay, setPricePerDay] = React.useState<string>("");
+  const [purchasePricePerUnit, setPurchasePricePerUnit] = React.useState<string>("");
   const [total, setTotal] = React.useState<string>("0");
   // Это создание позиции каталога: внутренний реквизит создаётся в отдельном разделе
   const internalOnly = false;
@@ -29,6 +30,7 @@ export default function NewPositionPage() {
     setError(null);
     try {
       const price = Number(pricePerDay);
+      const purchasePrice = Number(purchasePricePerUnit);
       const qty = Number(total);
       const res = await fetch("/api/inventory/positions", {
         method: "POST",
@@ -38,6 +40,10 @@ export default function NewPositionPage() {
           description: description.trim() ? description.trim() : null,
           type,
           pricePerDay: Number.isFinite(price) ? price : 0,
+          purchasePricePerUnit:
+            purchasePricePerUnit.trim() === ""
+              ? null
+              : (Number.isFinite(purchasePrice) ? purchasePrice : 0),
           total: Number.isFinite(qty) ? Math.max(0, Math.trunc(qty)) : 0,
           internalOnly,
           isActive,
@@ -139,6 +145,18 @@ export default function NewPositionPage() {
                   className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
                   inputMode="decimal"
                   placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 mb-1">
+                  Цена закупа за единицу (₽, опционально)
+                </label>
+                <input
+                  value={purchasePricePerUnit}
+                  onChange={(e) => setPurchasePricePerUnit(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
+                  inputMode="decimal"
+                  placeholder="Оставьте пустым, если не знаете цену"
                 />
               </div>
               <div>

@@ -98,7 +98,7 @@ export async function POST(
   let xlsxBuffer: Buffer;
   try {
     mkdirSync(ESTIMATES_DIR, { recursive: true });
-    xlsxBuffer = buildEstimateXlsx(fullOrder as Parameters<typeof buildEstimateXlsx>[0]);
+    xlsxBuffer = await buildEstimateXlsx(fullOrder as Parameters<typeof buildEstimateXlsx>[0]);
     writeFileSync(join(ESTIMATES_DIR, estimateFileKey), xlsxBuffer);
   } catch (e) {
     console.error("[send-estimate] failed to write xlsx:", e);

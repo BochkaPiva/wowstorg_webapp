@@ -17,6 +17,7 @@ type Item = {
   isActive: boolean;
   internalOnly: boolean;
   pricePerDay: string;
+  purchasePricePerUnit: string | null;
   total: number;
   inRepair: number;
   broken: number;
@@ -48,6 +49,7 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     description: "",
     type: "ASSET" as ItemType,
     pricePerDay: "",
+    purchasePricePerUnit: "",
     total: "0",
     inRepair: "0",
     broken: "0",
@@ -76,6 +78,7 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
         description: it.description ?? "",
         type: it.type,
         pricePerDay: String(it.pricePerDay ?? ""),
+        purchasePricePerUnit: it.purchasePricePerUnit != null ? String(it.purchasePricePerUnit) : "",
         total: String(it.total),
         inRepair: String(it.inRepair),
         broken: String(it.broken),
@@ -102,6 +105,7 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     setError(null);
     try {
       const price = Number(form.pricePerDay);
+      const purchasePrice = Number(form.purchasePricePerUnit);
       const total = Math.trunc(Number(form.total) || 0);
       const inRepair = Math.trunc(Number(form.inRepair) || 0);
       const broken = Math.trunc(Number(form.broken) || 0);
@@ -115,6 +119,10 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
           description: form.description.trim() ? form.description.trim() : null,
           type: form.type,
           pricePerDay: Number.isFinite(price) ? price : 0,
+          purchasePricePerUnit:
+            form.purchasePricePerUnit.trim() === ""
+              ? null
+              : (Number.isFinite(purchasePrice) ? purchasePrice : 0),
           total,
           inRepair,
           broken,
@@ -338,6 +346,18 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
                     onChange={(e) => setForm((s) => ({ ...s, pricePerDay: e.target.value }))}
                     className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
                     inputMode="decimal"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-500 mb-1">
+                    Цена закупа за единицу (₽, опционально)
+                  </label>
+                  <input
+                    value={form.purchasePricePerUnit}
+                    onChange={(e) => setForm((s) => ({ ...s, purchasePricePerUnit: e.target.value }))}
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
+                    inputMode="decimal"
+                    placeholder="Оставьте пустым, если не знаете цену"
                   />
                 </div>
 

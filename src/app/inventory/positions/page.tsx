@@ -14,6 +14,7 @@ type Position = {
   isActive: boolean;
   internalOnly: boolean;
   pricePerDay: string;
+  purchasePricePerUnit: string | null;
   total: number;
   inRepair: number;
   broken: number;
@@ -199,6 +200,14 @@ export default function InventoryPositionsPage() {
                         <div className="mt-0.5 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800 tabular-nums">
                           {Number(p.pricePerDay).toLocaleString("ru-RU")} ₽
                         </div>
+                        {p.purchasePricePerUnit != null ? (
+                          <div className="mt-2">
+                            <div className="text-xs text-zinc-500">Цена закупа / шт</div>
+                            <div className="mt-0.5 inline-flex items-baseline gap-1 rounded-md bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800 tabular-nums">
+                              {Number(p.purchasePricePerUnit).toLocaleString("ru-RU")} ₽
+                            </div>
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-xs text-zinc-400">Обновлено: {new Date(p.updatedAt).toLocaleDateString("ru-RU")}</div>
                       </div>
                     </div>

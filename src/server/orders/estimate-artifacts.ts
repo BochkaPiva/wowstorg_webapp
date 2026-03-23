@@ -57,7 +57,7 @@ export async function makeEstimateArtifactsForOrder(db: Db, orderId: string): Pr
 
   const estimateFileKey = `${orderId}.xlsx`;
   mkdirSync(ESTIMATES_DIR, { recursive: true });
-  const xlsxBuffer = buildEstimateXlsx(order as Parameters<typeof buildEstimateXlsx>[0]);
+  const xlsxBuffer = await buildEstimateXlsx(order as Parameters<typeof buildEstimateXlsx>[0]);
   writeFileSync(join(ESTIMATES_DIR, estimateFileKey), xlsxBuffer);
 
   return { estimateFileKey, estimateSentSnapshot, xlsxBuffer };

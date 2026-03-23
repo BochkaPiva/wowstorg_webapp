@@ -222,8 +222,10 @@ export function BackgroundStackGame() {
   const gameRef = React.useRef<HTMLDivElement | null>(null);
   const gameStateRef = React.useRef<GameState>("ready");
   const [mounted, setMounted] = React.useState(false);
+  const [isDesktop, setIsDesktop] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [showHud, setShowHud] = React.useState(false);
+  const [isGameActive, setIsGameActive] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
@@ -232,6 +234,17 @@ export function BackgroundStackGame() {
 
   React.useEffect(() => {
     if (!mounted) return;
+    const apply = () => {
+      const desktopMedia = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+      setIsDesktop(desktopMedia && window.innerWidth >= 1024);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [mounted]);
+
+  React.useEffect(() => {
+    if (!mounted || !isDesktop) return;
     const gameEl = gameRef.current;
     if (!gameEl) return;
 
@@ -245,6 +258,19 @@ export function BackgroundStackGame() {
     let state: GameState = "ready";
     gameStateRef.current = state;
     let raf = 0;
+    let reportedBest = 0;
+    const reportTowerScore = (score: number) => {
+      if (score <= 0) return;
+      if (score <= reportedBest) return;
+      reportedBest = score;
+      void fetch("/api/greenwich/tower-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ score }),
+      }).catch(() => {
+        // Silent fail: game UX must never depend on network.
+      });
+    };
     const applyVerticalShift = (count: number) => {
       // Force growth to go downward stronger than upward.
       const sink = Math.min(86, Math.max(0, (count - 2) * 2.2));
@@ -253,20 +279,22 @@ export function BackgroundStackGame() {
       gsap.to(choppedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
     };
 
-    const addBlock = () => {
+    const addBlock = (updateScore = true) => {
       const last = blocks[blocks.length - 1];
       if (last && last.state === "missed") {
         state = "ended";
         gameStateRef.current = state;
         setShowHud(false);
+        setIsGameActive(false);
+        reportTowerScore(Math.max(0, blocks.length - 1));
         return;
       }
       const block = new Block(last ?? null);
       blocks.push(block);
-      setScore(Math.max(0, blocks.length - 1));
+      if (updateScore) setScore(Math.max(0, blocks.length - 1));
       newBlocks.add(block.mesh);
       applyVerticalShift(blocks.length);
-      const followY = Math.min(1.2, blocks.length * 0.03);
+      const followY = Math.min(0.95, blocks.length * 0.026);
       stage.setCamera(followY);
     };
 
@@ -304,12 +332,14 @@ export function BackgroundStackGame() {
       state = "playing";
       gameStateRef.current = state;
       setShowHud(true);
+      setIsGameActive(true);
       if (blocks.length <= 1) addBlock();
     };
 
     const restartGame = () => {
       state = "resetting";
       gameStateRef.current = state;
+      setIsGameActive(false);
       const old = [...placedBlocks.children];
       const removeSpeed = 0.2;
       const delayAmount = 0.02;
@@ -339,6 +369,26 @@ export function BackgroundStackGame() {
       }, cameraMove * 1000);
     };
 
+    const resetToIdle = () => {
+      state = "ready";
+      gameStateRef.current = state;
+      setShowHud(false);
+      setIsGameActive(false);
+      setScore(0);
+      blocks.length = 0;
+      newBlocks.clear();
+      placedBlocks.clear();
+      choppedBlocks.clear();
+      gsap.killTweensOf([newBlocks.position, placedBlocks.position, choppedBlocks.position, stage.camera.position]);
+      newBlocks.position.set(0, 0, 0);
+      placedBlocks.position.set(0, 0, 0);
+      choppedBlocks.position.set(0, 0, 0);
+      stage.camera.position.set(2, 2, 2);
+      stage.camera.lookAt(0, 0, 0);
+      addBlock(false);
+      addBlock(false);
+    };
+
     const onAction = () => {
       if (state === "ready") {
         startGame();
@@ -357,6 +407,11 @@ export function BackgroundStackGame() {
       }
     };
     const onPointer = () => onAction();
+    const onGlobalPointerDown = (e: PointerEvent) => {
+      if (state === "ready" || state === "resetting") return;
+      const rect = gameEl.getBoundingClientRect();
+      if (e.clientY < rect.top) resetToIdle();
+    };
     const onResize = () => stage.onResize();
 
     addBlock();
@@ -371,21 +426,23 @@ export function BackgroundStackGame() {
 
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onGlobalPointerDown, true);
     gameEl.addEventListener("pointerdown", onPointer);
 
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onGlobalPointerDown, true);
       gameEl.removeEventListener("pointerdown", onPointer);
       if (raf) window.cancelAnimationFrame(raf);
       stage.destroy();
     };
-  }, [mounted]);
+  }, [mounted, isDesktop]);
 
-  if (!mounted) return null;
+  if (!mounted || !isDesktop) return null;
   return createPortal(
     <>
-      <div className="fixed inset-x-0 bottom-0 z-[29] h-[36vh] min-h-[240px] max-h-[400px] pointer-events-none">
+      <div className="fixed inset-x-0 bottom-[-38px] z-[29] h-[36vh] min-h-[240px] max-h-[400px] pointer-events-none">
         <div
           className={[
             "pointer-events-none absolute inset-0 flex items-end justify-center font-black tabular-nums tracking-[-0.04em] transition-all duration-700",
@@ -400,8 +457,14 @@ export function BackgroundStackGame() {
           </span>
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_84%,transparent_100%)] [mask-repeat:no-repeat]">
-        <div ref={gameRef} className="absolute inset-0 z-10 opacity-[0.96] pointer-events-auto cursor-pointer" />
+      <div className="fixed inset-x-0 bottom-[-38px] z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_84%,transparent_100%)] [mask-repeat:no-repeat]">
+        <div
+          ref={gameRef}
+          className={[
+            "absolute inset-0 z-10 pointer-events-auto cursor-pointer transition-opacity duration-500",
+            isGameActive ? "opacity-[0.94]" : "opacity-[0.48]",
+          ].join(" ")}
+        />
         <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-[#f6f2ff]/66 via-[#f6f2ff]/18 to-[#f6f2ff]/00" />
         <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-20 bg-gradient-to-r from-[#f6f2ff]/72 via-[#f6f2ff]/28 to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-20 bg-gradient-to-l from-[#f6f2ff]/72 via-[#f6f2ff]/28 to-transparent" />

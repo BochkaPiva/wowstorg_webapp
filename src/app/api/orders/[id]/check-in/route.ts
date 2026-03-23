@@ -4,11 +4,13 @@ import type { Condition, ItemType } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import {
   computeGreenwichIncidentsDelta,
   recomputeGreenwichRatingScore,
 } from "@/server/ratings/greenwich-rating";
+import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 
 const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
 
@@ -271,6 +273,21 @@ export async function POST(
     scheduleAfterResponse("notifyCheckInClosed", async () => {
       const { notifyCheckInClosed } = await import("@/server/notifications/order-notifications");
       await notifyCheckInClosed(payload);
+      await notifyOrderStatusChangedInApp({
+        userId: fullOrder.greenwichUserId,
+        orderId: fullOrder.id,
+        status: "CLOSED",
+        customerName: fullOrder.customer?.name,
+      });
+    });
+  }
+
+  if (order.greenwichUserId) {
+    const userId = order.greenwichUserId;
+    scheduleAfterResponse("recomputeGreenwichAchievementsOnClosed", async () => {
+      await prisma.$transaction(async (tx) => {
+        await recomputeGreenwichAchievements(tx, userId);
+      });
     });
   }
 

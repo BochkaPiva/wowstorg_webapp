@@ -75,6 +75,7 @@ export default function CartPage() {
   const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
   const [cart, setCart] = React.useState<CartLine[]>([]);
+  const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
   const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [startDate, setStartDate] = React.useState<string | null>(null);
@@ -166,6 +167,16 @@ export default function CartPage() {
   React.useEffect(() => {
     setCart(loadCart(cartScope));
   }, [cartScope]);
+
+  React.useEffect(() => {
+    setQtyDrafts((prev) => {
+      const next: Record<string, string> = {};
+      for (const l of cart) {
+        next[l.itemId] = prev[l.itemId] ?? String(l.qty);
+      }
+      return next;
+    });
+  }, [cart]);
 
   React.useEffect(() => {
     if (isQuickSupplement) return;
@@ -271,6 +282,25 @@ export default function CartPage() {
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));
     saveCart(cart.filter((l) => l.itemId !== itemId), cartScope);
+    setQtyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }
+
+  function commitQtyDraft(itemId: string) {
+    const raw = qtyDrafts[itemId] ?? "";
+    if (raw.trim() === "") {
+      setQty(itemId, 0);
+      return;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setQty(itemId, 0);
+      return;
+    }
+    setQty(itemId, parsed);
   }
 
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
@@ -502,7 +532,24 @@ export default function CartPage() {
                         >
                           −
                         </button>
-                        <span>{line.qty}</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={qtyDrafts[item.id] ?? String(line.qty)}
+                          onChange={(e) => {
+                            const next = e.target.value.replace(/\D+/g, "");
+                            setQtyDrafts((prev) => ({ ...prev, [item.id]: next }));
+                          }}
+                          onBlur={() => commitQtyDraft(item.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              commitQtyDraft(item.id);
+                              (e.currentTarget as HTMLInputElement).blur();
+                            }
+                          }}
+                          aria-label="Количество"
+                        />
                         <button
                           type="button"
                           onClick={() => setQty(item.id, line.qty + 1)}

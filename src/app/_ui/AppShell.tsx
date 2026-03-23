@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 
 import { useAuth } from "@/app/providers";
+import { InAppNotifications } from "@/app/_ui/InAppNotifications";
 
 function NavLink({
   href,
@@ -84,6 +85,7 @@ export function AppShell({
 
   return (
     <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
+      <InAppNotifications enabled={state.status === "authenticated" && state.user.role === "GREENWICH"} />
       <div className="wow-bg" aria-hidden="true">
         <div
           className="wow-orb wow-orb--violet"

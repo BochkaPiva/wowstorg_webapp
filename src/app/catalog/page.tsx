@@ -331,6 +331,10 @@ export default function CatalogPage() {
     (id: string, currentQty: number) => setQty(id, currentQty + 1),
     [setQty],
   );
+  const handleCardSetQty = React.useCallback(
+    (id: string, qty: number) => setQty(id, qty),
+    [setQty],
+  );
 
   const selectedItem = selectedId
     ? items.find((i) => i.id === selectedId) ?? null
@@ -472,6 +476,7 @@ export default function CatalogPage() {
                   onAdd={handleCardAdd}
                   onDec={handleCardDec}
                   onInc={handleCardInc}
+                  onSetQty={handleCardSetQty}
                 />
               ))}
             </div>
@@ -494,6 +499,7 @@ export default function CatalogPage() {
                   onAdd={handleCardAdd}
                   onDec={handleCardDec}
                   onInc={handleCardInc}
+                  onSetQty={handleCardSetQty}
                 />
               ))}
             </div>
@@ -575,6 +581,7 @@ export default function CatalogPage() {
           onAdd={() => addToCart(selectedItem.id, Number(selectedItem.pricePerDay))}
           onInc={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) + 1)}
           onDec={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) - 1)}
+          onSetQty={(qty) => setQty(selectedItem.id, qty)}
         />
       ) : null}
     </AppShell>

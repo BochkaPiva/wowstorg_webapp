@@ -32,6 +32,7 @@ export function ItemModal({
   onAdd,
   onInc,
   onDec,
+  onSetQty,
 }: {
   item: CatalogItem;
   qtyInCart: number;
@@ -40,10 +41,29 @@ export function ItemModal({
   onAdd: () => void;
   onInc: () => void;
   onDec: () => void;
+  onSetQty: (qty: number) => void;
 }) {
   const available = availableForDates ?? item.availability.availableNow;
   const canAddMore = available > qtyInCart;
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  const [qtyDraft, setQtyDraft] = React.useState<string>(qtyInCart > 0 ? String(qtyInCart) : "");
+
+  React.useEffect(() => {
+    setQtyDraft(qtyInCart > 0 ? String(qtyInCart) : "");
+  }, [qtyInCart]);
+
+  function commitQty(raw: string) {
+    if (raw.trim() === "") {
+      onSetQty(0);
+      return;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      onSetQty(0);
+      return;
+    }
+    onSetQty(parsed);
+  }
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -129,7 +149,24 @@ export function ItemModal({
                     <button onClick={onDec} aria-label="Минус">
                       −
                     </button>
-                    <span>{qtyInCart}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={qtyDraft}
+                      onChange={(e) => {
+                        const next = e.target.value.replace(/\D+/g, "");
+                        setQtyDraft(next);
+                      }}
+                      onBlur={() => commitQty(qtyDraft)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          commitQty(qtyDraft);
+                          (e.currentTarget as HTMLInputElement).blur();
+                        }
+                      }}
+                      aria-label="Количество"
+                    />
                     <button
                       onClick={onInc}
                       aria-label="Плюс"

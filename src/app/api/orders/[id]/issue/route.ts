@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 export async function POST(
@@ -53,6 +54,12 @@ export async function POST(
     scheduleAfterResponse("notifyIssued", async () => {
       const { notifyIssued } = await import("@/server/notifications/order-notifications");
       await notifyIssued(payload);
+      await notifyOrderStatusChangedInApp({
+        userId: fullOrder.greenwichUserId,
+        orderId: fullOrder.id,
+        status: "ISSUED",
+        customerName: fullOrder.customer?.name,
+      });
     });
   }
 

@@ -78,8 +78,9 @@ function dinoPhrase(score: number) {
 
 function GreenwichRatingCard() {
   const [score, setScore] = React.useState<number | null>(null);
-  const [expanded, setExpanded] = React.useState(false);
+  const [showInfo, setShowInfo] = React.useState(false);
   const [riding, setRiding] = React.useState(false);
+  const infoRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -95,6 +96,26 @@ function GreenwichRatingCard() {
       cancelled = true;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!showInfo) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!infoRef.current) return;
+      const target = e.target as Node | null;
+      if (target && !infoRef.current.contains(target)) {
+        setShowInfo(false);
+      }
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowInfo(false);
+    };
+    window.addEventListener("pointerdown", onDocPointerDown);
+    window.addEventListener("keydown", onEsc);
+    return () => {
+      window.removeEventListener("pointerdown", onDocPointerDown);
+      window.removeEventListener("keydown", onEsc);
+    };
+  }, [showInfo]);
 
   const s = score ?? 100;
   const pct = Math.max(0, Math.min(100, s));
@@ -131,20 +152,33 @@ function GreenwichRatingCard() {
           animation: dinoBounce 1.2s ease-in-out 1;
         }
       `}</style>
-      <div className="flex items-start justify-between gap-3">
+      <div className="relative flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-zinc-900">Рейтинг</div>
           <div className="mt-1 text-xs text-zinc-500">Зависит от дедлайнов возврата и состояния реквизита</div>
         </div>
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition"
-          aria-expanded={expanded}
+          onClick={() => setShowInfo((v) => !v)}
+          className="shrink-0 rounded-lg border border-violet-200/80 bg-white/85 px-2.5 py-1 text-xs font-semibold text-violet-700 shadow-sm transition hover:bg-violet-50"
+          aria-expanded={showInfo}
           title="Как считается"
         >
-          {expanded ? "Свернуть" : "Как считается"}
+          Как считается
         </button>
+        {showInfo ? (
+          <div
+            ref={infoRef}
+            className="absolute right-0 top-9 z-20 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-zinc-200 bg-white/95 p-3 shadow-xl backdrop-blur"
+          >
+            <div className="text-sm font-semibold text-zinc-900">Как считается</div>
+            <div className="mt-1 text-sm text-zinc-700 space-y-1">
+              <div>• Возврат вовремя → больше баллов</div>
+              <div>• На приёмке нашли поломки/потери → меньше</div>
+              <div>• Расходники не штрафуются</div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 flex items-start gap-4">
@@ -196,17 +230,166 @@ function GreenwichRatingCard() {
         </div>
       </div>
 
-      {expanded ? (
-        <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-3">
-          <div className="text-sm font-semibold text-zinc-900">Как считается</div>
-          <div className="mt-1 text-sm text-zinc-700 space-y-1">
-            <div>• Возврат вовремя → больше баллов</div>
-            <div>• На приёмке нашли поломки/потери → меньше</div>
-            <div>• Расходники не штрафуются</div>
+    </div>
+  );
+}
+
+type AchievementLevel = "NONE" | "BRONZE" | "SILVER" | "GOLD";
+type AchievementCardData = {
+  code: string;
+  title: string;
+  description: string;
+  value: number;
+  level: AchievementLevel;
+  nextLevel: AchievementLevel | null;
+  nextThreshold: number | null;
+  progressPercentToNext: number | null;
+  thresholds: { bronze: number; silver: number; gold: number };
+};
+
+type AchievementSnapshot = {
+  cards: AchievementCardData[];
+  unreadNotifications: number;
+};
+
+function levelBadgeTone(level: AchievementLevel): string {
+  if (level === "GOLD") return "border-amber-300 bg-amber-50 text-amber-900";
+  if (level === "SILVER") return "border-slate-300 bg-slate-50 text-slate-800";
+  if (level === "BRONZE") return "border-orange-300 bg-orange-50 text-orange-900";
+  return "border-zinc-200 bg-zinc-50 text-zinc-600";
+}
+
+function levelLabel(level: AchievementLevel): string {
+  if (level === "GOLD") return "Золото";
+  if (level === "SILVER") return "Серебро";
+  if (level === "BRONZE") return "Бронза";
+  return "Нет";
+}
+
+function achievementImageSrc(code: string, level: AchievementLevel): string {
+  const key =
+    code === "PERFECT_ORDERS"
+      ? "perfect_orders"
+      : code === "TOWER_SCORE"
+        ? "tower_score"
+        : code === "ORDER_VOLUME"
+          ? "order_volume"
+          : code === "BIGGEST_CHECK"
+            ? "biggest_check"
+            : code === "CLOSED_ORDERS"
+              ? "closed_orders"
+              : "no_cancel_streak";
+  const levelKey =
+    level === "NONE" || level === "BRONZE"
+      ? "bronze"
+      : level === "SILVER"
+        ? "silver"
+        : "gold";
+  return `/achievements/${key}_${levelKey}.png`;
+}
+
+function GreenwichAchievementsStrip({ isGreenwich }: { isGreenwich: boolean }) {
+  const [data, setData] = React.useState<AchievementSnapshot | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const sortedCards = React.useMemo(() => {
+    const cards = data?.cards ?? [];
+    return [...cards].sort((a, b) => {
+      const aUnlocked = a.level === "NONE" ? 0 : 1;
+      const bUnlocked = b.level === "NONE" ? 0 : 1;
+      if (aUnlocked !== bUnlocked) return bUnlocked - aUnlocked;
+      return a.title.localeCompare(b.title, "ru");
+    });
+  }, [data?.cards]);
+
+  React.useEffect(() => {
+    if (!isGreenwich) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetch("/api/greenwich/achievements", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json: AchievementSnapshot) => {
+        if (!cancelled) setData(json);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Ошибка загрузки достижений");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGreenwich]);
+
+  return (
+    <>
+      <div className="rounded-2xl bg-[linear-gradient(135deg,rgba(255,255,255,0.90),rgba(245,243,255,0.84))] p-2 sm:p-3 shadow-[0_8px_22px_rgba(109,40,217,0.08)] backdrop-blur">
+        <div className="mb-1.5 sm:mb-2 flex items-center justify-between gap-2 sm:gap-3">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Достижения</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/achievements"
+              className="rounded-lg border border-violet-200/80 bg-white/85 px-2.5 py-1 text-xs font-semibold text-violet-700 shadow-sm transition hover:bg-violet-50"
+            >
+              Подробнее
+            </Link>
           </div>
         </div>
-      ) : null}
-    </div>
+
+        {loading ? <div className="mt-1 text-sm text-zinc-600">Загрузка…</div> : null}
+        {error ? (
+          <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {error}
+          </div>
+        ) : null}
+
+        {!loading && !error ? (
+          <div className="pb-1">
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+              {sortedCards.map((card) => (
+                <div
+                  key={card.code}
+                  className={[
+                    "min-w-0 rounded-xl px-2 py-1.5 sm:px-2.5 sm:py-2 transition",
+                    card.level === "NONE"
+                      ? "bg-transparent"
+                      : "bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(220,252,231,0.92))]",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div
+                      className="relative h-10 w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 shrink-0 overflow-hidden rounded-xl sm:rounded-2xl"
+                      title={card.title}
+                    >
+                      <Image
+                        src={achievementImageSrc(card.code, card.level)}
+                        alt={card.title}
+                        fill
+                        sizes="(max-width: 640px) 40px, (max-width: 1024px) 48px, 56px"
+                        className={card.level === "NONE" ? "object-cover grayscale opacity-45" : "object-cover"}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[12px] sm:text-[13px] font-semibold leading-tight text-zinc-900 line-clamp-2 sm:line-clamp-none break-words">
+                        {card.title}
+                      </div>
+                      <div className="text-[10px] sm:text-[11px] text-zinc-500">
+                        {card.level === "NONE" ? "Не получено" : levelLabel(card.level)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -650,6 +833,9 @@ export default function HomeDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+              <div className="md:col-span-12">
+                <GreenwichAchievementsStrip isGreenwich={isGreenwich} />
+              </div>
               <div className="md:col-span-8">
                 <GreenwichDashboardBlock isGreenwich={isGreenwich} />
               </div>

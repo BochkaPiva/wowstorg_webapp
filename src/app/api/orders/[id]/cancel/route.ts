@@ -5,7 +5,9 @@ import {
   makeQueuedOrderCancelledResult,
   type OrderCancelledNotifyResult,
 } from "@/server/notifications/order-notifications";
+import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 
 const CANCELLABLE = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"] as const;
 
@@ -56,6 +58,23 @@ export async function POST(
     scheduleAfterResponse("notifyOrderCancelled", async () => {
       const { notifyOrderCancelled } = await import("@/server/notifications/order-notifications");
       await notifyOrderCancelled(payload);
+      if (isWarehouse) {
+        await notifyOrderStatusChangedInApp({
+          userId: fullOrder.greenwichUserId,
+          orderId: fullOrder.id,
+          status: "CANCELLED",
+          customerName: fullOrder.customer?.name,
+        });
+      }
+    });
+  }
+
+  if (order.greenwichUserId) {
+    const userId = order.greenwichUserId;
+    scheduleAfterResponse("recomputeGreenwichAchievementsOnCancel", async () => {
+      await prisma.$transaction(async (tx) => {
+        await recomputeGreenwichAchievements(tx, userId);
+      });
     });
   }
 

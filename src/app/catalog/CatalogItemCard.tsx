@@ -30,6 +30,7 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
   onAdd,
   onDec,
   onInc,
+  onSetQty,
 }: {
   item: CatalogGridItem;
   qtyInCart: number;
@@ -37,10 +38,29 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
   onAdd: (id: string, pricePerDay: number) => void;
   onDec: (id: string, currentQty: number) => void;
   onInc: (id: string, currentQty: number) => void;
+  onSetQty: (id: string, qty: number) => void;
 }) {
   const available = item.availability.availableForDates ?? item.availability.availableNow;
   const canAdd = available > qtyInCart;
   const priceNum = Number(item.pricePerDay);
+  const [qtyDraft, setQtyDraft] = React.useState<string>(qtyInCart > 0 ? String(qtyInCart) : "");
+
+  React.useEffect(() => {
+    setQtyDraft(qtyInCart > 0 ? String(qtyInCart) : "");
+  }, [qtyInCart]);
+
+  function commitQty(raw: string) {
+    if (raw.trim() === "") {
+      onSetQty(item.id, 0);
+      return;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      onSetQty(item.id, 0);
+      return;
+    }
+    onSetQty(item.id, parsed);
+  }
 
   return (
     <article className="mk-card">
@@ -127,7 +147,24 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
               <button type="button" onClick={() => onDec(item.id, qtyInCart)} aria-label="Минус">
                 −
               </button>
-              <span>{qtyInCart}</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={qtyDraft}
+                onChange={(e) => {
+                  const next = e.target.value.replace(/\D+/g, "");
+                  setQtyDraft(next);
+                }}
+                onBlur={() => commitQty(qtyDraft)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitQty(qtyDraft);
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+                aria-label="Количество"
+              />
               <button
                 type="button"
                 onClick={() => onInc(item.id, qtyInCart)}

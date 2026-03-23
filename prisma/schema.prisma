@@ -58,6 +58,26 @@ enum IncidentStatus {
   CLOSED
 }
 
+enum AchievementCode {
+  PERFECT_ORDERS
+  TOWER_SCORE
+  ORDER_VOLUME
+  BIGGEST_CHECK
+  CLOSED_ORDERS
+  NO_CANCEL_STREAK
+}
+
+enum AchievementLevel {
+  NONE
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum InAppNotificationType {
+  ACHIEVEMENT_UNLOCK
+}
+
 model User {
   id             String   @id @default(cuid())
   login          String   @unique
@@ -74,6 +94,10 @@ model User {
   ordersGreenwich Order[]   @relation("order_greenwich_user")
   greenwichRating GreenwichRating?
   sessions        Session[]
+  achievementProgress AchievementProgress[]
+  achievementUnlocks  AchievementUnlock[]
+  towerStats          UserTowerStats?
+  inAppNotifications  InAppNotification[]
 
   @@index([role, isActive])
 }
@@ -412,4 +436,60 @@ model LossRecord {
 
   @@index([status])
   @@index([itemId, status])
+}
+
+model AchievementProgress {
+  id    String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  code  AchievementCode
+  value Int @default(0)
+  level AchievementLevel @default(NONE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, code])
+  @@index([userId, level])
+}
+
+model AchievementUnlock {
+  id    String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  code       AchievementCode
+  level      AchievementLevel
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, code, level])
+  @@index([userId, unlockedAt])
+}
+
+model UserTowerStats {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bestScore Int @default(0)
+  lastScore Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InAppNotification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type InAppNotificationType
+  title String
+  body  String
+  payloadJson Json?
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
 }

@@ -131,6 +131,21 @@
   background: rgba(124, 58, 237, 0.2);
 }
 
+.cart-qty input {
+  width: 44px;
+  min-width: 44px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.cart-qty input::placeholder {
+  color: #9ca3af;
+}
+
 .cart-remove {
   font-size: 0.85rem;
   color: #6b7280;

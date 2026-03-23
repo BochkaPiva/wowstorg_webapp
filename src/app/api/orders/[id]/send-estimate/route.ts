@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { buildEstimateXlsx } from "@/server/estimate-xlsx";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
@@ -170,6 +171,12 @@ export async function POST(
   scheduleAfterResponse("notifyEstimateSent", async () => {
     const { notifyEstimateSent } = await import("@/server/notifications/order-notifications");
     await notifyEstimateSent(orderForNotify, estimateFile);
+    await notifyOrderStatusChangedInApp({
+      userId: fullOrder.greenwichUserId,
+      orderId: fullOrder.id,
+      status: newStatus,
+      customerName: fullOrder.customer?.name,
+    });
   });
 
   return jsonOk({ ok: true });

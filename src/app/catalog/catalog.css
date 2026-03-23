@@ -143,7 +143,7 @@
   padding: 0.55rem 0.75rem;
   font-size: 0.95rem;
   background: transparent;
-  width: 9rem;
+  width: 11rem;
   font-variant-numeric: tabular-nums;
 }
 .mk-dateText::placeholder {
@@ -152,42 +152,40 @@
 .mk-dateText:focus::placeholder {
   color: transparent;
 }
-.mk-dateBtn {
-  position: relative;
-  width: 44px;
-  min-height: 42px;
+
+.mk-datePickBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0;
+  margin: 0;
+  padding: 0 0.65rem;
   border: 0;
-  border-radius: 0 13px 13px 0;
-  background: rgba(124, 58, 237, 0.1);
+  border-left: 1px solid rgba(17, 24, 39, 0.1);
+  background: rgba(124, 58, 237, 0.06);
+  color: var(--mk-violet);
   cursor: pointer;
-  transition: background 0.2s ease;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.mk-dateBtn:hover {
-  background: rgba(124, 58, 237, 0.18);
+.mk-datePickBtn:hover {
+  background: rgba(124, 58, 237, 0.14);
+  color: var(--mk-violet-2);
 }
-.mk-dateBtnFace {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
+.mk-datePickBtn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(124, 58, 237, 0.45);
 }
-.mk-dateBtn svg {
-  width: 18px;
-  height: 18px;
-  fill: rgba(17, 24, 39, 0.75);
-}
-/* Нативный date поверх иконки — без showPicker(), иначе Chromium → unhandledrejection с Event */
-.mk-dateNative {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  z-index: 1;
+
+.mk-dayPicker-popover {
+  --rdp-accent-color: var(--mk-violet);
+  --rdp-accent-background-color: rgba(124, 58, 237, 0.12);
+  padding: 0.35rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid var(--mk-border);
+  box-shadow: var(--mk-shadow);
+  backdrop-filter: blur(8px);
 }
 
 .mk-tabs {
@@ -250,8 +248,7 @@
 .mk-search {
   width: 100%;
   border: 1px solid rgba(17, 24, 39, 0.12);
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.96);
   border-radius: 14px;
   padding: 0.8rem 1rem;
   outline: none;
@@ -324,11 +321,15 @@ a.mk-cartPill:hover {
   flex-direction: column;
   border-radius: 22px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  background: var(--mk-surface);
-  backdrop-filter: blur(12px);
+  /* Без backdrop-filter: на сетке из десятков карточек blur сильно грузит композитинг при скролле */
+  background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
   overflow: hidden;
   transition: transform 200ms ease, box-shadow 200ms ease;
+  /* Пропуск отрисовки карточек вне экрана (Chrome/Edge/Firefox; Safari 15.4+) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 480px;
+  contain: layout style;
 }
 .mk-card:hover {
   transform: translateY(-2px);
@@ -533,8 +534,7 @@ a.mk-cartPill:hover {
 .mk-chip {
   border-radius: 9999px;
   border: 1px solid rgba(124, 58, 237, 0.18);
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.92);
   padding: 0.35rem 0.65rem;
   font-size: 0.85rem;
   color: rgba(17, 24, 39, 0.85);
@@ -561,10 +561,12 @@ a.mk-cartPill:hover {
 .mk-kit {
   border-radius: 22px;
   border: 1px solid rgba(17, 24, 39, 0.08);
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.94);
   overflow: hidden;
   box-shadow: 0 10px 30px rgba(17, 24, 39, 0.05);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+  contain: layout style;
 }
 .mk-kitHead {
   padding: 0.9rem 1rem;
@@ -689,6 +691,20 @@ a.mk-cartPill:hover {
     radial-gradient(460px 260px at 20% 85%, rgba(124, 58, 237, 0.24), transparent 60%),
     #fff;
 }
+.mk-modalMediaBtn {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: inherit;
+  cursor: zoom-in;
+}
+.mk-modalMediaBtn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px rgba(124, 58, 237, 0.45);
+}
 .mk-modalBody {
   padding: 1rem 1.1rem 1.2rem;
 }
@@ -708,6 +724,50 @@ a.mk-cartPill:hover {
 }
 .mk-close:hover {
   background: rgba(124, 58, 237, 0.06);
+}
+
+.mk-photoPreviewOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10010;
+  background: rgba(17, 24, 39, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.mk-photoPreviewFrame {
+  position: relative;
+  width: min(1200px, 100%);
+  max-height: calc(100vh - 3rem);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.45);
+  background: #0f172a;
+}
+.mk-photoPreviewImage {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 3rem);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+}
+.mk-photoPreviewClose {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(17, 24, 39, 0.65);
+  color: #fff;
+  cursor: pointer;
+  z-index: 10011;
+}
+.mk-photoPreviewClose:hover {
+  background: rgba(17, 24, 39, 0.88);
 }
 
 /* floating cart — bottom-right when scrolled */

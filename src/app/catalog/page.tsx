@@ -9,11 +9,14 @@ import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
 import {
   catalogDatesFromStorage,
+  formatDateRu,
   getDefaultCatalogDates,
   normalizeCatalogDates,
   todayDateOnly,
 } from "@/lib/catalogDates";
 import "./catalog.css";
+import { CatalogDateField } from "@/app/catalog/CatalogDateField";
+import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { ItemModal } from "@/app/catalog/ItemModal";
 
 type CatalogTab = "positions" | "categories" | "kits";
@@ -38,27 +41,6 @@ type CatalogItem = {
   availability: { availableNow: number; availableForDates?: number };
 };
 
-function formatDateRu(dateOnly: string) {
-  // dateOnly = YYYY-MM-DD
-  const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
-  if (!y || !m || !d) return dateOnly;
-  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
-}
-
-function parseRuToDateOnly(value: string) {
-  const trimmed = value.trim();
-  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/u.exec(trimmed);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yy = Number(m[3]);
-  if (!yy || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-  const dt = new Date(Date.UTC(yy, mm - 1, dd, 0, 0, 0, 0));
-  // validate overflow (e.g. 31.02)
-  if (dt.getUTCFullYear() !== yy || dt.getUTCMonth() !== mm - 1 || dt.getUTCDate() !== dd) return null;
-  return `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-}
-
 function daysBetweenDateOnly(start: string, end: string) {
   // Treat end as exclusive like backend ([start, end))
   const a = new Date(start + "T12:00:00");
@@ -70,139 +52,11 @@ function daysBetweenDateOnly(start: string, end: string) {
   return days === 0 ? 1 : days;
 }
 
-function typeLabelRu(t: CatalogItem["type"]) {
-  switch (t) {
-    case "ASSET":
-      return "Штучный";
-    case "BULK":
-      return "Мерный";
-    case "CONSUMABLE":
-      return "Расходник";
-  }
-}
-
-function DateField({
-  label,
-  value,
-  onChange,
-  hint,
-  min,
-  max,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  hint?: string;
-  min?: string;
-  max?: string;
-}) {
-  const safeMin = min;
-  const safeMax =
-    min && max && max.localeCompare(min) < 0 ? undefined : max;
-
-  const hintRef = React.useRef<HTMLSpanElement | null>(null);
-  const [text, setText] = React.useState(() => formatDateRu(value));
-  const [showHint, setShowHint] = React.useState(false);
-
-  React.useEffect(() => {
-    setText(formatDateRu(value));
-  }, [value]);
-
-  React.useEffect(() => {
-    if (!hint || !showHint) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (hintRef.current && !hintRef.current.contains(e.target as Node)) {
-        setShowHint(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [hint, showHint]);
-
-  return (
-    <div className="mk-dateField">
-      <span className="mk-dateFieldLabel">
-        {label}
-        {hint ? (
-          <span
-            ref={hintRef}
-            className="mk-dateHint"
-            role="button"
-            tabIndex={0}
-            onClick={() => setShowHint((v) => !v)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setShowHint((v) => !v);
-              }
-            }}
-            aria-label={hint}
-            aria-expanded={showHint}
-          >
-            ?
-            {showHint ? (
-              <span className="mk-dateTooltip" role="tooltip">
-                {hint}
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-      </span>
-      <span className="mk-dateWrap">
-        <input
-          className="mk-dateText"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => {
-            const parsed = parseRuToDateOnly(text);
-            if (parsed) onChange(parsed);
-            else setText(formatDateRu(value));
-          }}
-          inputMode="numeric"
-          placeholder="ДД.ММ.ГГГГ"
-          aria-label={label}
-        />
-        {/*
-          Не вызываем showPicker() из JS — в Chromium промис иногда отклоняется с Event,
-          Next dev overlay показывает [object Event]. Нативный input поверх иконки открывает календарь без API.
-        */}
-        <label className="mk-dateBtn">
-          <span className="mk-dateBtnFace" aria-hidden="true">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10z" />
-            </svg>
-          </span>
-          <input
-            type="date"
-            className="mk-dateNative"
-            value={value}
-            min={safeMin}
-            max={safeMax}
-            onChange={(e) => onChange(e.target.value)}
-            tabIndex={-1}
-            aria-label="Выбрать дату"
-          />
-        </label>
-      </span>
-    </div>
-  );
-}
-
 export default function CatalogPage() {
   const { state } = useAuth();
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
   const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
 
-  /** Chromium: showPicker() иногда отклоняет промис с `Event` → Next overlay: [object Event]. */
-  React.useEffect(() => {
-    function onUnhandledRejection(e: PromiseRejectionEvent) {
-      if (e.reason instanceof Event) {
-        e.preventDefault();
-      }
-    }
-    window.addEventListener("unhandledrejection", onUnhandledRejection);
-    return () => window.removeEventListener("unhandledrejection", onUnhandledRejection);
-  }, []);
   const isQuickSupplement = Boolean(quickParentId);
   const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
 
@@ -220,6 +74,11 @@ export default function CatalogPage() {
   const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
   const [readyByDate, setReadyByDate] = React.useState(() => getDefaultCatalogDates().readyByDate);
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
+
+  const itemsRef = React.useRef(items);
+  itemsRef.current = items;
+  const cartScopeRef = React.useRef(cartScope);
+  cartScopeRef.current = cartScope;
 
   const datesRef = React.useRef({ readyByDate, startDate, endDate });
   datesRef.current = { readyByDate, startDate, endDate };
@@ -302,21 +161,26 @@ export default function CatalogPage() {
     setCart(loadCart(cartScope));
   }, [cartScope]);
 
+  const floatingCartScrollRef = React.useRef(false);
   React.useEffect(() => {
+    let raf = 0;
     function onScroll() {
-      const y =
-        window.scrollY ||
-        document.documentElement.scrollTop ||
-        document.body.scrollTop ||
-        0;
-      setShowFloatingCart(y > 280);
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        const next = y > 280;
+        if (next !== floatingCartScrollRef.current) {
+          floatingCartScrollRef.current = next;
+          setShowFloatingCart(next);
+        }
+      });
     }
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    document.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
-      document.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, []);
 
@@ -364,16 +228,13 @@ export default function CatalogPage() {
     };
   }, [query, fetchCategoryId, startDate, endDate]);
 
-  function availableForItem(itemId: string) {
-    const it = items.find((i) => i.id === itemId);
-    if (!it) return 0;
-    return it.availability.availableForDates ?? it.availability.availableNow;
-  }
-
-  function addToCart(itemId: string, pricePerDay?: number) {
+  const addToCart = React.useCallback((itemId: string, pricePerDay?: number) => {
     setCart((prev) => {
-      const max = availableForItem(itemId);
-      const item = items.find((i) => i.id === itemId);
+      const catalog = itemsRef.current;
+      const item = catalog.find((i) => i.id === itemId);
+      const max = item
+        ? (item.availability.availableForDates ?? item.availability.availableNow)
+        : 0;
       const price = pricePerDay ?? (item ? Number(item.pricePerDay) : undefined);
       const next = [...prev];
       const idx = next.findIndex((l) => l.itemId === itemId);
@@ -388,16 +249,19 @@ export default function CatalogPage() {
       } else {
         next.push({ itemId, qty: nextQty, pricePerDay: price });
       }
-      saveCart(next, cartScope);
+      saveCart(next, cartScopeRef.current);
       return next.filter((l) => l.qty > 0);
     });
-  }
+  }, []);
 
-  function setQty(itemId: string, qty: number) {
+  const setQty = React.useCallback((itemId: string, qty: number) => {
     setCart((prev) => {
-      const max = availableForItem(itemId);
+      const catalog = itemsRef.current;
+      const item = catalog.find((i) => i.id === itemId);
+      const max = item
+        ? (item.availability.availableForDates ?? item.availability.availableNow)
+        : 0;
       const clamped = Math.max(0, Math.min(qty, max || qty));
-      const item = items.find((i) => i.id === itemId);
       const next = prev
         .map((l) => (l.itemId === itemId ? { ...l, qty: clamped } : l))
         .filter((l) => l.qty > 0);
@@ -408,42 +272,65 @@ export default function CatalogPage() {
           pricePerDay: item ? Number(item.pricePerDay) : undefined,
         });
       }
-      saveCart(next, cartScope);
+      saveCart(next, cartScopeRef.current);
       return next;
     });
-  }
-
-  function qtyInCart(itemId: string) {
-    return cart.find((l) => l.itemId === itemId)?.qty ?? 0;
-  }
+  }, []);
 
   function addKitToCart(kit: Kit) {
     // Обновляем корзину ОДНИМ апдейтом, чтобы не словить race condition и не выйти за лимит доступности
     setCart((prev) => {
+      const catalog = itemsRef.current;
       const next = [...prev];
       for (const l of kit.lines) {
         const itemId = l.item.id;
-        const max = availableForItem(itemId);
+        const inv = catalog.find((i) => i.id === itemId);
+        const max = inv
+          ? (inv.availability.availableForDates ?? inv.availability.availableNow)
+          : 0;
         const idx = next.findIndex((x) => x.itemId === itemId);
         const currentQty = idx >= 0 ? next[idx].qty : 0;
         const desired = currentQty + l.defaultQty;
         const clamped = Math.min(desired, max || desired);
-        const item = items.find((i) => i.id === itemId);
         if (idx >= 0) {
           next[idx] = {
             ...next[idx],
             qty: clamped,
-            pricePerDay: next[idx].pricePerDay ?? (item ? Number(item.pricePerDay) : undefined),
+            pricePerDay: next[idx].pricePerDay ?? (inv ? Number(inv.pricePerDay) : undefined),
           };
         } else {
-          next.push({ itemId, qty: clamped, pricePerDay: item ? Number(item.pricePerDay) : undefined });
+          next.push({
+            itemId,
+            qty: clamped,
+            pricePerDay: inv ? Number(inv.pricePerDay) : undefined,
+          });
         }
       }
       const cleaned = next.filter((x) => x.qty > 0);
-      saveCart(cleaned, cartScope);
+      saveCart(cleaned, cartScopeRef.current);
       return cleaned;
     });
   }
+
+  const qtyByItemId = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const l of cart) m[l.itemId] = l.qty;
+    return m;
+  }, [cart]);
+
+  const openDetail = React.useCallback((id: string) => setSelectedId(id), []);
+  const handleCardAdd = React.useCallback(
+    (id: string, price: number) => addToCart(id, price),
+    [addToCart],
+  );
+  const handleCardDec = React.useCallback(
+    (id: string, currentQty: number) => setQty(id, currentQty - 1),
+    [setQty],
+  );
+  const handleCardInc = React.useCallback(
+    (id: string, currentQty: number) => setQty(id, currentQty + 1),
+    [setQty],
+  );
 
   const selectedItem = selectedId
     ? items.find((i) => i.id === selectedId) ?? null
@@ -474,20 +361,20 @@ export default function CatalogPage() {
           {!isQuickSupplement ? (
             <>
               <div className="mk-datesRow">
-                <DateField
+                <CatalogDateField
                   label="Дата начала"
                   value={startDate}
                   onChange={(v) => patchCatalogDates({ startDate: v })}
                   min={dateMin}
                 />
-                <DateField
+                <CatalogDateField
                   label="Дата окончания"
                   value={endDate}
                   onChange={(v) => patchCatalogDates({ endDate: v })}
                   min={endMin >= dateMin ? endMin : dateMin}
                 />
                 {isGreenwich ? (
-                  <DateField
+                  <CatalogDateField
                     label="Готовность к дате"
                     value={readyByDate}
                     onChange={(v) => patchCatalogDates({ readyByDate: v })}
@@ -577,106 +464,15 @@ export default function CatalogPage() {
           ) : (
             <div className="mk-grid">
               {items.map((it) => (
-            <article key={it.id} className="mk-card">
-              <div className="mk-cardInner">
-                <div className="mk-box">
-                  {it.photo1Key ? (
-                    <img
-                      src={`/api/inventory/positions/${it.id}/photo`}
-                      alt=""
-                      className="mk-cardPhoto"
-                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }}
-                    />
-                  ) : (
-                    <div className="mk-placeholder">
-                      <div className="mk-placeholderBadge">
-                        <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
-                        <span style={{ opacity: 0.7 }}>·</span>
-                        <span>без фото</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mk-corner">
-                  <button
-                    className="mk-cornerBtn"
-                    onClick={() => setSelectedId(it.id)}
-                    aria-label="Подробнее"
-                    title="Подробнее"
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z" />
-                      <path d="M5 5h6v2H7v10h10v-4h2v6H5V5z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="mk-content">
-                <div className="mk-nameRow">
-                  <button
-                    className="mk-cardLink"
-                    onClick={() => setSelectedId(it.id)}
-                  >
-                    <div className="mk-name">{it.name}</div>
-                  </button>
-                  <div className="mk-price">
-                    <strong>{it.pricePerDay}</strong>
-                    <span className="mk-priceUnit">р/сут</span>
-                  </div>
-                </div>
-                <div className="mk-meta">
-                  <span className="mk-pill">{typeLabelRu(it.type)}</span>
-                  <span className="mk-available">
-                    Доступно:{" "}
-                    <strong>
-                      {it.availability.availableForDates ?? it.availability.availableNow}
-                    </strong>
-                  </span>
-                </div>
-                <div className="mk-desc">
-                  {it.description?.trim()
-                    ? it.description
-                    : "Описание будет добавлено складом — пока можно оформить заявку по названию."}
-                </div>
-
-                <div className="mk-actions">
-                  {(() => {
-                    const available = it.availability.availableForDates ?? it.availability.availableNow;
-                    const inCart = qtyInCart(it.id);
-                    const canAdd = available > inCart;
-                    if (inCart <= 0) {
-                      return (
-                        <button
-                          className="mk-addBtn"
-                          onClick={() => addToCart(it.id, Number(it.pricePerDay))}
-                          disabled={!canAdd}
-                          title={!canAdd ? "Нет доступных на выбранные даты" : undefined}
-                        >
-                          В корзину
-                        </button>
-                      );
-                    }
-                    return (
-                      <div className="mk-qty" aria-label="Количество в корзине">
-                        <button onClick={() => setQty(it.id, inCart - 1)} aria-label="Минус">
-                          −
-                        </button>
-                        <span>{inCart}</span>
-                        <button
-                          onClick={() => setQty(it.id, inCart + 1)}
-                          aria-label="Плюс"
-                          disabled={!canAdd}
-                        >
-                          +
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </article>
+                <CatalogItemCard
+                  key={it.id}
+                  item={it}
+                  qtyInCart={qtyByItemId[it.id] ?? 0}
+                  onDetail={openDetail}
+                  onAdd={handleCardAdd}
+                  onDec={handleCardDec}
+                  onInc={handleCardInc}
+                />
               ))}
             </div>
           )
@@ -690,101 +486,15 @@ export default function CatalogPage() {
           ) : (
             <div className="mk-grid">
               {items.map((it) => (
-                <article key={it.id} className="mk-card">
-                  <div className="mk-cardInner">
-                    <div className="mk-box">
-                      {it.photo1Key ? (
-                        <img
-                          src={`/api/inventory/positions/${it.id}/photo`}
-                          alt=""
-                          className="mk-cardPhoto"
-                          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }}
-                        />
-                      ) : (
-                        <div className="mk-placeholder">
-                          <div className="mk-placeholderBadge">
-                            <span style={{ color: "var(--mk-violet)" }}>WOWSTORG</span>
-                            <span style={{ opacity: 0.7 }}>·</span>
-                            <span>без фото</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mk-corner">
-                      <button
-                        className="mk-cornerBtn"
-                        onClick={() => setSelectedId(it.id)}
-                        aria-label="Подробнее"
-                        title="Подробнее"
-                      >
-                        <svg viewBox="0 0 24 24">
-                          <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z" />
-                          <path d="M5 5h6v2H7v10h10v-4h2v6H5V5z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="mk-content">
-                    <div className="mk-nameRow">
-                      <button className="mk-cardLink" onClick={() => setSelectedId(it.id)}>
-                        <div className="mk-name">{it.name}</div>
-                      </button>
-                      <div className="mk-price">
-                        <strong>{it.pricePerDay}</strong>
-                        <span className="mk-priceUnit">р/сут</span>
-                      </div>
-                    </div>
-                    <div className="mk-meta">
-                      <span className="mk-pill">{typeLabelRu(it.type)}</span>
-                      <span className="mk-available">
-                        Доступно:{" "}
-                        <strong>
-                          {it.availability.availableForDates ?? it.availability.availableNow}
-                        </strong>
-                      </span>
-                    </div>
-                    <div className="mk-desc">
-                      {it.description?.trim()
-                        ? it.description
-                        : "Описание будет добавлено складом — пока можно оформить заявку по названию."}
-                    </div>
-                    <div className="mk-actions">
-                      {(() => {
-                        const available =
-                          it.availability.availableForDates ?? it.availability.availableNow;
-                        const inCart = qtyInCart(it.id);
-                        const canAdd = available > inCart;
-                        if (inCart <= 0) {
-                          return (
-                            <button
-                              className="mk-addBtn"
-                              onClick={() => addToCart(it.id, Number(it.pricePerDay))}
-                              disabled={!canAdd}
-                              title={!canAdd ? "Нет доступных на выбранные даты" : undefined}
-                            >
-                              В корзину
-                            </button>
-                          );
-                        }
-                        return (
-                          <div className="mk-qty" aria-label="Количество в корзине">
-                            <button onClick={() => setQty(it.id, inCart - 1)} aria-label="Минус">
-                              −
-                            </button>
-                            <span>{inCart}</span>
-                            <button
-                              onClick={() => setQty(it.id, inCart + 1)}
-                              aria-label="Плюс"
-                              disabled={!canAdd}
-                            >
-                              +
-                            </button>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </article>
+                <CatalogItemCard
+                  key={it.id}
+                  item={it}
+                  qtyInCart={qtyByItemId[it.id] ?? 0}
+                  onDetail={openDetail}
+                  onAdd={handleCardAdd}
+                  onDec={handleCardDec}
+                  onInc={handleCardInc}
+                />
               ))}
             </div>
           )
@@ -859,12 +569,12 @@ export default function CatalogPage() {
       {selectedItem ? (
         <ItemModal
           item={selectedItem}
-          qtyInCart={qtyInCart(selectedItem.id)}
+          qtyInCart={qtyByItemId[selectedItem.id] ?? 0}
           availableForDates={selectedItem.availability.availableForDates}
           onClose={() => setSelectedId(null)}
           onAdd={() => addToCart(selectedItem.id, Number(selectedItem.pricePerDay))}
-          onInc={() => setQty(selectedItem.id, qtyInCart(selectedItem.id) + 1)}
-          onDec={() => setQty(selectedItem.id, qtyInCart(selectedItem.id) - 1)}
+          onInc={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) + 1)}
+          onDec={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) - 1)}
         />
       ) : null}
     </AppShell>

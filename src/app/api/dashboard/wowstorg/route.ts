@@ -4,6 +4,7 @@ import { requireRole } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
+import { getOrSetRuntimeCache } from "@/server/runtime-cache";
 
 const ACTIVE_STATUSES = [
   "SUBMITTED",
@@ -59,8 +60,8 @@ function computeBaseAvailableNow(p: { total: number; inRepair: number; broken: n
 export async function GET() {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
-
-  const [activeCount, completedCount, nearestOrder, activeOrdersRaw, catalogAgg, catalogItems, warehouseItems, inRentOrders] = await Promise.all([
+  const data = await getOrSetRuntimeCache("dash:wowstorg", 12_000, async () => {
+    const [activeCount, completedCount, nearestOrder, activeOrdersRaw, catalogAgg, catalogItems, warehouseItems, inRentOrders] = await Promise.all([
     prisma.order.count({
       where: { status: { in: [...ACTIVE_STATUSES] } },
     }),
@@ -133,40 +134,40 @@ export async function GET() {
         lines: { select: { itemId: true, issuedQty: true, requestedQty: true } },
       },
     }),
-  ]);
+    ]);
 
-  const omskTodayYmd = getOmskTodayYmd();
-  const todayUtc = parseDateOnlyToUtcMidnight(omskTodayYmd);
-  const reservedByItemId = await getReservedQtyByItemId({
-    db: prisma,
-    startDate: todayUtc,
-    endDate: todayUtc,
-  });
+    const omskTodayYmd = getOmskTodayYmd();
+    const todayUtc = parseDateOnlyToUtcMidnight(omskTodayYmd);
+    const reservedByItemId = await getReservedQtyByItemId({
+      db: prisma,
+      startDate: todayUtc,
+      endDate: todayUtc,
+    });
 
-  const catalogPositions = catalogItems.map((it) => {
+    const catalogPositions = catalogItems.map((it) => {
     const baseAvailable = computeBaseAvailableNow(it);
     const reserved = reservedByItemId.get(it.id) ?? 0;
     const availableNow = Math.max(0, baseAvailable - reserved);
     return { ...it, baseAvailable, reserved, availableNow };
   });
 
-  const positionsInStockCount = catalogPositions.filter((p) => p.availableNow > 0).length;
+    const positionsInStockCount = catalogPositions.filter((p) => p.availableNow > 0).length;
 
-  const warehousePositions = warehouseItems.map((it) => {
+    const warehousePositions = warehouseItems.map((it) => {
     const baseAvailable = computeBaseAvailableNow(it);
     const reserved = reservedByItemId.get(it.id) ?? 0;
     const availableNow = Math.max(0, baseAvailable - reserved);
     return { ...it, baseAvailable, reserved, availableNow };
   });
 
-  const endedPositions = warehousePositions
-    .filter((p) => p.availableNow === 0)
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    const endedPositions = warehousePositions
+      .filter((p) => p.availableNow === 0)
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 
-  const rentedItemIds = new Set<string>();
-  let rentedUnitsTotal = 0;
-  let nearestReleaseDate: string | null = null;
-  for (const o of inRentOrders) {
+    const rentedItemIds = new Set<string>();
+    let rentedUnitsTotal = 0;
+    let nearestReleaseDate: string | null = null;
+    for (const o of inRentOrders) {
     const endYmd = o.endDate.toISOString().slice(0, 10);
     if (nearestReleaseDate == null || endYmd < nearestReleaseDate) nearestReleaseDate = endYmd;
     for (const l of o.lines) {
@@ -175,28 +176,28 @@ export async function GET() {
       rentedItemIds.add(l.itemId);
       rentedUnitsTotal += qty;
     }
-  }
+    }
 
-  let nearestParentId: string | null = null;
-  if (nearestOrder) {
+    let nearestParentId: string | null = null;
+    if (nearestOrder) {
     const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
       SELECT "parentOrderId" FROM "Order" WHERE "id" = ${nearestOrder.id} LIMIT 1
     `;
     nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
-  }
+    }
 
-  const activeOrderIds = activeOrdersRaw.map((o) => o.id);
-  let activeParentById = new Map<string, string | null>();
-  if (activeOrderIds.length > 0) {
+    const activeOrderIds = activeOrdersRaw.map((o) => o.id);
+    let activeParentById = new Map<string, string | null>();
+    if (activeOrderIds.length > 0) {
     const rows = await prisma.$queryRaw<Array<{ id: string; parentOrderId: string | null }>>`
       SELECT "id", "parentOrderId"
       FROM "Order"
       WHERE "id" IN (${Prisma.join(activeOrderIds)})
     `;
     activeParentById = new Map(rows.map((r) => [r.id, r.parentOrderId]));
-  }
+    }
 
-  const activeOrders = activeOrdersRaw.map((o) => ({
+    const activeOrders = activeOrdersRaw.map((o) => ({
     id: o.id,
     status: o.status,
     parentOrderId: activeParentById.get(o.id) ?? null,
@@ -220,10 +221,10 @@ export async function GET() {
       demontagePrice: o.demontagePrice != null ? Number(o.demontagePrice) : null,
       lines: o.lines,
     }),
-  }));
+    }));
 
-  const nearest = nearestOrder
-    ? {
+    const nearest = nearestOrder
+      ? {
         id: nearestOrder.id,
         status: nearestOrder.status,
         parentOrderId: nearestParentId,
@@ -247,27 +248,29 @@ export async function GET() {
           demontagePrice: nearestOrder.demontagePrice != null ? Number(nearestOrder.demontagePrice) : null,
           lines: nearestOrder.lines,
         }),
-      }
-    : null;
+        }
+      : null;
 
-  return jsonOk({
-    activeCount,
-    completedCount,
-    nearest,
-    activeOrders,
-    equipment: {
-      brokenQty: catalogAgg._sum.broken ?? 0,
-      lostQty: catalogAgg._sum.missing ?? 0,
-      inRepairQty: catalogAgg._sum.inRepair ?? 0,
-      positionsInStockCount,
-      rentedPositionsCount: rentedItemIds.size,
-      rentedUnitsTotal,
-      nearestReleaseDate,
-      endedPositions: endedPositions.map((p) => ({
-        id: p.id,
-        name: p.name,
-      })),
-    },
+    return {
+      activeCount,
+      completedCount,
+      nearest,
+      activeOrders,
+      equipment: {
+        brokenQty: catalogAgg._sum.broken ?? 0,
+        lostQty: catalogAgg._sum.missing ?? 0,
+        inRepairQty: catalogAgg._sum.inRepair ?? 0,
+        positionsInStockCount,
+        rentedPositionsCount: rentedItemIds.size,
+        rentedUnitsTotal,
+        nearestReleaseDate,
+        endedPositions: endedPositions.map((p) => ({
+          id: p.id,
+          name: p.name,
+        })),
+      },
+    };
   });
+  return jsonOk(data);
 }
 

@@ -32,7 +32,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     status: 200,
     headers: {
       "Content-Type": guessContentType(item.photo1Key),
-      "Cache-Control": "private, max-age=0, must-revalidate",
+      "Cache-Control": "private, max-age=120, stale-while-revalidate=600",
     },
   });
 }

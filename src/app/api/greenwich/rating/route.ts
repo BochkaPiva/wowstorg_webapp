@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { getOrSetRuntimeCache } from "@/server/runtime-cache";
 
 export async function GET() {
   const auth = await requireUser();
@@ -9,10 +10,12 @@ export async function GET() {
     return jsonError(403, "Доступно только для сотрудников Greenwich");
   }
 
-  const row = await prisma.greenwichRating.findUnique({
-    where: { userId: auth.user.id },
-    select: { score: true },
+  const data = await getOrSetRuntimeCache(`greenwich:rating:${auth.user.id}`, 15_000, async () => {
+    const row = await prisma.greenwichRating.findUnique({
+      where: { userId: auth.user.id },
+      select: { score: true },
+    });
+    return { score: row?.score ?? 100 };
   });
-
-  return jsonOk({ score: row?.score ?? 100 });
+  return jsonOk(data);
 }

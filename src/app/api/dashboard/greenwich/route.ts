@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { getOrSetRuntimeCache } from "@/server/runtime-cache";
 
 const ACTIVE_STATUSES = [
   "SUBMITTED",
@@ -46,8 +47,8 @@ export async function GET() {
   }
 
   const userId = auth.user.id;
-
-  const [activeCount, completedCount, nearestOrder] = await Promise.all([
+  const data = await getOrSetRuntimeCache(`dash:greenwich:${userId}`, 12_000, async () => {
+    const [activeCount, completedCount, nearestOrder] = await Promise.all([
     prisma.order.count({
       where: {
         greenwichUserId: userId,
@@ -81,41 +82,43 @@ export async function GET() {
         lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
       },
     }),
-  ]);
+    ]);
 
-  let nearestParentId: string | null = null;
-  if (nearestOrder) {
-    const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
-      SELECT "parentOrderId" FROM "Order" WHERE "id" = ${nearestOrder.id} LIMIT 1
-    `;
-    nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
-  }
+    let nearestParentId: string | null = null;
+    if (nearestOrder) {
+      const quickRow = await prisma.$queryRaw<Array<{ parentOrderId: string | null }>>`
+        SELECT "parentOrderId" FROM "Order" WHERE "id" = ${nearestOrder.id} LIMIT 1
+      `;
+      nearestParentId = quickRow?.[0]?.parentOrderId ?? null;
+    }
 
-  const nearest = nearestOrder
-    ? {
-        id: nearestOrder.id,
-        status: nearestOrder.status,
-        parentOrderId: nearestParentId,
-        customerName: nearestOrder.customer.name,
-        readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),
-        startDate: nearestOrder.startDate.toISOString().slice(0, 10),
-        endDate: nearestOrder.endDate.toISOString().slice(0, 10),
-        totalAmount: calcOrderTotalAmount({
-          startDate: nearestOrder.startDate,
-          endDate: nearestOrder.endDate,
-          payMultiplier: nearestOrder.payMultiplier != null ? Number(nearestOrder.payMultiplier) : null,
-          deliveryPrice: nearestOrder.deliveryPrice != null ? Number(nearestOrder.deliveryPrice) : null,
-          montagePrice: nearestOrder.montagePrice != null ? Number(nearestOrder.montagePrice) : null,
-          demontagePrice: nearestOrder.demontagePrice != null ? Number(nearestOrder.demontagePrice) : null,
-          lines: nearestOrder.lines,
-        }),
-      }
-    : null;
+    const nearest = nearestOrder
+      ? {
+          id: nearestOrder.id,
+          status: nearestOrder.status,
+          parentOrderId: nearestParentId,
+          customerName: nearestOrder.customer.name,
+          readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),
+          startDate: nearestOrder.startDate.toISOString().slice(0, 10),
+          endDate: nearestOrder.endDate.toISOString().slice(0, 10),
+          totalAmount: calcOrderTotalAmount({
+            startDate: nearestOrder.startDate,
+            endDate: nearestOrder.endDate,
+            payMultiplier: nearestOrder.payMultiplier != null ? Number(nearestOrder.payMultiplier) : null,
+            deliveryPrice: nearestOrder.deliveryPrice != null ? Number(nearestOrder.deliveryPrice) : null,
+            montagePrice: nearestOrder.montagePrice != null ? Number(nearestOrder.montagePrice) : null,
+            demontagePrice: nearestOrder.demontagePrice != null ? Number(nearestOrder.demontagePrice) : null,
+            lines: nearestOrder.lines,
+          }),
+        }
+      : null;
 
-  return jsonOk({
-    activeCount,
-    completedCount,
-    nearest,
+    return {
+      activeCount,
+      completedCount,
+      nearest,
+    };
   });
+  return jsonOk(data);
 }
 

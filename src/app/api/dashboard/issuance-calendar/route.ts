@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
+import { getOrSetRuntimeCache } from "@/server/runtime-cache";
 
 function parseYearParam(raw: string | null): number | null {
   if (!raw) return null;
@@ -37,54 +38,57 @@ export async function GET(req: Request) {
   const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
   const yearEnd = new Date(Date.UTC(year, 11, 31, 0, 0, 0, 0));
 
-  const orders = await prisma.order.findMany({
-    where: {
-      status: { not: "CANCELLED" },
-      startDate: { lte: yearEnd },
-      endDate: { gte: yearStart },
-    },
-    select: {
-      id: true,
-      startDate: true,
-      endDate: true,
-    },
-  });
+  const data = await getOrSetRuntimeCache(`dash:issuance-calendar:${year}`, 60_000, async () => {
+    const orders = await prisma.order.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        startDate: { lte: yearEnd },
+        endDate: { gte: yearStart },
+      },
+      select: {
+        id: true,
+        startDate: true,
+        endDate: true,
+      },
+    });
 
-  const counts = new Map<string, number>();
+    const counts = new Map<string, number>();
 
-  for (const o of orders) {
-    let s = new Date(o.startDate);
-    let e = new Date(o.endDate);
-    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) continue;
-    if (e < s) continue;
+    for (const o of orders) {
+      let s = new Date(o.startDate);
+      let e = new Date(o.endDate);
+      if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) continue;
+      if (e < s) continue;
 
-    s = new Date(Math.max(s.getTime(), yearStart.getTime()));
-    e = new Date(Math.min(e.getTime(), yearEnd.getTime()));
-    if (e < s) continue;
+      s = new Date(Math.max(s.getTime(), yearStart.getTime()));
+      e = new Date(Math.min(e.getTime(), yearEnd.getTime()));
+      if (e < s) continue;
 
-    s.setUTCHours(0, 0, 0, 0);
-    e.setUTCHours(0, 0, 0, 0);
+      s.setUTCHours(0, 0, 0, 0);
+      e.setUTCHours(0, 0, 0, 0);
 
-    for (let d = s; d.getTime() <= e.getTime(); d = addUtcDays(d, 1)) {
-      const key = utcYmd(d);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      for (let d = s; d.getTime() <= e.getTime(); d = addUtcDays(d, 1)) {
+        const key = utcYmd(d);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
     }
-  }
 
-  let maxCount = 0;
-  for (const v of counts.values()) {
-    if (v > maxCount) maxCount = v;
-  }
+    let maxCount = 0;
+    for (const v of counts.values()) {
+      if (v > maxCount) maxCount = v;
+    }
 
-  const days: Record<string, number> = {};
-  for (const [k, v] of counts.entries()) {
-    days[k] = v;
-  }
+    const days: Record<string, number> = {};
+    for (const [k, v] of counts.entries()) {
+      days[k] = v;
+    }
 
-  return jsonOk({
-    year,
-    days,
-    maxCount,
-    orderCount: orders.length,
+    return {
+      year,
+      days,
+      maxCount,
+      orderCount: orders.length,
+    };
   });
+  return jsonOk(data);
 }

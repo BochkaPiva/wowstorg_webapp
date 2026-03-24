@@ -49,7 +49,9 @@ async function supabaseUpload(args: {
       "Content-Type": args.contentType,
       "x-upsert": args.upsert === false ? "false" : "true",
     },
-    body: args.body,
+    // Next.js/Vercel TypeScript typing for fetch expects BodyInit;
+    // pass binary payload as Uint8Array to avoid Buffer mismatch.
+    body: new Uint8Array(args.body),
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");

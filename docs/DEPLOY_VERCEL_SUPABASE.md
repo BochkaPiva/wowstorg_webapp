@@ -31,6 +31,15 @@
 | `DATABASE_URL` | Строка подключения **PostgreSQL** (Supabase: **Connection string** в режиме *Transaction* или *Session*, с `?sslmode=require` при необходимости) |
 | `NEXT_PUBLIC_APP_URL` | Публичный URL сайта **без завершающего слэша** — ссылки в Telegram и напоминания (`order-notifications.ts`, `reminder-runner.ts`, quick-supplement). В проде **обязателен**, иначе подставится заглушка `https://wowstorg.example.com` |
 
+### Supabase Storage (фото и сметы)
+
+| Переменная | Назначение |
+|------------|------------|
+| `SUPABASE_URL` | URL проекта Supabase (`https://<project>.supabase.co`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service Role key (только сервер, не на клиент) |
+| `SUPABASE_STORAGE_PHOTOS_BUCKET` | bucket для фото позиций (по умолчанию `item-photos`) |
+| `SUPABASE_STORAGE_ESTIMATES_BUCKET` | bucket для смет XLSX (по умолчанию `estimates`) |
+
 ### Сессии
 
 Cookie с флагом `secure` в **production** (`NODE_ENV === "production"`). На Vercel с HTTPS это нормально. Локально по HTTP cookie работает с `secure: false`.
@@ -61,28 +70,27 @@ Cookie с флагом `secure` в **production** (`NODE_ENV === "production"`).
 
 ---
 
-## 3. Блокер Vercel: файловая система
+## 3. Файлы на Vercel (текущее состояние)
 
-Serverless-функции **не имеют постоянного диска**. Следующие места **пишут или читают** файлы под `process.cwd()`:
+Serverless-функции **не имеют постоянного диска**. В текущем коде файлы хранятся в **Supabase Storage** (при наличии `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`), а локальный диск `data/...` остаётся только fallback для localhost/dev.
 
 ### 3.1 Фото позиций каталога
 
-- **Каталог на диске:** `data/item-photos`  
 - **Код:** `src/app/api/inventory/positions/[id]/photo/route.ts`  
   - `GET` — отдача файла по `Item.photo1Key`  
   - `POST` — загрузка до 5 MB, имя файла `{id}-{timestamp}.{ext}`  
   - `DELETE` — удаление файла и обнуление ключа  
 - **UI** везде ходит на **`/api/inventory/positions/{id}/photo`** как на картинку (`catalog/page.tsx`, `ItemModal.tsx`, `inventory/positions/[id]/page.tsx`).
 
-**Для Vercel:** хранить бинарники в **Supabase Storage** (или S3/R2), в БД — **ключ/путь**, а в API — редирект на signed URL или проксирование потока из Storage.
+Хранилище: Supabase bucket `SUPABASE_STORAGE_PHOTOS_BUCKET`, в БД хранится ключ/путь (`Item.photo1Key`).
 
 ### 3.2 Файлы смет (XLSX)
 
-- **Каталог:** `data/estimates`  
 - **Запись:** `src/app/api/orders/[id]/send-estimate/route.ts` — после генерации `buildEstimateXlsx` файл пишется как `{orderId}.xlsx`, в `Order.estimateFileKey` попадает ключ.  
 - **Чтение:** `src/app/api/orders/[id]/estimate/route.ts` — `readFileSync` для скачивания сметы (доступ склад или «владелец» Greenwich по заявке).
+ - **Служебная генерация:** `src/server/orders/estimate-artifacts.ts` также пишет в Storage.
 
-**Для Vercel:** тот же подход — объектное хранилище; либо **не сохранять** файл, а генерировать XLSX на лету при GET (потребует рефакторинга, сейчас файл обязателен для рассылки в Telegram из `notifyEstimateSent` — нужно сверить с `order-notifications.ts`).
+Хранилище: Supabase bucket `SUPABASE_STORAGE_ESTIMATES_BUCKET`, в БД хранится ключ (`Order.estimateFileKey`).
 
 ### 3.3 Отладочный лог уведомлений
 
@@ -112,31 +120,33 @@ Serverless-функции **не имеют постоянного диска**.
 
 ---
 
-## 5. Пошаговый план: Vercel + Supabase (когда файлы будут вынесены из диска)
-
-Это **план работ**, а не инструкция «нажать кнопку», пока код пишет на локальный `data/`.
+## 5. Пошаговый план: Vercel + Supabase
 
 1. **Supabase**  
    - Создать проект (регион по желанию, EU часто ближе к Vercel).  
    - Взять **Database URL** (postgres).  
    - Применить миграции: `prisma migrate deploy` против этой БД (локально или в CI), либо через Supabase SQL по файлам миграций (предпочтительно стандартный путь Prisma).
 
-2. **Хранилище файлов** (отдельная задача разработки)  
-   - Реализовать загрузку/скачивание фото и смет через **Supabase Storage** (или S3-совместимое API).  
-   - Обновить только перечисленные route-файлы и при необходимости поля в `Item` / способ хранения `estimateFileKey`.
+2. **Storage buckets**  
+   - Создать buckets:
+     - `item-photos` (или задать свой в `SUPABASE_STORAGE_PHOTOS_BUCKET`);
+     - `estimates` (или задать свой в `SUPABASE_STORAGE_ESTIMATES_BUCKET`).
 
 3. **Vercel**  
    - Подключить репозиторий GitHub.  
    - Framework Preset: Next.js.  
-   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, секреты Telegram, `REMINDERS_CRON_TOKEN`, и т.д.  
+   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
    - Build: убедиться в `prisma generate` + `next build`.  
-   - Настроить **Cron** на `POST https://<ваш-домен>/api/reminders/run` с заголовком `x-cron-token`.
+   - Настроить **Cron**:
+     - `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,
+     - `POST https://<ваш-домен>/api/admin/inventory-audit/cron` с `x-cron-token`.
 
 4. **Домен**  
    - Привязать свой домен в Vercel, выставить `NEXT_PUBLIC_APP_URL` на **https://ваш-домен** (без слэша в конце, как принято в коде ссылок).
 
 5. **Проверка**  
-   - Логин, заявки, загрузка фото, смета, Telegram (с EU/US исходящим до `api.telegram.org` обычно без проблем в отличие от РФ у клиента).
+   - Логин, заявки, загрузка фото, смета, Telegram.
+   - Отдельный smoke-test из РФ без VPN: открыть каталог и прокликать 20+ карточек (изображения должны грузиться стабильно, без «через раз»).
 
 ---
 
@@ -146,7 +156,7 @@ Serverless-функции **не имеют постоянного диска**.
 2. **`.env`** в корне проекта (рядом с `package.json`):  
    - `DATABASE_URL` — на **локальный** PostgreSQL (Docker или установленный), либо на **ту же** облачную БД (для отладки с живыми данными).  
    - `NEXT_PUBLIC_APP_URL=http://localhost:3000` (или ваш порт).  
-3. Создать каталоги при необходимости:  
+3. Для локального fallback (без Supabase Storage) создать каталоги:  
    - `data/item-photos`  
    - `data/estimates`  
 4. **Миграции:** `npx prisma migrate dev` (или `deploy` к локальной БД).  

@@ -1,14 +1,10 @@
-import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
-
 import { prisma } from "@/server/db";
 import { buildEstimateXlsx } from "@/server/estimate-xlsx";
 import { requireRole } from "@/server/auth/require";
+import { putEstimateFile } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
 import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
-
-const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
 
 /** Снимок заявки без цен доп. услуг — для сравнения «склад ничего не менял после запроса изменений». */
 function buildOrderSnapshotForCompare(order: {
@@ -98,9 +94,8 @@ export async function POST(
   const estimateFileKey = `${id}.xlsx`;
   let xlsxBuffer: Buffer;
   try {
-    mkdirSync(ESTIMATES_DIR, { recursive: true });
     xlsxBuffer = await buildEstimateXlsx(fullOrder as Parameters<typeof buildEstimateXlsx>[0]);
-    writeFileSync(join(ESTIMATES_DIR, estimateFileKey), xlsxBuffer);
+    await putEstimateFile(estimateFileKey, xlsxBuffer);
   } catch (e) {
     console.error("[send-estimate] failed to write xlsx:", e);
     return jsonError(500, "Не удалось сформировать файл сметы");

@@ -457,20 +457,48 @@ export function BackgroundStackGame() {
           </span>
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-[-38px] z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_84%,transparent_100%)] [mask-repeat:no-repeat]">
+      <div className="fixed inset-x-0 bottom-[-38px] z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_68%,transparent_96%)] [mask-repeat:no-repeat]">
+        {/* Нижняя «полка» фона: в простое башня не висит в вакууме */}
+        <div
+          className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_95%_72%_at_50%_100%,rgba(139,92,246,0.07)_0%,transparent_58%),radial-gradient(ellipse_70%_50%_at_18%_92%,rgba(250,204,21,0.05)_0%,transparent_50%),radial-gradient(ellipse_70%_50%_at_82%_90%,rgba(167,139,250,0.06)_0%,transparent_50%)]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 z-[5] opacity-[0.35]"
+          style={{
+            backgroundImage: [
+              "repeating-linear-gradient(-18deg, transparent, transparent 11px, rgba(139,92,246,0.02) 11px, rgba(139,92,246,0.02) 12px)",
+              "linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.05) 42%, rgba(250,250,252,0.55) 100%)",
+            ].join(","),
+          }}
+          aria-hidden
+        />
         <div
           ref={gameRef}
           className={[
-            "absolute inset-0 z-10 pointer-events-auto cursor-pointer transition-opacity duration-500",
-            isGameActive ? "opacity-[0.94]" : "opacity-[0.48]",
+            "absolute inset-0 z-10 pointer-events-auto cursor-pointer transition-[opacity,filter] duration-700 ease-out",
+            isGameActive ? "opacity-[0.94] [filter:saturate(1.02)_brightness(1)]" : "opacity-[0.22] [filter:saturate(0.72)_brightness(1.08)_blur(0.35px)]",
           ].join(" ")}
         />
+        {/* В простое лёгкая вуаль поверх WebGL — башня читается как текстура фона */}
+        <div
+          className={[
+            "pointer-events-none absolute inset-0 z-[11] transition-opacity duration-700",
+            isGameActive ? "opacity-0" : "opacity-100",
+          ].join(" ")}
+          style={{
+            background:
+              "linear-gradient(to top, rgba(250, 248, 255, 0.82) 0%, rgba(248, 246, 255, 0.42) 38%, rgba(252, 251, 255, 0.12) 72%, transparent 100%)",
+          }}
+          aria-hidden
+        />
         <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-[#f6f2ff]/66 via-[#f6f2ff]/18 to-[#f6f2ff]/00" />
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-20 bg-gradient-to-r from-[#f6f2ff]/72 via-[#f6f2ff]/28 to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-20 bg-gradient-to-l from-[#f6f2ff]/72 via-[#f6f2ff]/28 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-[-34%] z-20 h-[54%] rounded-[50%] bg-white/18 blur-3xl" />
-        <div className="pointer-events-none absolute left-[10%] bottom-[8%] z-20 h-24 w-40 rounded-full bg-violet-100/30 blur-3xl" />
-        <div className="pointer-events-none absolute right-[12%] bottom-[10%] z-20 h-24 w-40 rounded-full bg-amber-100/28 blur-3xl" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-[28%] max-w-48 bg-gradient-to-r from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-[28%] max-w-48 bg-gradient-to-l from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-[-34%] z-20 h-[54%] rounded-[50%] bg-white/22 blur-3xl" />
+        <div className="pointer-events-none absolute left-[8%] bottom-[6%] z-20 h-28 w-48 rounded-full bg-violet-200/25 blur-3xl" />
+        <div className="pointer-events-none absolute right-[10%] bottom-[8%] z-20 h-28 w-48 rounded-full bg-amber-200/22 blur-3xl" />
+        <div className="pointer-events-none absolute left-1/2 bottom-[2%] z-20 h-16 w-[min(72%,420px)] -translate-x-1/2 rounded-full bg-violet-300/10 blur-2xl" />
       </div>
     </>,
     document.body,

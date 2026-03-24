@@ -1,10 +1,6 @@
-import { readFileSync } from "fs";
-import { join } from "path";
-
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
-
-const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
+import { getEstimateFile } from "@/server/file-storage";
 
 export async function GET(
   _req: Request,
@@ -35,19 +31,15 @@ export async function GET(
     return new Response(null, { status: 403 });
   }
 
-  try {
-    const filePath = join(ESTIMATES_DIR, order.estimateFileKey);
-    const buf = readFileSync(filePath);
-    const filename = `smeta-${order.id}.xlsx`;
-    return new Response(buf, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Content-Length": String(buf.length),
-      },
-    });
-  } catch {
-    return new Response(null, { status: 404 });
-  }
+  const buf = await getEstimateFile(order.estimateFileKey);
+  if (!buf) return new Response(null, { status: 404 });
+  const filename = `smeta-${order.id}.xlsx`;
+  return new Response(buf, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": String(buf.length),
+    },
+  });
 }

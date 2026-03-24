@@ -1,10 +1,7 @@
-import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { buildEstimateXlsx } from "@/server/estimate-xlsx";
-
-const ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
+import { putEstimateFile } from "@/server/file-storage";
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -56,9 +53,8 @@ export async function makeEstimateArtifactsForOrder(db: Db, orderId: string): Pr
   }));
 
   const estimateFileKey = `${orderId}.xlsx`;
-  mkdirSync(ESTIMATES_DIR, { recursive: true });
   const xlsxBuffer = await buildEstimateXlsx(order as Parameters<typeof buildEstimateXlsx>[0]);
-  writeFileSync(join(ESTIMATES_DIR, estimateFileKey), xlsxBuffer);
+  await putEstimateFile(estimateFileKey, xlsxBuffer);
 
   return { estimateFileKey, estimateSentSnapshot, xlsxBuffer };
 }

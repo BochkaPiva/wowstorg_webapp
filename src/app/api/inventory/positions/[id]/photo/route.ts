@@ -1,11 +1,7 @@
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
-import { join } from "path";
-
 import { prisma } from "@/server/db";
 import { requireRole, requireUser } from "@/server/auth/require";
+import { deleteItemPhoto, getItemPhoto, putItemPhoto } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
-
-const PHOTOS_DIR = join(process.cwd(), "data", "item-photos");
 
 function guessExt(mime: string) {
   if (mime === "image/png") return "png";
@@ -30,19 +26,15 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const item = await prisma.item.findUnique({ where: { id }, select: { photo1Key: true } });
   if (!item?.photo1Key) return new Response(null, { status: 404 });
 
-  try {
-    const filePath = join(PHOTOS_DIR, item.photo1Key);
-    const buf = readFileSync(filePath);
-    return new Response(buf, {
-      status: 200,
-      headers: {
-        "Content-Type": guessContentType(item.photo1Key),
-        "Cache-Control": "private, max-age=0, must-revalidate",
-      },
-    });
-  } catch {
-    return new Response(null, { status: 404 });
-  }
+  const buf = await getItemPhoto(item.photo1Key);
+  if (!buf) return new Response(null, { status: 404 });
+  return new Response(buf, {
+    status: 200,
+    headers: {
+      "Content-Type": guessContentType(item.photo1Key),
+      "Cache-Control": "private, max-age=0, must-revalidate",
+    },
+  });
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -67,24 +59,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const buf = Buffer.from(await file.arrayBuffer());
   const ext = guessExt(file.type);
-  const fileKey = `${id}-${Date.now()}.${ext}`;
+  const fileKey = `items/${id}/${id}-${Date.now()}.${ext}`;
 
   try {
-    mkdirSync(PHOTOS_DIR, { recursive: true });
-    writeFileSync(join(PHOTOS_DIR, fileKey), buf);
-  } catch {
-    return jsonError(500, "Не удалось сохранить файл");
+    await putItemPhoto(fileKey, buf, file.type || "image/jpeg");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown storage error";
+    console.error("[item-photo] save failed:", msg);
+    return jsonError(500, `Не удалось сохранить файл: ${msg}`);
   }
 
   await prisma.item.update({ where: { id }, data: { photo1Key: fileKey } });
 
   // best-effort cleanup old
   if (item.photo1Key) {
-    try {
-      unlinkSync(join(PHOTOS_DIR, item.photo1Key));
-    } catch {
-      // ignore
-    }
+    await deleteItemPhoto(item.photo1Key);
   }
 
   return jsonOk({ ok: true, photo1Key: fileKey });
@@ -99,11 +88,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (!item?.photo1Key) return jsonOk({ ok: true });
 
   await prisma.item.update({ where: { id }, data: { photo1Key: null } });
-  try {
-    unlinkSync(join(PHOTOS_DIR, item.photo1Key));
-  } catch {
-    // ignore
-  }
+  await deleteItemPhoto(item.photo1Key);
   return jsonOk({ ok: true });
 }
 

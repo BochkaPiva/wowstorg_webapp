@@ -1091,7 +1091,11 @@ export default function OrderDetailsPage() {
                         <td className="p-3 text-right text-zinc-600">{line.approvedQty ?? "—"}</td>
                         <td className="p-3 text-right text-zinc-600">{line.issuedQty ?? "—"}</td>
                         <td className="p-3 text-right text-zinc-600">
-                          {line.pricePerDaySnapshot != null ? line.pricePerDaySnapshot.toFixed(0) : "—"} ₽
+                          {line.pricePerDaySnapshot != null
+                            ? (line.pricePerDaySnapshot *
+                                (isWarehouse ? 1 : (order.payMultiplier != null ? Number(order.payMultiplier) : 1))
+                              ).toFixed(0)
+                            : "—"} ₽
                         </td>
                         <td className="p-3 text-zinc-600 text-left max-w-[200px] truncate" title={line.greenwichComment ?? undefined}>
                           {line.greenwichComment ?? "—"}

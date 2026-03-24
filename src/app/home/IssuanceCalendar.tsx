@@ -78,8 +78,17 @@ function buildWeekColumns(
 function intensityLevel(count: number, max: number): number {
   if (count <= 0) return 0;
   if (max <= 0) return 1;
-  const step = Math.ceil((count / max) * 4);
-  return Math.min(4, Math.max(1, step));
+  // For tiny datasets (1-3 concurrent orders), avoid jumping to the brightest tone.
+  if (max <= 1) return 2;
+  if (max <= 3) {
+    if (count >= max) return 3;
+    return 2;
+  }
+  const ratio = count / max;
+  if (ratio >= 0.95) return 4;
+  if (ratio >= 0.7) return 3;
+  if (ratio >= 0.35) return 2;
+  return 1;
 }
 
 const LEVEL_CLASS: Record<number, string> = {

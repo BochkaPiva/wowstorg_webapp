@@ -1,6 +1,34 @@
 # Loads .env.staging and runs prisma migrate deploy + db seed (preview Supabase).
-# Requires: Node.js on PATH, npm install in repo root.
+# Requires: Node.js installed, npm install in repo root.
 $ErrorActionPreference = "Stop"
+
+function Initialize-NodeJsPath {
+    # Non-interactive `powershell -File` often has an empty/minimal PATH.
+    $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
+    $user = [Environment]::GetEnvironmentVariable("Path", "User")
+    $merged = @($machine, $user) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd(";") }
+    $env:Path = ($merged -join ";")
+
+    $extra = @(
+        (Join-Path $env:ProgramFiles "nodejs")
+        (Join-Path ${env:ProgramFiles(x86)} "nodejs")
+        (Join-Path $env:USERPROFILE ".volta\bin")
+    )
+    foreach ($dir in $extra) {
+        if ($dir -and (Test-Path (Join-Path $dir "npm.cmd"))) {
+            $env:Path = "$dir;$env:Path"
+            return
+        }
+    }
+}
+
+Initialize-NodeJsPath
+
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Error "npm not found. Install Node.js (https://nodejs.org LTS) and reopen the terminal. Or run from a terminal where 'npm -v' works: npm run db:deploy then npm run db:seed (with DATABASE_URL and DIRECT_URL set from .env.staging)."
+    exit 1
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $repoRoot
 

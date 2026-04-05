@@ -7,6 +7,7 @@
 | Переменная |
 |------------|
 | `DATABASE_URL` |
+| `DIRECT_URL` |
 | `HTTPS_PROXY` |
 | `INVENTORY_AUDIT_CRON_TOKEN` |
 | `INVENTORY_AUDIT_RETENTION_DAYS` |

@@ -28,7 +28,8 @@
 
 | Переменная | Назначение |
 |------------|------------|
-| `DATABASE_URL` | Строка подключения **PostgreSQL** (Supabase: **Connection string** в режиме *Transaction* или *Session*, с `?sslmode=require` при необходимости) |
+| `DATABASE_URL` | **Pooled** PostgreSQL (Supabase: *Transaction* / порт **6543**, в URI обычно `?pgbouncer=true`) — рантайм и Vercel serverless |
+| `DIRECT_URL` | **Direct / session** строка для **миграций** Prisma (Supabase Connect: отдельный URI, часто тот же pooler на порту **5432** или хост `db.<ref>.supabase.co:5432`) |
 | `NEXT_PUBLIC_APP_URL` | Публичный URL сайта **без завершающего слэша** — ссылки в Telegram и напоминания (`order-notifications.ts`, `reminder-runner.ts`, quick-supplement). В проде **обязателен**, иначе подставится заглушка `https://wowstorg.example.com` |
 
 ### Supabase Storage (фото и сметы)
@@ -66,7 +67,7 @@ Cookie с флагом `secure` в **production** (`NODE_ENV === "production"`).
 
 ### Prisma / Node
 
-- Отдельного `DIRECT_URL` для Prisma в проекте **нет** — если Supabase потребует раздельно *pooled* и *direct* URL для миграций, это добавляют в `schema.prisma` и env (сейчас не настроено).
+- В `schema.prisma` заданы **`url`** (`DATABASE_URL`, пул) и **`directUrl`** (`DIRECT_URL`) — миграции идут через `DIRECT_URL`, запросы приложения через пул.
 
 ---
 

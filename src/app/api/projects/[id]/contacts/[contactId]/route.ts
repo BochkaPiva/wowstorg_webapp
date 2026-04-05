@@ -1,0 +1,145 @@
+import { type Prisma, ProjectActivityKind } from "@prisma/client";
+import { z } from "zod";
+
+import { prisma } from "@/server/db";
+import { requireRole } from "@/server/auth/require";
+import { jsonError, jsonOk } from "@/server/http";
+import { appendProjectActivityLog } from "@/server/projects/activity-log";
+import { assertProjectEditable } from "@/server/projects/project-guard";
+
+const PatchSchema = z
+  .object({
+    fullName: z.string().trim().min(1).max(200).optional(),
+    phone: z.string().trim().max(80).optional().nullable(),
+    email: z.string().trim().max(200).optional().nullable(),
+    roleNote: z.string().trim().max(500).optional().nullable(),
+    isActive: z.boolean().optional(),
+  })
+  .strict();
+
+function normalizeOptional(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  const t = s.trim();
+  return t.length === 0 ? null : t;
+}
+
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ id: string; contactId: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id: projectId, contactId } = await ctx.params;
+  if (!projectId?.trim() || !contactId?.trim()) return jsonError(400, "Invalid id");
+
+  const guard = await assertProjectEditable(projectId);
+  if (!guard.ok) return jsonError(guard.status, guard.message);
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "Invalid JSON body");
+  }
+
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(400, "Invalid input", parsed.error.flatten());
+  }
+
+  if (Object.keys(parsed.data).length === 0) {
+    return jsonError(400, "Нет полей для обновления");
+  }
+
+  const emailIn = parsed.data.email !== undefined ? normalizeOptional(parsed.data.email) : undefined;
+  if (emailIn && !z.string().email().safeParse(emailIn).success) {
+    return jsonError(400, "Некорректный email");
+  }
+
+  const data: {
+    fullName?: string;
+    phone?: string | null;
+    email?: string | null;
+    roleNote?: string | null;
+    isActive?: boolean;
+  } = {};
+
+  if (parsed.data.fullName !== undefined) data.fullName = parsed.data.fullName.trim();
+  if (parsed.data.phone !== undefined) data.phone = normalizeOptional(parsed.data.phone ?? undefined);
+  if (parsed.data.email !== undefined) data.email = emailIn ?? null;
+  if (parsed.data.roleNote !== undefined) data.roleNote = normalizeOptional(parsed.data.roleNote ?? undefined);
+  if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+
+  const fieldKeys = ["fullName", "phone", "email", "roleNote", "isActive"] as const;
+
+  try {
+    const contact = await prisma.$transaction(async (tx) => {
+      const before = await tx.projectContact.findFirst({
+        where: { id: contactId, projectId },
+        select: {
+          fullName: true,
+          phone: true,
+          email: true,
+          roleNote: true,
+          isActive: true,
+        },
+      });
+      if (!before) {
+        throw new Error("NOT_FOUND");
+      }
+
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+      for (const key of fieldKeys) {
+        if (data[key] === undefined) continue;
+        const prev = before[key];
+        const next = data[key];
+        if (prev !== next) {
+          changes[key] = { from: prev, to: next };
+        }
+      }
+
+      const row = await tx.projectContact.update({
+        where: { id: contactId },
+        data,
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          email: true,
+          roleNote: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (Object.keys(changes).length > 0) {
+        await appendProjectActivityLog(tx, {
+          projectId,
+          actorUserId: auth.user.id,
+          kind: ProjectActivityKind.PROJECT_CONTACT_UPDATED,
+          payload: {
+            contactId,
+            changes,
+          } as Prisma.InputJsonValue,
+        });
+      }
+
+      return row;
+    });
+
+    return jsonOk({
+      contact: {
+        ...contact,
+        createdAt: contact.createdAt.toISOString(),
+        updatedAt: contact.updatedAt.toISOString(),
+      },
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") {
+      return jsonError(404, "Контакт не найден");
+    }
+    throw e;
+  }
+}

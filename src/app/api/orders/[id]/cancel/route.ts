@@ -1,6 +1,9 @@
+import { ProjectActivityKind } from "@prisma/client";
+
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import {
   makeQueuedOrderCancelledResult,
   type OrderCancelledNotifyResult,
@@ -22,7 +25,7 @@ export async function POST(
 
   const order = await prisma.order.findUnique({
     where: { id },
-    select: { id: true, status: true, greenwichUserId: true, createdById: true },
+    select: { id: true, status: true, greenwichUserId: true, createdById: true, projectId: true },
   });
 
   if (!order) return jsonError(404, "Not found");
@@ -38,6 +41,19 @@ export async function POST(
     where: { id },
     data: { status: "CANCELLED" },
   });
+
+  if (order.projectId) {
+    try {
+      await appendProjectActivityLog(prisma, {
+        projectId: order.projectId,
+        actorUserId: auth.user.id,
+        kind: ProjectActivityKind.ORDER_CANCELLED,
+        payload: { orderId: order.id },
+      });
+    } catch (logErr) {
+      console.error("[orders/cancel] appendProjectActivityLog failed", logErr);
+    }
+  }
 
   const fullOrder = await prisma.order.findUnique({
     where: { id },

@@ -52,13 +52,23 @@ function daysBetweenDateOnly(start: string, end: string) {
   return days === 0 ? 1 : days;
 }
 
+function catalogCartHref(quickParentId: string | null, projectId: string | null): string {
+  if (quickParentId) return `/cart?quickParentId=${encodeURIComponent(quickParentId)}`;
+  if (projectId) return `/cart?projectId=${encodeURIComponent(projectId)}`;
+  return "/cart";
+}
+
 export default function CatalogPage() {
   const { state } = useAuth();
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
+  const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
   const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
+  const [projectId, setProjectId] = React.useState<string | null>(null);
+  const [projectBannerTitle, setProjectBannerTitle] = React.useState<string | null>(null);
 
   const isQuickSupplement = Boolean(quickParentId);
-  const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
+  const isProjectCatalog = Boolean(projectId) && !quickParentId;
+  const cartScope = quickParentId ? `quick:${quickParentId}` : projectId ? `project:${projectId}` : undefined;
 
   const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
@@ -105,6 +115,7 @@ export default function CatalogPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
+    setProjectId(params.get("projectId"));
   }, []);
 
   /** После монтирования подставляем даты из localStorage (не в useState — иначе mismatch гидратации). */
@@ -139,6 +150,25 @@ export default function CatalogPage() {
       cancelled = true;
     };
   }, [quickParentId]);
+
+  React.useEffect(() => {
+    if (!isProjectCatalog || !projectId || !isWarehouse) {
+      setProjectBannerTitle(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}`, { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then((data: { project?: { title?: string } } | null) => {
+        if (!cancelled) setProjectBannerTitle(data?.project?.title ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setProjectBannerTitle(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isProjectCatalog, projectId, isWarehouse]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -349,9 +379,29 @@ export default function CatalogPage() {
   const rentalDays = daysBetweenDateOnly(startDate, endDate);
   const cartTotalForPeriod = cartTotalPerDay * (rentalDays || 1);
 
+  const cartHref = catalogCartHref(quickParentId, projectId);
+
   return (
     <AppShell title="Каталог">
       <section className="mk-section">
+        {isProjectCatalog && projectId ? (
+          <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50/90 px-4 py-3 text-sm text-zinc-800">
+            <div className="font-semibold text-violet-900">
+              Каталог для проекта
+              {projectBannerTitle ? `: ${projectBannerTitle}` : "…"}
+            </div>
+            <p className="mt-1 text-zinc-600">
+              Корзина и заявка отдельные от обычной: полная цена, привязка к проекту.
+            </p>
+            <Link
+              href={`/projects/${projectId}`}
+              className="mt-2 inline-block font-medium text-violet-700 hover:text-violet-900"
+            >
+              ← К карточке проекта
+            </Link>
+          </div>
+        ) : null}
+
         <div className="mk-head">
           <div className="mk-title">
             {isQuickSupplement ? "Быстрая доп.-выдача" : "Реквизит, который работает на ваши события"}
@@ -359,7 +409,9 @@ export default function CatalogPage() {
           <div className="mk-subtitle">
             {isQuickSupplement
               ? "Добавь нужные позиции и оформи доп.-заявку. Даты и заказчик будут взяты из родительской заявки."
-              : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
+              : isProjectCatalog
+                ? "Выбирай позиции и даты — оформи заявку реквизита в корзине; заказчик подставится из проекта."
+                : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
           </div>
 
           {!isQuickSupplement ? (
@@ -407,7 +459,7 @@ export default function CatalogPage() {
               placeholder="Поиск по каталогу…"
             />
             <div className="flex items-center gap-2 justify-between md:justify-end">
-              <Link href={isQuickSupplement ? `/cart?quickParentId=${quickParentId}` : "/cart"} className="mk-cartPill">
+              <Link href={cartHref} className="mk-cartPill">
                 Корзина: <strong>{cartTotalQty}</strong>
                 {cartTotalForPeriod > 0 ? ` · ${Math.round(cartTotalForPeriod)} ₽` : ""}
               </Link>
@@ -553,7 +605,7 @@ export default function CatalogPage() {
       {cartTotalQty > 0 && showFloatingCart && typeof document !== "undefined"
         ? createPortal(
             <Link
-              href={isQuickSupplement ? `/cart?quickParentId=${quickParentId}` : "/cart"}
+              href={cartHref}
               className="mk-floatingCart"
               aria-label={`Корзина: ${cartTotalQty} поз., ${Math.round(cartTotalForPeriod)} ₽ за период`}
             >

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { Prisma, ProjectActivityKind } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
@@ -13,6 +13,8 @@ import {
 } from "@/server/notifications/order-notifications";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
+import { appendProjectActivityLog } from "@/server/projects/activity-log";
+import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -45,6 +47,9 @@ const BodySchema = z.object({
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
 
+  /// Заявка реквизита в рамках проекта (только WOWSTORG): заказчик и источник берутся из проекта.
+  projectId: z.string().trim().min(1).optional(),
+
   lines: z.array(LineSchema).min(1).max(500),
 });
 
@@ -68,9 +73,15 @@ export async function POST(req: Request) {
   }
 
   const data = parsed.data;
+  const isWarehouse = auth.user.role === "WOWSTORG";
+  const hasProjectId = Boolean(data.projectId?.trim());
+  if (hasProjectId && !isWarehouse) {
+    return jsonError(403, "Привязка к проекту доступна только со склада (Wowstorg)");
+  }
+
   const hasCustomerId = Boolean(data.customerId?.trim());
   const hasCustomerName = Boolean(data.customerName?.trim());
-  if (!hasCustomerId && !hasCustomerName) {
+  if (!hasProjectId && !hasCustomerId && !hasCustomerName) {
     return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");
   }
   const readyByDate = parseDateOnlyToUtcMidnight(data.readyByDate);
@@ -107,7 +118,6 @@ export async function POST(req: Request) {
   }
   const lines = [...grouped.values()];
 
-  const isWarehouse = auth.user.role === "WOWSTORG";
   let source: "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL";
   let greenwichUserId: string | null;
   let payMultiplier: string;
@@ -130,14 +140,35 @@ export async function POST(req: Request) {
     payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
   }
 
+  /** При создании из проекта — всегда внешняя заявка и полная цена (см. brain/features/projects.md). */
+  if (hasProjectId) {
+    source = "WOWSTORG_EXTERNAL";
+    greenwichUserId = null;
+    payMultiplier = "1";
+  }
+
   // Serializable: снижает риск overbooking при параллельных POST с пересекающимися датами/позициями
   // (два запроса не «прочитают» одинаковый reserved до коммита другого).
-  let result: { id: string };
+  let result: { id: string; projectId: string | null };
   try {
     result = await prisma.$transaction(
       async (tx) => {
     let customerIdToUse: string;
-    if (hasCustomerName) {
+    let orderProjectId: string | null = null;
+
+    if (data.projectId?.trim()) {
+      const proj = await tx.project.findFirst({
+        where: { id: data.projectId!.trim(), archivedAt: null },
+        select: { id: true, customerId: true },
+      });
+      if (!proj) throw new Error("PROJECT_NOT_FOUND");
+      if (hasCustomerName) throw new Error("PROJECT_CUSTOMER_CONFLICT");
+      if (hasCustomerId && data.customerId!.trim() !== proj.customerId) {
+        throw new Error("PROJECT_CUSTOMER_MISMATCH");
+      }
+      customerIdToUse = proj.customerId;
+      orderProjectId = proj.id;
+    } else if (hasCustomerName) {
       const name = data.customerName!.trim();
       const existing = await tx.customer.findFirst({
         where: { name: { equals: name, mode: "insensitive" } },
@@ -200,6 +231,7 @@ export async function POST(req: Request) {
         createdById: auth.user.id,
         greenwichUserId,
         customerId: customerIdToUse,
+        projectId: orderProjectId ?? undefined,
         eventName: data.eventName,
         comment: data.comment,
         readyByDate,
@@ -247,7 +279,15 @@ export async function POST(req: Request) {
       });
     }
 
-    return order;
+    if (orderProjectId) {
+      await seedProjectEstimateFromOrder(tx, {
+        projectId: orderProjectId,
+        orderId: order.id,
+        actorUserId: auth.user.id,
+      });
+    }
+
+    return { id: order.id, projectId: orderProjectId };
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -263,6 +303,15 @@ export async function POST(req: Request) {
       if (e.message === "CUSTOMER_NOT_FOUND") {
         return jsonError(400, "Заказчик не найден или неактивен");
       }
+      if (e.message === "PROJECT_NOT_FOUND") {
+        return jsonError(400, "Проект не найден или в архиве");
+      }
+      if (e.message === "PROJECT_CUSTOMER_CONFLICT") {
+        return jsonError(400, "С проектом нельзя создавать нового заказчика по имени — используйте заказчика проекта");
+      }
+      if (e.message === "PROJECT_CUSTOMER_MISMATCH") {
+        return jsonError(400, "Заказчик заявки должен совпадать с заказчиком проекта");
+      }
       if (e.message === "ITEM_NOT_FOUND") {
         return jsonError(400, "Одна или несколько позиций недоступны");
       }
@@ -277,6 +326,19 @@ export async function POST(req: Request) {
       }
     }
     throw e;
+  }
+
+  if (result.projectId) {
+    try {
+      await appendProjectActivityLog(prisma, {
+        projectId: result.projectId,
+        actorUserId: auth.user.id,
+        kind: ProjectActivityKind.ORDER_LINKED,
+        payload: { orderId: result.id },
+      });
+    } catch (logErr) {
+      console.error("[orders] appendProjectActivityLog failed", logErr);
+    }
   }
 
   const createdOrder = await prisma.order.findUnique({

@@ -1020,6 +1020,11 @@ export default function HomeDashboardPage() {
           {isWowstorg ? (
             <>
               <CardLink
+                href="/projects"
+                title="Проекты"
+                description="Мероприятия: карточка, статусы, архив, связь с заявками (в разработке)."
+              />
+              <CardLink
                 href="/warehouse/queue"
                 title="Очередь заявок"
                 description="Согласование, сборка, выдача, приёмка."

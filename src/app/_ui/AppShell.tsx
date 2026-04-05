@@ -49,6 +49,7 @@ export function AppShell({
   function sectionBackHref(path: string): string {
     // Явные “разделы” (чтобы кнопка была предсказуемой)
     if (path.startsWith("/orders/")) return "/orders";
+    if (path.startsWith("/projects/")) return "/projects";
     if (path.startsWith("/warehouse/")) return "/home";
     if (path.startsWith("/admin/")) return "/admin";
     if (path === "/inventory/items") return "/home";
@@ -224,6 +225,9 @@ export function AppShell({
                   <div className="mt-3 border-t border-zinc-100 pt-3 text-xs font-semibold text-zinc-500">
                     Wowstorg
                   </div>
+                  <NavLink href="/projects" onClick={() => setNavOpen(false)}>
+                    Проекты
+                  </NavLink>
                   <NavLink
                     href="/warehouse/queue"
                     onClick={() => setNavOpen(false)}

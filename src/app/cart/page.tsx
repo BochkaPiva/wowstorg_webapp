@@ -71,8 +71,21 @@ export default function CartPage() {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("quickParentId");
   });
+  const [projectId, setProjectId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("projectId");
+  });
   const isQuickSupplement = Boolean(quickParentId);
-  const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
+  const isProjectCart = Boolean(projectId) && !quickParentId;
+  const cartScope = quickParentId ? `quick:${quickParentId}` : projectId ? `project:${projectId}` : undefined;
+
+  const [projectContext, setProjectContext] = React.useState<{
+    id: string;
+    title: string;
+    customerId: string;
+    customerName: string;
+  } | null>(null);
+  const [projectCartError, setProjectCartError] = React.useState<string | null>(null);
 
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
@@ -114,6 +127,7 @@ export default function CartPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
+    setProjectId(params.get("projectId"));
   }, []);
 
   React.useEffect(() => {
@@ -163,6 +177,57 @@ export default function CartPage() {
       cancelled = true;
     };
   }, [quickParentId]);
+
+  React.useEffect(() => {
+    if (!projectId || quickParentId) {
+      setProjectContext(null);
+      setProjectCartError(null);
+      return;
+    }
+    const role = state.status === "authenticated" ? state.user.role : null;
+    if (role !== "WOWSTORG") {
+      setProjectContext(null);
+      setProjectCartError("Корзина проекта доступна только со склада (Wowstorg).");
+      return;
+    }
+    let cancelled = false;
+    setProjectCartError(null);
+    setProjectContext(null);
+    fetch(`/api/projects/${projectId}`, { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then(
+        (data: {
+          project?: { id: string; title: string; customer: { id: string; name: string } };
+          error?: { message?: string };
+        } | null) => {
+          if (cancelled) return;
+          if (!data?.project) {
+            setProjectCartError(data?.error?.message ?? "Проект не найден");
+            return;
+          }
+          const p = data.project;
+          setProjectContext({
+            id: p.id,
+            title: p.title,
+            customerId: p.customer.id,
+            customerName: p.customer.name,
+          });
+          setCustomerInput(p.customer.name);
+          setCustomerId(p.customer.id);
+          setOrderType("external");
+          setEventName((prev) => (prev.trim() ? prev : p.title));
+        },
+      )
+      .catch(() => {
+        if (!cancelled) {
+          setProjectContext(null);
+          setProjectCartError("Не удалось загрузить проект");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, quickParentId, state.status]);
 
   React.useEffect(() => {
     setCart(loadCart(cartScope));
@@ -367,7 +432,11 @@ export default function CartPage() {
   const matchedCustomer =
     customerInputTrim &&
     customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
-  const canSubmitCustomer = isQuickSupplement ? true : Boolean(customerInputTrim);
+  const canSubmitCustomer = isQuickSupplement
+    ? true
+    : isProjectCart
+      ? Boolean(projectContext?.customerId && !projectCartError)
+      : Boolean(customerInputTrim);
   const customerFiltered =
     !customerInputTrim
       ? customers
@@ -414,14 +483,18 @@ export default function CartPage() {
     isWarehouse &&
     cart.length > 0 &&
     canSubmitCustomer &&
-    (orderType !== "greenwich" || Boolean(greenwichUserId));
+    (isProjectCart || orderType !== "greenwich" || Boolean(greenwichUserId));
   const canCheckout = isQuickSupplement
     ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
     : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
 
   async function submit() {
     if (!startDate || !endDate || !readyByDate) return;
-    if (!isQuickSupplement && !customerInputTrim) return;
+    if (isProjectCart && !projectContext) {
+      setError("Не загружены данные проекта");
+      return;
+    }
+    if (!isQuickSupplement && !isProjectCart && !customerInputTrim) return;
     const match = customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
     setError(null);
     setSubmitting(true);
@@ -454,22 +527,39 @@ export default function CartPage() {
         return;
       }
 
-      const payload: Record<string, unknown> = {
-        ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
-        readyByDate,
-        startDate,
-        endDate,
-        eventName: eventName.trim() || undefined,
-        comment: comment.trim() || undefined,
-        deliveryEnabled,
-        deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
-        montageEnabled,
-        montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
-        demontageEnabled,
-        demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
-        lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
-      };
-      if (isWarehouse) {
+      const payload: Record<string, unknown> = isProjectCart && projectContext
+        ? {
+            customerId: projectContext.customerId,
+            projectId: projectContext.id,
+            readyByDate,
+            startDate,
+            endDate,
+            eventName: eventName.trim() || undefined,
+            comment: comment.trim() || undefined,
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+          }
+        : {
+            ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
+            readyByDate,
+            startDate,
+            endDate,
+            eventName: eventName.trim() || undefined,
+            comment: comment.trim() || undefined,
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+          };
+      if (isWarehouse && !isProjectCart) {
         const dp = deliveryPrice.trim() ? Number(deliveryPrice.replace(",", ".")) : undefined;
         const mp = montagePrice.trim() ? Number(montagePrice.replace(",", ".")) : undefined;
         const dmp = demontagePrice.trim() ? Number(demontagePrice.replace(",", ".")) : undefined;
@@ -479,6 +569,14 @@ export default function CartPage() {
         payload.source = orderType === "greenwich" ? "GREENWICH_INTERNAL" : "WOWSTORG_EXTERNAL";
         if (orderType === "greenwich" && greenwichUserId)
           payload.greenwichUserId = greenwichUserId;
+      }
+      if (isWarehouse && isProjectCart) {
+        const dp = deliveryPrice.trim() ? Number(deliveryPrice.replace(",", ".")) : undefined;
+        const mp = montagePrice.trim() ? Number(montagePrice.replace(",", ".")) : undefined;
+        const dmp = demontagePrice.trim() ? Number(demontagePrice.replace(",", ".")) : undefined;
+        if (dp != null && !Number.isNaN(dp)) payload.deliveryPrice = dp;
+        if (mp != null && !Number.isNaN(mp)) payload.montagePrice = mp;
+        if (dmp != null && !Number.isNaN(dmp)) payload.demontagePrice = dmp;
       }
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -644,9 +742,11 @@ export default function CartPage() {
                   <div className="co-subtitle">
                     {isQuickSupplement
                       ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки."
-                      : isWarehouse
-                        ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
-                        : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
+                      : isProjectCart
+                        ? "Заявка реквизита в рамках проекта: полная цена, заказчик из карточки проекта."
+                        : isWarehouse
+                          ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
+                          : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
                   </div>
                 </div>
 
@@ -660,14 +760,43 @@ export default function CartPage() {
                       <strong>{formatDateRu(endDate)}</strong>
                     </div>
                     {!isQuickSupplement ? (
-                      <Link href="/catalog" className="co-link">
+                      <Link
+                        href={
+                          isProjectCart && projectId
+                            ? `/catalog?projectId=${encodeURIComponent(projectId)}`
+                            : "/catalog"
+                        }
+                        className="co-link"
+                      >
                         Изменить даты →
                       </Link>
                     ) : null}
                   </div>
                 ) : null}
 
-                {!isQuickSupplement && isWarehouse ? (
+                {isProjectCart && projectCartError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    {projectCartError}
+                  </div>
+                ) : null}
+
+                {isProjectCart && projectContext ? (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-zinc-800">
+                    <span className="font-semibold text-violet-900">Проект: </span>
+                    {projectContext.title}
+                    <div className="mt-1 text-zinc-600">
+                      Заказчик: <strong>{projectContext.customerName}</strong>
+                    </div>
+                    <Link
+                      href={`/projects/${projectContext.id}`}
+                      className="mt-2 inline-block font-medium text-violet-700 hover:text-violet-900"
+                    >
+                      ← К карточке проекта
+                    </Link>
+                  </div>
+                ) : null}
+
+                {!isQuickSupplement && isWarehouse && !isProjectCart ? (
                   <div className="co-field" style={{ marginBottom: "1rem" }}>
                     <div className="co-label">Тип заявки</div>
                     <div className="co-flipSwitchContainer">
@@ -713,7 +842,7 @@ export default function CartPage() {
                 ) : null}
 
                 <div className="co-grid">
-                  {!isQuickSupplement && isWarehouse && orderType === "greenwich" ? (
+                  {!isQuickSupplement && isWarehouse && !isProjectCart && orderType === "greenwich" ? (
                     <label className="co-field">
                       <div className="co-label">Сотрудник Grinvich *</div>
                       <select
@@ -741,7 +870,9 @@ export default function CartPage() {
                           <input
                             type="text"
                             value={customerInput}
+                            readOnly={isProjectCart}
                             onChange={(e) => {
+                              if (isProjectCart) return;
                               const v = e.target.value;
                               setCustomerInput(v);
                               const t = v.trim();
@@ -754,7 +885,9 @@ export default function CartPage() {
                               setCustomerId(match ? match.id : "");
                               setCustomerDropdownOpen(true);
                             }}
-                            onFocus={() => setCustomerDropdownOpen(true)}
+                            onFocus={() => {
+                              if (!isProjectCart) setCustomerDropdownOpen(true);
+                            }}
                             onBlur={() => {
                               setTimeout(() => setCustomerDropdownOpen(false), 180);
                             }}
@@ -794,7 +927,9 @@ export default function CartPage() {
                             </div>
                           ) : null}
                         </div>
-                        {customerInputTrim && !matchedCustomer ? (
+                        {isProjectCart ? (
+                          <div className="co-combobox-hint">Фиксировано из проекта.</div>
+                        ) : customerInputTrim && !matchedCustomer ? (
                           <div className="co-combobox-hint">
                             Будет создан новый заказчик «{customerInputTrim}»
                           </div>

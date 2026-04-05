@@ -366,7 +366,7 @@ export default function AdminUsersPage() {
                       <span className="text-sm">Аккаунт активен (не заблокирован)</span>
                     </label>
                     <div className="mt-1 text-xs text-zinc-500">
-                      Пользователь задаст пароль сам через "Первая авторизация".
+                      Пользователь задаст пароль сам через «Первая авторизация».
                     </div>
                   </div>
                   {error && (

@@ -28,6 +28,9 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   CANCELLED: "Отменено",
 };
 
+/** Подписи статуса заявки для списков вне степпера (проекты, отчёты). */
+export const orderStatusLabelRu: Record<OrderStatus, string> = STATUS_LABEL;
+
 const STATUS_DETAIL: Record<OrderStatus, string> = {
   SUBMITTED: "Заявка создана, ожидает ответа склада",
   ESTIMATE_SENT: "Смета отправлена, ожидаем решение Grinvich",

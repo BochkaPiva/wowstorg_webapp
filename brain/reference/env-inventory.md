@@ -1,8 +1,9 @@
-# Переменные окружения (сверка с кодом)
+# Переменные окружения (сгенерировано из кода)
 
-> **Сгенерировано при аудите:** 2026-04-05  
-> Источники: `process.env.*` в `src/**/*.ts(x)`, `prisma/seed.cjs`, и `env("…")` в `prisma/schema.prisma`.  
-> **Автоперегенерация:** `npm run brain:inventory` (скрипт объединяет Prisma datasource и скан `src`).
+> **Сгенерировано:** 2026-04-05T18:23:20.228Z  
+> Уникальных имён `process.env.*`: 28  
+> Скан: `src/**/*.ts(x)` и `prisma/seed.cjs`  
+> Перегенерировать: `npm run brain:inventory`
 
 | Переменная |
 |------------|
@@ -23,6 +24,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` |
 | `SUPABASE_URL` |
 | `TELEGRAM_BOT_TOKEN` |
 | `TELEGRAM_GREENWICH_CHAT_ID` |
@@ -33,5 +35,3 @@
 | `TELEGRAM_SEND_TIMEOUT_MS` |
 | `TELEGRAM_WAREHOUSE_CHAT_ID` |
 | `TELEGRAM_WAREHOUSE_TOPIC_ID` |
-
-Семантика и обязательность для Vercel — в [`brain/core/constraints.md`](../core/constraints.md) и [`.env.example`](../../.env.example).

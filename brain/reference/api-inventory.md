@@ -1,13 +1,13 @@
-# Реестр HTTP API (сверка с кодом)
+# Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано вручную при аудите:** 2026-04-05 (среда без `node`; для автоперегенерации см. ниже)  
-> **Файлов `route.ts`:** 64  
-> **Автогенерация:** `npm run brain:inventory` → перезаписывает этот файл из дерева `src/app/api`.
+> **Сгенерировано:** 2026-04-05T18:23:20.228Z  
+> **Файлов route.ts:** 86  
+> Команда: `npm run brain:inventory`  
+> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
+> Расхождение других доков с этой таблицей — **ошибка документации**.
 
-Источник правды — файлы `src/app/api/**/route.ts`. Колонка **HTTP** — методы, объявленные как `export async function GET|POST|PATCH|DELETE`.
-
-| HTTP | Путь | Файл |
-|------|------|------|
+| HTTP | Путь (App Router) | Файл |
+|------|-------------------|------|
 | GET | `/api/admin/analytics/export` | `src/app/api/admin/analytics/export/route.ts` |
 | GET | `/api/admin/analytics/profitability` | `src/app/api/admin/analytics/profitability/route.ts` |
 | GET | `/api/admin/analytics` | `src/app/api/admin/analytics/route.ts` |
@@ -55,12 +55,34 @@
 | POST | `/api/orders/[id]/quick-supplement/warehouse` | `src/app/api/orders/[id]/quick-supplement/warehouse/route.ts` |
 | POST | `/api/orders/[id]/request-changes` | `src/app/api/orders/[id]/request-changes/route.ts` |
 | POST | `/api/orders/[id]/return-declared` | `src/app/api/orders/[id]/return-declared/route.ts` |
+| GET | `/api/orders/[id]` | `src/app/api/orders/[id]/route.ts` |
 | POST | `/api/orders/[id]/send-estimate` | `src/app/api/orders/[id]/send-estimate/route.ts` |
 | POST | `/api/orders/[id]/start-picking` | `src/app/api/orders/[id]/start-picking/route.ts` |
 | PATCH | `/api/orders/[id]/warehouse-edit` | `src/app/api/orders/[id]/warehouse-edit/route.ts` |
-| GET | `/api/orders/[id]` | `src/app/api/orders/[id]/route.ts` |
 | GET | `/api/orders/my` | `src/app/api/orders/my/route.ts` |
 | POST | `/api/orders` | `src/app/api/orders/route.ts` |
+| POST | `/api/projects/[id]/contacts/[contactId]/entries` | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` |
+| PATCH | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
+| GET, POST | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
+| GET | `/api/projects/[id]/estimate/pdf` | `src/app/api/projects/[id]/estimate/pdf/route.ts` |
+| GET | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |
+| POST | `/api/projects/[id]/estimate/sections/[sectionId]/lines` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/lines/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/estimate/sections/[sectionId]` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/route.ts` |
+| POST | `/api/projects/[id]/estimate/sections` | `src/app/api/projects/[id]/estimate/sections/route.ts` |
+| POST | `/api/projects/[id]/estimate/versions` | `src/app/api/projects/[id]/estimate/versions/route.ts` |
+| GET, DELETE | `/api/projects/[id]/files/[fileId]` | `src/app/api/projects/[id]/files/[fileId]/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/files/folders/[folderId]` | `src/app/api/projects/[id]/files/folders/[folderId]/route.ts` |
+| POST | `/api/projects/[id]/files/folders` | `src/app/api/projects/[id]/files/folders/route.ts` |
+| GET | `/api/projects/[id]/files` | `src/app/api/projects/[id]/files/route.ts` |
+| POST | `/api/projects/[id]/files/upload` | `src/app/api/projects/[id]/files/upload/route.ts` |
+| GET, PATCH | `/api/projects/[id]` | `src/app/api/projects/[id]/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/schedule/days/[dayId]` | `src/app/api/projects/[id]/schedule/days/[dayId]/route.ts` |
+| POST | `/api/projects/[id]/schedule/days/[dayId]/slots` | `src/app/api/projects/[id]/schedule/days/[dayId]/slots/route.ts` |
+| GET | `/api/projects/[id]/schedule/export` | `src/app/api/projects/[id]/schedule/export/route.ts` |
+| GET, POST | `/api/projects/[id]/schedule` | `src/app/api/projects/[id]/schedule/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/schedule/slots/[slotId]` | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` |
+| GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
 | POST | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
 | GET | `/api/users/greenwich` | `src/app/api/users/greenwich/route.ts` |
 | GET | `/api/warehouse/archive` | `src/app/api/warehouse/archive/route.ts` |

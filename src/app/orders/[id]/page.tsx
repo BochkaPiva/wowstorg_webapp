@@ -36,6 +36,8 @@ type Order = {
   status: OrderStatus;
   source: string;
   parentOrderId?: string | null;
+  /** Только WOWSTORG: ссылка на карточку мероприятия. */
+  project?: { id: string; title: string } | null;
   readyByDate: string;
   startDate: string;
   endDate: string;
@@ -858,6 +860,17 @@ export default function OrderDetailsPage() {
               {order.parentOrderId ? (
                 <p className="text-sm text-violet-700">
                   Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
+                </p>
+              ) : null}
+              {isWarehouse && order.project ? (
+                <p className="text-sm text-zinc-700">
+                  <span className="text-zinc-500">Проект: </span>
+                  <Link
+                    href={`/projects/${order.project.id}`}
+                    className="font-semibold text-violet-700 hover:text-violet-900"
+                  >
+                    {order.project.title}
+                  </Link>
                 </p>
               ) : null}
               {order.eventName ? (

@@ -1,0 +1,295 @@
+"use client";
+
+import React from "react";
+
+type Slot = { id: string; sortOrder: number; intervalText: string; description: string };
+type Day = { id: string; sortOrder: number; dateNote: string; slots: Slot[] };
+
+export function ProjectSchedulePanel({
+  projectId,
+  readOnly,
+}: {
+  projectId: string;
+  readOnly: boolean;
+}) {
+  const [days, setDays] = React.useState<Day[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [newDayNote, setNewDayNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    fetch(`/api/projects/${projectId}/schedule`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { days?: Day[]; error?: { message?: string } }) => {
+        if (j.days) {
+          setDays(j.days);
+          setError(null);
+        } else setError(j.error?.message ?? "Ошибка загрузки");
+      })
+      .catch(() => setError("Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  async function addDay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDayNote.trim() || readOnly) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/schedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateNote: newDayNote.trim() }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) {
+        setNewDayNote("");
+        load();
+      } else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patchDay(dayId: string, patch: object) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) load();
+      else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDay(dayId: string) {
+    if (!window.confirm("Удалить день и все слоты?")) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}`, { method: "DELETE" });
+      const j = await res.json().catch(() => null);
+      if (res.ok) load();
+      else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addSlot(dayId: string, intervalText: string, description: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}/slots`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intervalText, description }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) load();
+      else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSlot(slotId: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/schedule/slots/${slotId}`, {
+        method: "DELETE",
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) load();
+      else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const exportHref = `/api/projects/${projectId}/schedule/export`;
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-zinc-900">Тайминг-сценарий</div>
+        <a
+          href={exportHref}
+          className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Экспорт .docx
+        </a>
+      </div>
+      <p className="text-xs text-zinc-500">
+        Дни и слоты (интервал + описание). В Word — таблица «Интервал» и «Описание сценария» по каждому дню.
+      </p>
+
+      {loading ? (
+        <p className="text-sm text-zinc-600">Загрузка…</p>
+      ) : error ? (
+        <p className="text-sm text-red-700">{error}</p>
+      ) : (
+        <>
+          {!readOnly ? (
+            <form onSubmit={addDay} className="flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
+              <input
+                value={newDayNote}
+                onChange={(e) => setNewDayNote(e.target.value)}
+                placeholder="День (дата или «День 1»)"
+                className="min-w-[12rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-sm"
+                maxLength={500}
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded bg-zinc-800 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Добавить день
+              </button>
+            </form>
+          ) : null}
+
+          <div className="space-y-4">
+            {days.length === 0 ? (
+              <p className="text-sm text-zinc-600">Пока нет дней.</p>
+            ) : (
+              days.map((d) => (
+                <DayBlock
+                  key={d.id}
+                  day={d}
+                  readOnly={readOnly}
+                  busy={busy}
+                  onPatchDay={patchDay}
+                  onDeleteDay={deleteDay}
+                  onAddSlot={addSlot}
+                  onDeleteSlot={deleteSlot}
+                />
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DayBlock({
+  day,
+  readOnly,
+  busy,
+  onPatchDay,
+  onDeleteDay,
+  onAddSlot,
+  onDeleteSlot,
+}: {
+  day: Day;
+  readOnly: boolean;
+  busy: boolean;
+  onPatchDay: (id: string, p: object) => void;
+  onDeleteDay: (id: string) => void;
+  onAddSlot: (dayId: string, interval: string, desc: string) => void;
+  onDeleteSlot: (slotId: string) => void;
+}) {
+  const [note, setNote] = React.useState(day.dateNote);
+  const [intv, setIntv] = React.useState("");
+  const [desc, setDesc] = React.useState("");
+
+  React.useEffect(() => {
+    setNote(day.dateNote);
+  }, [day.dateNote]);
+
+  return (
+    <details className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm" open>
+      <summary className="cursor-pointer font-medium text-zinc-900">{day.dateNote}</summary>
+      <div className="mt-2 space-y-2">
+        {!readOnly ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="min-w-[10rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+            />
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded border border-zinc-300 px-2 py-1 text-xs"
+              onClick={() => void onPatchDay(day.id, { dateNote: note.trim() })}
+            >
+              Сохранить заголовок
+            </button>
+            <button
+              type="button"
+              className="text-xs text-red-700"
+              disabled={busy}
+              onClick={() => void onDeleteDay(day.id)}
+            >
+              Удалить день
+            </button>
+          </div>
+        ) : null}
+
+        <ul className="space-y-2">
+          {day.slots.map((s) => (
+            <li key={s.id} className="rounded-lg border border-zinc-100 bg-zinc-50 px-2 py-2 text-sm">
+              <div className="font-medium text-zinc-900">{s.intervalText}</div>
+              <div className="whitespace-pre-wrap text-zinc-700">{s.description}</div>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="mt-1 text-xs text-red-700"
+                  disabled={busy}
+                  onClick={() => void onDeleteSlot(s.id)}
+                >
+                  Удалить слот
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+
+        {!readOnly ? (
+          <form
+            className="flex flex-col gap-2 border-t border-dashed border-zinc-200 pt-2 md:flex-row md:flex-wrap"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!intv.trim() || !desc.trim()) return;
+              void onAddSlot(day.id, intv.trim(), desc.trim());
+              setIntv("");
+              setDesc("");
+            }}
+          >
+            <input
+              placeholder="Интервал (09:00–10:30)"
+              value={intv}
+              onChange={(e) => setIntv(e.target.value)}
+              className="rounded border border-zinc-200 px-2 py-1 text-sm md:w-40"
+            />
+            <input
+              placeholder="Описание сценария"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              className="min-w-[8rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              + слот
+            </button>
+          </form>
+        ) : null}
+      </div>
+    </details>
+  );
+}

@@ -5,6 +5,10 @@
 - Использовать **`useAuth()`** из `src/app/providers.tsx`.
 - Редирект на `/login` при `anonymous` — как в **`AppShell`**; не дублировать противоречивую логику на каждой странице без нужды.
 
+## Обработка ошибок в браузере
+
+- `src/instrumentation-client.ts` — точечная работа с `unhandledrejection` / оверлеем Next (см. [`docs/DEBUG_UNHANDLED_REJECTION.md`](../../docs/DEBUG_UNHANDLED_REJECTION.md)). Новые глобальные перехватчики не добавлять без понимания этого файла.
+
 ## Запросы к API
 
 - Предпочтительно **`readJsonSafe`** после `fetch` (см. `src/lib/fetchJson.ts`).

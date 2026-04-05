@@ -9,7 +9,7 @@
 ## Данные
 
 - **Prisma Client** — синглтон `src/server/db.ts` (в dev кэш на `globalThis`, в prod новый инстанс на функцию Vercel — нормально для serverless).
-- Транзакции: **`prisma.$transaction`**, для конкурентных сценариев с резервом — **`isolationLevel: "Serializable"`** (см. `POST /api/orders` и правки строк заявок).
+- Транзакции: **`prisma.$transaction`**, для конкурентных сценариев с резервом — **`isolationLevel: Serializable`** (полный список файлов — [`../decisions/002-serializable-inventory-critical.md`](../decisions/002-serializable-inventory-critical.md)).
 
 ## Аутентификация
 
@@ -27,7 +27,24 @@
 
 ## Кэш
 
-- **`getOrSetRuntimeCache`** (`src/server/runtime-cache.ts`) — процессный TTL-кэш для части **read-only** API. Не использовать для данных, где нужна мгновенная согласованность после мутаций.
+### Процессный TTL (`getOrSetRuntimeCache`)
+
+Файл: `src/server/runtime-cache.ts`. Используется только в read-only дашбордах (ключ и TTL зашиты в коде):
+
+| Маршрут | TTL (мс) | Примечание |
+|---------|----------|------------|
+| `GET /api/dashboard/wowstorg` | 12_000 | ключ `dash:wowstorg` |
+| `GET /api/dashboard/greenwich` | 12_000 | ключ с `userId` |
+| `GET /api/dashboard/issuance-calendar` | 60_000 | ключ с `year` |
+| `GET /api/greenwich/rating` | 15_000 | ключ с id пользователя |
+
+На Vercel инстансы функций могут меняться — кэш **не глобальный между всеми инстансами**, только в рамках одного процесса.
+
+### HTTP-кэш фото позиции
+
+- `GET` в `src/app/api/inventory/positions/[id]/photo/route.ts`: заголовок **`Cache-Control: private, max-age=120, stale-while-revalidate=600`** (как в коде).
+
+Не использовать `getOrSetRuntimeCache` для данных, где после мутации нужна **немедленная** согласованность с UI.
 
 ## Клиент
 

@@ -2,7 +2,17 @@
 
 ## Статус
 
-Принято (см. `POST /api/orders`, правки строк заявок, quick supplement — по коду).
+Принято. Явно в коде (поиск `TransactionIsolationLevel.Serializable` / `P2034`):
+
+| Файл | Назначение |
+|------|------------|
+| `src/app/api/orders/route.ts` | Создание заявки |
+| `src/app/api/orders/[id]/greenwich-edit/route.ts` | Редактирование со стороны Greenwich |
+| `src/app/api/orders/[id]/warehouse-edit/route.ts` | Редактирование со стороны склада |
+| `src/app/api/orders/[id]/quick-supplement/greenwich/route.ts` | Быстрая доп.-выдача (Greenwich) |
+| `src/app/api/orders/[id]/quick-supplement/warehouse/route.ts` | Быстрая доп.-выдача (склад) |
+
+Во всех перечисленных при **`P2034`** клиенту отдаётся **409** (повтор запроса), не сырой 500.
 
 ## Контекст
 

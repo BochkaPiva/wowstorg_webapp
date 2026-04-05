@@ -1011,33 +1011,6 @@ export default function HomeDashboardPage() {
         ) : null}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {isWowstorg ? (
-            <div className="md:col-span-2 rounded-2xl border border-violet-200/90 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(250,204,21,0.10))] p-4 shadow-sm ring-1 ring-violet-200/40">
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="text-base font-semibold tracking-tight text-zinc-900">Проекты</div>
-                  <div className="mt-1 text-sm text-zinc-600">
-                    Карточка мероприятия, смета, файлы, тайминг, контакты и связь с заявками.
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                  <Link
-                    href="/projects"
-                    className={`${BTN_PRIMARY} justify-center min-h-[2.25rem]`}
-                  >
-                    Создать проект
-                  </Link>
-                  <Link
-                    href="/projects?tab=archive"
-                    className="rounded-lg border border-zinc-300/90 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-50 inline-flex items-center justify-center min-h-[2.25rem]"
-                  >
-                    Архив проектов
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
           <CardLink
             href="/catalog"
             title="Каталог"
@@ -1046,6 +1019,16 @@ export default function HomeDashboardPage() {
 
           {isWowstorg ? (
             <>
+              <CardLink
+                href="/projects"
+                title="Создать проект"
+                description="Новый проект: название, заказчик, затем карточка, смета, файлы и заявки."
+              />
+              <CardLink
+                href="/projects?tab=archive"
+                title="Архив проектов"
+                description="Архивные мероприятия: просмотр карточек и истории."
+              />
               <CardLink
                 href="/warehouse/queue"
                 title="Очередь заявок"

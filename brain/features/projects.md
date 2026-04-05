@@ -2,6 +2,8 @@
 
 Дата: 2026-04-05. Доступ: **только WOWSTORG** (склад/админ). Greenwich и внешние клиенты **не** видят модуль.
 
+**Инженерный фундамент (риски, зависимости, конфликты с текущим кодом):** [`projects-foundation.md`](./projects-foundation.md).
+
 ## Принятые решения (из переговоров)
 
 | Тема | Решение |
@@ -105,9 +107,7 @@
 
 ## Риски и связь с текущим кодом
 
-- Не менять поведение Greenwich и существующих заказов без `projectId`.  
-- Новые API только под `requireRole("WOWSTORG")`.  
-- После появления новых `route.ts` и env — `npm run brain:inventory`.
+Кратко: не ломать заказы без `projectId`; новые API только под WOWSTORG; после новых маршрутов/env — `npm run brain:inventory`. **Подробно:** [`projects-foundation.md`](./projects-foundation.md).
 
 ## Открытые мелочи (не блокируют старт)
 

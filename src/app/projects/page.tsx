@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import React from "react";
+import { useSearchParams } from "next/navigation";
+import React, { Suspense } from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
@@ -22,6 +23,12 @@ type ProjectCard = {
 
 type CustomerOpt = { id: string; name: string };
 
+function tabFromSearchParams(sp: { get: (k: string) => string | null }): "active" | "archive" {
+  const t = sp.get("tab");
+  if (t === "archive" || sp.get("archive") === "1") return "archive";
+  return "active";
+}
+
 function fmtDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -29,11 +36,16 @@ function fmtDate(iso: string) {
 }
 
 function ProjectsContent() {
+  const searchParams = useSearchParams();
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
 
-  const [tab, setTab] = React.useState<"active" | "archive">("active");
+  const [tab, setTab] = React.useState<"active" | "archive">(() => tabFromSearchParams(searchParams));
+
+  React.useEffect(() => {
+    setTab(tabFromSearchParams(searchParams));
+  }, [searchParams]);
   const [projects, setProjects] = React.useState<ProjectCard[]>([]);
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -215,6 +227,18 @@ function ProjectsContent() {
   );
 }
 
+function ProjectsPageFallback() {
+  return (
+    <AppShell title="Проекты">
+      <div className="text-sm text-zinc-600">Загрузка…</div>
+    </AppShell>
+  );
+}
+
 export default function ProjectsPage() {
-  return <ProjectsContent />;
+  return (
+    <Suspense fallback={<ProjectsPageFallback />}>
+      <ProjectsContent />
+    </Suspense>
+  );
 }

@@ -1,3 +1,9 @@
+# Wowstorg Webapp
+
+Веб-приложение для учёта аренды реквизита, заявок и склада (Next.js). Для агента и команды: **[`AGENTS.md`](./AGENTS.md)** и каталог **[`brain/`](./brain/README.md)**.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

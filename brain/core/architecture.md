@@ -1,5 +1,7 @@
 # Архитектура приложения
 
+Реестры, сгенерированные/сверенные с кодом: [`brain/reference/README.md`](../reference/README.md).
+
 ## Модель запросов
 
 1. Браузер → **Route Handler** (`src/app/api/.../route.ts`) или **Server/Client Component** (`src/app/...`).

@@ -4,6 +4,8 @@
 
 `src/app/api/<area>/.../route.ts` — экспорт именованных функций **`GET`**, **`POST`**, **`PATCH`**, **`DELETE`** по необходимости.
 
+Полный список путей и методов: [`brain/reference/api-inventory.md`](../reference/api-inventory.md) (обновлять через `npm run brain:inventory`).
+
 ## Авторизация
 
 1. В начале handler-а: **`const auth = await requireUser()`** или **`requireRole("WOWSTORG")`** / **`"GREENWICH"`**.

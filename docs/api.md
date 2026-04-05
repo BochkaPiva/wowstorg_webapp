@@ -2,99 +2,96 @@
 
 База: Next.js App Router `src/app/api/**/route.ts`
 
+**Полный реестр путей и HTTP-методов** (источник правды, обновлять через скрипт): [`brain/reference/api-inventory.md`](../brain/reference/api-inventory.md). Ниже — смысловой обзор и принципы; при расхождении приоритет у инвентаря.
+
 Общие принципы:
-- Все мутации выполняются транзакционно (Prisma `$transaction`).
-- Ошибки уведомлений/генерации документов **не** ломают бизнес-ответ (best-effort).
+
+- Мутации, затрагивающие согласованность данных, выполняются через Prisma **`$transaction`** (см. [`brain/reference/prisma-transactions.md`](../brain/reference/prisma-transactions.md)).
+- Ошибки уведомлений / генерации документов **не** ломают бизнес-ответ (best-effort); отложенные задачи — [`brain/reference/schedule-after-response.md`](../brain/reference/schedule-after-response.md).
 - Авторизация через cookie (httpOnly), без саморегистрации.
 
 ## Auth
+
 ### `POST /api/auth/login`
+
 Вход по логину/паролю.
 
-Request JSON:
-- `login: string`
-- `password: string`
+### `POST /api/auth/first-login`
 
-Response 200 JSON:
-- `user: { id, login, displayName, role }`
-
-Ошибки:
-- 400: invalid input
-- 401: wrong credentials / inactive
+Установка пароля при первом входе (flow активации).
 
 ### `POST /api/auth/logout`
+
 Снимает сессию.
 
-Response 200 JSON: `{ ok: true }`
-
 ### `GET /api/auth/me`
-Текущий пользователь.
 
-Response 200 JSON:
-- `user: { id, login, displayName, role } | null`
+Текущий пользователь или `null`.
 
 ## Catalog
-### `GET /api/catalog/items?query=&category=&internalOnly=&startDate=&endDate=&readyByDate=`
-Возвращает список позиций + computed availability на выбранные даты.
 
-Response 200 JSON:
-- `items: Array<{ id, name, type, pricePerDay, photo1Key?, photo2Key?, buckets, availability }>`
+### `GET /api/catalog/items`
+
+Список позиций и доступность на даты (query-параметры).
 
 ### `GET /api/catalog/categories`
-Список категорий/подборок.
 
 ### `GET /api/catalog/kits`
-Список пакетов (kit + lines).
 
 ## Users (склад)
+
 ### `GET /api/users/greenwich`
-Список сотрудников Greenwich (id, displayName) для выбора «заявка на кого». Только WOWSTORG.
 
-Response 200 JSON: `{ users: Array<{ id, displayName }> }`
+Список сотрудников Greenwich для выбора в заявке. Только `WOWSTORG`.
 
-## Orders (Greenwich и склад)
+## Orders
+
 ### `POST /api/orders`
-Создание заказа из корзины. Могут вызывать GREENWICH и WOWSTORG.
 
-Body (общее): customerId, readyByDate, startDate, endDate, eventName?, comment?, deliveryEnabled?, deliveryComment?, deliveryPrice?, montageEnabled?, montageComment?, montagePrice?, demontageEnabled?, demontageComment?, demontagePrice?, lines.
-
-Для WOWSTORG дополнительно: source (`GREENWICH_INTERNAL` | `WOWSTORG_EXTERNAL`), при source=GREENWICH_INTERNAL обязателен greenwichUserId.
+Создание заявки из корзины (`GREENWICH` или `WOWSTORG`).
 
 ### `GET /api/orders/my`
-Список “мои заявки”.
 
-### `GET /api/orders/:id`
-Детали заказа.
+Список заявок текущего Greenwich.
 
-### `PATCH /api/orders/:id`
-Редактирование заказа (только пока разрешено статусом).
+### `GET /api/orders/[id]`
 
-### `POST /api/orders/:id/send-estimate`
-Отправить смету (склад). Только статус SUBMITTED → ESTIMATE_SENT.
+Детали заявки (только **GET** в этом файле; правки — отдельные маршруты ниже).
 
-### `POST /api/orders/:id/approve`
-Согласовать заявку (склад). SUBMITTED или ESTIMATE_SENT → APPROVED_BY_GREENWICH. Body: `{ lines?: [{ orderLineId, approvedQty }] }`.
+### Редактирование и служебные маршруты заказа
 
-### `POST /api/orders/:id/issue`
-Выдать заказ (склад). APPROVED_BY_GREENWICH или PICKING → ISSUED.
+- **`PATCH /api/orders/[id]/greenwich-edit`** — правки со стороны Greenwich.
+- **`PATCH /api/orders/[id]/warehouse-edit`** — правки склада.
+- **`PATCH /api/orders/[id]/internal-note`** — внутренняя заметка склада.
 
-### `POST /api/orders/:id/return-declared`
-Greenwich отправил возврат на приёмку. ISSUED → RETURN_DECLARED. Только свой заказ (greenwichUserId).
+### Типовые переходы статуса
 
-### `POST /api/orders/:id/check-in`
-Складская приёмка. RETURN_DECLARED → CLOSED. Body: `{ lines: [{ orderLineId, condition: "OK"|"NEEDS_REPAIR"|"BROKEN"|"MISSING", qty }] }`.
+- `POST .../send-estimate`, `approve`, `request-changes`, `start-picking`, `issue`, `return-declared`, `check-in`, `cancel`, а также quick-supplement и `GET .../estimate` — см. инвентарь.
 
-### `POST /api/orders/:id/cancel`
-Отменить заявку. Только статусы SUBMITTED, ESTIMATE_SENT, CHANGES_REQUESTED. Greenwich — свой заказ, склад — любой.
+## Warehouse (очередь и архив)
 
-## Warehouse
 ### `GET /api/warehouse/queue`
-Очередь (только актуальные статусы, без CLOSED/CANCELLED).
 
 ### `GET /api/warehouse/archive`
-Архив (только CLOSED и CANCELLED).
 
-## Incidents / Loss
-### `GET /api/incidents`
-### `PATCH /api/loss/:id`
+## Инциденты и потери (склад)
 
+Ранее в этом файле ошибочно были указаны `/api/incidents` и `/api/loss/:id`. Фактические маршруты:
+
+### `GET /api/warehouse/incidents`
+
+### `POST /api/warehouse/incidents/[id]/repair`
+
+### `POST /api/warehouse/incidents/[id]/utilize`
+
+### `GET /api/warehouse/losses`
+
+### `POST /api/warehouse/losses/[id]/found`
+
+### `POST /api/warehouse/losses/[id]/write-off`
+
+### `GET /api/warehouse/repair-items`
+
+## Прочее
+
+Дашборды, админка (пользователи, аналитика, Telegram, аудит инвентаря), Greenwich (рейтинг, ачивки, башня), напоминания (`POST /api/reminders/run`), уведомления (`/api/me/notifications`), инвентарь (позиции, фото, пакеты, подборки, «в аренде»), заказчики — см. **[`brain/reference/api-inventory.md`](../brain/reference/api-inventory.md)**.

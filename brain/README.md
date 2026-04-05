@@ -9,6 +9,7 @@
 | [`decisions/`](./decisions/) | ADR: зафиксированные решения (не нарушать без нового ADR) |
 | [`features/`](./features/) | Индекс крупных фич + шаблон карточки фичи |
 | [`ui/`](./ui/) | Визуальные и UX-инварианты текущего приложения |
+| [`reference/`](./reference/) | **Реестры из кода:** все API, все env, транзакции, `scheduleAfterResponse` |
 
 **Точка входа для агента:** корневой [`AGENTS.md`](../AGENTS.md).
 
@@ -17,3 +18,4 @@
 - **Не дублирует** построчно весь репозиторий (~60+ API route, все страницы, каждую ветку UI). Это **сжатое зеркало** инвариантов и стиля + ссылки на `docs/` и код.
 - Таблица **переменных окружения** в [`core/constraints.md`](./core/constraints.md) проверена поиском по `process.env` в `src/**/*.ts(x)` и `prisma/seed.cjs` (на момент последней сверки).
 - При добавлении нового `process.env` или кэширующего эндпоинта — **обновить** `constraints.md` и/или [`core/architecture.md`](./core/architecture.md) в том же PR, что и код.
+- Новые **`route.ts`** или env — обязательно **`npm run brain:inventory`** + правки ручных реестров в [`reference/`](./reference/README.md), если затронуты транзакции или `scheduleAfterResponse`.

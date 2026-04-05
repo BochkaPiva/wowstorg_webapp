@@ -10,7 +10,8 @@
     "lint": "eslint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "brain:inventory": "node scripts/generate-brain-inventory.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.cjs"

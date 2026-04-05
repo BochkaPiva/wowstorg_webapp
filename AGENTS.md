@@ -7,9 +7,10 @@
 1. **`brain/core/system_overview.md`** — стек и границы системы.  
 2. **`brain/core/architecture.md`** — как устроены API, сессии, файлы, фоновые задачи.  
 3. **`brain/core/domain.md`** — роли, заявки, резерв, ключевые сущности.  
-4. **`brain/core/constraints.md`** — инварианты, **все переменные окружения из кода**, запреты.  
-5. **`brain/patterns/`** — как писать API, Prisma, ошибки, клиент (`api.md`, `prisma.md`, `error_handling.md`, `client.md`).  
-6. **`brain/decisions/`** — ADR; **не нарушать** без явного согласования с владельцем продукта и обновления ADR.
+4. **`brain/core/constraints.md`** — инварианты и семантика env.  
+5. **`brain/reference/`** — **реестры из кода** (все эндпоинты, все имена env, транзакции, отложенные уведомления). Перед задачами на API — сверяться с [`brain/reference/api-inventory.md`](brain/reference/api-inventory.md).  
+6. **`brain/patterns/`** — как писать API, Prisma, ошибки, клиент (`api.md`, `prisma.md`, `error_handling.md`, `client.md`).  
+7. **`brain/decisions/`** — ADR; **не нарушать** без явного согласования с владельцем продукта и обновления ADR.
 
 Если задача про конкретную фичу — прочитать **`brain/features/README.md`** и указанные там **`docs/*.md`** или локальный **`brain/features/<slug>.md`**.
 
@@ -24,6 +25,8 @@
 ## 3. После изменений
 
 - Прогнать **`npm run build`** (и при затронутой схеме — убедиться, что миграции согласованы; деплой на Vercel **не применяет** миграции автоматически).  
+- Если добавлены/удалены **route handlers** или новые **`process.env` / `env()` в Prisma** — **`npm run brain:inventory`** и закоммитить **`brain/reference/api-inventory.md`** и **`env-inventory.md`**.  
+- Если затронуты **только** паттерны `$transaction` или `scheduleAfterResponse` — вручную обновить [`brain/reference/prisma-transactions.md`](brain/reference/prisma-transactions.md) и [`schedule-after-response.md`](brain/reference/schedule-after-response.md) (или расширить скрипт).  
 - Если изменилось архитектурное решение — **новый или обновлённый файл в `brain/decisions/`**.  
 - Если появилась новая крупная фича — краткая карточка в **`brain/features/`** + при необходимости детали в **`docs/`**.
 
@@ -31,7 +34,7 @@
 
 | Путь | Содержание |
 |------|------------|
-| `brain/` | Короткий «мозг» проекта: core, patterns, decisions, ui, features |
+| `brain/` | Короткий «мозг»: core, patterns, decisions, ui, features, **reference** (реестры) |
 | `docs/` | Длинные ТЗ, планы, контракт API, хостинг |
 | `src/app/api/` | HTTP API |
 | `src/server/` | Общая серверная логика |

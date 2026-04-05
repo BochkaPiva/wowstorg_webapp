@@ -40,6 +40,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Service Role key (только сервер, не на клиент) |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` | bucket для фото позиций (по умолчанию `item-photos`) |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` | bucket для смет XLSX (по умолчанию `estimates`) |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` | bucket файлов модуля «Проекты» (по умолчанию `project-files`) |
 
 ### Сессии
 
@@ -131,12 +132,13 @@ Serverless-функции **не имеют постоянного диска**.
 2. **Storage buckets**  
    - Создать buckets:
      - `item-photos` (или задать свой в `SUPABASE_STORAGE_PHOTOS_BUCKET`);
-     - `estimates` (или задать свой в `SUPABASE_STORAGE_ESTIMATES_BUCKET`).
+     - `estimates` (или задать свой в `SUPABASE_STORAGE_ESTIMATES_BUCKET`);
+     - `project-files` для модуля «Проекты» (или задать в `SUPABASE_STORAGE_PROJECTS_BUCKET`).
 
 3. **Vercel**  
    - Подключить репозиторий GitHub.  
    - Framework Preset: Next.js.  
-   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
+   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, `SUPABASE_STORAGE_PROJECTS_BUCKET` (при использовании проектов), секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
    - Build: убедиться в `prisma generate` + `next build`.  
    - Настроить **Cron**:
      - `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,

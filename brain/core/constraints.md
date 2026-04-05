@@ -38,6 +38,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Storage |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` | Имя bucket фото (default `item-photos`) |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` | Имя bucket смет (default `estimates`) |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` | Имя bucket файлов модуля «Проекты» (default `project-files`) |
 | `TELEGRAM_BOT_TOKEN` | `telegram.ts` |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` / `TELEGRAM_WAREHOUSE_CHAT_ID` | Чат склада |
 | `TELEGRAM_NOTIFICATION_TOPIC_ID` / `TELEGRAM_WAREHOUSE_TOPIC_ID` | Топик в форуме |

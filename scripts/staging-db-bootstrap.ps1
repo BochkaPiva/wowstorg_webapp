@@ -73,18 +73,39 @@ if (-not $env:DATABASE_URL -or -not $env:DIRECT_URL) {
     exit 1
 }
 
-$prismaCli = Join-Path $repoRoot "node_modules\prisma\build\index.js"
-if (-not (Test-Path $prismaCli)) {
-    Write-Error "Missing node_modules. Run: npm install  (in repo root)"
-    exit 1
-}
-
 $nodeExe = $null
 if (Get-Command node -ErrorAction SilentlyContinue) {
     $nodeExe = (Get-Command node).Source
 }
 if (-not $nodeExe) {
     $nodeExe = Find-NodeExe
+}
+
+$prismaCli = Join-Path $repoRoot "node_modules\prisma\build\index.js"
+if (-not (Test-Path $prismaCli)) {
+    Write-Host "node_modules missing; running npm install in repo root..."
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        npm install
+    } elseif ($nodeExe) {
+        $npmCmd = Join-Path (Split-Path $nodeExe -Parent) "npm.cmd"
+        if (Test-Path $npmCmd) {
+            & $npmCmd install
+        } else {
+            Write-Error "npm not found next to node.exe. Open a new terminal after Node install, cd repo root, run: npm install"
+            exit 1
+        }
+    } else {
+        Write-Error "Node.js/npm not found. Install Node LTS, reopen PowerShell, then run this script again."
+        exit 1
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "npm install failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+    if (-not (Test-Path $prismaCli)) {
+        Write-Error "prisma still missing after npm install. Check package.json and network."
+        exit 1
+    }
 }
 
 function Invoke-Prisma {

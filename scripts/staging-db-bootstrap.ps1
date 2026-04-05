@@ -1,33 +1,50 @@
 # Loads .env.staging and runs prisma migrate deploy + db seed (preview Supabase).
-# Requires: Node.js installed, npm install in repo root.
+# Uses npm when available; otherwise node.exe + prisma CLI (no npm on PATH).
 $ErrorActionPreference = "Stop"
 
 function Initialize-NodeJsPath {
-    # Non-interactive `powershell -File` often has an empty/minimal PATH.
     $machine = [Environment]::GetEnvironmentVariable("Path", "Machine")
     $user = [Environment]::GetEnvironmentVariable("Path", "User")
     $merged = @($machine, $user) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd(";") }
     $env:Path = ($merged -join ";")
 
-    $extra = @(
-        (Join-Path $env:ProgramFiles "nodejs")
-        (Join-Path ${env:ProgramFiles(x86)} "nodejs")
-        (Join-Path $env:USERPROFILE ".volta\bin")
-    )
-    foreach ($dir in $extra) {
-        if ($dir -and (Test-Path (Join-Path $dir "npm.cmd"))) {
+    foreach ($dir in @(
+            (Join-Path $env:ProgramFiles "nodejs")
+            (Join-Path ${env:ProgramFiles(x86)} "nodejs")
+            (Join-Path $env:USERPROFILE ".volta\bin")
+            (Join-Path $env:USERPROFILE "scoop\shims")
+        )) {
+        if ($dir -and (Test-Path (Join-Path $dir "node.exe"))) {
             $env:Path = "$dir;$env:Path"
             return
         }
     }
 }
 
-Initialize-NodeJsPath
-
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Error "npm not found. Install Node.js (https://nodejs.org LTS) and reopen the terminal. Or run from a terminal where 'npm -v' works: npm run db:deploy then npm run db:seed (with DATABASE_URL and DIRECT_URL set from .env.staging)."
-    exit 1
+function Find-NodeExe {
+    foreach ($hive in @("HKLM:\SOFTWARE\Node.js", "HKCU:\SOFTWARE\Node.js")) {
+        try {
+            $ip = (Get-ItemProperty -LiteralPath $hive -ErrorAction Stop).InstallPath
+            if ($ip) {
+                $exe = Join-Path $ip.TrimEnd("\") "node.exe"
+                if (Test-Path $exe) { return $exe }
+            }
+        } catch {}
+    }
+    if ($env:NVM_SYMLINK) {
+        $exe = Join-Path $env:NVM_SYMLINK.TrimEnd("\") "node.exe"
+        if (Test-Path $exe) { return $exe }
+    }
+    foreach ($dir in @(
+            (Join-Path $env:ProgramFiles "nodejs\node.exe")
+            (Join-Path ${env:ProgramFiles(x86)} "nodejs\node.exe")
+        )) {
+        if (Test-Path $dir) { return $dir }
+    }
+    return $null
 }
+
+Initialize-NodeJsPath
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $repoRoot
@@ -56,12 +73,51 @@ if (-not $env:DATABASE_URL -or -not $env:DIRECT_URL) {
     exit 1
 }
 
+$prismaCli = Join-Path $repoRoot "node_modules\prisma\build\index.js"
+if (-not (Test-Path $prismaCli)) {
+    Write-Error "Missing node_modules. Run: npm install  (in repo root)"
+    exit 1
+}
+
+$nodeExe = $null
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    $nodeExe = (Get-Command node).Source
+}
+if (-not $nodeExe) {
+    $nodeExe = Find-NodeExe
+}
+
+function Invoke-Prisma {
+    param(
+        [ValidateSet("deploy", "seed")]
+        [string]$Step
+    )
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        if ($Step -eq "deploy") {
+            npm run db:deploy
+        } else {
+            npm run db:seed
+        }
+        return $LASTEXITCODE
+    }
+    if (-not $nodeExe) {
+        Write-Error "Node.js not found. Install from https://nodejs.org (LTS) or fix PATH, then run npm install in repo root."
+        exit 1
+    }
+    if ($Step -eq "deploy") {
+        & $nodeExe $prismaCli migrate deploy
+    } else {
+        & $nodeExe $prismaCli db seed
+    }
+    return $LASTEXITCODE
+}
+
 Write-Host "prisma migrate deploy..."
-npm run db:deploy
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$code = Invoke-Prisma -Step deploy
+if ($code -ne 0) { exit $code }
 
 Write-Host "prisma db seed..."
-npm run db:seed
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$code = Invoke-Prisma -Step seed
+if ($code -ne 0) { exit $code }
 
 Write-Host "Done: migrations and seed applied to preview DB."

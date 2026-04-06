@@ -11,6 +11,8 @@ const PatchSchema = z
     title: z.string().trim().min(1).max(300).optional(),
     status: z.nativeEnum(ProjectStatus).optional(),
     ball: z.nativeEnum(ProjectBall).optional(),
+    eventStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    eventEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     eventDateNote: z.string().trim().max(2000).optional().nullable(),
     eventDateConfirmed: z.boolean().optional(),
     openBlockers: z.string().trim().max(5000).optional().nullable(),
@@ -18,6 +20,17 @@ const PatchSchema = z
     archive: z.boolean().optional(),
   })
   .strict();
+
+function parseDateOnly(value: string | null | undefined): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function toDateOnly(value: Date | null | undefined): string | null {
+  if (!value) return null;
+  return value.toISOString().slice(0, 10);
+}
 
 export async function GET(
   req: Request,
@@ -40,6 +53,8 @@ export async function GET(
       status: true,
       ball: true,
       archivedAt: true,
+      eventStartDate: true,
+      eventEndDate: true,
       eventDateNote: true,
       eventDateConfirmed: true,
       openBlockers: true,
@@ -86,7 +101,13 @@ export async function GET(
   });
 
   if (!project) return jsonError(404, "Проект не найден");
-  return jsonOk({ project });
+  return jsonOk({
+    project: {
+      ...project,
+      eventStartDate: toDateOnly(project.eventStartDate),
+      eventEndDate: toDateOnly(project.eventEndDate),
+    },
+  });
 }
 
 export async function PATCH(
@@ -120,6 +141,8 @@ export async function PATCH(
     title?: string;
     status?: ProjectStatus;
     ball?: ProjectBall;
+    eventStartDate?: Date | null;
+    eventEndDate?: Date | null;
     eventDateNote?: string | null;
     eventDateConfirmed?: boolean;
     openBlockers?: string | null;
@@ -130,11 +153,19 @@ export async function PATCH(
   if (rest.title !== undefined) data.title = rest.title;
   if (rest.status !== undefined) data.status = rest.status;
   if (rest.ball !== undefined) data.ball = rest.ball;
+  if (rest.eventStartDate !== undefined) data.eventStartDate = parseDateOnly(rest.eventStartDate);
+  if (rest.eventEndDate !== undefined) data.eventEndDate = parseDateOnly(rest.eventEndDate);
   if (rest.eventDateNote !== undefined) data.eventDateNote = rest.eventDateNote;
   if (rest.eventDateConfirmed !== undefined) data.eventDateConfirmed = rest.eventDateConfirmed;
   if (rest.openBlockers !== undefined) data.openBlockers = rest.openBlockers;
   if (rest.internalSummary !== undefined) data.internalSummary = rest.internalSummary;
   if (archive === true) data.archivedAt = new Date();
+
+  const effectiveStart = data.eventStartDate !== undefined ? data.eventStartDate : undefined;
+  const effectiveEnd = data.eventEndDate !== undefined ? data.eventEndDate : undefined;
+  if (effectiveStart instanceof Date && effectiveEnd instanceof Date && effectiveEnd < effectiveStart) {
+    return jsonError(400, "Дата окончания не может быть раньше даты начала");
+  }
 
   if (Object.keys(data).length === 0) {
     return jsonError(400, "Нет полей для обновления");
@@ -146,6 +177,8 @@ export async function PATCH(
     status: true,
     ball: true,
     archivedAt: true,
+    eventStartDate: true,
+    eventEndDate: true,
     eventDateNote: true,
     eventDateConfirmed: true,
     openBlockers: true,
@@ -166,6 +199,8 @@ export async function PATCH(
           title: true,
           status: true,
           ball: true,
+          eventStartDate: true,
+          eventEndDate: true,
           eventDateNote: true,
           eventDateConfirmed: true,
           openBlockers: true,
@@ -183,6 +218,8 @@ export async function PATCH(
         "title",
         "status",
         "ball",
+        "eventStartDate",
+        "eventEndDate",
         "eventDateNote",
         "eventDateConfirmed",
         "openBlockers",
@@ -193,8 +230,10 @@ export async function PATCH(
         if (data[key] === undefined) continue;
         const prev = before[key];
         const next = data[key];
-        if (prev !== next) {
-          changes[key] = { from: prev, to: next };
+        const prevNorm = prev instanceof Date ? prev.toISOString().slice(0, 10) : prev;
+        const nextNorm = next instanceof Date ? next.toISOString().slice(0, 10) : next;
+        if (prevNorm !== nextNorm) {
+          changes[key] = { from: prevNorm, to: nextNorm };
         }
       }
 
@@ -221,7 +260,11 @@ export async function PATCH(
         });
       }
 
-      return projectRow;
+      return {
+        ...projectRow,
+        eventStartDate: toDateOnly(projectRow.eventStartDate),
+        eventEndDate: toDateOnly(projectRow.eventEndDate),
+      };
     });
 
     return jsonOk({ project });

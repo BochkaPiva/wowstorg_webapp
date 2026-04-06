@@ -245,8 +245,10 @@ model Project {
   /// Не null — проект в архиве (только просмотр в UI, без правок).
   archivedAt DateTime?
 
+  eventStartDate     DateTime?
+  eventEndDate       DateTime?
   eventDateNote      String?
-  eventDateConfirmed Boolean @default(false)
+  eventDateConfirmed Boolean   @default(false)
   openBlockers       String?
   internalSummary    String?
 

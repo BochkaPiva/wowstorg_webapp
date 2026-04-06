@@ -22,6 +22,8 @@ export const PROJECT_PATCH_FIELD_LABEL: Record<string, string> = {
   title: "Название",
   status: "Статус",
   ball: "Мяч",
+  eventStartDate: "Дата начала мероприятия",
+  eventEndDate: "Дата окончания мероприятия",
   eventDateNote: "Дата мероприятия (заметка)",
   eventDateConfirmed: "Дата подтверждена",
   openBlockers: "Блокеры",

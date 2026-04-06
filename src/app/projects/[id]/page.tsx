@@ -38,6 +38,8 @@ type ProjectDetail = {
   status: ProjectStatus;
   ball: ProjectBall;
   archivedAt: string | null;
+  eventStartDate: string | null;
+  eventEndDate: string | null;
   eventDateNote: string | null;
   eventDateConfirmed: boolean;
   openBlockers: string | null;
@@ -64,6 +66,25 @@ function fmtDate(iso: string) {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
+
+function formatProjectDateRange(start: string | null, end: string | null, fallback?: string | null) {
+  if (start && end) return `${fmtDate(start)} — ${fmtDate(end)}`;
+  if (start) return `c ${fmtDate(start)}`;
+  if (end) return `до ${fmtDate(end)}`;
+  return fallback?.trim() ? fallback : "—";
+}
+
+const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-4 shadow-sm";
+const softShell = "rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 shadow-sm";
+const cardTile = "rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-3";
+const inputField =
+  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
+const primaryBtn =
+  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50";
+const secondaryBtn =
+  "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50";
+const iconBtn =
+  "inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50";
 
 function fmtDateTime(iso: string) {
   const d = new Date(iso);
@@ -242,13 +263,15 @@ export default function ProjectDetailPage() {
   const [title, setTitle] = React.useState("");
   const [status, setStatus] = React.useState<ProjectStatus>("LEAD");
   const [ball, setBall] = React.useState<ProjectBall>("CLIENT");
+  const [eventStartDate, setEventStartDate] = React.useState("");
+  const [eventEndDate, setEventEndDate] = React.useState("");
   const [eventDateNote, setEventDateNote] = React.useState("");
   const [eventDateConfirmed, setEventDateConfirmed] = React.useState(false);
   const [openBlockers, setOpenBlockers] = React.useState("");
   const [internalSummary, setInternalSummary] = React.useState("");
 
   const [editingField, setEditingField] = React.useState<
-    null | "title" | "status" | "ball" | "eventDateNote" | "eventDateConfirmed" | "openBlockers" | "internalSummary"
+    null | "title" | "status" | "ball" | "eventDates" | "openBlockers" | "internalSummary"
   >(null);
 
   const readOnly = Boolean(project?.archivedAt);
@@ -273,6 +296,8 @@ export default function ProjectDetailPage() {
           setTitle(data.project.title);
           setStatus(data.project.status);
           setBall(data.project.ball);
+          setEventStartDate(data.project.eventStartDate ?? "");
+          setEventEndDate(data.project.eventEndDate ?? "");
           setEventDateNote(data.project.eventDateNote ?? "");
           setEventDateConfirmed(data.project.eventDateConfirmed);
           setOpenBlockers(data.project.openBlockers ?? "");
@@ -322,6 +347,8 @@ export default function ProjectDetailPage() {
           title: title.trim(),
           status,
           ball,
+          eventStartDate: eventStartDate || null,
+          eventEndDate: eventEndDate || null,
           eventDateNote: eventDateNote.trim() || null,
           eventDateConfirmed,
           openBlockers: openBlockers.trim() || null,
@@ -341,6 +368,8 @@ export default function ProjectDetailPage() {
       title: string;
       status: ProjectStatus;
       ball: ProjectBall;
+      eventStartDate: string | null;
+      eventEndDate: string | null;
       eventDateNote: string | null;
       eventDateConfirmed: boolean;
       openBlockers: string | null;
@@ -362,11 +391,6 @@ export default function ProjectDetailPage() {
     } finally {
       setSaveBusy(false);
     }
-  }
-
-  function save(e: React.FormEvent) {
-    e.preventDefault();
-    void doSave();
   }
 
   async function archive() {
@@ -409,7 +433,7 @@ export default function ProjectDetailPage() {
       ) : !project ? (
         <div className="text-sm text-zinc-600">Проект не найден.</div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {refreshing ? (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
               Обновляю данные…
@@ -421,37 +445,55 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-3 text-sm text-zinc-600">
-            <span>
-              Заказчик: <strong className="text-zinc-900">{project.customer.name}</strong>
-            </span>
-            <span>·</span>
-            <span>
-              Ответственный: <strong className="text-zinc-900">{project.owner.displayName}</strong>
-            </span>
-            <span>·</span>
-            <span>
-              Заявок реквизита: <strong className="text-zinc-900">{project._count.orders}</strong>
-            </span>
-            <span>·</span>
-            <span>создан {fmtDate(project.createdAt)}</span>
-          </div>
+          <section className="rounded-3xl border border-violet-200/80 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(244,244,245,0.9),rgba(250,204,21,0.08))] p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 space-y-3">
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-800">Карточка проекта</div>
+                  <h1 className="text-2xl font-black tracking-tight text-zinc-950">{project.title}</h1>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                    <span>Заказчик: <strong className="text-zinc-900">{project.customer.name}</strong></span>
+                    <span>·</span>
+                    <span>Ответственный: <strong className="text-zinc-900">{project.owner.displayName}</strong></span>
+                    <span>·</span>
+                    <span>создан {fmtDate(project.createdAt)}</span>
+                  </div>
+                </div>
 
-          <div className="rounded-2xl border border-violet-200/80 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(250,204,21,0.08))] p-4 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-wide text-violet-800">Статус проекта</div>
-                <div className="mt-1 text-lg font-extrabold tracking-tight text-zinc-900">
-                  {PROJECT_STATUS_LABEL[status]}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Статус проекта</div>
+                    <div className="mt-1 text-base font-extrabold text-zinc-950">{PROJECT_STATUS_LABEL[project.status]}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Дата мероприятия</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">
+                      {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
+                    </div>
+                    <div className={`mt-1 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
+                      {project.eventDateConfirmed ? "Подтверждена" : "Не подтверждена"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Заявки реквизита</div>
+                    <div className="mt-1 text-2xl font-black text-zinc-950">{project._count.orders}</div>
+                    <div className="mt-1 text-xs text-zinc-500">связано с проектом</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Мяч</div>
+                    <div className="mt-1 text-base font-extrabold text-zinc-950">{PROJECT_BALL_LABEL[project.ball]}</div>
+                    <div className="mt-1 text-xs text-zinc-500">зона текущей ответственности</div>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+
+              <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[18rem] lg:justify-end">
                 {!readOnly ? (
                   <button
                     type="button"
                     onClick={() => void doSave()}
                     disabled={saveBusy}
-                    className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                    className={primaryBtn}
                   >
                     {saveBusy ? "Сохранение…" : "Сохранить"}
                   </button>
@@ -461,222 +503,326 @@ export default function ProjectDetailPage() {
                     type="button"
                     onClick={() => void archive()}
                     disabled={archiveBusy}
-                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
+                    className={secondaryBtn}
                   >
                     {archiveBusy ? "…" : "Завершить (в архив)"}
                   </button>
                 ) : null}
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Название</div>
-                  {!readOnly ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingField((v) => (v === "title" ? null : "title"))}
-                      className="inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 hover:bg-zinc-50"
-                      title="Редактировать"
-                      aria-label="Редактировать название"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-zinc-800" aria-hidden>
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                      </svg>
-                    </button>
-                  ) : null}
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+            <section className={sectionShell}>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
+                  <p className="mt-1 text-xs text-zinc-500">Короткая управленческая сводка без лишнего шума.</p>
                 </div>
-                {editingField === "title" && !readOnly ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="flex-1 min-w-[14rem] rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-                      maxLength={300}
-                    />
-                    <button
-                      type="button"
-                      disabled={saveBusy || !title.trim()}
-                      onClick={() => void patchField({ title: title.trim() })}
-                      className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    >
-                      OK
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTitle(project.title);
-                        setEditingField(null);
-                      }}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
-                    >
-                      Отмена
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-1 text-sm font-semibold text-zinc-900 break-words">{project.title}</div>
-                )}
               </div>
 
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Статус / мяч</div>
-                  {!readOnly ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingField((v) => (v === "status" ? null : "status"))}
-                      className="inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 hover:bg-zinc-50"
-                      title="Редактировать"
-                      aria-label="Редактировать статус"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-zinc-800" aria-hidden>
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                      </svg>
-                    </button>
-                  ) : null}
-                </div>
-                {editingField === "status" && !readOnly ? (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-                    >
-                      {statusOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {PROJECT_STATUS_LABEL[s]}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={ball}
-                      onChange={(e) => setBall(e.target.value as ProjectBall)}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-                    >
-                      {ballOptions.map((b) => (
-                        <option key={b} value={b}>
-                          {PROJECT_BALL_LABEL[b]}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="sm:col-span-2 flex flex-wrap gap-2">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className={cardTile}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Название</div>
+                    {!readOnly ? (
                       <button
                         type="button"
-                        disabled={saveBusy}
-                        onClick={() => void patchField({ status, ball })}
-                        className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        onClick={() => setEditingField((v) => (v === "title" ? null : "title"))}
+                        className={iconBtn}
+                        title="Редактировать"
+                        aria-label="Редактировать название"
                       >
-                        OK
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStatus(project.status);
-                          setBall(project.ball);
-                          setEditingField(null);
-                        }}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
-                      >
-                        Отмена
-                      </button>
-                    </div>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="mt-1 text-sm text-zinc-900">
-                    <span className="font-semibold">{PROJECT_STATUS_LABEL[project.status]}</span>{" "}
-                    <span className="text-zinc-500">·</span>{" "}
-                    <span className="font-semibold">Мяч: {PROJECT_BALL_LABEL[project.ball]}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 md:col-span-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-600">Дата мероприятия</div>
-                  {!readOnly ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingField((v) => (v === "eventDateNote" ? null : "eventDateNote"))}
-                      className="inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 hover:bg-zinc-50"
-                      title="Редактировать"
-                      aria-label="Редактировать дату"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-zinc-800" aria-hidden>
-                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                      </svg>
-                    </button>
-                  ) : null}
-                </div>
-                {editingField === "eventDateNote" && !readOnly ? (
-                  <div className="mt-2 space-y-2">
-                    <input
-                      value={eventDateNote}
-                      onChange={(e) => setEventDateNote(e.target.value)}
-                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-                      maxLength={2000}
-                      placeholder="Напр. 07.04.2026 / 7 апреля / «вечер»"
-                    />
-                    <label className="inline-flex items-center gap-2 text-sm text-zinc-900">
+                  {editingField === "title" && !readOnly ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <input
-                        type="checkbox"
-                        checked={eventDateConfirmed}
-                        onChange={(e) => setEventDateConfirmed(e.target.checked)}
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className={`${inputField} min-w-[14rem] flex-1`}
+                        maxLength={300}
                       />
-                      Дата подтверждена
-                    </label>
-                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        disabled={saveBusy}
-                        onClick={() =>
-                          void patchField({
-                            eventDateNote: eventDateNote.trim() || null,
-                            eventDateConfirmed,
-                          })
-                        }
-                        className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        disabled={saveBusy || !title.trim()}
+                        onClick={() => void patchField({ title: title.trim() })}
+                        className={primaryBtn}
                       >
-                        OK
+                        Сохранить
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          setEventDateNote(project.eventDateNote ?? "");
-                          setEventDateConfirmed(project.eventDateConfirmed);
+                          setTitle(project.title);
                           setEditingField(null);
                         }}
-                        className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                        className={secondaryBtn}
                       >
                         Отмена
                       </button>
                     </div>
+                  ) : (
+                    <div className="mt-2 text-sm font-semibold text-zinc-950 break-words">{project.title}</div>
+                  )}
+                </div>
+
+                <div className={cardTile}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Статус и ответственность</div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingField((v) => (v === "status" ? null : "status"))}
+                        className={iconBtn}
+                        title="Редактировать статус"
+                        aria-label="Редактировать статус"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
+                      </button>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="mt-1 text-sm text-zinc-900">
-                    <span className="font-semibold">{project.eventDateNote?.trim() ? project.eventDateNote : "—"}</span>{" "}
-                    <span className="text-zinc-500">·</span>{" "}
-                    <span className={project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-600"}>
-                      {project.eventDateConfirmed ? "подтверждена" : "не подтверждена"}
-                    </span>
+                  {editingField === "status" && !readOnly ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+                        className={inputField}
+                      >
+                        {statusOptions.map((s) => (
+                          <option key={s} value={s}>
+                            {PROJECT_STATUS_LABEL[s]}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={ball}
+                        onChange={(e) => setBall(e.target.value as ProjectBall)}
+                        className={inputField}
+                      >
+                        {ballOptions.map((b) => (
+                          <option key={b} value={b}>
+                            {PROJECT_BALL_LABEL[b]}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="sm:col-span-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={saveBusy}
+                          onClick={() => void patchField({ status, ball })}
+                          className={primaryBtn}
+                        >
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatus(project.status);
+                            setBall(project.ball);
+                            setEditingField(null);
+                          }}
+                          className={secondaryBtn}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 space-y-1 text-sm text-zinc-900">
+                      <div className="font-semibold">{PROJECT_STATUS_LABEL[project.status]}</div>
+                      <div className="text-zinc-600">Мяч: <span className="font-semibold text-zinc-900">{PROJECT_BALL_LABEL[project.ball]}</span></div>
+                    </div>
+                  )}
+                </div>
+
+                <div className={`${cardTile} md:col-span-2`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
+                        className={iconBtn}
+                        title="Редактировать даты"
+                        aria-label="Редактировать даты"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                        </svg>
+                      </button>
+                    ) : null}
                   </div>
-                )}
+                  {editingField === "eventDates" && !readOnly ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="text-xs font-semibold text-zinc-500">
+                          Дата начала
+                          <input
+                            type="date"
+                            value={eventStartDate}
+                            onChange={(e) => setEventStartDate(e.target.value)}
+                            className={`mt-1 ${inputField}`}
+                          />
+                        </label>
+                        <label className="text-xs font-semibold text-zinc-500">
+                          Дата окончания
+                          <input
+                            type="date"
+                            value={eventEndDate}
+                            onChange={(e) => setEventEndDate(e.target.value)}
+                            className={`mt-1 ${inputField}`}
+                          />
+                        </label>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm text-zinc-900">
+                        <input
+                          type="checkbox"
+                          checked={eventDateConfirmed}
+                          onChange={(e) => setEventDateConfirmed(e.target.checked)}
+                        />
+                        Дата подтверждена
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={saveBusy}
+                          onClick={() =>
+                            void patchField({
+                              eventStartDate: eventStartDate || null,
+                              eventEndDate: eventEndDate || null,
+                              eventDateConfirmed,
+                            })
+                          }
+                          className={primaryBtn}
+                        >
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEventStartDate(project.eventStartDate ?? "");
+                            setEventEndDate(project.eventEndDate ?? "");
+                            setEventDateConfirmed(project.eventDateConfirmed);
+                            setEditingField(null);
+                          }}
+                          className={secondaryBtn}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                      <span className="font-semibold text-zinc-950">
+                        {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
+                      </span>
+                      <span className={project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}>
+                        {project.eventDateConfirmed ? "подтверждена" : "не подтверждена"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className={cardTile}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
+                  <div className="mt-2 text-sm text-zinc-800">
+                    {project.openBlockers?.trim() ? project.openBlockers : "Пока не зафиксированы"}
+                  </div>
+                </div>
+
+                <div className={cardTile}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
+                  <div className="mt-2 text-sm text-zinc-800">
+                    {project.internalSummary?.trim() ? project.internalSummary : "Короткое резюме пока не заполнено"}
+                  </div>
+                </div>
               </div>
+            </section>
+
+            <div className="space-y-4">
+              <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+
+              <section className={softShell}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочие заметки</div>
+                    <p className="mt-1 text-xs text-zinc-500">Только внутренний контекст проекта и рисков.</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-3">
+                  <div className={cardTile}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
+                    {!readOnly ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea
+                          value={openBlockers}
+                          onChange={(e) => setOpenBlockers(e.target.value)}
+                          rows={4}
+                          className={inputField}
+                          placeholder="Что сейчас мешает движению проекта"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={saveBusy}
+                            onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
+                            className={primaryBtn}
+                          >
+                            Сохранить блокеры
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-zinc-800">{project.openBlockers?.trim() ? project.openBlockers : "—"}</div>
+                    )}
+                  </div>
+
+                  <div className={cardTile}>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
+                    {!readOnly ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea
+                          value={internalSummary}
+                          onChange={(e) => setInternalSummary(e.target.value)}
+                          rows={5}
+                          className={inputField}
+                          placeholder="Короткая суть проекта, важные договорённости, контекст"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={saveBusy}
+                            onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
+                            className={primaryBtn}
+                          >
+                            Сохранить резюме
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-zinc-800">{project.internalSummary?.trim() ? project.internalSummary : "—"}</div>
+                    )}
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
 
-          <ProjectContactsPanel projectId={id} readOnly={readOnly} />
-
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+          <div className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
               {!readOnly ? (
                 <Link
                   href={`/catalog?projectId=${encodeURIComponent(id)}`}
-                  className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700"
+                  className={primaryBtn}
                 >
                   Каталог → новая заявка
                 </Link>
@@ -753,20 +899,22 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <ProjectEstimatePanel projectId={id} readOnly={readOnly} />
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <ProjectEstimatePanel projectId={id} readOnly={readOnly} />
+            <ProjectSchedulePanel projectId={id} readOnly={readOnly} />
+          </div>
 
-          <ProjectSchedulePanel projectId={id} readOnly={readOnly} />
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+            <ProjectFilesPanel projectId={id} readOnly={readOnly} />
 
-          <ProjectFilesPanel projectId={id} readOnly={readOnly} />
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className={sectionShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-lg font-extrabold tracking-tight text-violet-900">Журнал</div>
               {project.activityLogs?.length ? (
                 <button
                   type="button"
                   onClick={() => setShowAllLog((v) => !v)}
-                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                  className={secondaryBtn}
                 >
                   {showAllLog ? "Скрыть историю" : "Показать всю историю"}
                 </button>
@@ -793,7 +941,7 @@ export default function ProjectDetailPage() {
               </ul>
             )}
           </div>
-
+          </div>
         </div>
       )}
     </AppShell>

@@ -5,6 +5,15 @@ import React from "react";
 type Slot = { id: string; sortOrder: number; intervalText: string; description: string };
 type Day = { id: string; sortOrder: number; dateNote: string; slots: Slot[] };
 
+const inputField =
+  "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
+const btnPrimary =
+  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
+const btnPrimaryXs =
+  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
+const btnSecondaryXs =
+  "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
+
 function timeToMinutes(hhmm: string): number | null {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;
@@ -157,14 +166,10 @@ export function ProjectSchedulePanel({
                 value={newDayNote}
                 onChange={(e) => setNewDayNote(e.target.value)}
                 placeholder="День (дата или «День 1»)"
-                className="min-w-[12rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                className={`min-w-[12rem] flex-1 ${inputField}`}
                 maxLength={500}
               />
-              <button
-                type="submit"
-                disabled={busy}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
+              <button type="submit" disabled={busy} className={btnPrimary}>
                 Добавить день
               </button>
             </form>
@@ -230,19 +235,19 @@ function DayBlock({
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="min-w-[10rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+              className={`min-w-[10rem] flex-1 ${inputField}`}
             />
             <button
               type="button"
-              disabled={busy}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs"
+              disabled={busy || note.trim() === day.dateNote.trim()}
+              className={btnSecondaryXs}
               onClick={() => void onPatchDay(day.id, { dateNote: note.trim() })}
             >
-              Сохранить заголовок
+              Сохранить название
             </button>
             <button
               type="button"
-              className="text-xs text-red-700"
+              className="text-xs font-medium text-red-700 hover:text-red-800"
               disabled={busy}
               onClick={() => void onDeleteDay(day.id)}
             >
@@ -301,7 +306,7 @@ function DayBlock({
                   type="time"
                   value={from}
                   onChange={(e) => setFrom(e.target.value)}
-                  className="mt-0.5 block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  className={`mt-0.5 block ${inputField}`}
                 />
               </label>
               <label className="text-xs font-semibold text-zinc-600">
@@ -310,7 +315,7 @@ function DayBlock({
                   type="time"
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
-                  className="mt-0.5 block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  className={`mt-0.5 block ${inputField}`}
                 />
               </label>
             </div>
@@ -318,13 +323,9 @@ function DayBlock({
               placeholder="Описание сценария"
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              className="min-w-[8rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+              className={`min-w-[8rem] flex-1 ${inputField}`}
             />
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-            >
+            <button type="submit" disabled={busy} className={btnPrimaryXs}>
               + слот
             </button>
             {slotError ? (

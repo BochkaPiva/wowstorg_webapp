@@ -233,7 +233,8 @@ export default function ProjectDetailPage() {
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
 
   const [project, setProject] = React.useState<ProjectDetail | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [archiveBusy, setArchiveBusy] = React.useState(false);
   const [showAllLog, setShowAllLog] = React.useState(false);
@@ -252,9 +253,18 @@ export default function ProjectDetailPage() {
 
   const readOnly = Boolean(project?.archivedAt);
 
+  /** true после первой успешной загрузки проекта — чтобы обновления не размонтировали страницу */
+  const hasProjectRef = React.useRef(false);
+  React.useEffect(() => {
+    hasProjectRef.current = project != null;
+  }, [project]);
+
   const load = React.useCallback(() => {
     if (!id || state.status !== "authenticated" || role !== "WOWSTORG") return;
-    setLoading(true);
+    // Важно: не «сбрасываем» всю страницу на "Загрузка…", иначе скролл прыгает вверх
+    // при любом патче (файлы/тайминг/смета), т.к. контент размонтируется.
+    if (hasProjectRef.current) setRefreshing(true);
+    else setInitialLoading(true);
     fetch(`/api/projects/${id}?includeOrders=1&includeActivity=1`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
       .then((data: { project?: ProjectDetail; error?: { message?: string } } | null) => {
@@ -272,7 +282,10 @@ export default function ProjectDetailPage() {
         }
       })
       .catch(() => setProject(null))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setInitialLoading(false);
+        setRefreshing(false);
+      });
   }, [id, state.status, role]);
 
   React.useEffect(() => {
@@ -285,6 +298,17 @@ export default function ProjectDetailPage() {
     }
     window.addEventListener("project-activity-refresh", onRefresh);
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
+  }, [load]);
+
+  /** iframe с заявкой (`?embed=1`) шлёт событие — обновляем шапку/список заявок без перезагрузки */
+  React.useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return;
+      const t = (e.data as { type?: string } | null)?.type;
+      if (t === "wowstorg:project-refresh-request") load();
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, [load]);
 
   async function doSave() {
@@ -380,12 +404,17 @@ export default function ProjectDetailPage() {
 
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
-      ) : loading ? (
+      ) : initialLoading ? (
         <div className="text-sm text-zinc-600">Загрузка…</div>
       ) : !project ? (
         <div className="text-sm text-zinc-600">Проект не найден.</div>
       ) : (
         <div className="space-y-6">
+          {refreshing ? (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+              Обновляю данные…
+            </div>
+          ) : null}
           {readOnly ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
               Архив: только просмотр.
@@ -653,34 +682,71 @@ export default function ProjectDetailPage() {
                 </Link>
               ) : null}
             </div>
+            <p className="text-xs text-zinc-600">
+              Разверни заявку — внутри тот же экран, что и в очереди/карточке заявки: статусы, редактирование,
+              приёмка. Отдельная вкладка — по ссылке под блоком.
+            </p>
             {!project.orders?.length ? (
               <p className="text-sm text-zinc-600">Пока нет привязанных заявок.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {project.orders.map((o) => (
-                  <li key={o.id}>
-                    <Link
-                      href={`/orders/${o.id}`}
-                      className="block rounded-xl border border-zinc-200/90 bg-white px-3 py-3 text-sm shadow-sm transition hover:border-violet-300"
-                    >
-                      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                        <OrderStatusStepper status={o.status} />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-zinc-900 font-semibold">
-                          {o.eventName?.trim() ? o.eventName : "Без названия мероприятия"}
+                  <li key={o.id} className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                    <details className="group">
+                      <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-zinc-900 truncate">
+                              {o.eventName?.trim() ? o.eventName : "Без названия мероприятия"}
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                              <span className="font-mono">{o.id.slice(0, 8)}…</span>
+                              <span>·</span>
+                              <span>
+                                {fmtDate(o.startDate)} — {fmtDate(o.endDate)} · готовность {fmtDate(o.readyByDate)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                              {orderStatusLabelRu[o.status] ?? o.status}
+                            </span>
+                            <span className="text-xs font-medium text-violet-700 group-open:hidden">
+                              Развернуть управление
+                            </span>
+                            <span className="hidden text-xs font-medium text-violet-700 group-open:inline">
+                              Свернуть
+                            </span>
+                          </div>
                         </div>
-                        <span className="font-mono text-xs text-zinc-500">{o.id.slice(0, 8)}…</span>
+                        <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50/80 px-2 py-2">
+                          <OrderStatusStepper status={o.status} source={o.source} />
+                        </div>
+                      </summary>
+                      <div className="border-t border-zinc-100 px-2 pb-3 pt-2">
+                        <iframe
+                          title={`Заявка ${o.id.slice(0, 8)}`}
+                          src={`/orders/${o.id}?embed=1&from=project`}
+                          className="h-[min(72vh,880px)] w-full rounded-lg border border-zinc-200 bg-white"
+                        />
+                        <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-sm">
+                          <Link
+                            href={`/orders/${o.id}?from=project`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-violet-700 hover:text-violet-900"
+                          >
+                            Открыть заявку в новой вкладке
+                          </Link>
+                          <Link
+                            href={`/warehouse/queue?q=${encodeURIComponent(o.id)}`}
+                            className="text-zinc-600 hover:text-zinc-900"
+                          >
+                            Найти в очереди
+                          </Link>
+                        </div>
                       </div>
-                      <div className="mt-1 text-zinc-800">
-                        <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-semibold text-zinc-700">
-                          {orderStatusLabelRu[o.status] ?? o.status}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-zinc-500">
-                        {fmtDate(o.startDate)} — {fmtDate(o.endDate)} · готовность {fmtDate(o.readyByDate)}
-                      </div>
-                    </Link>
+                    </details>
                   </li>
                 ))}
               </ul>

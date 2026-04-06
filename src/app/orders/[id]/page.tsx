@@ -466,8 +466,23 @@ export default function OrderDetailsPage() {
   const isGreenwich = user?.role === "GREENWICH";
   const isWarehouse = user?.role === "WOWSTORG";
   const from = searchParams.get("from");
+  /** Встроено в карточку проекта (iframe): без оболочки AppShell и без ухода в очередь после приёмки */
+  const embed = searchParams.get("embed") === "1";
   const warehouseBackHref = from === "warehouse-archive" ? "/warehouse/archive" : "/warehouse/queue";
   const warehouseBackLabel = from === "warehouse-archive" ? "В архив" : "В очередь";
+
+  const [internalNoteDraft, setInternalNoteDraft] = React.useState("");
+  const [internalNoteOpen, setInternalNoteOpen] = React.useState(false);
+  const [internalNoteBusy, setInternalNoteBusy] = React.useState(false);
+
+  function notifyProjectParent() {
+    if (!embed || typeof window === "undefined") return;
+    try {
+      window.parent.postMessage({ type: "wowstorg:project-refresh-request" }, window.location.origin);
+    } catch {
+      /* ignore */
+    }
+  }
   const canEditOrder =
     Boolean(
       order &&
@@ -527,6 +542,11 @@ export default function OrderDetailsPage() {
   }
 
   React.useEffect(() => {
+    if (!order || !isWarehouse) return;
+    setInternalNoteDraft(order.warehouseInternalNote ?? "");
+  }, [order, isWarehouse]);
+
+  React.useEffect(() => {
     if (!order) return;
     if (isWarehouse && order.status === "RETURN_DECLARED") {
       // Всегда стартуем от текущей декларации Greenwich из order.returnSplits.
@@ -566,7 +586,11 @@ export default function OrderDetailsPage() {
         alert(`Заявка отменена.\n\n⚠️ ${n.message}`);
       }
       await loadOrder();
-      if (path.includes("check-in") || path.includes("cancel")) {
+      notifyProjectParent();
+      if (
+        !embed &&
+        (path.includes("check-in") || path.includes("cancel"))
+      ) {
         if (isWarehouse) router.push("/warehouse/queue");
         else if (isGreenwich) router.push("/orders");
       }
@@ -736,11 +760,34 @@ export default function OrderDetailsPage() {
         return;
       }
       await loadOrder();
+      notifyProjectParent();
       setIsEditing(false);
     } catch {
       setActionError("Ошибка сети или ответа сервера");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveInternalNote() {
+    if (!orderId || !isWarehouse) return;
+    setInternalNoteBusy(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/internal-note`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: internalNoteDraft.trim() || null }),
+      });
+      if (res.ok) {
+        await loadOrder();
+        setInternalNoteOpen(false);
+        notifyProjectParent();
+      } else {
+        const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setActionError(j?.error?.message ?? "Не удалось сохранить комментарий");
+      }
+    } finally {
+      setInternalNoteBusy(false);
     }
   }
 
@@ -790,26 +837,32 @@ export default function OrderDetailsPage() {
   const isOrderGreenwichUser = order && user && order.greenwichUserId === user.id;
 
   if (loading) {
-    return (
-      <AppShell title="Заявка">
-        <div className="text-sm text-zinc-600">Загрузка…</div>
-      </AppShell>
+    const body = <div className="text-sm text-zinc-600">Загрузка…</div>;
+    return embed ? (
+      <div className="p-4">{body}</div>
+    ) : (
+      <AppShell title="Заявка">{body}</AppShell>
     );
   }
 
   if (error || !order) {
-    return (
-      <AppShell title="Заявка">
-        <div className="space-y-3">
-          <p className="text-sm text-red-600">{error ?? "Заявка не найдена"}</p>
+    const body = (
+      <div className="space-y-3">
+        <p className="text-sm text-red-600">{error ?? "Заявка не найдена"}</p>
+        {!embed ? (
           <Link
             href={isWarehouse ? warehouseBackHref : "/orders"}
             className="inline-block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
           >
             ← Назад
           </Link>
-        </div>
-      </AppShell>
+        ) : null}
+      </div>
+    );
+    return embed ? (
+      <div className="p-4">{body}</div>
+    ) : (
+      <AppShell title="Заявка">{body}</AppShell>
     );
   }
 
@@ -822,17 +875,18 @@ export default function OrderDetailsPage() {
         ? "bg-violet-50 text-violet-900"
       : "bg-white";
 
-  return (
-    <AppShell title={`Заявка ${order.id.slice(0, 8)}`}>
+  const inner = (
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href={isWarehouse ? warehouseBackHref : "/orders"}
-            className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900"
-          >
-            ← {isWarehouse ? warehouseBackLabel : "Мои заявки"}
-          </Link>
-        </div>
+        {!embed ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href={isWarehouse ? warehouseBackHref : "/orders"}
+              className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900"
+            >
+              ← {isWarehouse ? warehouseBackLabel : "Мои заявки"}
+            </Link>
+          </div>
+        ) : null}
 
         <div
           className={[
@@ -903,6 +957,61 @@ export default function OrderDetailsPage() {
             </div>
           </div>
         </div>
+
+        {isWarehouse ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-zinc-800">Внутренний комментарий (только склад)</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setInternalNoteOpen((v) => !v);
+                  setInternalNoteDraft(order.warehouseInternalNote ?? "");
+                }}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {internalNoteOpen ? "Закрыть" : "Редактировать"}
+              </button>
+            </div>
+            {order.warehouseInternalNote && !internalNoteOpen ? (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 whitespace-pre-wrap">
+                <span className="font-semibold text-amber-800">Заметка:</span> {order.warehouseInternalNote}
+              </div>
+            ) : null}
+            {internalNoteOpen ? (
+              <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
+                <textarea
+                  value={internalNoteDraft}
+                  onChange={(e) => setInternalNoteDraft(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  placeholder="Заметка для сотрудников склада…"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={internalNoteBusy}
+                    onClick={() => void saveInternalNote()}
+                    className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {internalNoteBusy ? "…" : "Сохранить"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={internalNoteBusy}
+                    onClick={() => {
+                      setInternalNoteDraft(order.warehouseInternalNote ?? "");
+                      setInternalNoteOpen(false);
+                    }}
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {!isEditing && order.comment ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4">
@@ -1601,6 +1710,11 @@ export default function OrderDetailsPage() {
           )}
         </div>
       </div>
-    </AppShell>
+  );
+
+  return embed ? (
+    <div className="w-full max-w-5xl mx-auto p-2 sm:p-4">{inner}</div>
+  ) : (
+    <AppShell title={`Заявка ${order.id.slice(0, 8)}`}>{inner}</AppShell>
   );
 }

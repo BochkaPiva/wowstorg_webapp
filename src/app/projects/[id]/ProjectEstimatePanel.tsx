@@ -45,6 +45,18 @@ type EstimatePayload = {
   } | null;
 };
 
+/** Единый стиль с ProjectSchedulePanel и остальными блоками проекта */
+const inputField =
+  "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
+const btnPrimary =
+  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
+const btnPrimaryXs =
+  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
+const btnSecondary =
+  "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
+const btnSecondaryXs =
+  "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
+
 export function ProjectEstimatePanel({
   projectId,
   readOnly,
@@ -154,6 +166,22 @@ export function ProjectEstimatePanel({
     }
   }
 
+  async function patchSection(sectionId: string, patch: { title?: string }) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/estimate/sections/${sectionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) load(selectedVersion);
+      else window.alert(j?.error?.message ?? "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveLine(lineId: string, patch: Record<string, unknown>) {
     setBusy(true);
     try {
@@ -223,13 +251,13 @@ export function ProjectEstimatePanel({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-zinc-900">Смета проекта</div>
+        <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
         {vn != null ? (
           <a
             href={pdfHref}
-            className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-100"
+            className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
             target="_blank"
             rel="noreferrer"
           >
@@ -286,7 +314,7 @@ export function ProjectEstimatePanel({
               type="button"
               disabled={busy}
               onClick={() => void createVersion(false)}
-              className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className={btnPrimary}
             >
               Создать первую версию
             </button>
@@ -295,10 +323,10 @@ export function ProjectEstimatePanel({
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs text-zinc-600">
+            <label className="text-xs font-semibold text-zinc-600">
               Версия
               <select
-                className="ml-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+                className={`ml-1 mt-0.5 ${inputField}`}
                 value={vn != null ? String(vn) : ""}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
@@ -319,7 +347,7 @@ export function ProjectEstimatePanel({
                   type="button"
                   disabled={busy}
                   onClick={() => void createVersion(false)}
-                  className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                  className={btnSecondaryXs}
                 >
                   Новая версия
                 </button>
@@ -327,7 +355,7 @@ export function ProjectEstimatePanel({
                   type="button"
                   disabled={busy || !data.current}
                   onClick={() => void createVersion(true)}
-                  className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+                  className={btnSecondaryXs}
                 >
                   Дублировать текущую
                 </button>
@@ -340,19 +368,18 @@ export function ProjectEstimatePanel({
           ) : (
             <>
               {!readOnly ? (
-                <form onSubmit={addSection} className="flex flex-wrap gap-2 border-b border-zinc-100 pb-3">
+                <form
+                  onSubmit={addSection}
+                  className="flex flex-wrap items-end gap-2 border-b border-zinc-200 pb-3"
+                >
                   <input
                     value={newSectionTitle}
                     onChange={(e) => setNewSectionTitle(e.target.value)}
                     placeholder="Новый локальный раздел"
-                    className="min-w-[12rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+                    className={`min-w-[12rem] flex-1 ${inputField}`}
                     maxLength={200}
                   />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="rounded bg-zinc-800 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={busy} className={btnPrimary}>
                     Добавить раздел
                   </button>
                 </form>
@@ -360,58 +387,34 @@ export function ProjectEstimatePanel({
 
               <div className="space-y-4">
                 {data.current.sections.map((sec) => (
-                  <details key={sec.id} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3" open>
-                    <summary className="cursor-pointer text-sm font-semibold text-zinc-900">
-                      {sec.title}{" "}
-                      <span className="font-normal text-zinc-500">
-                        ({sec.kind === "REQUISITE" ? "реквизит" : "локально"})
-                      </span>
-                      {sec.linkedOrderId ? (
-                        <>
-                          {" "}
-                          <Link
-                            href={`/orders/${sec.linkedOrderId}`}
-                            className="text-violet-700 hover:text-violet-900"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            заявка
-                          </Link>
-                        </>
-                      ) : null}
-                    </summary>
-                    <div className="mt-2 space-y-2">
-                      {!readOnly && sec.kind === "LOCAL" ? (
-                        <button
-                          type="button"
-                          className="text-xs text-red-700"
-                          onClick={() => void deleteSection(sec.id)}
-                          disabled={busy}
-                        >
-                          Удалить раздел
-                        </button>
-                      ) : null}
+                  <EstimateSectionBlock
+                    key={sec.id}
+                    sec={sec}
+                    readOnly={readOnly}
+                    busy={busy}
+                    onPatchSection={patchSection}
+                    onDeleteSection={deleteSection}
+                  >
+                    {sec.lines.map((ln) => (
+                      <LineEditor
+                        key={ln.id}
+                        line={ln}
+                        readOnly={readOnly}
+                        busy={busy}
+                        onSave={saveLine}
+                        onDelete={deleteLine}
+                      />
+                    ))}
 
-                      {sec.lines.map((ln) => (
-                        <LineEditor
-                          key={ln.id}
-                          line={ln}
-                          readOnly={readOnly}
-                          busy={busy}
-                          onSave={saveLine}
-                          onDelete={deleteLine}
-                        />
-                      ))}
-
-                      {!readOnly ? (
-                        <AddLineForm
-                          projectId={projectId}
-                          sectionId={sec.id}
-                          busy={busy}
-                          onDone={() => load(selectedVersion)}
-                        />
-                      ) : null}
-                    </div>
-                  </details>
+                    {!readOnly ? (
+                      <AddLineForm
+                        projectId={projectId}
+                        sectionId={sec.id}
+                        busy={busy}
+                        onDone={() => load(selectedVersion)}
+                      />
+                    ) : null}
+                  </EstimateSectionBlock>
                 ))}
               </div>
             </>
@@ -419,6 +422,90 @@ export function ProjectEstimatePanel({
         </>
       )}
     </div>
+  );
+}
+
+function EstimateSectionBlock({
+  sec,
+  readOnly,
+  busy,
+  onPatchSection,
+  onDeleteSection,
+  children,
+}: {
+  sec: EstSection;
+  readOnly: boolean;
+  busy: boolean;
+  onPatchSection: (id: string, patch: { title?: string }) => void | Promise<void>;
+  onDeleteSection: (id: string) => void | Promise<void>;
+  children: React.ReactNode;
+}) {
+  const [titleDraft, setTitleDraft] = React.useState(sec.title);
+
+  React.useEffect(() => {
+    setTitleDraft(sec.title);
+  }, [sec.id, sec.title]);
+
+  function saveTitle() {
+    const t = titleDraft.trim();
+    if (!t || t === sec.title) return;
+    void onPatchSection(sec.id, { title: t });
+  }
+
+  return (
+    <details className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm" open>
+      <summary className="cursor-pointer font-medium text-zinc-900">
+        {sec.title}{" "}
+        <span className="font-normal text-zinc-500">
+          ({sec.kind === "REQUISITE" ? "реквизит" : "локально"})
+        </span>
+        {sec.linkedOrderId ? (
+          <>
+            {" "}
+            <Link
+              href={`/orders/${sec.linkedOrderId}`}
+              className="text-violet-700 hover:text-violet-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              заявка
+            </Link>
+          </>
+        ) : null}
+      </summary>
+      <div className="mt-2 space-y-2">
+        {!readOnly ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              placeholder="Название раздела"
+              className="min-w-[10rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
+              maxLength={200}
+            />
+            <button
+              type="button"
+              disabled={busy || titleDraft.trim() === sec.title.trim() || !titleDraft.trim()}
+              className={btnSecondaryXs}
+              onClick={() => void saveTitle()}
+            >
+              Сохранить название
+            </button>
+            {sec.kind === "LOCAL" ? (
+              <button
+                type="button"
+                className="text-xs font-medium text-red-700 hover:text-red-800"
+                onClick={() => void onDeleteSection(sec.id)}
+                disabled={busy}
+              >
+                Удалить раздел
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -448,8 +535,8 @@ function LineEditor({
   }, [line]);
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-2 text-sm">
-      <div className="text-xs text-zinc-500">
+    <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-3 text-sm shadow-sm">
+      <div className="text-xs font-medium text-zinc-500">
         №{line.lineNumber}
         {line.orderLineId ? " · из заявки" : ""}
       </div>
@@ -463,37 +550,37 @@ function LineEditor({
         </div>
       ) : (
         <div className="mt-1 grid gap-2 md:grid-cols-2">
-          <label className="block text-xs text-zinc-600">
+          <label className="block text-xs font-semibold text-zinc-600">
             Название
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1"
+              className={`mt-0.5 w-full ${inputField}`}
             />
           </label>
-          <label className="block text-xs text-zinc-600">
+          <label className="block text-xs font-semibold text-zinc-600">
             Описание
             <input
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1"
+              className={`mt-0.5 w-full ${inputField}`}
             />
           </label>
-          <label className="block text-xs text-zinc-600">
+          <label className="block text-xs font-semibold text-zinc-600">
             Цена клиента
             <input
               value={cc}
               onChange={(e) => setCc(e.target.value)}
-              className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1"
+              className={`mt-0.5 w-full ${inputField}`}
               inputMode="decimal"
             />
           </label>
-          <label className="block text-xs text-zinc-600">
+          <label className="block text-xs font-semibold text-zinc-600">
             Внутр. себестоимость
             <input
               value={ci}
               onChange={(e) => setCi(e.target.value)}
-              className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1"
+              className={`mt-0.5 w-full ${inputField}`}
               inputMode="decimal"
             />
           </label>
@@ -501,7 +588,7 @@ function LineEditor({
             <button
               type="button"
               disabled={busy}
-              className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+              className={btnPrimaryXs}
               onClick={() =>
                 void onSave(line.id, {
                   name: name.trim(),
@@ -517,7 +604,7 @@ function LineEditor({
               <button
                 type="button"
                 disabled={busy}
-                className="text-xs text-red-700"
+                className="text-xs font-medium text-red-700 hover:text-red-800"
                 onClick={() => void onDelete(line.id)}
               >
                 Удалить
@@ -567,30 +654,29 @@ function AddLineForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 border-t border-dashed border-zinc-200 pt-2">
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-end gap-2 border-t border-dashed border-zinc-200 pt-3"
+    >
       <input
         placeholder="Новая строка"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="min-w-[8rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-xs"
+        className={`min-w-[8rem] flex-1 ${inputField}`}
       />
       <input
         placeholder="Клиент"
         value={cc}
         onChange={(e) => setCc(e.target.value)}
-        className="w-24 rounded border border-zinc-200 px-2 py-1 text-xs"
+        className={`w-28 ${inputField}`}
       />
       <input
         placeholder="Внутр."
         value={ci}
         onChange={(e) => setCi(e.target.value)}
-        className="w-24 rounded border border-zinc-200 px-2 py-1 text-xs"
+        className={`w-28 ${inputField}`}
       />
-      <button
-        type="submit"
-        disabled={busy || !name.trim()}
-        className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50"
-      >
+      <button type="submit" disabled={busy || !name.trim()} className={btnPrimaryXs}>
         + строка
       </button>
     </form>

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
-import { orderStatusLabelRu, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
+import { OrderStatusStepper, orderStatusLabelRu, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import {
   CONTACT_PATCH_FIELD_LABEL,
   PROJECT_ACTIVITY_KIND_LABEL,
@@ -236,6 +236,8 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = React.useState(true);
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [archiveBusy, setArchiveBusy] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [showAllLog, setShowAllLog] = React.useState(false);
 
   const [title, setTitle] = React.useState("");
   const [status, setStatus] = React.useState<ProjectStatus>("LEAD");
@@ -382,9 +384,6 @@ export default function ProjectDetailPage() {
                 <div className="mt-1 text-lg font-extrabold tracking-tight text-zinc-900">
                   {PROJECT_STATUS_LABEL[status]}
                 </div>
-                <div className="mt-1 text-xs text-zinc-600">
-                  Статус виден сразу; изменения ниже можно сохранить в любой момент.
-                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {!readOnly ? (
@@ -407,13 +406,29 @@ export default function ProjectDetailPage() {
                     {archiveBusy ? "…" : "Завершить (в архив)"}
                   </button>
                 ) : null}
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen((v) => !v)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-50"
+                    title="Редактировать карточку"
+                    aria-label="Редактировать карточку"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-zinc-800" aria-hidden>
+                      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                    </svg>
+                    Карточка
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
 
+          <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-zinc-900">Заявки реквизита</div>
+              <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
               {!readOnly ? (
                 <Link
                   href={`/catalog?projectId=${encodeURIComponent(id)}`}
@@ -431,16 +446,21 @@ export default function ProjectDetailPage() {
                   <li key={o.id}>
                     <Link
                       href={`/orders/${o.id}`}
-                      className="block rounded-xl border border-zinc-200/90 bg-white px-3 py-2 text-sm shadow-sm transition hover:border-violet-300"
+                      className="block rounded-xl border border-zinc-200/90 bg-white px-3 py-3 text-sm shadow-sm transition hover:border-violet-300"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                        <OrderStatusStepper status={o.status} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-zinc-900 font-semibold">
+                          {o.eventName?.trim() ? o.eventName : "Без названия мероприятия"}
+                        </div>
                         <span className="font-mono text-xs text-zinc-500">{o.id.slice(0, 8)}…</span>
-                        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                          {orderStatusLabelRu[o.status] ?? o.status}
-                        </span>
                       </div>
                       <div className="mt-1 text-zinc-800">
-                        {o.eventName?.trim() ? o.eventName : "Без названия мероприятия"}
+                        <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                          {orderStatusLabelRu[o.status] ?? o.status}
+                        </span>
                       </div>
                       <div className="mt-0.5 text-xs text-zinc-500">
                         {fmtDate(o.startDate)} — {fmtDate(o.endDate)} · готовность {fmtDate(o.readyByDate)}
@@ -452,20 +472,30 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+          <ProjectEstimatePanel projectId={id} readOnly={readOnly} />
+
+          <ProjectSchedulePanel projectId={id} readOnly={readOnly} />
 
           <ProjectFilesPanel projectId={id} readOnly={readOnly} />
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="text-sm font-semibold text-zinc-900">Журнал</div>
-            <p className="mt-1 text-xs text-zinc-500">
-              Неизменяемая история: карточка, заявки, контакты, файлы и папки.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-lg font-extrabold tracking-tight text-violet-900">Журнал</div>
+              {project.activityLogs?.length ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllLog((v) => !v)}
+                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                >
+                  {showAllLog ? "Скрыть историю" : "Показать всю историю"}
+                </button>
+              ) : null}
+            </div>
             {!project.activityLogs?.length ? (
               <p className="mt-3 text-sm text-zinc-600">Пока нет записей.</p>
             ) : (
               <ul className="mt-3 space-y-3 border-t border-zinc-100 pt-3">
-                {project.activityLogs.map((row) => (
+                {(showAllLog ? project.activityLogs : project.activityLogs.slice(0, 6)).map((row) => (
                   <li key={row.id} className="text-sm">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <span className="font-medium text-zinc-900">
@@ -483,7 +513,18 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <form onSubmit={save} className="space-y-4">
+          {!readOnly ? (
+            <details open={editOpen} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <summary
+                className="cursor-pointer select-none text-sm font-semibold text-zinc-900"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setEditOpen((v) => !v);
+                }}
+              >
+                Редактирование карточки
+              </summary>
+              <form onSubmit={save} className="mt-4 space-y-4">
             <label className="block text-xs text-zinc-600">
               Название
               <input
@@ -593,7 +634,9 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             ) : null}
-          </form>
+              </form>
+            </details>
+          ) : null}
         </div>
       )}
     </AppShell>

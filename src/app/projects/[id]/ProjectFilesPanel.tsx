@@ -219,7 +219,7 @@ function FolderBlock({
           <>
             <button
               type="button"
-              className="text-xs font-medium text-violet-700 hover:text-violet-900"
+              className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-900 hover:bg-violet-100"
               onClick={() => {
                 setUploadTargetId(showUpload ? "" : folder.id);
                 setNewSubfolderParent(null);
@@ -230,7 +230,7 @@ function FolderBlock({
             </button>
             <button
               type="button"
-              className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
               onClick={() => {
                 setNewSubfolderParent(newSubfolderParent === folder.id ? null : folder.id);
                 setUploadTargetId("");
@@ -242,7 +242,7 @@ function FolderBlock({
             </button>
             <button
               type="button"
-              className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
               onClick={() => {
                 setRenameFolderId(renameFolderId === folder.id ? null : folder.id);
                 setRenameDraft(folder.name);
@@ -255,7 +255,7 @@ function FolderBlock({
             {!folder.isSystem ? (
               <button
                 type="button"
-                className="text-xs font-medium text-red-700 hover:text-red-900"
+                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 hover:bg-red-100"
                 onClick={() => void removeFolder()}
                 disabled={busy}
               >
@@ -273,20 +273,20 @@ function FolderBlock({
             <input
               value={renameDraft}
               onChange={(e) => setRenameDraft(e.target.value)}
-              className="mt-0.5 block w-56 rounded border border-zinc-200 px-2 py-1 text-sm"
+              className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
               maxLength={120}
             />
           </label>
           <button
             type="submit"
             disabled={busy}
-            className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             OK
           </button>
           <button
             type="button"
-            className="text-xs text-zinc-600"
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
             onClick={() => setRenameFolderId(null)}
           >
             Отмена
@@ -301,14 +301,14 @@ function FolderBlock({
             <input
               value={newSubfolderName}
               onChange={(e) => setNewSubfolderName(e.target.value)}
-              className="mt-0.5 block w-56 rounded border border-zinc-200 px-2 py-1 text-sm"
+              className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
               maxLength={120}
             />
           </label>
           <button
             type="submit"
             disabled={busy}
-            className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             Создать
           </button>
@@ -476,14 +476,11 @@ export function ProjectFilesPanel({
   return (
     <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="text-sm font-semibold text-zinc-900">Файлы проекта</div>
+        <div className="text-lg font-extrabold tracking-tight text-violet-900">Файлы проекта</div>
         <div className="text-xs text-zinc-500">
           {fileCount} / 15 файлов · {fmtBytes(totalBytes)} / 200 МБ
         </div>
       </div>
-      <p className="text-xs text-zinc-500">
-        Папки «Сметы», «Дизайн», «Документация» создаются автоматически. Системные папки нельзя удалить.
-      </p>
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -498,7 +495,7 @@ export function ProjectFilesPanel({
                 <input
                   value={newRootName}
                   onChange={(e) => setNewRootName(e.target.value)}
-                  className="mt-0.5 block w-56 rounded border border-zinc-200 bg-white px-2 py-1 text-sm"
+                  className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
                   maxLength={120}
                   placeholder="Название"
                 />
@@ -506,7 +503,7 @@ export function ProjectFilesPanel({
               <button
                 type="submit"
                 disabled={busyFolderId !== null}
-                className="rounded border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
                 Создать
               </button>
@@ -544,7 +541,7 @@ export function ProjectFilesPanel({
 
           {!readOnly && folderOptions.length > 0 ? (
             <details className="rounded-lg border border-zinc-200 bg-white p-2 text-xs text-zinc-600">
-              <summary className="cursor-pointer font-medium text-zinc-800">Загрузка с выбором папки</summary>
+              <summary className="cursor-pointer font-semibold text-zinc-800">Быстрая загрузка</summary>
               <form
                 className="mt-2 flex flex-wrap items-end gap-2"
                 onSubmit={(e) => {
@@ -572,7 +569,11 @@ export function ProjectFilesPanel({
                     .finally(() => setBusyFolderId(null));
                 }}
               >
-                <select name="quickFolder" className="max-w-[min(100%,20rem)] rounded border border-zinc-200 px-2 py-1 text-sm" required>
+                <select
+                  name="quickFolder"
+                  className="max-w-[min(100%,22rem)] rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  required
+                >
                   <option value="">Папка…</option>
                   {folderOptions.map((o) => (
                     <option key={o.id} value={o.id}>
@@ -584,7 +585,7 @@ export function ProjectFilesPanel({
                 <button
                   type="submit"
                   disabled={busyFolderId === "quick"}
-                  className="rounded bg-violet-600 px-2 py-1 font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                 >
                   Загрузить
                 </button>

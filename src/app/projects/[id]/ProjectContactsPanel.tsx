@@ -54,6 +54,7 @@ export function ProjectContactsPanel({
   const [entryBusy, setEntryBusy] = React.useState<string | null>(null);
   const [newContactOpen, setNewContactOpen] = React.useState(false);
   const [entryOpenFor, setEntryOpenFor] = React.useState<string | null>(null);
+  const [showAllHistoryFor, setShowAllHistoryFor] = React.useState<Record<string, boolean>>({});
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -153,11 +154,17 @@ export function ProjectContactsPanel({
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-4">
-      <div>
-        <div className="text-sm font-semibold text-zinc-900">Контакты (ЛПР)</div>
-        <p className="mt-1 text-xs text-zinc-500">
-          Представители заказчика и заметки по переговорам. Записи журнала контакта неизменяемы.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-lg font-extrabold tracking-tight text-violet-900">Контакты</div>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => setNewContactOpen((v) => !v)}
+            className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+          >
+            {newContactOpen ? "Скрыть" : "Добавить контакт"}
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -212,9 +219,13 @@ export function ProjectContactsPanel({
                 {c.entries.length === 0 ? (
                   <p className="mt-2 text-sm text-zinc-500">Пока нет записей.</p>
                 ) : (
-                  <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto">
-                    {c.entries.map((e) => (
-                        <li key={e.id} className="rounded-lg border border-zinc-100 bg-zinc-50/80 px-2 py-2 text-sm">
+                  <>
+                    <ul className="mt-2 space-y-2">
+                      {(showAllHistoryFor[c.id] ? c.entries : c.entries.slice(0, 3)).map((e) => (
+                        <li
+                          key={e.id}
+                          className="rounded-lg border border-zinc-100 bg-zinc-50/80 px-2 py-2 text-sm"
+                        >
                           <div className="flex flex-wrap justify-between gap-1 text-xs text-zinc-500">
                             <span>{e.author.displayName}</span>
                             <span>{fmtDateTime(e.createdAt)}</span>
@@ -222,7 +233,19 @@ export function ProjectContactsPanel({
                           <p className="mt-1 whitespace-pre-wrap text-zinc-800">{e.body}</p>
                         </li>
                       ))}
-                  </ul>
+                    </ul>
+                    {c.entries.length > 3 ? (
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-semibold text-violet-700 hover:text-violet-900"
+                        onClick={() =>
+                          setShowAllHistoryFor((m) => ({ ...m, [c.id]: !(m[c.id] ?? false) }))
+                        }
+                      >
+                        {showAllHistoryFor[c.id] ? "Скрыть историю" : "Показать всю историю"}
+                      </button>
+                    ) : null}
+                  </>
                 )}
 
                 {!readOnly ? (
@@ -264,16 +287,6 @@ export function ProjectContactsPanel({
 
       {!readOnly ? (
         <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-violet-900">Контакт (ЛПР)</div>
-            <button
-              type="button"
-              onClick={() => setNewContactOpen((v) => !v)}
-              className="rounded-lg border border-violet-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-50"
-            >
-              {newContactOpen ? "Скрыть форму" : "Добавить контакт"}
-            </button>
-          </div>
           {newContactOpen ? (
             <form onSubmit={createContact} className="space-y-2">
               <input
@@ -325,11 +338,7 @@ export function ProjectContactsPanel({
                 </button>
               </div>
             </form>
-          ) : (
-            <div className="text-xs text-zinc-600">
-              Чтобы добавить ЛПР, нажми «Добавить контакт».
-            </div>
-          )}
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -693,7 +693,7 @@ model OrderLine {
   returnSplits ReturnSplit[]
   incidents    Incident[]
   lossRecords  LossRecord[]
-  projectEstimateLine ProjectEstimateLine?
+  projectEstimateLines ProjectEstimateLine[]
 
   @@index([orderId, position])
   @@index([itemId])

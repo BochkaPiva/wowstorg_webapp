@@ -282,8 +282,7 @@ export default function ProjectDetailPage() {
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
   }, [load]);
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
+  async function doSave() {
     if (!id || readOnly) return;
     setSaveBusy(true);
     try {
@@ -306,6 +305,11 @@ export default function ProjectDetailPage() {
     } finally {
       setSaveBusy(false);
     }
+  }
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    void doSave();
   }
 
   async function archive() {
@@ -371,6 +375,42 @@ export default function ProjectDetailPage() {
             <span>создан {fmtDate(project.createdAt)}</span>
           </div>
 
+          <div className="rounded-2xl border border-violet-200/80 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(250,204,21,0.08))] p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-violet-800">Статус проекта</div>
+                <div className="mt-1 text-lg font-extrabold tracking-tight text-zinc-900">
+                  {PROJECT_STATUS_LABEL[status]}
+                </div>
+                <div className="mt-1 text-xs text-zinc-600">
+                  Статус виден сразу; изменения ниже можно сохранить в любой момент.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => void doSave()}
+                    disabled={saveBusy}
+                    className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    {saveBusy ? "Сохранение…" : "Сохранить"}
+                  </button>
+                ) : null}
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => void archive()}
+                    disabled={archiveBusy}
+                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {archiveBusy ? "…" : "Завершить (в архив)"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold text-zinc-900">Заявки реквизита</div>
@@ -416,14 +456,10 @@ export default function ProjectDetailPage() {
 
           <ProjectFilesPanel projectId={id} readOnly={readOnly} />
 
-          <ProjectEstimatePanel projectId={id} readOnly={readOnly} />
-
-          <ProjectSchedulePanel projectId={id} readOnly={readOnly} />
-
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="text-sm font-semibold text-zinc-900">Журнал</div>
             <p className="mt-1 text-xs text-zinc-500">
-              Неизменяемая история: карточка, заявки, контакты, файлы, смета, архивные события.
+              Неизменяемая история: карточка, заявки, контакты, файлы и папки.
             </p>
             {!project.activityLogs?.length ? (
               <p className="mt-3 text-sm text-zinc-600">Пока нет записей.</p>

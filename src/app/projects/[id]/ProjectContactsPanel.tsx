@@ -52,6 +52,8 @@ export function ProjectContactsPanel({
 
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [entryBusy, setEntryBusy] = React.useState<string | null>(null);
+  const [newContactOpen, setNewContactOpen] = React.useState(false);
+  const [entryOpenFor, setEntryOpenFor] = React.useState<string | null>(null);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -225,22 +227,33 @@ export function ProjectContactsPanel({
 
                 {!readOnly ? (
                   <div className="mt-2 space-y-2">
-                    <textarea
-                      value={drafts[c.id] ?? ""}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
-                      placeholder="Заметка о звонке, письме, договорённости…"
-                      rows={3}
-                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
-                      maxLength={20000}
-                    />
                     <button
                       type="button"
-                      disabled={entryBusy === c.id || !(drafts[c.id] ?? "").trim()}
-                      onClick={() => void addEntry(c.id)}
-                      className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                      onClick={() => setEntryOpenFor((cur) => (cur === c.id ? null : c.id))}
+                      className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
                     >
-                      {entryBusy === c.id ? "Сохранение…" : "Добавить запись"}
+                      {entryOpenFor === c.id ? "Скрыть форму записи" : "Добавить запись"}
                     </button>
+                    {entryOpenFor === c.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={drafts[c.id] ?? ""}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                          placeholder="Заметка о звонке, письме, договорённости…"
+                          rows={3}
+                          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+                          maxLength={20000}
+                        />
+                        <button
+                          type="button"
+                          disabled={entryBusy === c.id || !(drafts[c.id] ?? "").trim()}
+                          onClick={() => void addEntry(c.id)}
+                          className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                        >
+                          {entryBusy === c.id ? "Сохранение…" : "Сохранить запись"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -250,48 +263,74 @@ export function ProjectContactsPanel({
       )}
 
       {!readOnly ? (
-        <form onSubmit={createContact} className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3 space-y-2">
-          <div className="text-sm font-semibold text-violet-900">Новый контакт</div>
-          <input
-            value={newFullName}
-            onChange={(e) => setNewFullName(e.target.value)}
-            placeholder="ФИО *"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-            maxLength={200}
-            required
-          />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              placeholder="Телефон"
-              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-              maxLength={80}
-            />
-            <input
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="Email"
-              type="email"
-              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-              maxLength={200}
-            />
+        <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-violet-900">Контакт (ЛПР)</div>
+            <button
+              type="button"
+              onClick={() => setNewContactOpen((v) => !v)}
+              className="rounded-lg border border-violet-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-50"
+            >
+              {newContactOpen ? "Скрыть форму" : "Добавить контакт"}
+            </button>
           </div>
-          <input
-            value={newRoleNote}
-            onChange={(e) => setNewRoleNote(e.target.value)}
-            placeholder="Роль или примечание (ЛПР, бухгалтерия…)"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-            maxLength={500}
-          />
-          <button
-            type="submit"
-            disabled={createBusy}
-            className="rounded-lg border border-violet-400 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-          >
-            {createBusy ? "Создание…" : "Добавить контакт"}
-          </button>
-        </form>
+          {newContactOpen ? (
+            <form onSubmit={createContact} className="space-y-2">
+              <input
+                value={newFullName}
+                onChange={(e) => setNewFullName(e.target.value)}
+                placeholder="ФИО *"
+                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                maxLength={200}
+                required
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="Телефон"
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  maxLength={80}
+                />
+                <input
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="Email"
+                  type="email"
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  maxLength={200}
+                />
+              </div>
+              <input
+                value={newRoleNote}
+                onChange={(e) => setNewRoleNote(e.target.value)}
+                placeholder="Роль или примечание (ЛПР, бухгалтерия…)"
+                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                maxLength={500}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={createBusy}
+                  className="rounded-lg border border-violet-400 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {createBusy ? "Создание…" : "Сохранить контакт"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewContactOpen(false)}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="text-xs text-zinc-600">
+              Чтобы добавить ЛПР, нажми «Добавить контакт».
+            </div>
+          )}
+        </div>
       ) : null}
     </div>
   );

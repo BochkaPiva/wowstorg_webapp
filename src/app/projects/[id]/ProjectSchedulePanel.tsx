@@ -5,6 +5,17 @@ import React from "react";
 type Slot = { id: string; sortOrder: number; intervalText: string; description: string };
 type Day = { id: string; sortOrder: number; dateNote: string; slots: Slot[] };
 
+function timeToMinutes(hhmm: string): number | null {
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
+  if (h < 0 || h > 23) return null;
+  if (mm < 0 || mm > 59) return null;
+  return h * 60 + mm;
+}
+
 export function ProjectSchedulePanel({
   projectId,
   readOnly,
@@ -120,7 +131,7 @@ export function ProjectSchedulePanel({
   return (
     <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-zinc-900">Тайминг-сценарий</div>
+        <div className="text-lg font-extrabold tracking-tight text-violet-900">Тайминг-сценарий</div>
         <a
           href={exportHref}
           className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
@@ -141,18 +152,18 @@ export function ProjectSchedulePanel({
       ) : (
         <>
           {!readOnly ? (
-            <form onSubmit={addDay} className="flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
+            <form onSubmit={addDay} className="flex flex-wrap items-end gap-2 border-b border-zinc-200 pb-3">
               <input
                 value={newDayNote}
                 onChange={(e) => setNewDayNote(e.target.value)}
                 placeholder="День (дата или «День 1»)"
-                className="min-w-[12rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-sm"
+                className="min-w-[12rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
                 maxLength={500}
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded bg-zinc-800 px-3 py-1 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Добавить день
               </button>
@@ -201,8 +212,10 @@ function DayBlock({
   onDeleteSlot: (slotId: string) => void;
 }) {
   const [note, setNote] = React.useState(day.dateNote);
-  const [intv, setIntv] = React.useState("");
+  const [from, setFrom] = React.useState("09:00");
+  const [to, setTo] = React.useState("10:30");
   const [desc, setDesc] = React.useState("");
+  const [slotError, setSlotError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setNote(day.dateNote);
@@ -259,34 +272,64 @@ function DayBlock({
 
         {!readOnly ? (
           <form
-            className="flex flex-col gap-2 border-t border-dashed border-zinc-200 pt-2 md:flex-row md:flex-wrap"
+            className="flex flex-col gap-2 border-t border-dashed border-zinc-200 pt-3 md:flex-row md:flex-wrap"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!intv.trim() || !desc.trim()) return;
-              void onAddSlot(day.id, intv.trim(), desc.trim());
-              setIntv("");
+              const a = timeToMinutes(from);
+              const b = timeToMinutes(to);
+              if (a == null || b == null) {
+                setSlotError("Укажи время в формате ЧЧ:ММ");
+                return;
+              }
+              if (b <= a) {
+                setSlotError("Интервал должен идти вперёд (например 09:00–10:30)");
+                return;
+              }
+              if (!desc.trim()) {
+                setSlotError("Добавь описание сценария");
+                return;
+              }
+              setSlotError(null);
+              void onAddSlot(day.id, `${from}–${to}`, desc.trim());
               setDesc("");
             }}
           >
-            <input
-              placeholder="Интервал (09:00–10:30)"
-              value={intv}
-              onChange={(e) => setIntv(e.target.value)}
-              className="rounded border border-zinc-200 px-2 py-1 text-sm md:w-40"
-            />
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs font-semibold text-zinc-600">
+                С
+                <input
+                  type="time"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="mt-0.5 block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold text-zinc-600">
+                До
+                <input
+                  type="time"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="mt-0.5 block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
             <input
               placeholder="Описание сценария"
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              className="min-w-[8rem] flex-1 rounded border border-zinc-200 px-2 py-1 text-sm"
+              className="min-w-[8rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
             />
             <button
               type="submit"
               disabled={busy}
-              className="rounded bg-violet-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+              className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
               + слот
             </button>
+            {slotError ? (
+              <div className="text-xs font-medium text-red-700">{slotError}</div>
+            ) : null}
           </form>
         ) : null}
       </div>

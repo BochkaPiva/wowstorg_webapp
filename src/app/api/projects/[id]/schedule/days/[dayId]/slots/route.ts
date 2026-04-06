@@ -13,6 +13,30 @@ const PostSchema = z
   })
   .strict();
 
+function parseIntervalMinutes(intervalText: string): { from: number; to: number } | null {
+  const t = intervalText.trim().replace(/\s+/g, "");
+  const m = /^(\d{2}):(\d{2})[–-](\d{2}):(\d{2})$/.exec(t);
+  if (!m) return null;
+  const h1 = Number(m[1]);
+  const m1 = Number(m[2]);
+  const h2 = Number(m[3]);
+  const m2 = Number(m[4]);
+  const ok =
+    [h1, m1, h2, m2].every((x) => Number.isFinite(x)) &&
+    h1 >= 0 &&
+    h1 <= 23 &&
+    h2 >= 0 &&
+    h2 <= 23 &&
+    m1 >= 0 &&
+    m1 <= 59 &&
+    m2 >= 0 &&
+    m2 <= 59;
+  if (!ok) return null;
+  const from = h1 * 60 + m1;
+  const to = h2 * 60 + m2;
+  return { from, to };
+}
+
 export async function POST(
   req: Request,
   ctx: { params: Promise<{ id: string; dayId: string }> },
@@ -36,6 +60,14 @@ export async function POST(
   const parsed = PostSchema.safeParse(body);
   if (!parsed.success) {
     return jsonError(400, "Invalid input", parsed.error.flatten());
+  }
+
+  const interval = parseIntervalMinutes(parsed.data.intervalText);
+  if (!interval) {
+    return jsonError(400, "Интервал должен быть в формате ЧЧ:ММ–ЧЧ:ММ");
+  }
+  if (interval.to <= interval.from) {
+    return jsonError(400, "Интервал должен идти вперёд (например 09:00–10:30)");
   }
 
   const day = await prisma.projectScheduleDay.findFirst({

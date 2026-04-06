@@ -1,4 +1,5 @@
 import { type Prisma, ProjectActivityKind } from "@prisma/client";
+import { z } from "zod";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -7,6 +8,12 @@ import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 import { removeProjectFileFromDbAndStorage } from "@/server/projects/project-files";
+
+const PatchSchema = z
+  .object({
+    originalName: z.string().trim().min(1).max(300).optional(),
+  })
+  .strict();
 
 function asciiFallbackFilename(name: string) {
   const t = name.replace(/[^\x20-\x7E]/g, "_").slice(0, 180);
@@ -82,4 +89,80 @@ export async function DELETE(
   }
 
   return jsonOk({ ok: true });
+}
+
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ id: string; fileId: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id: projectId, fileId } = await ctx.params;
+  if (!projectId?.trim() || !fileId?.trim()) return jsonError(400, "Invalid id");
+
+  const guard = await assertProjectEditable(projectId);
+  if (!guard.ok) return jsonError(guard.status, guard.message);
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "Invalid JSON body");
+  }
+
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(400, "Invalid input", parsed.error.flatten());
+  }
+
+  const nextName = parsed.data.originalName?.trim();
+  if (!nextName) return jsonError(400, "Нет полей для обновления");
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const before = await tx.projectFile.findFirst({
+      where: { id: fileId, projectId },
+      select: { id: true, originalName: true },
+    });
+    if (!before) throw new Error("NOT_FOUND");
+    if (before.originalName === nextName) {
+      const same = await tx.projectFile.findFirst({
+        where: { id: fileId, projectId },
+        select: {
+          id: true,
+          folderId: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          createdAt: true,
+          uploadedBy: { select: { displayName: true } },
+        },
+      });
+      if (!same) throw new Error("NOT_FOUND");
+      return same;
+    }
+    const row = await tx.projectFile.update({
+      where: { id: fileId },
+      data: { originalName: nextName },
+      select: {
+        id: true,
+        folderId: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        createdAt: true,
+        uploadedBy: { select: { displayName: true } },
+      },
+    });
+    // В enum ProjectActivityKind пока нет отдельного события для переименования файла.
+    // Переименование влияет только на отображение (storageKey не меняется), поэтому лог не обязателен.
+    return row;
+  });
+
+  return jsonOk({
+    file: {
+      ...updated,
+      createdAt: updated.createdAt.toISOString(),
+    },
+  });
 }

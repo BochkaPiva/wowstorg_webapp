@@ -52,6 +52,17 @@ function fileExt(name: string): string {
   return base.slice(i + 1).toLowerCase();
 }
 
+const folderActionBtn =
+  "min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
+const folderPrimaryBtn =
+  "min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
+const folderDangerBtn =
+  "min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
+const fileActionBtn =
+  "min-h-8 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50";
+const fileDangerBtn =
+  "min-h-8 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100";
+
 function fileKind(file: { originalName: string; mimeType: string }): "image" | "pdf" | "doc" | "sheet" | "zip" | "text" | "other" {
   const mime = (file.mimeType || "").toLowerCase();
   const ext = fileExt(file.originalName);
@@ -313,17 +324,17 @@ function FolderBlock({
         ) : null}
         </div>
         {!readOnly ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start justify-end gap-2">
             <button
               type="button"
-              className="min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:px-2.5 sm:py-1 sm:text-xs"
+              className={folderPrimaryBtn}
               onClick={() => uploadInputRef.current?.click()}
             >
               Загрузить
             </button>
             <button
               type="button"
-              className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
+              className={folderActionBtn}
               onClick={() => {
                 setNewSubfolderParent(newSubfolderParent === folder.id ? null : folder.id);
                 setRenameFolderId(null);
@@ -334,7 +345,7 @@ function FolderBlock({
             </button>
             <button
               type="button"
-              className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
+              className={folderActionBtn}
               onClick={() => {
                 setRenameFolderId(renameFolderId === folder.id ? null : folder.id);
                 setRenameDraft(folder.name);
@@ -346,7 +357,7 @@ function FolderBlock({
             {!folder.isSystem ? (
               <button
                 type="button"
-                className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:px-2.5 sm:py-1 sm:text-xs"
+                className={folderDangerBtn}
                 onClick={() => void removeFolder()}
                 disabled={busy}
               >
@@ -464,10 +475,10 @@ function FolderBlock({
                   )}
                 </div>
               </div>
-              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+              <div className="flex w-full flex-wrap items-start justify-start gap-1.5 sm:w-auto sm:justify-end">
                 <a
                   href={`/api/projects/${projectId}/files/${file.id}`}
-                  className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
+                  className={fileActionBtn}
                 >
                   Скачать
                 </a>
@@ -475,7 +486,7 @@ function FolderBlock({
                   <>
                     <button
                       type="button"
-                      className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
+                      className={fileActionBtn}
                       onClick={() => {
                         setRenameFileId(file.id);
                         setRenameFileDraft(file.originalName);
@@ -486,7 +497,7 @@ function FolderBlock({
                     </button>
                     <button
                       type="button"
-                      className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:px-2.5 sm:py-1 sm:text-xs"
+                      className={fileDangerBtn}
                       onClick={() => void removeFile(file)}
                       disabled={busyFolderId === file.id}
                     >

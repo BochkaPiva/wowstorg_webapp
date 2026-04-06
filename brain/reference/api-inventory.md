@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-06T18:51:49.398Z  
+> **Сгенерировано:** 2026-04-06T20:19:53.782Z  
 > **Файлов route.ts:** 86  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
@@ -70,7 +70,7 @@
 | POST | `/api/projects/[id]/estimate/sections/[sectionId]/lines` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/lines/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/sections/[sectionId]` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/route.ts` |
 | POST | `/api/projects/[id]/estimate/sections` | `src/app/api/projects/[id]/estimate/sections/route.ts` |
-| POST | `/api/projects/[id]/estimate/versions` | `src/app/api/projects/[id]/estimate/versions/route.ts` |
+| POST, PATCH, DELETE | `/api/projects/[id]/estimate/versions` | `src/app/api/projects/[id]/estimate/versions/route.ts` |
 | GET, DELETE, PATCH | `/api/projects/[id]/files/[fileId]` | `src/app/api/projects/[id]/files/[fileId]/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/files/folders/[folderId]` | `src/app/api/projects/[id]/files/folders/[folderId]/route.ts` |
 | POST | `/api/projects/[id]/files/folders` | `src/app/api/projects/[id]/files/folders/route.ts` |

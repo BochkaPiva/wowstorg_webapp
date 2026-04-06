@@ -95,6 +95,47 @@ const workTabBtn = (active: boolean) =>
       : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
   ].join(" ");
 
+function projectStatusTone(status: ProjectStatus) {
+  switch (status) {
+    case "LIVE":
+      return "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900";
+    case "READY_TO_RUN":
+    case "CONTRACT_SIGNED":
+      return "border-emerald-300 bg-emerald-50 text-emerald-900";
+    case "PROPOSAL_SENT":
+    case "CONTRACT_SENT":
+    case "AWAITING_CLIENT_INPUT":
+      return "border-amber-300 bg-amber-50 text-amber-900";
+    case "AWAITING_VENDOR":
+      return "border-sky-300 bg-sky-50 text-sky-900";
+    case "ON_HOLD":
+      return "border-zinc-300 bg-zinc-100 text-zinc-800";
+    case "CANCELLED":
+      return "border-red-300 bg-red-50 text-red-900";
+    case "COMPLETED":
+      return "border-violet-300 bg-violet-50 text-violet-900";
+    default:
+      return "border-violet-200 bg-violet-50/70 text-violet-900";
+  }
+}
+
+function projectBallTone(ball: ProjectBall) {
+  switch (ball) {
+    case "CLIENT":
+      return "border-amber-300 bg-amber-50 text-amber-900";
+    case "WOWSTORG":
+      return "border-violet-300 bg-violet-50 text-violet-900";
+    case "VENDOR":
+      return "border-sky-300 bg-sky-50 text-sky-900";
+    case "VENUE":
+      return "border-emerald-300 bg-emerald-50 text-emerald-900";
+    case "NONE":
+      return "border-zinc-300 bg-zinc-100 text-zinc-800";
+    default:
+      return "border-zinc-200 bg-white text-zinc-800";
+  }
+}
+
 function fmtDateTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -105,6 +146,88 @@ function fmtDateTime(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </svg>
+  );
+}
+
+function InlineSelectMenu<T extends string>({
+  value,
+  options,
+  labelByValue,
+  onChange,
+  tone,
+  placeholderLabel,
+}: {
+  value: T;
+  options: T[];
+  labelByValue: Record<T, string>;
+  onChange: (value: T) => void;
+  tone: (value: T) => string;
+  placeholderLabel: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    function onPointerDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex min-h-11 min-w-[14rem] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left shadow-sm ${tone(value)}`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <span>
+          <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-70">{placeholderLabel}</span>
+          <span className="block text-sm font-semibold">{labelByValue[value]}</span>
+        </span>
+        <svg viewBox="0 0 20 20" className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden>
+          <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-20 mt-2 w-full min-w-[14rem] overflow-hidden rounded-2xl border border-zinc-200 bg-white p-1 shadow-[0_18px_48px_rgba(24,24,27,0.14)]"
+          role="listbox"
+        >
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${
+                option === value ? "bg-violet-50 text-violet-950" : "text-zinc-800 hover:bg-zinc-50"
+              }`}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+            >
+              <span>{labelByValue[option]}</span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone(option)}`}>
+                {option === value ? "Выбрано" : "Выбрать"}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ActivityDescription({ row }: { row: ActivityLogRow }) {
@@ -441,45 +564,83 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="rounded-3xl border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(255,255,255,0.96),rgba(250,204,21,0.06))] p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <section className="overflow-hidden rounded-[28px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.11),rgba(255,255,255,0.98),rgba(250,204,21,0.08))] shadow-sm">
+            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.2fr)_340px]">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
                 <h1 className="mt-1 break-words text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
                   {project.title}
                 </h1>
-                <div className="mt-3 text-sm font-semibold text-zinc-900">{PROJECT_STATUS_LABEL[project.status]}</div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-                  <span className={metaBadge}>Заказчик: {project.customer.name}</span>
-                  <span className={metaBadge}>Ответственный: {project.owner.displayName}</span>
-                  <span className={metaBadge}>
-                    Даты: {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-2xl border px-3 py-2 text-sm font-semibold shadow-sm ${projectStatusTone(project.status)}`}>
+                    Статус: {PROJECT_STATUS_LABEL[project.status]}
                   </span>
-                  <span className={metaBadge}>Заявок: {project._count.orders}</span>
-                  <span className={metaBadge}>Мяч: {PROJECT_BALL_LABEL[project.ball]}</span>
-                  <span className={metaBadge}>Создан {fmtDate(project.createdAt)}</span>
+                  <span className={`inline-flex items-center rounded-2xl border px-3 py-2 text-sm font-semibold shadow-sm ${projectBallTone(project.ball)}`}>
+                    Мяч: {PROJECT_BALL_LABEL[project.ball]}
+                  </span>
+                  <span className={`${metaBadge} bg-white/90`}>Заказчик: {project.customer.name}</span>
+                  <span className={`${metaBadge} bg-white/90`}>Ответственный: {project.owner.displayName}</span>
+                  <span className={`${metaBadge} bg-white/90`}>Заявок: {project._count.orders}</span>
+                  <span className={`${metaBadge} bg-white/90`}>Создан {fmtDate(project.createdAt)}</span>
                 </div>
-                <div className={`mt-3 text-sm ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
-                  {project.eventDateConfirmed ? "Дата мероприятия подтверждена" : "Дата мероприятия ещё не подтверждена"}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">
+                      {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
+                    </div>
+                    <div className={`mt-2 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
+                      {project.eventDateConfirmed ? "Дата подтверждена" : "Дата ещё не подтверждена"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Контроль</div>
+                    <div className="mt-1 text-sm text-zinc-700">
+                      Не забывай обновлять <span className="font-semibold text-zinc-950">статус</span> и{" "}
+                      <span className="font-semibold text-zinc-950">мяч</span> после каждого ключевого шага проекта.
+                    </div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingField((v) => (v === "status" ? null : "status"))}
+                        className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                      >
+                        <PencilIcon />
+                        Обновить статус и мяч
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap lg:justify-end">
-                {!readOnly ? (
-                  <button
-                    type="button"
-                    onClick={() => void archive()}
-                    disabled={archiveBusy || !canArchiveProject}
-                    className={`${secondaryBtn} w-full sm:w-auto`}
-                    title={
-                      canArchiveProject
-                        ? undefined
-                        : "Сначала завершите или отмените все заявки, привязанные к проекту"
-                    }
-                  >
-                    {archiveBusy ? "…" : "Завершить (в архив)"}
-                  </button>
-                ) : null}
+              <div className="flex flex-col gap-3">
+                <div className="rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Быстрые действия</div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => void archive()}
+                        disabled={archiveBusy || !canArchiveProject}
+                        className={`${secondaryBtn} w-full justify-center`}
+                        title={
+                          canArchiveProject
+                            ? undefined
+                            : "Сначала завершите или отмените все заявки, привязанные к проекту"
+                        }
+                      >
+                        {archiveBusy ? "…" : "Завершить (в архив)"}
+                      </button>
+                    ) : null}
+                    <Link
+                      href={`/catalog?projectId=${encodeURIComponent(id)}`}
+                      className={`${primaryBtn} w-full text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                      aria-disabled={readOnly}
+                    >
+                      Каталог → новая заявка
+                    </Link>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -535,9 +696,7 @@ export default function ProjectDetailPage() {
                         title="Редактировать название"
                         aria-label="Редактировать название"
                       >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
-                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                        </svg>
+                        <PencilIcon />
                       </button>
                     ) : null}
                   </div>
@@ -548,29 +707,25 @@ export default function ProjectDetailPage() {
                     <div className="min-w-0">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Статус и ответственность</div>
                       {editingField === "status" && !readOnly ? (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-                            className={inputField}
-                          >
-                            {statusOptions.map((s) => (
-                              <option key={s} value={s}>
-                                {PROJECT_STATUS_LABEL[s]}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={ball}
-                            onChange={(e) => setBall(e.target.value as ProjectBall)}
-                            className={inputField}
-                          >
-                            {ballOptions.map((b) => (
-                              <option key={b} value={b}>
-                                {PROJECT_BALL_LABEL[b]}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="mt-3 space-y-3">
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <InlineSelectMenu
+                              value={status}
+                              options={statusOptions}
+                              labelByValue={PROJECT_STATUS_LABEL}
+                              onChange={setStatus}
+                              tone={projectStatusTone}
+                              placeholderLabel="Статус"
+                            />
+                            <InlineSelectMenu
+                              value={ball}
+                              options={ballOptions}
+                              labelByValue={PROJECT_BALL_LABEL}
+                              onChange={setBall}
+                              tone={projectBallTone}
+                              placeholderLabel="Мяч"
+                            />
+                          </div>
                           <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap">
                             <button
                               type="button"
@@ -594,9 +749,13 @@ export default function ProjectDetailPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                          <div className="font-semibold text-zinc-950">{PROJECT_STATUS_LABEL[project.status]}</div>
-                          <div>Мяч: <span className="font-semibold text-zinc-900">{PROJECT_BALL_LABEL[project.ball]}</span></div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-700">
+                          <span className={`inline-flex items-center rounded-full border px-3 py-1.5 font-semibold ${projectStatusTone(project.status)}`}>
+                            {PROJECT_STATUS_LABEL[project.status]}
+                          </span>
+                          <span className={`inline-flex items-center rounded-full border px-3 py-1.5 font-semibold ${projectBallTone(project.ball)}`}>
+                            Мяч: {PROJECT_BALL_LABEL[project.ball]}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -608,9 +767,7 @@ export default function ProjectDetailPage() {
                         title="Редактировать статус"
                         aria-label="Редактировать статус"
                       >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
-                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                        </svg>
+                        <PencilIcon />
                       </button>
                     ) : null}
                   </div>
@@ -698,9 +855,7 @@ export default function ProjectDetailPage() {
                         title="Редактировать даты"
                         aria-label="Редактировать даты"
                       >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
-                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                        </svg>
+                        <PencilIcon />
                       </button>
                     ) : null}
                   </div>
@@ -720,52 +875,112 @@ export default function ProjectDetailPage() {
                 </div>
 
                 <div className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
-                    <textarea
-                      value={openBlockers}
-                      onChange={(e) => setOpenBlockers(e.target.value)}
-                      rows={4}
-                      className={inputField}
-                      placeholder="Что сейчас мешает движению проекта"
-                      disabled={readOnly}
-                    />
-                    {!readOnly ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
+                        {editingField === "openBlockers" && !readOnly ? (
+                          <div className="mt-2 space-y-2">
+                            <textarea
+                              value={openBlockers}
+                              onChange={(e) => setOpenBlockers(e.target.value)}
+                              rows={4}
+                              className={inputField}
+                              placeholder="Что сейчас мешает движению проекта"
+                            />
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                              <button
+                                type="button"
+                                disabled={saveBusy}
+                                onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
+                                className={`${primaryBtn} w-full sm:w-auto`}
+                              >
+                                Сохранить блокеры
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenBlockers(project.openBlockers ?? "");
+                                  setEditingField(null);
+                                }}
+                                className={`${secondaryBtn} w-full sm:w-auto`}
+                              >
+                                Отмена
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
+                            {project.openBlockers?.trim() ? project.openBlockers : <span className="text-zinc-400">Пока пусто</span>}
+                          </div>
+                        )}
+                      </div>
+                      {!readOnly ? (
                         <button
                           type="button"
-                          disabled={saveBusy}
-                          onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
-                          className={`${primaryBtn} w-full sm:w-auto`}
+                          onClick={() => setEditingField((v) => (v === "openBlockers" ? null : "openBlockers"))}
+                          className={iconBtn}
+                          title="Редактировать блокеры"
+                          aria-label="Редактировать блокеры"
                         >
-                          Сохранить блокеры
+                          <PencilIcon />
                         </button>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
 
-                  <div className="space-y-2 border-t border-zinc-100 pt-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
-                    <textarea
-                      value={internalSummary}
-                      onChange={(e) => setInternalSummary(e.target.value)}
-                      rows={5}
-                      className={inputField}
-                      placeholder="Короткая суть проекта, важные договорённости, контекст"
-                      disabled={readOnly}
-                    />
-                    {!readOnly ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
+                        {editingField === "internalSummary" && !readOnly ? (
+                          <div className="mt-2 space-y-2">
+                            <textarea
+                              value={internalSummary}
+                              onChange={(e) => setInternalSummary(e.target.value)}
+                              rows={5}
+                              className={inputField}
+                              placeholder="Короткая суть проекта, важные договорённости, контекст"
+                            />
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                              <button
+                                type="button"
+                                disabled={saveBusy}
+                                onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
+                                className={`${primaryBtn} w-full sm:w-auto`}
+                              >
+                                Сохранить резюме
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInternalSummary(project.internalSummary ?? "");
+                                  setEditingField(null);
+                                }}
+                                className={`${secondaryBtn} w-full sm:w-auto`}
+                              >
+                                Отмена
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
+                            {project.internalSummary?.trim() ? project.internalSummary : <span className="text-zinc-400">Пока пусто</span>}
+                          </div>
+                        )}
+                      </div>
+                      {!readOnly ? (
                         <button
                           type="button"
-                          disabled={saveBusy}
-                          onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
-                          className={`${primaryBtn} w-full sm:w-auto`}
+                          onClick={() => setEditingField((v) => (v === "internalSummary" ? null : "internalSummary"))}
+                          className={iconBtn}
+                          title="Редактировать резюме"
+                          aria-label="Редактировать резюме"
                         >
-                          Сохранить резюме
+                          <PencilIcon />
                         </button>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </section>

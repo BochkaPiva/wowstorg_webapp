@@ -428,13 +428,14 @@ model ProjectEstimateLine {
   costClient    Decimal? @db.Decimal(14, 2)
   costInternal  Decimal? @db.Decimal(14, 2)
 
-  orderLineId String?    @unique
+  orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
   itemId String?
   item   Item? @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([sectionId, position])
+  @@index([orderLineId])
 }
 
 /// День тайминга (дата текстом или «День 1»).

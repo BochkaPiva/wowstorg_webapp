@@ -240,7 +240,10 @@ export async function PATCH(
       if (e.message === "VERSION_NOT_FOUND") return jsonError(404, "Версия сметы не найдена");
       if (e.message === "ORDER_NOT_FOUND") return jsonError(400, "Одна или несколько заявок не найдены в проекте");
     }
-    throw e;
+    return jsonError(
+      500,
+      importOrderIds?.length ? "Не удалось подтянуть позиции из выбранных заявок" : "Не удалось обновить версию сметы",
+    );
   }
 }
 

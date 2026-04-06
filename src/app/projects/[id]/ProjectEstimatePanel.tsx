@@ -62,8 +62,14 @@ const btnSecondary =
   "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 const btnSecondaryXs =
   "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
+const btnGhostXs =
+  "inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 const inputFieldCompact =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
+const menuPanel =
+  "absolute right-0 top-full z-20 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-zinc-200 bg-white p-1 shadow-[0_18px_48px_rgba(24,24,27,0.14)]";
+const menuAction =
+  "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ProjectEstimatePanel({
   projectId,
@@ -81,6 +87,8 @@ export function ProjectEstimatePanel({
   const [busy, setBusy] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
+  const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
+  const [actionsOpen, setActionsOpen] = React.useState(false);
 
   const load = React.useCallback(
     (v: number | null) => {
@@ -95,6 +103,8 @@ export function ProjectEstimatePanel({
           } else {
             setData(j);
             setError(null);
+            setVersionPickerOpen(false);
+            setActionsOpen(false);
           }
         })
         .catch(() => {
@@ -409,70 +419,174 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <label className="text-xs font-semibold text-zinc-600 sm:min-w-[12rem]">
-              Версия
-              <select
-                className={`mt-1 w-full sm:ml-1 sm:w-auto ${inputField}`}
-                value={vn != null ? String(vn) : ""}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  setSelectedVersion(Number.isNaN(v) ? null : v);
-                }}
-              >
-                {data.versions.map((v) => (
-                  <option key={v.id} value={v.versionNumber}>
-                    v{v.versionNumber}
-                    {v.isPrimary ? " · основная" : ""}
-                    {v.note ? ` — ${v.note}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {currentVersionMeta ? (
-              <div className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
-                {currentVersionMeta.isPrimary ? "Основная версия" : "Черновая версия"}
+          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-white/80 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Версия сметы</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 min-w-[12rem] items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-left shadow-sm hover:border-violet-200 hover:bg-violet-50/60"
+                    onClick={() => {
+                      setVersionPickerOpen((v) => !v);
+                      setActionsOpen(false);
+                    }}
+                  >
+                    <span>
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Текущая</span>
+                      <span className="block text-base font-semibold text-zinc-950">
+                        {vn != null ? `v${vn}` : "Версия не выбрана"}
+                      </span>
+                    </span>
+                    <svg viewBox="0 0 20 20" className={`h-4 w-4 text-zinc-500 transition ${versionPickerOpen ? "rotate-180" : ""}`} aria-hidden>
+                      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
+                    </svg>
+                  </button>
+                  {versionPickerOpen ? (
+                    <div className={`${menuPanel} left-0 right-auto min-w-[17rem]`}>
+                      {data.versions.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left ${
+                            vn === v.versionNumber ? "bg-violet-50 text-violet-950" : "text-zinc-800 hover:bg-zinc-50"
+                          }`}
+                          onClick={() => {
+                            setSelectedVersion(v.versionNumber);
+                            setVersionPickerOpen(false);
+                          }}
+                        >
+                          <span className="min-w-0">
+                            <span className="block font-semibold">v{v.versionNumber}</span>
+                            <span className="block text-xs text-zinc-500">{v.note?.trim() || "Без комментария"}</span>
+                          </span>
+                          {v.isPrimary ? (
+                            <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                              Основная
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                {currentVersionMeta ? (
+                  <>
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ${
+                        currentVersionMeta.isPrimary
+                          ? "border border-violet-200 bg-violet-50 text-violet-800"
+                          : "border border-zinc-200 bg-zinc-50 text-zinc-700"
+                      }`}
+                    >
+                      {currentVersionMeta.isPrimary ? "Основная версия" : "Черновая версия"}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {new Date(currentVersionMeta.createdAt).toLocaleDateString("ru-RU")} · {currentVersionMeta.createdBy.displayName}
+                    </span>
+                  </>
+                ) : null}
               </div>
-            ) : null}
+            </div>
+
             {!readOnly ? (
-              <>
+              <div className="relative flex items-start justify-start lg:justify-end">
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void createVersion(false)}
-                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                  onClick={() => {
+                    setActionsOpen((v) => !v);
+                    setVersionPickerOpen(false);
+                  }}
                 >
-                  Новая версия
+                  Действия
+                  <svg viewBox="0 0 20 20" className={`h-4 w-4 text-zinc-500 transition ${actionsOpen ? "rotate-180" : ""}`} aria-hidden>
+                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
+                  </svg>
                 </button>
-                <button
-                  type="button"
-                  disabled={busy || !data.current}
-                  onClick={() => void createVersion(true)}
-                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
-                >
-                  Дублировать текущую
-                </button>
-                {data.current ? (
-                  <button
-                    type="button"
-                    disabled={busy || currentVersionMeta?.isPrimary === true}
-                    onClick={() => void setPrimaryVersion(data.current!.versionNumber)}
-                    className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
-                  >
-                    Сделать основной
-                  </button>
+                {actionsOpen ? (
+                  <div className={menuPanel}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={menuAction}
+                      onClick={() => {
+                        setActionsOpen(false);
+                        void createVersion(false);
+                      }}
+                    >
+                      <span>
+                        <span className="block font-semibold">Новая версия</span>
+                        <span className="block text-xs text-zinc-500">Создать чистый черновик</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !data.current}
+                      className={menuAction}
+                      onClick={() => {
+                        setActionsOpen(false);
+                        void createVersion(true);
+                      }}
+                    >
+                      <span>
+                        <span className="block font-semibold">Дублировать текущую</span>
+                        <span className="block text-xs text-zinc-500">Скопировать разделы и строки</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !data.current || currentVersionMeta?.isPrimary === true}
+                      className={menuAction}
+                      onClick={() => {
+                        if (!data.current) return;
+                        setActionsOpen(false);
+                        void setPrimaryVersion(data.current.versionNumber);
+                      }}
+                    >
+                      <span>
+                        <span className="block font-semibold">Сделать основной</span>
+                        <span className="block text-xs text-zinc-500">Эта версия будет открываться по умолчанию</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || availableImportOrders.length === 0}
+                      className={menuAction}
+                      onClick={() => {
+                        setImportOpen((v) => !v);
+                        setActionsOpen(false);
+                      }}
+                    >
+                      <span>
+                        <span className="block font-semibold">Подтянуть из заявок</span>
+                        <span className="block text-xs text-zinc-500">
+                          {availableImportOrders.length > 0
+                            ? `Доступно заявок: ${availableImportOrders.length}`
+                            : "Все заявки уже импортированы"}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !data.current || data.versions.length <= 1}
+                      className={`${menuAction} text-red-700 hover:bg-red-50`}
+                      onClick={() => {
+                        if (!data.current) return;
+                        setActionsOpen(false);
+                        void deleteVersion(data.current.versionNumber);
+                      }}
+                    >
+                      <span>
+                        <span className="block font-semibold">Удалить версию</span>
+                        <span className="block text-xs text-red-500">Недоступно для последней версии</span>
+                      </span>
+                    </button>
+                  </div>
                 ) : null}
-                {data.current ? (
-                  <button
-                    type="button"
-                    disabled={busy || data.versions.length <= 1}
-                    onClick={() => void deleteVersion(data.current!.versionNumber)}
-                    className="min-h-11 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 shadow-sm hover:bg-red-100 disabled:opacity-50 sm:text-xs"
-                  >
-                    Удалить версию
-                  </button>
-                ) : null}
-              </>
+              </div>
             ) : null}
           </div>
 
@@ -482,16 +596,6 @@ export function ProjectEstimatePanel({
             <>
               {!readOnly ? (
                 <div className="space-y-2 border-b border-zinc-200 pb-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={busy || availableImportOrders.length === 0}
-                      onClick={() => setImportOpen((v) => !v)}
-                      className={btnSecondary}
-                    >
-                      Подтянуть из заявок
-                    </button>
-                  </div>
                   {importOpen ? (
                     <div className="rounded-xl border border-dashed border-violet-200 bg-violet-50/40 p-3 space-y-3">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -624,9 +728,11 @@ function EstimateSectionBlock({
   children: React.ReactNode;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
+  const [editingTitle, setEditingTitle] = React.useState(false);
 
   React.useEffect(() => {
     setTitleDraft(sec.title);
+    setEditingTitle(false);
   }, [sec.id, sec.title]);
 
   function saveTitle() {
@@ -657,33 +763,64 @@ function EstimateSectionBlock({
       </summary>
       <div className="mt-2 space-y-2">
         {!readOnly ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <input
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              placeholder="Название раздела"
-              className="min-w-[10rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
-              maxLength={200}
-            />
-            <button
-              type="button"
-              disabled={busy || titleDraft.trim() === sec.title.trim() || !titleDraft.trim()}
-              className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
-              onClick={() => void saveTitle()}
-            >
-              Сохранить название
-            </button>
-            {sec.kind === "LOCAL" ? (
+          editingTitle ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
+              <input
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                placeholder="Название раздела"
+                className="min-w-[10rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
+                maxLength={200}
+              />
               <button
                 type="button"
-                className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 sm:text-xs"
-                onClick={() => void onDeleteSection(sec.id)}
-                disabled={busy}
+                disabled={busy || titleDraft.trim() === sec.title.trim() || !titleDraft.trim()}
+                className={btnPrimary}
+                onClick={() => {
+                  void saveTitle();
+                  setEditingTitle(false);
+                }}
               >
-                Удалить раздел
+                Сохранить
               </button>
-            ) : null}
-          </div>
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setTitleDraft(sec.title);
+                  setEditingTitle(false);
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                className={btnGhostXs}
+                onClick={() => setEditingTitle(true)}
+                disabled={busy}
+                title="Редактировать название раздела"
+                aria-label="Редактировать название раздела"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
+                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                </svg>
+                <span>Название</span>
+              </button>
+              {sec.kind === "LOCAL" ? (
+                <button
+                  type="button"
+                  className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
+                  onClick={() => void onDeleteSection(sec.id)}
+                  disabled={busy}
+                >
+                  Удалить раздел
+                </button>
+              ) : null}
+            </div>
+          )
         ) : null}
 
         {children}
@@ -771,7 +908,7 @@ function LineEditor({
             <button
               type="button"
               disabled={busy}
-              className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 xl:text-xs"
+              className="min-h-10 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 xl:text-xs"
               onClick={() =>
                 void onSave(line.id, {
                   name: name.trim(),
@@ -787,7 +924,7 @@ function LineEditor({
               <button
                 type="button"
                 disabled={busy}
-                className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 xl:text-xs"
+                className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
                 onClick={() => void onDelete(line.id)}
               >
                 Удалить
@@ -862,7 +999,7 @@ function AddLineForm({
       <button
         type="submit"
         disabled={busy || !name.trim()}
-        className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+        className="min-h-10 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
       >
         + строка
       </button>

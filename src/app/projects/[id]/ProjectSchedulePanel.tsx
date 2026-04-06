@@ -25,6 +25,18 @@ function timeToMinutes(hhmm: string): number | null {
   return h * 60 + mm;
 }
 
+function minutesToTime(total: number): string {
+  const safe = Math.max(0, Math.min(total, 23 * 60 + 59));
+  const h = String(Math.floor(safe / 60)).padStart(2, "0");
+  const m = String(safe % 60).padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function parseIntervalEnd(intervalText: string): string | null {
+  const match = intervalText.match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
+  return match?.[2] ?? null;
+}
+
 export function ProjectSchedulePanel({
   projectId,
   readOnly,
@@ -138,7 +150,7 @@ export function ProjectSchedulePanel({
   const exportHref = `/api/projects/${projectId}/schedule/export`;
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+    <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Тайминг-сценарий</div>
         <a
@@ -161,7 +173,10 @@ export function ProjectSchedulePanel({
       ) : (
         <>
           {!readOnly ? (
-            <form onSubmit={addDay} className="flex flex-wrap items-end gap-2 border-b border-zinc-200 pb-3">
+            <form
+              onSubmit={addDay}
+              className="grid gap-2 border-b border-zinc-200 pb-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+            >
               <input
                 value={newDayNote}
                 onChange={(e) => setNewDayNote(e.target.value)}
@@ -169,7 +184,7 @@ export function ProjectSchedulePanel({
                 className={`min-w-[12rem] flex-1 ${inputField}`}
                 maxLength={500}
               />
-              <button type="submit" disabled={busy} className={btnPrimary}>
+              <button type="submit" disabled={busy} className={`${btnPrimary} min-h-11 w-full sm:w-auto`}>
                 Добавить день
               </button>
             </form>
@@ -226,12 +241,26 @@ function DayBlock({
     setNote(day.dateNote);
   }, [day.dateNote]);
 
+  React.useEffect(() => {
+    const lastSlot = day.slots[day.slots.length - 1];
+    if (!lastSlot) {
+      setFrom("09:00");
+      setTo("10:30");
+      return;
+    }
+    const end = parseIntervalEnd(lastSlot.intervalText);
+    const endMinutes = end ? timeToMinutes(end) : null;
+    if (endMinutes == null) return;
+    setFrom(minutesToTime(endMinutes));
+    setTo(minutesToTime(endMinutes + 15));
+  }, [day.slots]);
+
   return (
-    <details className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm" open>
+    <details className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3" open>
       <summary className="cursor-pointer font-medium text-zinc-900">{day.dateNote}</summary>
       <div className="mt-2 space-y-2">
         {!readOnly ? (
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -240,14 +269,14 @@ function DayBlock({
             <button
               type="button"
               disabled={busy || note.trim() === day.dateNote.trim()}
-              className={btnSecondaryXs}
+              className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
               onClick={() => void onPatchDay(day.id, { dateNote: note.trim() })}
             >
               Сохранить название
             </button>
             <button
               type="button"
-              className="text-xs font-medium text-red-700 hover:text-red-800"
+              className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 sm:text-xs"
               disabled={busy}
               onClick={() => void onDeleteDay(day.id)}
             >
@@ -258,13 +287,18 @@ function DayBlock({
 
         <ul className="space-y-2">
           {day.slots.map((s) => (
-            <li key={s.id} className="rounded-lg border border-zinc-100 bg-zinc-50 px-2 py-2 text-sm">
-              <div className="font-medium text-zinc-900">{s.intervalText}</div>
+            <li
+              key={s.id}
+              className="grid gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm md:grid-cols-[160px_minmax(0,1fr)_auto]"
+            >
+              <div className="font-semibold text-zinc-900 md:pr-3 md:border-r md:border-zinc-200/80">
+                {s.intervalText}
+              </div>
               <div className="whitespace-pre-wrap text-zinc-700">{s.description}</div>
               {!readOnly ? (
                 <button
                   type="button"
-                  className="mt-1 text-xs text-red-700"
+                  className="min-h-10 text-sm text-red-700 md:justify-self-end sm:text-xs"
                   disabled={busy}
                   onClick={() => void onDeleteSlot(s.id)}
                 >
@@ -277,7 +311,7 @@ function DayBlock({
 
         {!readOnly ? (
           <form
-            className="flex flex-col gap-2 border-t border-dashed border-zinc-200 pt-3 md:flex-row md:flex-wrap"
+            className="grid gap-2 border-t border-dashed border-zinc-200 pt-3 md:grid-cols-[auto_auto_minmax(0,1fr)_auto]"
             onSubmit={(e) => {
               e.preventDefault();
               const a = timeToMinutes(from);
@@ -299,7 +333,7 @@ function DayBlock({
               setDesc("");
             }}
           >
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2 md:contents">
               <label className="text-xs font-semibold text-zinc-600">
                 С
                 <input
@@ -325,7 +359,11 @@ function DayBlock({
               onChange={(e) => setDesc(e.target.value)}
               className={`min-w-[8rem] flex-1 ${inputField}`}
             />
-            <button type="submit" disabled={busy} className={btnPrimaryXs}>
+            <button
+              type="submit"
+              disabled={busy}
+              className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 sm:text-xs"
+            >
               + слот
             </button>
             {slotError ? (

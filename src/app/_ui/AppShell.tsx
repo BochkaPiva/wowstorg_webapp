@@ -235,12 +235,6 @@ export function AppShell({
                     Очередь заявок
                   </NavLink>
                   <NavLink
-                    href="/warehouse/archive"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Архив заявок
-                  </NavLink>
-                  <NavLink
                     href="/inventory/items"
                     onClick={() => setNavOpen(false)}
                   >

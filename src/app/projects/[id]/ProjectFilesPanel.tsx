@@ -162,6 +162,7 @@ function FolderBlock({
   const pad = Math.min(depth, 8) * 12;
   const [renameFileId, setRenameFileId] = React.useState<string | null>(null);
   const [renameFileDraft, setRenameFileDraft] = React.useState("");
+  const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
 
   async function createSubfolder(e: React.FormEvent) {
     e.preventDefault();
@@ -245,30 +246,6 @@ function FolderBlock({
     }
   }
 
-  async function onUploadSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (readOnly || uploadTargetId !== folder.id) return;
-    const input = document.getElementById(`pf-upload-${folder.id}`) as HTMLInputElement | null;
-    const f = input?.files?.[0];
-    if (!f) return;
-    setBusyFolderId(folder.id);
-    try {
-      const fd = new FormData();
-      fd.set("folderId", folder.id);
-      fd.set("file", f);
-      const res = await fetch(`/api/projects/${projectId}/files/upload`, { method: "POST", body: fd });
-      if (res.ok) {
-        if (input) input.value = "";
-        onRefresh();
-        window.dispatchEvent(new CustomEvent("project-activity-refresh"));
-      } else {
-        window.alert(await apiErrorMessage(res));
-      }
-    } finally {
-      setBusyFolderId(null);
-    }
-  }
-
   async function uploadFile(f: File) {
     if (readOnly) return;
     setBusyFolderId(folder.id);
@@ -311,37 +288,44 @@ function FolderBlock({
     }
   }
 
-  const showUpload = uploadTargetId === folder.id;
   const busy = busyFolderId === folder.id;
 
   return (
-    <div className="border-l border-zinc-200 pl-3" style={{ marginLeft: pad }}>
-      <div className="flex flex-wrap items-center gap-2 py-1">
-        <span className="font-medium text-zinc-900">{folder.name}</span>
+    <div className="rounded-2xl border border-zinc-200/80 bg-white/85 p-3 shadow-sm" style={{ marginLeft: pad }}>
+      <input
+        ref={uploadInputRef}
+        id={`pf-upload-${folder.id}`}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.currentTarget.files?.[0] ?? null;
+          e.currentTarget.value = "";
+          if (f) void uploadFile(f);
+        }}
+      />
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="break-words font-semibold text-zinc-900">{folder.name}</span>
         {folder.isSystem ? (
-          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-500">
+            <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase text-zinc-500">
             системная
           </span>
         ) : null}
+        </div>
         {!readOnly ? (
-          <>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-900 hover:bg-violet-100"
-              onClick={() => {
-                setUploadTargetId(showUpload ? "" : folder.id);
-                setNewSubfolderParent(null);
-                setRenameFolderId(null);
-              }}
+              className="min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:px-2.5 sm:py-1 sm:text-xs"
+              onClick={() => uploadInputRef.current?.click()}
             >
-              {showUpload ? "Скрыть загрузку" : "Загрузить"}
+              Загрузить
             </button>
             <button
               type="button"
-              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+              className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
               onClick={() => {
                 setNewSubfolderParent(newSubfolderParent === folder.id ? null : folder.id);
-                setUploadTargetId("");
                 setRenameFolderId(null);
                 setNewSubfolderName("");
               }}
@@ -350,11 +334,10 @@ function FolderBlock({
             </button>
             <button
               type="button"
-              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+              className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
               onClick={() => {
                 setRenameFolderId(renameFolderId === folder.id ? null : folder.id);
                 setRenameDraft(folder.name);
-                setUploadTargetId("");
                 setNewSubfolderParent(null);
               }}
             >
@@ -363,25 +346,27 @@ function FolderBlock({
             {!folder.isSystem ? (
               <button
                 type="button"
-                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 hover:bg-red-100"
+                className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:px-2.5 sm:py-1 sm:text-xs"
                 onClick={() => void removeFolder()}
                 disabled={busy}
               >
                 Удалить
               </button>
             ) : null}
-          </>
+          </div>
         ) : null}
       </div>
 
+      {busy ? <div className="mt-2 text-xs font-medium text-zinc-500">Загрузка…</div> : null}
+
       {renameFolderId === folder.id ? (
-        <form onSubmit={saveRename} className="mb-2 flex flex-wrap items-end gap-2">
+        <form onSubmit={saveRename} className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block text-xs text-zinc-600">
             Новое имя
             <input
               value={renameDraft}
               onChange={(e) => setRenameDraft(e.target.value)}
-              className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+              className="mt-0.5 block w-full max-w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm sm:w-64"
               maxLength={120}
             />
           </label>
@@ -403,13 +388,13 @@ function FolderBlock({
       ) : null}
 
       {newSubfolderParent === folder.id ? (
-        <form onSubmit={createSubfolder} className="mb-2 flex flex-wrap items-end gap-2">
+        <form onSubmit={createSubfolder} className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block text-xs text-zinc-600">
             Имя подпапки
             <input
               value={newSubfolderName}
               onChange={(e) => setNewSubfolderName(e.target.value)}
-              className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+              className="mt-0.5 block w-full max-w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm sm:w-64"
               maxLength={120}
             />
           </label>
@@ -423,31 +408,12 @@ function FolderBlock({
         </form>
       ) : null}
 
-      {showUpload && !readOnly ? (
-        <div className="mb-2">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900 hover:bg-violet-100">
-            <input
-              id={`pf-upload-${folder.id}`}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.currentTarget.files?.[0] ?? null;
-                e.currentTarget.value = "";
-                if (f) void uploadFile(f);
-              }}
-            />
-            Выбрать файл и загрузить
-          </label>
-          {busy ? <span className="ml-2 text-xs text-zinc-600">Загрузка…</span> : null}
-        </div>
-      ) : null}
-
       {folder.files.length > 0 ? (
         <ul className="mb-2 space-y-1.5">
           {folder.files.map((file) => (
             <li
               key={file.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-100 bg-white px-3 py-2 text-sm"
+              className="flex flex-col gap-3 rounded-xl border border-zinc-100 bg-white px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
             >
               <div className="flex items-start gap-3 min-w-0 flex-1">
                 <FileIcon kind={fileKind(file)} />
@@ -498,10 +464,10 @@ function FolderBlock({
                   )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                 <a
                   href={`/api/projects/${projectId}/files/${file.id}`}
-                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                  className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
                 >
                   Скачать
                 </a>
@@ -509,7 +475,7 @@ function FolderBlock({
                   <>
                     <button
                       type="button"
-                      className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                      className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1 sm:text-xs"
                       onClick={() => {
                         setRenameFileId(file.id);
                         setRenameFileDraft(file.originalName);
@@ -520,7 +486,7 @@ function FolderBlock({
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-900 hover:bg-red-100"
+                      className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:px-2.5 sm:py-1 sm:text-xs"
                       onClick={() => void removeFile(file)}
                       disabled={busyFolderId === file.id}
                     >
@@ -645,7 +611,7 @@ export function ProjectFilesPanel({
   // (раньше использовалось для "быстрой загрузки", сейчас не нужно)
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+    <div className="space-y-4 rounded-2xl border border-zinc-200 bg-[linear-gradient(180deg,rgba(250,250,250,0.98),rgba(244,244,245,0.92))] p-3 sm:p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Файлы проекта</div>
         <div className="text-xs text-zinc-500">
@@ -660,13 +626,16 @@ export function ProjectFilesPanel({
       ) : (
         <>
           {!readOnly ? (
-            <form onSubmit={createRootFolder} className="flex flex-wrap items-end gap-2 border-b border-zinc-200 pb-3">
+            <form
+              onSubmit={createRootFolder}
+              className="grid gap-2 border-b border-zinc-200 pb-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+            >
               <label className="block text-xs text-zinc-600">
                 Новая папка в корне
                 <input
                   value={newRootName}
                   onChange={(e) => setNewRootName(e.target.value)}
-                  className="mt-0.5 block w-64 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  className="mt-0.5 block w-full max-w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm sm:w-64"
                   maxLength={120}
                   placeholder="Название"
                 />
@@ -674,7 +643,7 @@ export function ProjectFilesPanel({
               <button
                 type="submit"
                 disabled={busyFolderId !== null}
-                className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:text-xs"
               >
                 Создать
               </button>
@@ -684,7 +653,7 @@ export function ProjectFilesPanel({
           {folders.length === 0 ? (
             <p className="text-sm text-zinc-600">Нет папок.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {folders.map((f) => (
                 <FolderBlock
                   key={f.id}

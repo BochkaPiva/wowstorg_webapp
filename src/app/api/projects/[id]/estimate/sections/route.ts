@@ -45,7 +45,7 @@ export async function POST(
         })
       : await prisma.projectEstimateVersion.findFirst({
           where: { projectId },
-          orderBy: { versionNumber: "desc" },
+          orderBy: [{ isPrimary: "desc" }, { versionNumber: "desc" }],
         });
 
   if (!v) return jsonError(400, "Сначала создайте версию сметы");

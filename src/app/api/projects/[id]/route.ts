@@ -6,6 +6,8 @@ import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 
+const FINAL_ORDER_STATUSES = ["CLOSED", "CANCELLED"] as const;
+
 const PatchSchema = z
   .object({
     title: z.string().trim().min(1).max(300).optional(),
@@ -213,6 +215,17 @@ export async function PATCH(
       if (before.archivedAt != null) {
         throw new Error("ARCHIVED");
       }
+      if (archive === true) {
+        const openOrders = await tx.order.count({
+          where: {
+            projectId: id,
+            status: { notIn: [...FINAL_ORDER_STATUSES] },
+          },
+        });
+        if (openOrders > 0) {
+          throw new Error("OPEN_ORDERS");
+        }
+      }
 
       const fieldKeys = [
         "title",
@@ -274,6 +287,9 @@ export async function PATCH(
     }
     if (e instanceof Error && e.message === "ARCHIVED") {
       return jsonError(400, "Архивный проект только для просмотра");
+    }
+    if (e instanceof Error && e.message === "OPEN_ORDERS") {
+      return jsonError(400, "Нельзя завершить проект, пока по нему есть незавершённые заявки");
     }
     throw e;
   }

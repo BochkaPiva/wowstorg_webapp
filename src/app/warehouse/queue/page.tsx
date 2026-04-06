@@ -22,6 +22,7 @@ type QueueOrder = {
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   warehouseInternalNote?: string | null;
   totalAmount?: number;
+  project?: { id: string; title: string } | null;
 };
 
 const QUEUE_STATUS_OPTIONS = [
@@ -51,6 +52,7 @@ const SOURCE_OPTIONS = [
 ] as const;
 
 const DEFAULT_SORT = "readyBy_asc";
+const ARCHIVE_DEFAULT_SORT = "updated_desc";
 
 function fmtDateRu(iso: string) {
   const d = new Date(iso);
@@ -96,6 +98,21 @@ function buildQueueQuery(args: {
   return params.toString();
 }
 
+function buildArchiveQuery(args: {
+  sort: string;
+  q: string;
+  source: string;
+  status: string;
+}): string {
+  const params = new URLSearchParams();
+  if (args.sort && args.sort !== ARCHIVE_DEFAULT_SORT) params.set("sort", args.sort);
+  const q = args.q.trim();
+  if (q) params.set("q", q);
+  if (args.source !== "all") params.set("source", args.source);
+  if (args.status !== "all") params.set("status", args.status);
+  return params.toString();
+}
+
 function WarehouseQueueContent() {
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
@@ -105,41 +122,57 @@ function WarehouseQueueContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const [tab, setTab] = React.useState<"active" | "archive">(
+    () => (searchParams.get("tab") === "archive" ? "archive" : "active"),
+  );
   const [orders, setOrders] = React.useState<QueueOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [editingNoteOrderId, setEditingNoteOrderId] = React.useState<string | null>(null);
   const [editingNoteValue, setEditingNoteValue] = React.useState("");
   const [noteSaveBusy, setNoteSaveBusy] = React.useState(false);
 
-  const [sort, setSort] = React.useState(() => searchParams.get("sort") || DEFAULT_SORT);
+  const [sort, setSort] = React.useState(
+    () => searchParams.get("sort") || (searchParams.get("tab") === "archive" ? ARCHIVE_DEFAULT_SORT : DEFAULT_SORT),
+  );
   const [qInput, setQInput] = React.useState(() => searchParams.get("q") ?? "");
   const [qDebounced, setQDebounced] = React.useState(() => searchParams.get("q") ?? "");
   const [source, setSource] = React.useState(() => searchParams.get("source") || "all");
   const [statusSet, setStatusSet] = React.useState(() => parseStatusSetFromUrl(searchParams.get("status")));
+  const [archiveStatus, setArchiveStatus] = React.useState(() => searchParams.get("status") || "all");
 
   const [filtersOpen, setFiltersOpen] = React.useState(false);
 
   React.useEffect(() => {
+    const nextTab = searchParams.get("tab") === "archive" ? "archive" : "active";
+    setTab(nextTab);
     const t = window.setTimeout(() => setQDebounced(qInput), 320);
     return () => window.clearTimeout(t);
-  }, [qInput]);
+  }, [qInput, searchParams]);
 
   const loadOrders = React.useCallback(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
-    const qs = buildQueueQuery({ sort, q: qDebounced, source, statusSet });
-    fetch(`/api/warehouse/queue${qs ? `?${qs}` : ""}`, { cache: "no-store" })
+    const qs =
+      tab === "archive"
+        ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
+        : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
+    fetch(`/api/warehouse/${tab === "archive" ? "archive" : "queue"}${qs ? `?${qs}` : ""}`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
       .then((data: { orders?: QueueOrder[] } | null) => setOrders(data?.orders ?? []))
       .catch(() => setOrders([]));
-  }, [state.status, role, sort, qDebounced, source, statusSet]);
+  }, [state.status, role, sort, qDebounced, source, statusSet, archiveStatus, tab]);
 
   React.useEffect(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     let cancelled = false;
-    const qs = buildQueueQuery({ sort, q: qDebounced, source, statusSet });
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    const qs =
+      tab === "archive"
+        ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
+        : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
+    const tabQs = new URLSearchParams(qs);
+    if (tab === "archive") tabQs.set("tab", "archive");
+    router.replace(tabQs.toString() ? `${pathname}?${tabQs.toString()}` : pathname, { scroll: false });
     setLoading(true);
-    fetch(`/api/warehouse/queue${qs ? `?${qs}` : ""}`, { cache: "no-store" })
+    fetch(`/api/warehouse/${tab === "archive" ? "archive" : "queue"}${qs ? `?${qs}` : ""}`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
       .then((data: { orders?: QueueOrder[] } | null) => {
         if (!cancelled) setOrders(data?.orders ?? []);
@@ -153,7 +186,7 @@ function WarehouseQueueContent() {
     return () => {
       cancelled = true;
     };
-  }, [state.status, role, sort, qDebounced, source, statusSet, pathname, router]);
+  }, [state.status, role, sort, qDebounced, source, statusSet, archiveStatus, tab, pathname, router]);
 
   async function saveInternalNote(orderId: string) {
     setNoteSaveBusy(true);
@@ -213,6 +246,8 @@ function WarehouseQueueContent() {
           "rounded-2xl border overflow-hidden shadow-sm transition",
           o.status === "CANCELLED"
             ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03] hover:border-[#5b0b17]/40"
+            : o.project
+              ? "border-violet-300 bg-violet-50/40 hover:border-violet-400"
             : o.parentOrderId
               ? "border-amber-300 bg-amber-50/30 hover:border-amber-400"
               : "border-zinc-200 bg-white hover:border-violet-200",
@@ -244,6 +279,11 @@ function WarehouseQueueContent() {
               Основная заявка
             </div>
           )}
+          {o.project ? (
+            <div className="mt-1 inline-flex items-center rounded-full border border-violet-300 bg-white px-2 py-0.5 text-xs font-semibold text-violet-800">
+              Проект: {o.project.title}
+            </div>
+          ) : null}
           <div className="mt-2 text-sm text-zinc-600">
             Готовность: <span className="font-semibold">{fmtDateRu(o.readyByDate)}</span> · Период:{" "}
             <span className="font-semibold">{fmtDateRu(o.startDate)}</span> —{" "}
@@ -334,14 +374,42 @@ function WarehouseQueueContent() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-zinc-600">
-              Актуальные заявки (не завершённые и не отменённые). До 500 записей с учётом фильтров.
+              {tab === "archive"
+                ? "Завершённые и отменённые заявки. До 500 записей с учётом фильтров."
+                : "Актуальные заявки (не завершённые и не отменённые). До 500 записей с учётом фильтров."}
             </div>
-            <Link
-              href="/warehouse/archive"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-violet-50"
-            >
-              Архив заявок →
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("active");
+                  setSort(DEFAULT_SORT);
+                }}
+                className={[
+                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  tab === "active"
+                    ? "bg-violet-700 text-white"
+                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                ].join(" ")}
+              >
+                Активные
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("archive");
+                  setSort(ARCHIVE_DEFAULT_SORT);
+                }}
+                className={[
+                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  tab === "archive"
+                    ? "bg-violet-700 text-white"
+                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                ].join(" ")}
+              >
+                Архив
+              </button>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
@@ -384,42 +452,58 @@ function WarehouseQueueContent() {
                   ))}
                 </select>
               </label>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => setFiltersOpen((v) => !v)}
-                className="text-sm font-medium text-violet-800 hover:text-violet-950"
-              >
-                {filtersOpen ? "▼ Скрыть статусы" : "► Фильтр по статусам"}
-              </button>
-              {filtersOpen ? (
-                <div className="mt-3 flex flex-wrap gap-2 items-center">
-                  <button
-                    type="button"
-                    onClick={selectAllStatuses}
-                    className="text-xs rounded-md border border-zinc-200 px-2 py-1 text-zinc-700 hover:bg-zinc-50"
+              {tab === "archive" ? (
+                <label className="flex flex-col gap-1 min-w-[160px]">
+                  <span className="text-xs font-semibold text-zinc-500">Статус</span>
+                  <select
+                    value={archiveStatus}
+                    onChange={(e) => setArchiveStatus(e.target.value)}
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm bg-white"
                   >
-                    Все статусы
-                  </button>
-                  {QUEUE_STATUS_OPTIONS.map((opt) => (
-                    <label
-                      key={opt.value}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-2 py-1.5 text-xs cursor-pointer hover:bg-violet-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={statusSet.has(opt.value)}
-                        onChange={() => toggleStatus(opt.value)}
-                        className="rounded border-zinc-300"
-                      />
-                      {opt.label}
-                    </label>
-                  ))}
-                </div>
+                    <option value="all">Все</option>
+                    <option value="CLOSED">Завершена</option>
+                    <option value="CANCELLED">Отменена</option>
+                  </select>
+                </label>
               ) : null}
             </div>
+
+            {tab === "active" ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  className="text-sm font-medium text-violet-800 hover:text-violet-950"
+                >
+                  {filtersOpen ? "▼ Скрыть статусы" : "► Фильтр по статусам"}
+                </button>
+                {filtersOpen ? (
+                  <div className="mt-3 flex flex-wrap gap-2 items-center">
+                    <button
+                      type="button"
+                      onClick={selectAllStatuses}
+                      className="text-xs rounded-md border border-zinc-200 px-2 py-1 text-zinc-700 hover:bg-zinc-50"
+                    >
+                      Все статусы
+                    </button>
+                    {QUEUE_STATUS_OPTIONS.map((opt) => (
+                      <label
+                        key={opt.value}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-2 py-1.5 text-xs cursor-pointer hover:bg-violet-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={statusSet.has(opt.value)}
+                          onChange={() => toggleStatus(opt.value)}
+                          className="rounded border-zinc-300"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {loading ? (

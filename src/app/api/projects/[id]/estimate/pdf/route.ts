@@ -35,7 +35,7 @@ export async function GET(
         })
       : await prisma.projectEstimateVersion.findFirst({
           where: { projectId },
-          orderBy: { versionNumber: "desc" },
+          orderBy: [{ isPrimary: "desc" }, { versionNumber: "desc" }],
           include: {
             sections: {
               orderBy: { sortOrder: "asc" },

@@ -29,12 +29,20 @@ type VersionMeta = {
   id: string;
   versionNumber: number;
   note: string | null;
+  isPrimary: boolean;
   createdAt: string;
   createdBy: { displayName: string };
 };
 
 type EstimatePayload = {
   projectTitle: string;
+  projectOrders?: Array<{
+    id: string;
+    status: string;
+    eventName: string | null;
+    startDate: string;
+    endDate: string;
+  }>;
   versions: VersionMeta[];
   current: {
     id: string;
@@ -50,12 +58,12 @@ const inputField =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const btnPrimary =
   "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
-const btnPrimaryXs =
-  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
 const btnSecondary =
   "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 const btnSecondaryXs =
   "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
+const inputFieldCompact =
+  "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 
 export function ProjectEstimatePanel({
   projectId,
@@ -65,12 +73,14 @@ export function ProjectEstimatePanel({
   readOnly: boolean;
 }) {
   const [data, setData] = React.useState<EstimatePayload | null>(null);
-  /** null = последняя версия с сервера; число = явный выбор */
+  /** null = основная версия с сервера; число = явный выбор */
   const [selectedVersion, setSelectedVersion] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [importOpen, setImportOpen] = React.useState(false);
+  const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
 
   const load = React.useCallback(
     (v: number | null) => {
@@ -122,6 +132,73 @@ export function ProjectEstimatePanel({
       if (res.ok && j?.version) {
         setSelectedVersion(j.version.versionNumber);
         refreshActivity();
+      } else {
+        window.alert(j?.error?.message ?? "Ошибка");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setPrimaryVersion(versionNumber: number) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/estimate/versions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionNumber, isPrimary: true }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) {
+        setSelectedVersion(versionNumber);
+        load(versionNumber);
+      } else {
+        window.alert(j?.error?.message ?? "Ошибка");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteVersion(versionNumber: number) {
+    if (!window.confirm(`Удалить версию v${versionNumber}?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/estimate/versions`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionNumber }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) {
+        setSelectedVersion(null);
+        load(null);
+        refreshActivity();
+      } else {
+        window.alert(j?.error?.message ?? "Ошибка");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importFromOrders() {
+    if (selectedImportOrderIds.length === 0 || !data?.current) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/estimate/versions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          versionNumber: data.current.versionNumber,
+          importOrderIds: selectedImportOrderIds,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) {
+        setImportOpen(false);
+        setSelectedImportOrderIds([]);
+        load(selectedVersion);
       } else {
         window.alert(j?.error?.message ?? "Ошибка");
       }
@@ -213,10 +290,20 @@ export function ProjectEstimatePanel({
   }
 
   const vn = selectedVersion ?? data?.current?.versionNumber ?? null;
+  const currentVersionMeta = data?.versions.find((v) => v.versionNumber === vn) ?? null;
   const pdfHref =
     vn != null
       ? `/api/projects/${projectId}/estimate/pdf?version=${encodeURIComponent(String(vn))}`
       : `/api/projects/${projectId}/estimate/pdf`;
+  const availableImportOrders = React.useMemo(() => {
+    if (!data?.projectOrders || !data.current) return [];
+    const imported = new Set(
+      data.current.sections
+        .filter((s) => s.kind === "REQUISITE" && s.linkedOrderId)
+        .map((s) => s.linkedOrderId as string),
+    );
+    return data.projectOrders.filter((o) => !imported.has(o.id));
+  }, [data]);
 
   const totals = React.useMemo(() => {
     const COMMISSION_RATE = 0.15;
@@ -251,7 +338,7 @@ export function ProjectEstimatePanel({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-3">
+    <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
         {vn != null ? (
@@ -322,11 +409,11 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs font-semibold text-zinc-600">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="text-xs font-semibold text-zinc-600 sm:min-w-[12rem]">
               Версия
               <select
-                className={`ml-1 mt-0.5 ${inputField}`}
+                className={`mt-1 w-full sm:ml-1 sm:w-auto ${inputField}`}
                 value={vn != null ? String(vn) : ""}
                 onChange={(e) => {
                   const v = parseInt(e.target.value, 10);
@@ -336,18 +423,24 @@ export function ProjectEstimatePanel({
                 {data.versions.map((v) => (
                   <option key={v.id} value={v.versionNumber}>
                     v{v.versionNumber}
+                    {v.isPrimary ? " · основная" : ""}
                     {v.note ? ` — ${v.note}` : ""}
                   </option>
                 ))}
               </select>
             </label>
+            {currentVersionMeta ? (
+              <div className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800">
+                {currentVersionMeta.isPrimary ? "Основная версия" : "Черновая версия"}
+              </div>
+            ) : null}
             {!readOnly ? (
               <>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void createVersion(false)}
-                  className={btnSecondaryXs}
+                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
                 >
                   Новая версия
                 </button>
@@ -355,10 +448,30 @@ export function ProjectEstimatePanel({
                   type="button"
                   disabled={busy || !data.current}
                   onClick={() => void createVersion(true)}
-                  className={btnSecondaryXs}
+                  className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
                 >
                   Дублировать текущую
                 </button>
+                {data.current ? (
+                  <button
+                    type="button"
+                    disabled={busy || currentVersionMeta?.isPrimary === true}
+                    onClick={() => void setPrimaryVersion(data.current!.versionNumber)}
+                    className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
+                  >
+                    Сделать основной
+                  </button>
+                ) : null}
+                {data.current ? (
+                  <button
+                    type="button"
+                    disabled={busy || data.versions.length <= 1}
+                    onClick={() => void deleteVersion(data.current!.versionNumber)}
+                    className="min-h-11 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 shadow-sm hover:bg-red-100 disabled:opacity-50 sm:text-xs"
+                  >
+                    Удалить версию
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -368,21 +481,91 @@ export function ProjectEstimatePanel({
           ) : (
             <>
               {!readOnly ? (
-                <form
-                  onSubmit={addSection}
-                  className="flex flex-wrap items-end gap-2 border-b border-zinc-200 pb-3"
-                >
-                  <input
-                    value={newSectionTitle}
-                    onChange={(e) => setNewSectionTitle(e.target.value)}
-                    placeholder="Новый локальный раздел"
-                    className={`min-w-[12rem] flex-1 ${inputField}`}
-                    maxLength={200}
-                  />
-                  <button type="submit" disabled={busy} className={btnPrimary}>
-                    Добавить раздел
-                  </button>
-                </form>
+                <div className="space-y-2 border-b border-zinc-200 pb-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || availableImportOrders.length === 0}
+                      onClick={() => setImportOpen((v) => !v)}
+                      className={btnSecondary}
+                    >
+                      Подтянуть из заявок
+                    </button>
+                  </div>
+                  {importOpen ? (
+                    <div className="rounded-xl border border-dashed border-violet-200 bg-violet-50/40 p-3 space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Выбери заявки проекта для импорта в текущую версию
+                      </div>
+                      {availableImportOrders.length === 0 ? (
+                        <div className="text-sm text-zinc-600">Все заявки проекта уже добавлены в эту версию.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {availableImportOrders.map((order) => (
+                            <label
+                              key={order.id}
+                              className="flex items-start gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedImportOrderIds.includes(order.id)}
+                                onChange={(e) =>
+                                  setSelectedImportOrderIds((prev) =>
+                                    e.target.checked ? [...prev, order.id] : prev.filter((id) => id !== order.id),
+                                  )
+                                }
+                                className="mt-0.5"
+                              />
+                              <span className="min-w-0">
+                                <span className="block font-medium text-zinc-900">
+                                  {order.eventName?.trim() ? order.eventName : `Заявка ${order.id.slice(0, 8)}…`}
+                                </span>
+                                <span className="block text-xs text-zinc-500">
+                                  {order.startDate} — {order.endDate} · {order.status}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busy || selectedImportOrderIds.length === 0}
+                          onClick={() => void importFromOrders()}
+                          className={btnPrimary}
+                        >
+                          Импортировать выбранные
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImportOpen(false);
+                            setSelectedImportOrderIds([]);
+                          }}
+                          className={btnSecondary}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <form
+                    onSubmit={addSection}
+                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                  >
+                    <input
+                      value={newSectionTitle}
+                      onChange={(e) => setNewSectionTitle(e.target.value)}
+                      placeholder="Новый локальный раздел"
+                      className={`min-w-[12rem] flex-1 ${inputField}`}
+                      maxLength={200}
+                    />
+                    <button type="submit" disabled={busy} className={btnPrimary}>
+                      Добавить раздел
+                    </button>
+                  </form>
+                </div>
               ) : null}
 
               <div className="space-y-4">
@@ -453,7 +636,7 @@ function EstimateSectionBlock({
   }
 
   return (
-    <details className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm" open>
+    <details className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3" open>
       <summary className="cursor-pointer font-medium text-zinc-900">
         {sec.title}{" "}
         <span className="font-normal text-zinc-500">
@@ -474,7 +657,7 @@ function EstimateSectionBlock({
       </summary>
       <div className="mt-2 space-y-2">
         {!readOnly ? (
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <input
               value={titleDraft}
               onChange={(e) => setTitleDraft(e.target.value)}
@@ -485,7 +668,7 @@ function EstimateSectionBlock({
             <button
               type="button"
               disabled={busy || titleDraft.trim() === sec.title.trim() || !titleDraft.trim()}
-              className={btnSecondaryXs}
+              className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
               onClick={() => void saveTitle()}
             >
               Сохранить название
@@ -493,7 +676,7 @@ function EstimateSectionBlock({
             {sec.kind === "LOCAL" ? (
               <button
                 type="button"
-                className="text-xs font-medium text-red-700 hover:text-red-800"
+                className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 sm:text-xs"
                 onClick={() => void onDeleteSection(sec.id)}
                 disabled={busy}
               >
@@ -535,8 +718,8 @@ function LineEditor({
   }, [line]);
 
   return (
-    <div className="rounded-lg border border-zinc-100 bg-zinc-50/80 p-3 text-sm shadow-sm">
-      <div className="text-xs font-medium text-zinc-500">
+    <div className="rounded-lg border border-zinc-100 bg-zinc-50/60 p-2.5 text-sm shadow-sm">
+      <div className="mb-2 text-[11px] font-medium text-zinc-500">
         №{line.lineNumber}
         {line.orderLineId ? " · из заявки" : ""}
       </div>
@@ -549,46 +732,46 @@ function LineEditor({
           </div>
         </div>
       ) : (
-        <div className="mt-1 grid gap-2 md:grid-cols-2">
-          <label className="block text-xs font-semibold text-zinc-600">
+        <div className="grid gap-2 xl:grid-cols-[minmax(0,2.1fr)_minmax(0,1.7fr)_132px_132px_auto]">
+          <label className="block text-[11px] font-semibold text-zinc-500">
             Название
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={`mt-0.5 w-full ${inputField}`}
+              className={`mt-1 w-full ${inputFieldCompact}`}
             />
           </label>
-          <label className="block text-xs font-semibold text-zinc-600">
+          <label className="block text-[11px] font-semibold text-zinc-500">
             Описание
             <input
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
-              className={`mt-0.5 w-full ${inputField}`}
+              className={`mt-1 w-full ${inputFieldCompact}`}
             />
           </label>
-          <label className="block text-xs font-semibold text-zinc-600">
-            Цена клиента
+          <label className="block text-[11px] font-semibold text-zinc-500">
+            Клиент
             <input
               value={cc}
               onChange={(e) => setCc(e.target.value)}
-              className={`mt-0.5 w-full ${inputField}`}
+              className={`mt-1 w-full ${inputFieldCompact}`}
               inputMode="decimal"
             />
           </label>
-          <label className="block text-xs font-semibold text-zinc-600">
-            Внутр. себестоимость
+          <label className="block text-[11px] font-semibold text-zinc-500">
+            Внутр.
             <input
               value={ci}
               onChange={(e) => setCi(e.target.value)}
-              className={`mt-0.5 w-full ${inputField}`}
+              className={`mt-1 w-full ${inputFieldCompact}`}
               inputMode="decimal"
             />
           </label>
-          <div className="flex flex-wrap gap-2 md:col-span-2">
+          <div className="flex flex-wrap items-end gap-2 xl:justify-end">
             <button
               type="button"
               disabled={busy}
-              className={btnPrimaryXs}
+              className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 xl:text-xs"
               onClick={() =>
                 void onSave(line.id, {
                   name: name.trim(),
@@ -604,7 +787,7 @@ function LineEditor({
               <button
                 type="button"
                 disabled={busy}
-                className="text-xs font-medium text-red-700 hover:text-red-800"
+                className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 xl:text-xs"
                 onClick={() => void onDelete(line.id)}
               >
                 Удалить
@@ -656,27 +839,31 @@ function AddLineForm({
   return (
     <form
       onSubmit={submit}
-      className="flex flex-wrap items-end gap-2 border-t border-dashed border-zinc-200 pt-3"
+      className="grid gap-2 border-t border-dashed border-zinc-200 pt-3 md:grid-cols-[minmax(0,1.8fr)_116px_116px_auto]"
     >
       <input
         placeholder="Новая строка"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className={`min-w-[8rem] flex-1 ${inputField}`}
+        className={`min-w-[8rem] ${inputFieldCompact}`}
       />
       <input
         placeholder="Клиент"
         value={cc}
         onChange={(e) => setCc(e.target.value)}
-        className={`w-28 ${inputField}`}
+        className={inputFieldCompact}
       />
       <input
         placeholder="Внутр."
         value={ci}
         onChange={(e) => setCi(e.target.value)}
-        className={`w-28 ${inputField}`}
+        className={inputFieldCompact}
       />
-      <button type="submit" disabled={busy || !name.trim()} className={btnPrimaryXs}>
+      <button
+        type="submit"
+        disabled={busy || !name.trim()}
+        className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+      >
         + строка
       </button>
     </form>

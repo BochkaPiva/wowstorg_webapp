@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -37,6 +37,7 @@ function fmtDate(iso: string) {
 
 function ProjectsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
@@ -52,6 +53,23 @@ function ProjectsContent() {
   const [createBusy, setCreateBusy] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [customerId, setCustomerId] = React.useState("");
+  const [customerInput, setCustomerInput] = React.useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = React.useState(false);
+  const customerInputRef = React.useRef<HTMLDivElement | null>(null);
+
+  const customerInputTrim = customerInput.trim();
+  const customerFiltered = React.useMemo(() => {
+    if (!customerInputTrim) return customers.slice(0, 12);
+    const q = customerInputTrim.toLocaleLowerCase("ru");
+    return customers.filter((c) => c.name.toLocaleLowerCase("ru").includes(q)).slice(0, 12);
+  }, [customers, customerInputTrim]);
+  const matchedCustomer = React.useMemo(
+    () =>
+      customerInputTrim
+        ? customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0)
+        : null,
+    [customers, customerInputTrim],
+  );
 
   const loadProjects = React.useCallback(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
@@ -80,21 +98,39 @@ function ProjectsContent() {
       .catch(() => setCustomers([]));
   }, [state.status, role]);
 
+  React.useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (target && customerInputRef.current && !customerInputRef.current.contains(target)) {
+        setCustomerDropdownOpen(false);
+      }
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !customerId) return;
+    if (!title.trim() || !customerInputTrim) return;
     setCreateBusy(true);
     try {
+      const match =
+        matchedCustomer ??
+        customers.find((c) => c.id === customerId);
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), customerId }),
+        body: JSON.stringify({
+          title: title.trim(),
+          ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
+        }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.project?.id) {
         setTitle("");
         setCustomerId("");
-        window.location.href = `/projects/${data.project.id}`;
+        setCustomerInput("");
+        router.push(`/projects/${data.project.id}`);
         return;
       }
     } finally {
@@ -140,7 +176,7 @@ function ProjectsContent() {
               onSubmit={createProject}
               className="rounded-2xl border border-violet-200/80 bg-violet-50/40 p-4 space-y-3"
             >
-              <div className="text-sm font-semibold text-zinc-900">Новый проект</div>
+              <div className="text-sm font-semibold text-zinc-900">Управление проектами</div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block text-xs text-zinc-600">
                   Название
@@ -152,26 +188,63 @@ function ProjectsContent() {
                     required
                   />
                 </label>
-                <label className="block text-xs text-zinc-600">
-                  Заказчик
-                  <select
-                    value={customerId}
-                    onChange={(e) => setCustomerId(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
-                    required
-                  >
-                    <option value="">Выберите…</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="block text-xs text-zinc-600">
+                  <div>Заказчик</div>
+                  <div className="relative mt-1" ref={customerInputRef}>
+                    <input
+                      value={customerInput}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setCustomerInput(value);
+                        const trimmed = value.trim();
+                        const match =
+                          trimmed &&
+                          customers.find((c) => c.name.localeCompare(trimmed, undefined, { sensitivity: "accent" }) === 0);
+                        setCustomerId(match ? match.id : "");
+                        setCustomerDropdownOpen(true);
+                      }}
+                      onFocus={() => setCustomerDropdownOpen(true)}
+                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
+                      placeholder="Выберите из списка или введите название заказчика"
+                      autoComplete="off"
+                      required
+                    />
+                    {customerDropdownOpen ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-56 overflow-y-auto rounded-2xl border border-zinc-200 bg-white/95 py-1 shadow-[0_10px_40px_rgba(17,24,39,0.12)] backdrop-blur">
+                        {customerFiltered.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-zinc-500">
+                            {customerInputTrim ? "Нет совпадений - будет создан новый заказчик" : "Нет заказчиков в списке"}
+                          </div>
+                        ) : (
+                          customerFiltered.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className="block w-full px-4 py-2 text-left text-sm text-zinc-800 transition hover:bg-violet-50"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setCustomerInput(c.name);
+                                setCustomerId(c.id);
+                                setCustomerDropdownOpen(false);
+                              }}
+                            >
+                              {c.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                  {customerInputTrim && !matchedCustomer ? (
+                    <div className="mt-2 border-t border-zinc-200/70 pt-2 text-[11px] text-zinc-500">
+                      Будет создан новый заказчик «{customerInputTrim}»
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <button
                 type="submit"
-                disabled={createBusy}
+                disabled={createBusy || !title.trim() || !customerInputTrim}
                 className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
               >
                 {createBusy ? "Создание…" : "Создать"}

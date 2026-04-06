@@ -372,7 +372,7 @@ model ProjectFile {
   @@index([folderId])
 }
 
-/// Версия сметы проекта (конструктор); актуальная = максимальный versionNumber.
+/// Версия сметы проекта (конструктор); одна версия может быть явно назначена основной.
 model ProjectEstimateVersion {
   id            String  @id @default(cuid())
   projectId     String
@@ -380,6 +380,7 @@ model ProjectEstimateVersion {
 
   versionNumber Int
   note          String?
+  isPrimary     Boolean @default(false)
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -390,6 +391,7 @@ model ProjectEstimateVersion {
 
   @@unique([projectId, versionNumber])
   @@index([projectId])
+  @@index([projectId, isPrimary])
 }
 
 model ProjectEstimateSection {

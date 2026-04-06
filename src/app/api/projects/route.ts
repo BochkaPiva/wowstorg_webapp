@@ -10,7 +10,8 @@ import { ensureDefaultProjectFolders } from "@/server/projects/project-files";
 const CreateSchema = z
   .object({
     title: z.string().trim().min(1).max(300),
-    customerId: z.string().trim().min(1),
+    customerId: z.string().trim().min(1).optional(),
+    customerName: z.string().trim().min(2).max(200).optional(),
     status: z.nativeEnum(ProjectStatus).optional(),
     ball: z.nativeEnum(ProjectBall).optional(),
   })
@@ -60,44 +61,74 @@ export async function POST(req: Request) {
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  const customer = await prisma.customer.findUnique({
-    where: { id: parsed.data.customerId },
-    select: { id: true },
-  });
-  if (!customer) {
-    return jsonError(400, "Заказчик не найден");
+  if (!parsed.data.customerId && !parsed.data.customerName) {
+    return jsonError(400, "Укажите заказчика");
   }
 
-  const project = await prisma.$transaction(async (tx) => {
-    const p = await tx.project.create({
-      data: {
-        title: parsed.data.title,
-        customerId: parsed.data.customerId,
-        ownerUserId: auth.user.id,
-        status: parsed.data.status ?? ProjectStatus.LEAD,
-        ball: parsed.data.ball ?? ProjectBall.CLIENT,
-      },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        ball: true,
-        archivedAt: true,
-        customerId: true,
-        ownerUserId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    await ensureDefaultProjectFolders(tx, p.id);
-    await appendProjectActivityLog(tx, {
-      projectId: p.id,
-      actorUserId: auth.user.id,
-      kind: ProjectActivityKind.PROJECT_CREATED,
-      payload: { title: p.title },
-    });
-    return p;
-  });
+  try {
+    const project = await prisma.$transaction(async (tx) => {
+      let customerId = parsed.data.customerId?.trim() || "";
 
-  return jsonOk({ project });
+      if (!customerId) {
+        const name = parsed.data.customerName!.trim();
+        const existing = await tx.customer.findFirst({
+          where: { name: { equals: name, mode: "insensitive" } },
+          select: { id: true },
+        });
+        if (existing) {
+          customerId = existing.id;
+        } else {
+          const created = await tx.customer.create({
+            data: { name },
+            select: { id: true },
+          });
+          customerId = created.id;
+        }
+      } else {
+        const customer = await tx.customer.findUnique({
+          where: { id: customerId },
+          select: { id: true },
+        });
+        if (!customer) {
+          throw new Error("CUSTOMER_NOT_FOUND");
+        }
+      }
+
+      const p = await tx.project.create({
+        data: {
+          title: parsed.data.title,
+          customerId,
+          ownerUserId: auth.user.id,
+          status: parsed.data.status ?? ProjectStatus.LEAD,
+          ball: parsed.data.ball ?? ProjectBall.CLIENT,
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          ball: true,
+          archivedAt: true,
+          customerId: true,
+          ownerUserId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+      await ensureDefaultProjectFolders(tx, p.id);
+      await appendProjectActivityLog(tx, {
+        projectId: p.id,
+        actorUserId: auth.user.id,
+        kind: ProjectActivityKind.PROJECT_CREATED,
+        payload: { title: p.title },
+      });
+      return p;
+    });
+
+    return jsonOk({ project });
+  } catch (e) {
+    if (e instanceof Error && e.message === "CUSTOMER_NOT_FOUND") {
+      return jsonError(400, "Заказчик не найден");
+    }
+    throw e;
+  }
 }

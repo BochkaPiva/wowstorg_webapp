@@ -74,8 +74,8 @@ function formatProjectDateRange(start: string | null, end: string | null, fallba
   return fallback?.trim() ? fallback : "—";
 }
 
-const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-4 shadow-sm";
-const softShell = "rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm";
+const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-sm sm:p-4";
+const softShell = "rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4";
 const cardTile = "rounded-xl border border-zinc-100 bg-zinc-50/50 px-3 py-3";
 const inputField =
   "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
@@ -84,12 +84,12 @@ const primaryBtn =
 const secondaryBtn =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50";
 const iconBtn =
-  "inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50";
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50";
 const metaBadge =
   "inline-flex items-center rounded-full border border-zinc-200 bg-white/85 px-2.5 py-1 text-xs font-medium text-zinc-700";
 const workTabBtn = (active: boolean) =>
   [
-    "rounded-xl px-3 py-2 text-sm font-semibold transition",
+    "min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition",
     active
       ? "border border-violet-300 bg-violet-600 text-white shadow-sm"
       : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
@@ -267,6 +267,7 @@ export default function ProjectDetailPage() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [archiveBusy, setArchiveBusy] = React.useState(false);
+  const [archiveError, setArchiveError] = React.useState<string | null>(null);
   const [showAllLog, setShowAllLog] = React.useState(false);
   const [activeWorkTab, setActiveWorkTab] = React.useState<"estimate" | "schedule" | "files" | "journal">("estimate");
 
@@ -285,6 +286,9 @@ export default function ProjectDetailPage() {
   >(null);
 
   const readOnly = Boolean(project?.archivedAt);
+  const canArchiveProject =
+    (project?.orders?.length ?? 0) === 0 ||
+    project?.orders?.every((order) => order.status === "CLOSED" || order.status === "CANCELLED");
 
   /** true после первой успешной загрузки проекта — чтобы обновления не размонтировали страницу */
   const hasProjectRef = React.useRef(false);
@@ -346,33 +350,6 @@ export default function ProjectDetailPage() {
     return () => window.removeEventListener("message", onMessage);
   }, [load]);
 
-  async function doSave() {
-    if (!id || readOnly) return;
-    setSaveBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          status,
-          ball,
-          eventStartDate: eventStartDate || null,
-          eventEndDate: eventEndDate || null,
-          eventDateNote: eventDateNote.trim() || null,
-          eventDateConfirmed,
-          openBlockers: openBlockers.trim() || null,
-          internalSummary: internalSummary.trim() || null,
-        }),
-      });
-      if (res.ok) {
-        await load();
-      }
-    } finally {
-      setSaveBusy(false);
-    }
-  }
-
   async function patchField(
     patch: Partial<{
       title: string;
@@ -407,6 +384,7 @@ export default function ProjectDetailPage() {
     if (!id || readOnly) return;
     if (!window.confirm("Убрать проект в архив? После этого редактирование будет недоступно.")) return;
     setArchiveBusy(true);
+    setArchiveError(null);
     try {
       const res = await fetch(`/api/projects/${id}`, {
         method: "PATCH",
@@ -416,6 +394,9 @@ export default function ProjectDetailPage() {
       if (res.ok) {
         router.push("/projects");
         router.refresh();
+      } else {
+        const data = await res.json().catch(() => null);
+        setArchiveError(data?.error?.message ?? "Не удалось завершить проект");
       }
     } finally {
       setArchiveBusy(false);
@@ -454,12 +435,19 @@ export default function ProjectDetailPage() {
               Архив: только просмотр.
             </div>
           ) : null}
+          {archiveError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {archiveError}
+            </div>
+          ) : null}
 
-          <section className="rounded-3xl border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(255,255,255,0.96),rgba(250,204,21,0.06))] p-5 shadow-sm">
+          <section className="rounded-3xl border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(255,255,255,0.96),rgba(250,204,21,0.06))] p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
-                <h1 className="mt-1 text-3xl font-black tracking-tight text-zinc-950">{project.title}</h1>
+                <h1 className="mt-1 break-words text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
+                  {project.title}
+                </h1>
                 <div className="mt-3 text-sm font-semibold text-zinc-900">{PROJECT_STATUS_LABEL[project.status]}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
                   <span className={metaBadge}>Заказчик: {project.customer.name}</span>
@@ -476,23 +464,18 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                {!readOnly ? (
-                  <button
-                    type="button"
-                    onClick={() => void doSave()}
-                    disabled={saveBusy}
-                    className={primaryBtn}
-                  >
-                    {saveBusy ? "Сохранение…" : "Сохранить"}
-                  </button>
-                ) : null}
+              <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap lg:justify-end">
                 {!readOnly ? (
                   <button
                     type="button"
                     onClick={() => void archive()}
-                    disabled={archiveBusy}
-                    className={secondaryBtn}
+                    disabled={archiveBusy || !canArchiveProject}
+                    className={`${secondaryBtn} w-full sm:w-auto`}
+                    title={
+                      canArchiveProject
+                        ? undefined
+                        : "Сначала завершите или отмените все заявки, привязанные к проекту"
+                    }
                   >
                     {archiveBusy ? "…" : "Завершить (в архив)"}
                   </button>
@@ -503,18 +486,18 @@ export default function ProjectDetailPage() {
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
             <section className={`${sectionShell} p-0`}>
-              <div className="border-b border-zinc-100 px-5 py-4">
+              <div className="border-b border-zinc-100 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
                 <p className="mt-1 text-xs text-zinc-500">Главные поля проекта в одном цельном блоке.</p>
               </div>
 
               <div className="divide-y divide-zinc-100">
-                <div className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div className="px-4 py-3 sm:px-5 sm:py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Название</div>
                       {editingField === "title" && !readOnly ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                           <input
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
@@ -525,7 +508,7 @@ export default function ProjectDetailPage() {
                             type="button"
                             disabled={saveBusy || !title.trim()}
                             onClick={() => void patchField({ title: title.trim() })}
-                            className={primaryBtn}
+                            className={`${primaryBtn} w-full sm:w-auto`}
                           >
                             Сохранить
                           </button>
@@ -535,7 +518,7 @@ export default function ProjectDetailPage() {
                               setTitle(project.title);
                               setEditingField(null);
                             }}
-                            className={secondaryBtn}
+                            className={`${secondaryBtn} w-full sm:w-auto`}
                           >
                             Отмена
                           </button>
@@ -560,8 +543,8 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div className="px-4 py-3 sm:px-5 sm:py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Статус и ответственность</div>
                       {editingField === "status" && !readOnly ? (
@@ -588,12 +571,12 @@ export default function ProjectDetailPage() {
                               </option>
                             ))}
                           </select>
-                          <div className="sm:col-span-2 flex flex-wrap gap-2">
+                          <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap">
                             <button
                               type="button"
                               disabled={saveBusy}
                               onClick={() => void patchField({ status, ball })}
-                              className={primaryBtn}
+                              className={`${primaryBtn} w-full sm:w-auto`}
                             >
                               Сохранить
                             </button>
@@ -604,7 +587,7 @@ export default function ProjectDetailPage() {
                                 setBall(project.ball);
                                 setEditingField(null);
                               }}
-                              className={secondaryBtn}
+                              className={`${secondaryBtn} w-full sm:w-auto`}
                             >
                               Отмена
                             </button>
@@ -633,8 +616,8 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div className="px-4 py-3 sm:px-5 sm:py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
                       {editingField === "eventDates" && !readOnly ? (
@@ -659,7 +642,7 @@ export default function ProjectDetailPage() {
                               />
                             </label>
                           </div>
-                          <label className="inline-flex items-center gap-2 text-sm text-zinc-900">
+                          <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-900">
                             <input
                               type="checkbox"
                               checked={eventDateConfirmed}
@@ -667,7 +650,7 @@ export default function ProjectDetailPage() {
                             />
                             Дата подтверждена
                           </label>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                             <button
                               type="button"
                               disabled={saveBusy}
@@ -678,7 +661,7 @@ export default function ProjectDetailPage() {
                                   eventDateConfirmed,
                                 })
                               }
-                              className={primaryBtn}
+                              className={`${primaryBtn} w-full sm:w-auto`}
                             >
                               Сохранить
                             </button>
@@ -690,7 +673,7 @@ export default function ProjectDetailPage() {
                                 setEventDateConfirmed(project.eventDateConfirmed);
                                 setEditingField(null);
                               }}
-                              className={secondaryBtn}
+                              className={`${secondaryBtn} w-full sm:w-auto`}
                             >
                               Отмена
                             </button>
@@ -748,12 +731,12 @@ export default function ProjectDetailPage() {
                       disabled={readOnly}
                     />
                     {!readOnly ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <button
                           type="button"
                           disabled={saveBusy}
                           onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
-                          className={primaryBtn}
+                          className={`${primaryBtn} w-full sm:w-auto`}
                         >
                           Сохранить блокеры
                         </button>
@@ -772,12 +755,12 @@ export default function ProjectDetailPage() {
                       disabled={readOnly}
                     />
                     {!readOnly ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <button
                           type="button"
                           disabled={saveBusy}
                           onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
-                          className={primaryBtn}
+                          className={`${primaryBtn} w-full sm:w-auto`}
                         >
                           Сохранить резюме
                         </button>
@@ -795,7 +778,7 @@ export default function ProjectDetailPage() {
               {!readOnly ? (
                 <Link
                   href={`/catalog?projectId=${encodeURIComponent(id)}`}
-                  className={primaryBtn}
+                  className={`${primaryBtn} w-full sm:w-auto`}
                 >
                   Каталог → новая заявка
                 </Link>
@@ -812,7 +795,7 @@ export default function ProjectDetailPage() {
                 {project.orders.map((o) => (
                   <li key={o.id} className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                     <details className="group">
-                      <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
+                      <summary className="cursor-pointer list-none px-3 py-3 sm:px-4 [&::-webkit-details-marker]:hidden">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-zinc-900 truncate">
@@ -842,11 +825,11 @@ export default function ProjectDetailPage() {
                           <OrderStatusStepper status={o.status} source={o.source} />
                         </div>
                       </summary>
-                      <div className="border-t border-zinc-100 px-2 pb-3 pt-2">
+                      <div className="border-t border-zinc-100 px-2 pb-3 pt-2 sm:px-3">
                         <iframe
                           title={`Заявка ${o.id.slice(0, 8)}`}
                           src={`/orders/${o.id}?embed=1&from=project`}
-                          className="h-[min(72vh,880px)] w-full rounded-lg border border-zinc-200 bg-white"
+                          className="h-[58vh] min-h-[420px] w-full rounded-lg border border-zinc-200 bg-white sm:h-[min(72vh,880px)]"
                         />
                         <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-sm">
                           <Link
@@ -878,7 +861,7 @@ export default function ProjectDetailPage() {
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочая зона</div>
                 <p className="mt-1 text-xs text-zinc-500">Открывай только один большой рабочий блок за раз.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                 <button type="button" onClick={() => setActiveWorkTab("estimate")} className={workTabBtn(activeWorkTab === "estimate")}>
                   Смета
                 </button>

@@ -19,7 +19,21 @@ export async function GET(
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      orders: {
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          status: true,
+          eventName: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+    },
   });
   if (!project) return jsonError(404, "Проект не найден");
 
@@ -33,6 +47,7 @@ export async function GET(
       id: true,
       versionNumber: true,
       note: true,
+      isPrimary: true,
       createdAt: true,
       createdBy: { select: { displayName: true } },
     },
@@ -41,7 +56,7 @@ export async function GET(
   const targetNum =
     versionNumber != null && !Number.isNaN(versionNumber)
       ? versionNumber
-      : versions[0]?.versionNumber ?? null;
+      : versions.find((v) => v.isPrimary)?.versionNumber ?? versions[0]?.versionNumber ?? null;
 
   const versionRow =
     targetNum != null
@@ -62,6 +77,13 @@ export async function GET(
 
   return jsonOk({
     projectTitle: project.title,
+    projectOrders: project.orders.map((o) => ({
+      id: o.id,
+      status: o.status,
+      eventName: o.eventName,
+      startDate: o.startDate.toISOString().slice(0, 10),
+      endDate: o.endDate.toISOString().slice(0, 10),
+    })),
     versions: versions.map((v) => ({
       ...v,
       createdAt: v.createdAt.toISOString(),

@@ -153,14 +153,14 @@ export function ProjectContactsPanel({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 space-y-4">
+    <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Контакты</div>
         {!readOnly ? (
           <button
             type="button"
             onClick={() => setNewContactOpen((v) => !v)}
-            className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+            className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
           >
             {newContactOpen ? "Скрыть" : "Добавить контакт"}
           </button>
@@ -185,7 +185,7 @@ export function ProjectContactsPanel({
                 c.isActive ? "border-zinc-200" : "border-zinc-300 opacity-75",
               ].join(" ")}
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                 <div>
                   <div className="font-semibold text-zinc-900">{c.fullName}</div>
                   <div className="mt-1 text-xs text-zinc-600 space-y-0.5">
@@ -204,7 +204,7 @@ export function ProjectContactsPanel({
                     <button
                       type="button"
                       onClick={() => void toggleActive(c)}
-                      className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                      className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 sm:px-2 sm:py-1 sm:text-xs"
                     >
                       {c.isActive ? "Деактивировать" : "Активировать"}
                     </button>
@@ -253,7 +253,7 @@ export function ProjectContactsPanel({
                     <button
                       type="button"
                       onClick={() => setEntryOpenFor((cur) => (cur === c.id ? null : c.id))}
-                      className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 hover:bg-zinc-50"
+                      className="min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:px-2.5 sm:py-1.5 sm:text-xs"
                     >
                       {entryOpenFor === c.id ? "Скрыть форму записи" : "Добавить запись"}
                     </button>
@@ -271,7 +271,7 @@ export function ProjectContactsPanel({
                           type="button"
                           disabled={entryBusy === c.id || !(drafts[c.id] ?? "").trim()}
                           onClick={() => void addEntry(c.id)}
-                          className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                          className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
                         >
                           {entryBusy === c.id ? "Сохранение…" : "Сохранить запись"}
                         </button>
@@ -286,7 +286,7 @@ export function ProjectContactsPanel({
       )}
 
       {!readOnly ? (
-        <div className="rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3 space-y-2">
+        <div className="space-y-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3">
           {newContactOpen ? (
             <form onSubmit={createContact} className="space-y-2">
               <input
@@ -321,18 +321,18 @@ export function ProjectContactsPanel({
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
                 maxLength={500}
               />
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="submit"
                   disabled={createBusy}
-                  className="rounded-lg border border-violet-400 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  className="min-h-11 rounded-lg border border-violet-400 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
                 >
                   {createBusy ? "Создание…" : "Сохранить контакт"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewContactOpen(false)}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                  className="min-h-11 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
                 >
                   Отмена
                 </button>

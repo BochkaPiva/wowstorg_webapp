@@ -8,7 +8,13 @@ import { daysBetween } from "@/server/orders/order-total";
  */
 export async function seedProjectEstimateFromOrder(
   tx: Prisma.TransactionClient,
-  args: { projectId: string; orderId: string; actorUserId: string },
+  args: {
+    projectId: string;
+    orderId: string;
+    actorUserId: string;
+    targetVersionId?: string;
+    sortOrder?: number;
+  },
 ): Promise<void> {
   const order = await tx.order.findUnique({
     where: { id: args.orderId },
@@ -22,25 +28,37 @@ export async function seedProjectEstimateFromOrder(
   if (!order?.projectId || order.projectId !== args.projectId) return;
   if (order.lines.length === 0) return;
 
-  let latest = await tx.projectEstimateVersion.findFirst({
-    where: { projectId: args.projectId },
-    orderBy: { versionNumber: "desc" },
-  });
+  let latest =
+    args.targetVersionId != null
+      ? await tx.projectEstimateVersion.findFirst({
+          where: { id: args.targetVersionId, projectId: args.projectId },
+        })
+      : await tx.projectEstimateVersion.findFirst({
+          where: { projectId: args.projectId },
+          orderBy: [{ isPrimary: "desc" }, { versionNumber: "desc" }],
+        });
   if (!latest) {
     latest = await tx.projectEstimateVersion.create({
       data: {
         projectId: args.projectId,
         versionNumber: 1,
         createdById: args.actorUserId,
+        isPrimary: true,
       },
     });
   }
 
-  const maxSo = await tx.projectEstimateSection.aggregate({
-    where: { versionId: latest.id },
-    _max: { sortOrder: true },
-  });
-  const sortOrder = (maxSo._max.sortOrder ?? -1) + 1;
+  const resolvedSortOrder =
+    args.sortOrder != null
+      ? args.sortOrder
+      : (() => {
+          return tx.projectEstimateSection
+            .aggregate({
+              where: { versionId: latest.id },
+              _max: { sortOrder: true },
+            })
+            .then((maxSo) => (maxSo._max.sortOrder ?? -1) + 1);
+        })();
   // Важно: количество дней должно совпадать с расчётом суммы заявки (см. src/server/orders/order-total.ts).
   const days = daysBetween(order.startDate, order.endDate);
   const title = `Реквизит · ${order.startDate.toISOString().slice(0, 10)} — ${order.endDate.toISOString().slice(0, 10)} · ${order.id.slice(0, 8)}…`;
@@ -48,7 +66,7 @@ export async function seedProjectEstimateFromOrder(
   const section = await tx.projectEstimateSection.create({
     data: {
       versionId: latest.id,
-      sortOrder,
+      sortOrder: await resolvedSortOrder,
       title,
       kind: ProjectEstimateSectionKind.REQUISITE,
       linkedOrderId: order.id,

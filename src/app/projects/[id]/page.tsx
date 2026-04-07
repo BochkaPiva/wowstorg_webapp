@@ -653,8 +653,8 @@ export default function ProjectDetailPage() {
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-            <section className={`${sectionShell} p-0`}>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className={`${sectionShell} h-full p-0`}>
               <div className="border-b border-zinc-100 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
                 <p className="mt-1 text-xs text-zinc-500">Главные поля проекта в одном цельном блоке.</p>
@@ -871,129 +871,127 @@ export default function ProjectDetailPage() {
               </div>
             </section>
 
-            <div className="space-y-4">
-              <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+            <section className={`${softShell} h-full`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочие заметки</div>
+                  <p className="mt-1 text-xs text-zinc-500">Контекст проекта, риски и внутренние договорённости.</p>
+                </div>
+              </div>
 
-              <section className={softShell}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочие заметки</div>
-                    <p className="mt-1 text-xs text-zinc-500">Контекст проекта, риски и внутренние договорённости.</p>
+              <div className="mt-4 space-y-4">
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
+                      {editingField === "openBlockers" && !readOnly ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={openBlockers}
+                            onChange={(e) => setOpenBlockers(e.target.value)}
+                            rows={4}
+                            className={inputField}
+                            placeholder="Что сейчас мешает движению проекта"
+                          />
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                            <button
+                              type="button"
+                              disabled={saveBusy}
+                              onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
+                              className={`${primaryBtn} w-full sm:w-auto`}
+                            >
+                              Сохранить блокеры
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenBlockers(project.openBlockers ?? "");
+                                setEditingField(null);
+                              }}
+                              className={`${secondaryBtn} w-full sm:w-auto`}
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
+                          {project.openBlockers?.trim() ? project.openBlockers : <span className="text-zinc-400">Пока пусто</span>}
+                        </div>
+                      )}
+                    </div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingField((v) => (v === "openBlockers" ? null : "openBlockers"))}
+                        className={iconBtn}
+                        title="Редактировать блокеры"
+                        aria-label="Редактировать блокеры"
+                      >
+                        <PencilIcon />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Блокеры</div>
-                        {editingField === "openBlockers" && !readOnly ? (
-                          <div className="mt-2 space-y-2">
-                            <textarea
-                              value={openBlockers}
-                              onChange={(e) => setOpenBlockers(e.target.value)}
-                              rows={4}
-                              className={inputField}
-                              placeholder="Что сейчас мешает движению проекта"
-                            />
-                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                              <button
-                                type="button"
-                                disabled={saveBusy}
-                                onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}
-                                className={`${primaryBtn} w-full sm:w-auto`}
-                              >
-                                Сохранить блокеры
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenBlockers(project.openBlockers ?? "");
-                                  setEditingField(null);
-                                }}
-                                className={`${secondaryBtn} w-full sm:w-auto`}
-                              >
-                                Отмена
-                              </button>
-                            </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
+                      {editingField === "internalSummary" && !readOnly ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            value={internalSummary}
+                            onChange={(e) => setInternalSummary(e.target.value)}
+                            rows={5}
+                            className={inputField}
+                            placeholder="Короткая суть проекта, важные договорённости, контекст"
+                          />
+                          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                            <button
+                              type="button"
+                              disabled={saveBusy}
+                              onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
+                              className={`${primaryBtn} w-full sm:w-auto`}
+                            >
+                              Сохранить резюме
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInternalSummary(project.internalSummary ?? "");
+                                setEditingField(null);
+                              }}
+                              className={`${secondaryBtn} w-full sm:w-auto`}
+                            >
+                              Отмена
+                            </button>
                           </div>
-                        ) : (
-                          <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
-                            {project.openBlockers?.trim() ? project.openBlockers : <span className="text-zinc-400">Пока пусто</span>}
-                          </div>
-                        )}
-                      </div>
-                      {!readOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => setEditingField((v) => (v === "openBlockers" ? null : "openBlockers"))}
-                          className={iconBtn}
-                          title="Редактировать блокеры"
-                          aria-label="Редактировать блокеры"
-                        >
-                          <PencilIcon />
-                        </button>
-                      ) : null}
+                        </div>
+                      ) : (
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
+                          {project.internalSummary?.trim() ? project.internalSummary : <span className="text-zinc-400">Пока пусто</span>}
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Внутреннее резюме</div>
-                        {editingField === "internalSummary" && !readOnly ? (
-                          <div className="mt-2 space-y-2">
-                            <textarea
-                              value={internalSummary}
-                              onChange={(e) => setInternalSummary(e.target.value)}
-                              rows={5}
-                              className={inputField}
-                              placeholder="Короткая суть проекта, важные договорённости, контекст"
-                            />
-                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                              <button
-                                type="button"
-                                disabled={saveBusy}
-                                onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}
-                                className={`${primaryBtn} w-full sm:w-auto`}
-                              >
-                                Сохранить резюме
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setInternalSummary(project.internalSummary ?? "");
-                                  setEditingField(null);
-                                }}
-                                className={`${secondaryBtn} w-full sm:w-auto`}
-                              >
-                                Отмена
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">
-                            {project.internalSummary?.trim() ? project.internalSummary : <span className="text-zinc-400">Пока пусто</span>}
-                          </div>
-                        )}
-                      </div>
-                      {!readOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => setEditingField((v) => (v === "internalSummary" ? null : "internalSummary"))}
-                          className={iconBtn}
-                          title="Редактировать резюме"
-                          aria-label="Редактировать резюме"
-                        >
-                          <PencilIcon />
-                        </button>
-                      ) : null}
-                    </div>
+                    {!readOnly ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingField((v) => (v === "internalSummary" ? null : "internalSummary"))}
+                        className={iconBtn}
+                        title="Редактировать резюме"
+                        aria-label="Редактировать резюме"
+                      >
+                        <PencilIcon />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-              </section>
-            </div>
+              </div>
+            </section>
           </div>
+
+          <ProjectContactsPanel projectId={id} readOnly={readOnly} />
 
           <div className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">

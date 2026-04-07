@@ -1483,8 +1483,6 @@ function RequisiteSectionEditor({
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [eventName, setEventName] = React.useState("");
-  const [orderComment, setOrderComment] = React.useState("");
   const [lines, setLines] = React.useState<
     Array<{
       id?: string;
@@ -1532,8 +1530,6 @@ function RequisiteSectionEditor({
       }
       const nextOrder = orderJson.order;
       setOrder(nextOrder);
-      setEventName(nextOrder.eventName ?? "");
-      setOrderComment(nextOrder.comment ?? "");
       setLines(
         nextOrder.lines.map((line) => ({
           id: line.id,
@@ -1611,8 +1607,6 @@ function RequisiteSectionEditor({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          eventName: eventName.trim() || null,
-          comment: orderComment.trim() || null,
           deliveryEnabled: services.deliveryEnabled,
           deliveryComment: services.deliveryComment.trim() || null,
           deliveryPrice:
@@ -1753,31 +1747,6 @@ function RequisiteSectionEditor({
 
       <div className="space-y-3">
         <div className="space-y-3">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
-            <div className="grid gap-3 xl:grid-cols-2">
-              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Название мероприятия
-                <input
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                  className={`mt-2 w-full ${inputField}`}
-                  disabled={!editable}
-                  placeholder="Название заявки / события"
-                />
-              </label>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Общий комментарий
-                <input
-                  value={orderComment}
-                  onChange={(e) => setOrderComment(e.target.value)}
-                  className={`mt-2 w-full ${inputField}`}
-                  disabled={!editable}
-                  placeholder="Комментарий по заявке"
-                />
-              </label>
-            </div>
-          </div>
-
           <div className="space-y-2">
             {lines.map((line, index) => (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">

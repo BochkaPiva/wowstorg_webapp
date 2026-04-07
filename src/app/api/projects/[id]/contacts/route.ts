@@ -18,6 +18,12 @@ const CreateContactSchema = z
   })
   .strict();
 
+const ReorderContactsSchema = z
+  .object({
+    orderedIds: z.array(z.string().trim().min(1)).min(1).max(500),
+  })
+  .strict();
+
 function normalizeOptional(s: string | null | undefined): string | null {
   if (s == null) return null;
   const t = s.trim();
@@ -42,7 +48,7 @@ export async function GET(
 
   const contacts = await prisma.projectContact.findMany({
     where: { projectId },
-    orderBy: [{ isActive: "desc" }, { createdAt: "asc" }],
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     select: {
       id: true,
       fullName: true,
@@ -51,6 +57,7 @@ export async function GET(
       category: true,
       roleNote: true,
       isActive: true,
+      sortOrder: true,
       createdAt: true,
       updatedAt: true,
       entries: {
@@ -110,6 +117,10 @@ export async function POST(
   }
 
   const contact = await prisma.$transaction(async (tx) => {
+    const sortAgg = await tx.projectContact.aggregate({
+      where: { projectId },
+      _max: { sortOrder: true },
+    });
     const row = await tx.projectContact.create({
       data: {
         projectId,
@@ -118,6 +129,7 @@ export async function POST(
         email,
         category: parsed.data.category ?? ProjectContactCategory.DECISION_MAKER,
         roleNote: normalizeOptional(parsed.data.roleNote ?? undefined),
+        sortOrder: (sortAgg._max.sortOrder ?? -1) + 1,
       },
       select: {
         id: true,
@@ -127,6 +139,7 @@ export async function POST(
         category: true,
         roleNote: true,
         isActive: true,
+        sortOrder: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -163,4 +176,49 @@ export async function POST(
       entries: [],
     },
   });
+}
+
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id: projectId } = await ctx.params;
+  if (!projectId?.trim()) return jsonError(400, "Invalid id");
+
+  const guard = await assertProjectEditable(projectId);
+  if (!guard.ok) return jsonError(guard.status, guard.message);
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "Invalid JSON body");
+  }
+
+  const parsed = ReorderContactsSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(400, "Invalid input", parsed.error.flatten());
+  }
+
+  const uniqueIds = Array.from(new Set(parsed.data.orderedIds));
+  const count = await prisma.projectContact.count({
+    where: { projectId, id: { in: uniqueIds } },
+  });
+  if (count !== uniqueIds.length) {
+    return jsonError(400, "Некоторые контакты не найдены");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const [index, contactId] of uniqueIds.entries()) {
+      await tx.projectContact.update({
+        where: { id: contactId },
+        data: { sortOrder: index },
+      });
+    }
+  });
+
+  return jsonOk({ ok: true });
 }

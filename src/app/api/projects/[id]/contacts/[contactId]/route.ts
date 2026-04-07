@@ -16,6 +16,7 @@ const PatchSchema = z
     category: z.nativeEnum(ProjectContactCategory).optional(),
     roleNote: z.string().trim().max(500).optional().nullable(),
     isActive: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).max(10000).optional(),
   })
   .strict();
 
@@ -66,6 +67,7 @@ export async function PATCH(
     category?: ProjectContactCategory;
     roleNote?: string | null;
     isActive?: boolean;
+    sortOrder?: number;
   } = {};
 
   if (parsed.data.fullName !== undefined) data.fullName = parsed.data.fullName.trim();
@@ -74,8 +76,9 @@ export async function PATCH(
   if (parsed.data.category !== undefined) data.category = parsed.data.category;
   if (parsed.data.roleNote !== undefined) data.roleNote = normalizeOptional(parsed.data.roleNote ?? undefined);
   if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+  if (parsed.data.sortOrder !== undefined) data.sortOrder = parsed.data.sortOrder;
 
-  const fieldKeys = ["fullName", "phone", "email", "category", "roleNote", "isActive"] as const;
+  const fieldKeys = ["fullName", "phone", "email", "category", "roleNote", "isActive", "sortOrder"] as const;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -88,6 +91,7 @@ export async function PATCH(
           category: true,
           roleNote: true,
           isActive: true,
+          sortOrder: true,
         },
       });
       if (!before) {
@@ -115,6 +119,7 @@ export async function PATCH(
           category: true,
           roleNote: true,
           isActive: true,
+          sortOrder: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -162,4 +167,42 @@ export async function PATCH(
     }
     throw e;
   }
+}
+
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string; contactId: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id: projectId, contactId } = await ctx.params;
+  if (!projectId?.trim() || !contactId?.trim()) return jsonError(400, "Invalid id");
+
+  const guard = await assertProjectEditable(projectId);
+  if (!guard.ok) return jsonError(guard.status, guard.message);
+
+  const before = await prisma.projectContact.findFirst({
+    where: { id: contactId, projectId },
+    select: { id: true, fullName: true, category: true },
+  });
+  if (!before) return jsonError(404, "Контакт не найден");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectContact.delete({ where: { id: contactId } });
+  });
+
+  scheduleAfterResponse("notifyProjectContactDeleted", async () => {
+    const { notifyProjectContactChange } = await import("@/server/projects/project-notifications");
+    await notifyProjectContactChange({
+      projectId,
+      actorUserId: auth.user.id,
+      contactName: before.fullName,
+      category: before.category,
+      action: "updated",
+      changes: { deleted: { from: before.fullName, to: "удалён" } },
+    });
+  });
+
+  return jsonOk({ ok: true });
 }

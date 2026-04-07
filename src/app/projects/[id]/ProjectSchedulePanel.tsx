@@ -37,6 +37,21 @@ function parseIntervalEnd(intervalText: string): string | null {
   return match?.[2] ?? null;
 }
 
+function draftScheduleStorageKey(projectId: string) {
+  return `project-schedule-draft:${projectId}`;
+}
+
+function makeTempId(prefix: string) {
+  return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function cloneDays(days: Day[]): Day[] {
+  return days.map((day) => ({
+    ...day,
+    slots: day.slots.map((slot) => ({ ...slot })),
+  }));
+}
+
 export function ProjectSchedulePanel({
   projectId,
   readOnly,
@@ -44,11 +59,14 @@ export function ProjectSchedulePanel({
   projectId: string;
   readOnly: boolean;
 }) {
-  const [days, setDays] = React.useState<Day[]>([]);
+  const [serverDays, setServerDays] = React.useState<Day[]>([]);
+  const [draftDays, setDraftDays] = React.useState<Day[]>([]);
+  const [draftDirty, setDraftDirty] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [newDayNote, setNewDayNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const storageKey = React.useMemo(() => draftScheduleStorageKey(projectId), [projectId]);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -56,95 +74,150 @@ export function ProjectSchedulePanel({
       .then((r) => r.json())
       .then((j: { days?: Day[]; error?: { message?: string } }) => {
         if (j.days) {
-          setDays(j.days);
+          setServerDays(j.days);
+          const raw = window.localStorage.getItem(storageKey);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { days?: Day[] };
+              if (Array.isArray(parsed.days)) {
+                setDraftDays(parsed.days);
+                setDraftDirty(true);
+              } else {
+                setDraftDays(cloneDays(j.days));
+                setDraftDirty(false);
+              }
+            } catch {
+              setDraftDays(cloneDays(j.days));
+              setDraftDirty(false);
+            }
+          } else {
+            setDraftDays(cloneDays(j.days));
+            setDraftDirty(false);
+          }
           setError(null);
         } else setError(j.error?.message ?? "Ошибка загрузки");
       })
       .catch(() => setError("Ошибка загрузки"))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, storageKey]);
 
   React.useEffect(() => {
     load();
   }, [load]);
 
-  async function addDay(e: React.FormEvent) {
+  React.useEffect(() => {
+    if (!draftDirty) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify({ days: draftDays }));
+  }, [draftDays, draftDirty, storageKey]);
+
+  function mutateDays(mutator: (prev: Day[]) => Day[]) {
+    setDraftDays((prev) => mutator(prev));
+    setDraftDirty(true);
+  }
+
+  function addDay(e: React.FormEvent) {
     e.preventDefault();
     if (!newDayNote.trim() || readOnly) return;
+    mutateDays((prev) => [
+      ...prev,
+      {
+        id: makeTempId("day"),
+        sortOrder: prev.length,
+        dateNote: newDayNote.trim(),
+        slots: [],
+      },
+    ]);
+    setNewDayNote("");
+  }
+
+  function patchDay(dayId: string, patch: { dateNote?: string }) {
+    mutateDays((prev) =>
+      prev.map((day) => (day.id === dayId ? { ...day, ...(patch.dateNote != null ? { dateNote: patch.dateNote } : {}) } : day)),
+    );
+  }
+
+  function deleteDay(dayId: string) {
+    if (!window.confirm("Удалить день и все слоты?")) return;
+    mutateDays((prev) =>
+      prev
+        .filter((day) => day.id !== dayId)
+        .map((day, index) => ({ ...day, sortOrder: index })),
+    );
+  }
+
+  function addSlot(dayId: string, intervalText: string, description: string) {
+    mutateDays((prev) =>
+      prev.map((day) => {
+        if (day.id !== dayId) return day;
+        return {
+          ...day,
+          slots: [
+            ...day.slots,
+            {
+              id: makeTempId("slot"),
+              sortOrder: day.slots.length,
+              intervalText,
+              description,
+            },
+          ],
+        };
+      }),
+    );
+  }
+
+  function deleteSlot(slotId: string) {
+    mutateDays((prev) =>
+      prev.map((day) => ({
+        ...day,
+        slots: day.slots
+          .filter((slot) => slot.id !== slotId)
+          .map((slot, index) => ({ ...slot, sortOrder: index })),
+      })),
+    );
+  }
+
+  async function saveDraft() {
+    if (readOnly) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/schedule`, {
-        method: "POST",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dateNote: newDayNote.trim() }),
+        body: JSON.stringify({
+          days: draftDays.map((day, dayIndex) => ({
+            id: day.id.startsWith("draft-") ? undefined : day.id,
+            sortOrder: dayIndex,
+            dateNote: day.dateNote.trim(),
+            slots: day.slots.map((slot, slotIndex) => ({
+              id: slot.id.startsWith("draft-") ? undefined : slot.id,
+              sortOrder: slotIndex,
+              intervalText: slot.intervalText.trim(),
+              description: slot.description.trim(),
+            })),
+          })),
+        }),
       });
       const j = await res.json().catch(() => null);
       if (res.ok) {
-        setNewDayNote("");
+        setDraftDirty(false);
+        window.localStorage.removeItem(storageKey);
         load();
-      } else window.alert(j?.error?.message ?? "Ошибка");
+      } else {
+        window.alert(j?.error?.message ?? "Ошибка");
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function patchDay(dayId: string, patch: object) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load();
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteDay(dayId: string) {
-    if (!window.confirm("Удалить день и все слоты?")) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}`, { method: "DELETE" });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load();
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addSlot(dayId: string, intervalText: string, description: string) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/schedule/days/${dayId}/slots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intervalText, description }),
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load();
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteSlot(slotId: string) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/schedule/slots/${slotId}`, {
-        method: "DELETE",
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load();
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
+  function discardDraft() {
+    if (!window.confirm("Сбросить несохранённые изменения тайминга?")) return;
+    window.localStorage.removeItem(storageKey);
+    setDraftDays(cloneDays(serverDays));
+    setDraftDirty(false);
   }
 
   const exportHref = `/api/projects/${projectId}/schedule/export`;
@@ -153,18 +226,45 @@ export function ProjectSchedulePanel({
     <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Тайминг-сценарий</div>
-        <a
-          href={exportHref}
-          className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Экспорт .docx
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          {!readOnly ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || !draftDirty}
+                onClick={() => void saveDraft()}
+                className={btnPrimary}
+              >
+                Сохранить тайминг
+              </button>
+              <button
+                type="button"
+                disabled={busy || !draftDirty}
+                onClick={discardDraft}
+                className={btnSecondaryXs}
+              >
+                Сбросить
+              </button>
+            </>
+          ) : null}
+          <a
+            href={exportHref}
+            className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Экспорт .docx
+          </a>
+        </div>
       </div>
       <p className="text-xs text-zinc-500">
-        Дни и слоты (интервал + описание). В Word — таблица «Интервал» и «Описание сценария» по каждому дню.
+        Дни и слоты теперь можно собирать как черновик без перезагрузки блока. В БД тайминг уходит только после явного сохранения.
       </p>
+      {!readOnly && draftDirty ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          Есть несохранённые изменения в тайминге.
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -191,10 +291,10 @@ export function ProjectSchedulePanel({
           ) : null}
 
           <div className="space-y-4">
-            {days.length === 0 ? (
+            {draftDays.length === 0 ? (
               <p className="text-sm text-zinc-600">Пока нет дней.</p>
             ) : (
-              days.map((d) => (
+              draftDays.map((d) => (
                 <DayBlock
                   key={d.id}
                   day={d}

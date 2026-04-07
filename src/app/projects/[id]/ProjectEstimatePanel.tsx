@@ -58,6 +58,33 @@ type EstSection = {
   lines: EstLine[];
 };
 
+type LocalDraftLine = {
+  id: string;
+  position: number;
+  lineNumber: number;
+  name: string;
+  description: string | null;
+  lineType: string;
+  costClient: string | null;
+  costInternal: string | null;
+  orderLineId: null;
+  itemId: null;
+};
+
+type LocalDraftSection = {
+  id: string;
+  sortOrder: number;
+  title: string;
+  kind: "LOCAL";
+  linkedOrderId: null;
+  lines: LocalDraftLine[];
+};
+
+type StoredEstimateDraft = {
+  versionNumber: number;
+  sections: LocalDraftSection[];
+};
+
 type VersionMeta = {
   id: string;
   versionNumber: number;
@@ -117,12 +144,60 @@ function formatOrderMoney(n: number) {
   return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
 }
 
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  SUBMITTED: "Новая",
+  ESTIMATE_SENT: "Смета отправлена",
+  CHANGES_REQUESTED: "Изменения",
+  APPROVED_BY_GREENWICH: "Согласована",
+  PICKING: "Сборка",
+  ISSUED: "Выдана",
+  RETURN_DECLARED: "Ожидает приемки",
+  CLOSED: "Закрыта",
+  CANCELLED: "Отменена",
+};
+
+function orderStatusLabel(status: string) {
+  return ORDER_STATUS_LABEL[status] ?? status;
+}
+
 function daysBetween(startDate: string, endDate: string): number {
   const a = new Date(`${startDate}T12:00:00`);
   const b = new Date(`${endDate}T12:00:00`);
   const ms = b.getTime() - a.getTime();
   const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
   return days === 0 ? 1 : days;
+}
+
+function draftEstimateStorageKey(projectId: string, versionNumber: number) {
+  return `project-estimate-draft:${projectId}:v${versionNumber}`;
+}
+
+function makeTempId(prefix: string) {
+  return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
+  return sections
+    .filter((section): section is EstSection & { kind: "LOCAL" } => section.kind === "LOCAL")
+    .map((section) => ({
+      id: section.id,
+      sortOrder: section.sortOrder,
+      title: section.title,
+      kind: "LOCAL",
+      linkedOrderId: null,
+      lines: section.lines.map((line) => ({
+        id: line.id,
+        position: line.position,
+        lineNumber: line.lineNumber,
+        name: line.name,
+        description: line.description,
+        lineType: line.lineType,
+        costClient: line.costClient,
+        costInternal: line.costInternal,
+        orderLineId: null,
+        itemId: null,
+      })),
+    }));
 }
 
 export function ProjectEstimatePanel({
@@ -143,6 +218,8 @@ export function ProjectEstimatePanel({
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
   const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
+  const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
 
   const load = React.useCallback(
     (v: number | null) => {
@@ -156,6 +233,33 @@ export function ProjectEstimatePanel({
             setData(null);
           } else {
             setData(j);
+            const versionNumber = j.current?.versionNumber ?? null;
+            const baseSections = j.current?.sections ? cloneLocalSections(j.current.sections) : [];
+            if (versionNumber != null) {
+              const storageKey = draftEstimateStorageKey(projectId, versionNumber);
+              const raw = window.localStorage.getItem(storageKey);
+              if (raw) {
+                try {
+                  const parsed = JSON.parse(raw) as StoredEstimateDraft;
+                  if (parsed.versionNumber === versionNumber && Array.isArray(parsed.sections)) {
+                    setLocalSectionsDraft(parsed.sections);
+                    setEstimateDraftDirty(true);
+                  } else {
+                    setLocalSectionsDraft(baseSections);
+                    setEstimateDraftDirty(false);
+                  }
+                } catch {
+                  setLocalSectionsDraft(baseSections);
+                  setEstimateDraftDirty(false);
+                }
+              } else {
+                setLocalSectionsDraft(baseSections);
+                setEstimateDraftDirty(false);
+              }
+            } else {
+              setLocalSectionsDraft([]);
+              setEstimateDraftDirty(false);
+            }
             setError(null);
             setVersionPickerOpen(false);
             setActionsOpen(false);
@@ -182,8 +286,40 @@ export function ProjectEstimatePanel({
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
   }, [load, selectedVersion]);
 
+  React.useEffect(() => {
+    function closeMenus() {
+      setVersionPickerOpen(false);
+      setActionsOpen(false);
+    }
+    if (!versionPickerOpen && !actionsOpen) return;
+    window.addEventListener("click", closeMenus);
+    return () => window.removeEventListener("click", closeMenus);
+  }, [versionPickerOpen, actionsOpen]);
+
   function refreshActivity() {
     window.dispatchEvent(new CustomEvent("project-activity-refresh"));
+  }
+
+  const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
+  const estimateDraftStorageKey =
+    currentVersionNumber != null ? draftEstimateStorageKey(projectId, currentVersionNumber) : null;
+
+  React.useEffect(() => {
+    if (!estimateDraftStorageKey) return;
+    if (!estimateDraftDirty) {
+      window.localStorage.removeItem(estimateDraftStorageKey);
+      return;
+    }
+    const payload: StoredEstimateDraft = {
+      versionNumber: currentVersionNumber!,
+      sections: localSectionsDraft,
+    };
+    window.localStorage.setItem(estimateDraftStorageKey, JSON.stringify(payload));
+  }, [currentVersionNumber, estimateDraftDirty, estimateDraftStorageKey, localSectionsDraft]);
+
+  function mutateLocalSections(mutator: (prev: LocalDraftSection[]) => LocalDraftSection[]) {
+    setLocalSectionsDraft((prev) => mutator(prev));
+    setEstimateDraftDirty(true);
   }
 
   async function createVersion(duplicate: boolean) {
@@ -279,89 +415,176 @@ export function ProjectEstimatePanel({
     }
   }
 
-  async function addSection(e: React.FormEvent) {
+  function addSection(e: React.FormEvent) {
     e.preventDefault();
     if (!newSectionTitle.trim() || readOnly) return;
-    const vn = selectedVersion ?? data?.current?.versionNumber ?? undefined;
+    mutateLocalSections((prev) => [
+      ...prev,
+      {
+        id: makeTempId("section"),
+        sortOrder: prev.length,
+        title: newSectionTitle.trim(),
+        kind: "LOCAL",
+        linkedOrderId: null,
+        lines: [],
+      },
+    ]);
+    setNewSectionTitle("");
+  }
+
+  function deleteSection(id: string) {
+    if (!window.confirm("Удалить раздел и все его строки?")) return;
+    mutateLocalSections((prev) =>
+      prev
+        .filter((section) => section.id !== id)
+        .map((section, index) => ({ ...section, sortOrder: index })),
+    );
+  }
+
+  function patchSection(sectionId: string, patch: { title?: string }) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              ...(patch.title != null ? { title: patch.title } : {}),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function saveLine(sectionId: string, lineId: string, patch: Record<string, unknown>) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines.map((line) =>
+                line.id === lineId
+                  ? {
+                      ...line,
+                      ...(typeof patch.name === "string" ? { name: patch.name } : {}),
+                      ...(Object.prototype.hasOwnProperty.call(patch, "description")
+                        ? { description: (patch.description as string | null) ?? null }
+                        : {}),
+                      ...(Object.prototype.hasOwnProperty.call(patch, "costClient")
+                        ? {
+                            costClient:
+                              patch.costClient == null ? null : String(patch.costClient),
+                          }
+                        : {}),
+                      ...(Object.prototype.hasOwnProperty.call(patch, "costInternal")
+                        ? {
+                            costInternal:
+                              patch.costInternal == null ? null : String(patch.costInternal),
+                          }
+                        : {}),
+                    }
+                  : line,
+              ),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function deleteLine(sectionId: string, lineId: string) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines
+                .filter((line) => line.id !== lineId)
+                .map((line, index) => ({ ...line, position: index, lineNumber: index + 1 })),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function addLine(sectionId: string, payload: {
+    name: string;
+    description: string | null;
+    costClient: number | null;
+    costInternal: number | null;
+  }) {
+    mutateLocalSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        const index = section.lines.length;
+        return {
+          ...section,
+          lines: [
+            ...section.lines,
+            {
+              id: makeTempId("line"),
+              position: index,
+              lineNumber: index + 1,
+              name: payload.name,
+              description: payload.description,
+              lineType: "OTHER",
+              costClient: payload.costClient == null ? null : String(payload.costClient),
+              costInternal: payload.costInternal == null ? null : String(payload.costInternal),
+              orderLineId: null,
+              itemId: null,
+            },
+          ],
+        };
+      }),
+    );
+  }
+
+  async function saveEstimateDraft() {
+    if (readOnly || currentVersionNumber == null) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/sections`, {
-        method: "POST",
+      const res = await fetch(`/api/projects/${projectId}/estimate`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newSectionTitle.trim(), versionNumber: vn }),
+        body: JSON.stringify({
+          versionNumber: currentVersionNumber,
+          localSections: localSectionsDraft.map((section, sectionIndex) => ({
+            id: section.id.startsWith("draft-") ? undefined : section.id,
+            title: section.title.trim(),
+            sortOrder: sectionIndex,
+            lines: section.lines.map((line, lineIndex) => ({
+              id: line.id.startsWith("draft-") ? undefined : line.id,
+              position: lineIndex,
+              lineNumber: lineIndex + 1,
+              name: line.name.trim(),
+              description: line.description?.trim() || null,
+              lineType: line.lineType || "OTHER",
+              costClient: line.costClient == null || line.costClient === "" ? null : Number(line.costClient),
+              costInternal: line.costInternal == null || line.costInternal === "" ? null : Number(line.costInternal),
+            })),
+          })),
+        }),
       });
       const j = await res.json().catch(() => null);
       if (res.ok) {
-        setNewSectionTitle("");
+        setEstimateDraftDirty(false);
+        if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
         load(selectedVersion);
-      } else window.alert(j?.error?.message ?? "Ошибка");
+        refreshActivity();
+      } else {
+        window.alert(j?.error?.message ?? "Ошибка");
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function deleteSection(id: string) {
-    if (!window.confirm("Удалить раздел и все его строки?")) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/sections/${id}`, {
-        method: "DELETE",
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load(selectedVersion);
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
+  function discardEstimateDraft() {
+    if (!window.confirm("Сбросить несохранённые изменения сметы?")) return;
+    if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
+    const baseSections = data?.current?.sections ? cloneLocalSections(data.current.sections) : [];
+    setLocalSectionsDraft(baseSections);
+    setEstimateDraftDirty(false);
   }
 
-  async function patchSection(sectionId: string, patch: { title?: string }) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/sections/${sectionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load(selectedVersion);
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveLine(lineId: string, patch: Record<string, unknown>) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/lines/${lineId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load(selectedVersion);
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteLine(lineId: string) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/lines/${lineId}`, {
-        method: "DELETE",
-      });
-      const j = await res.json().catch(() => null);
-      if (res.ok) load(selectedVersion);
-      else window.alert(j?.error?.message ?? "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const vn = selectedVersion ?? data?.current?.versionNumber ?? null;
+  const vn = currentVersionNumber;
   const currentVersionMeta = data?.versions.find((v) => v.versionNumber === vn) ?? null;
   const exportHref =
     vn != null
@@ -401,9 +624,15 @@ export function ProjectEstimatePanel({
     return map;
   }, [orderedProjectOrders]);
 
+  const renderedSections = React.useMemo(() => {
+    if (!data?.current) return [];
+    const requisites = data.current.sections.filter((section) => section.kind === "REQUISITE");
+    return [...requisites, ...localSectionsDraft].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [data?.current, localSectionsDraft]);
+
   const totals = React.useMemo(() => {
     const COMMISSION_RATE = 0.15;
-    const sections = data?.current?.sections ?? [];
+    const sections = renderedSections;
     let clientSubtotal = 0;
     let internalSubtotal = 0;
     for (const s of sections) {
@@ -426,7 +655,7 @@ export function ProjectEstimatePanel({
       profit,
       profitPct,
     };
-  }, [data?.current?.sections]);
+  }, [renderedSections]);
 
   function money(n: number) {
     if (!Number.isFinite(n)) return "—";
@@ -437,51 +666,48 @@ export function ProjectEstimatePanel({
     <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
-        {vn != null ? (
-          <a
-            href={exportHref}
-            className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Скачать XLSX
-          </a>
-        ) : null}
-      </div>
-      {data?.current ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <div className="text-[11px] font-semibold text-zinc-600">Сумма (клиент)</div>
-            <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.clientSubtotal)} ₽</div>
-          </div>
-          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-            <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
-            <div className="mt-1 text-base font-bold tabular-nums text-violet-900">{money(totals.commission)} ₽</div>
-          </div>
-          <div className="rounded-xl border border-violet-300 bg-violet-100/70 px-3 py-2">
-            <div className="text-[11px] font-semibold text-violet-900">Итого клиент</div>
-            <div className="mt-1 text-base font-extrabold tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</div>
-          </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-            <div className="text-[11px] font-semibold text-amber-900">Себестоимость</div>
-            <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.internalSubtotal)} ₽</div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <div className="text-[11px] font-semibold text-emerald-900">Прибыль</div>
-            <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">{money(totals.profit)} ₽</div>
-          </div>
-          <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2">
-            <div className="text-[11px] font-semibold text-emerald-900">Маржа</div>
-            <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">
-              {Number.isFinite(totals.profitPct) ? `${totals.profitPct.toFixed(0)}%` : "—"}
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!readOnly && data?.current ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || !estimateDraftDirty}
+                onClick={() => void saveEstimateDraft()}
+                className={btnPrimary}
+              >
+                Сохранить смету
+              </button>
+              <button
+                type="button"
+                disabled={busy || !estimateDraftDirty}
+                onClick={discardEstimateDraft}
+                className={btnSecondary}
+              >
+                Сбросить черновик
+              </button>
+            </>
+          ) : null}
+          {vn != null ? (
+            <a
+              href={exportHref}
+              className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Скачать XLSX
+            </a>
+          ) : null}
         </div>
-      ) : null}
+      </div>
       <p className="text-xs text-zinc-500">
-        Блоки реквизита читаются из живых заявок проекта, а локальные разделы остаются внутри версии сметы.
+        Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и сохранить в БД одним действием.
         Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
       </p>
+      {!readOnly && estimateDraftDirty ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          Есть несохранённые изменения в локальных разделах сметы.
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -759,7 +985,7 @@ export function ProjectEstimatePanel({
               ) : null}
 
               <div className="space-y-4">
-                {data.current.sections.map((sec) => (
+                {renderedSections.map((sec) => (
                   <EstimateSectionBlock
                     key={sec.id}
                     sec={sec}
@@ -785,6 +1011,7 @@ export function ProjectEstimatePanel({
                         {sec.lines.map((ln) => (
                           <LineEditor
                             key={ln.id}
+                            sectionId={sec.id}
                             line={ln}
                             readOnly={readOnly}
                             busy={busy}
@@ -795,16 +1022,44 @@ export function ProjectEstimatePanel({
 
                         {!readOnly ? (
                           <AddLineForm
-                            projectId={projectId}
                             sectionId={sec.id}
                             busy={busy}
-                            onDone={() => load(selectedVersion)}
+                            onAdd={addLine}
                           />
                         ) : null}
                       </>
                     )}
                   </EstimateSectionBlock>
                 ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-6">
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-zinc-600">Сумма (клиент)</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.clientSubtotal)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-violet-900">{money(totals.commission)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-violet-300 bg-violet-100/70 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-violet-900">Итого клиент</div>
+                  <div className="mt-1 text-base font-extrabold tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-amber-900">Себестоимость</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.internalSubtotal)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-emerald-900">Прибыль</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">{money(totals.profit)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2">
+                  <div className="text-[11px] font-semibold text-emerald-900">Маржа</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">
+                    {Number.isFinite(totals.profitPct) ? `${totals.profitPct.toFixed(0)}%` : "—"}
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -983,17 +1238,19 @@ function EstimateSectionBlock({
 }
 
 function LineEditor({
+  sectionId,
   line,
   readOnly,
   busy,
   onSave,
   onDelete,
 }: {
+  sectionId: string;
   line: EstLine;
   readOnly: boolean;
   busy: boolean;
-  onSave: (id: string, p: Record<string, unknown>) => void;
-  onDelete: (id: string) => void;
+  onSave: (sectionId: string, id: string, p: Record<string, unknown>) => void;
+  onDelete: (sectionId: string, id: string) => void;
 }) {
   const [name, setName] = React.useState(line.name);
   const [cc, setCc] = React.useState(line.costClient ?? "");
@@ -1063,7 +1320,7 @@ function LineEditor({
               disabled={busy}
               className="min-h-10 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 xl:text-xs"
               onClick={() =>
-                void onSave(line.id, {
+                void onSave(sectionId, line.id, {
                   name: name.trim(),
                   description: desc.trim() || null,
                   costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
@@ -1078,7 +1335,7 @@ function LineEditor({
                 type="button"
                 disabled={busy}
                 className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
-                onClick={() => void onDelete(line.id)}
+                onClick={() => void onDelete(sectionId, line.id)}
               >
                 Удалить
               </button>
@@ -1091,51 +1348,58 @@ function LineEditor({
 }
 
 function AddLineForm({
-  projectId,
   sectionId,
   busy,
-  onDone,
+  onAdd,
 }: {
-  projectId: string;
   sectionId: string;
   busy: boolean;
-  onDone: () => void;
+  onAdd: (
+    sectionId: string,
+    payload: {
+      name: string;
+      description: string | null;
+      costClient: number | null;
+      costInternal: number | null;
+    },
+  ) => void;
 }) {
   const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
   const [cc, setCc] = React.useState("");
   const [ci, setCi] = React.useState("");
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    const res = await fetch(`/api/projects/${projectId}/estimate/sections/${sectionId}/lines`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
-        costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
-      }),
+    onAdd(sectionId, {
+      name: name.trim(),
+      description: description.trim() || null,
+      costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
+      costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
     });
-    const j = await res.json().catch(() => null);
-    if (res.ok) {
-      setName("");
-      setCc("");
-      setCi("");
-      onDone();
-    } else window.alert(j?.error?.message ?? "Ошибка");
+    setName("");
+    setDescription("");
+    setCc("");
+    setCi("");
   }
 
   return (
     <form
       onSubmit={submit}
-      className="grid gap-2 border-t border-dashed border-zinc-200 pt-3 md:grid-cols-[minmax(0,1.8fr)_116px_116px_auto]"
+      className="grid gap-2 border-t border-dashed border-zinc-200 pt-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_116px_116px_auto]"
     >
       <input
         placeholder="Новая строка"
         value={name}
         onChange={(e) => setName(e.target.value)}
         className={`min-w-[8rem] ${inputFieldCompact}`}
+      />
+      <input
+        placeholder="Описание"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        className={inputFieldCompact}
       />
       <input
         placeholder="Клиент"
@@ -1181,11 +1445,13 @@ function RequisiteSectionEditor({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [eventName, setEventName] = React.useState("");
+  const [orderComment, setOrderComment] = React.useState("");
   const [lines, setLines] = React.useState<
     Array<{
       id?: string;
       itemId: string;
       name: string;
+      description: string;
       requestedQty: number;
       warehouseComment: string;
       pricePerDaySnapshot: number | null;
@@ -1228,11 +1494,13 @@ function RequisiteSectionEditor({
       const nextOrder = orderJson.order;
       setOrder(nextOrder);
       setEventName(nextOrder.eventName ?? "");
+      setOrderComment(nextOrder.comment ?? "");
       setLines(
         nextOrder.lines.map((line) => ({
           id: line.id,
           itemId: line.itemId,
           name: line.item.name,
+          description: "",
           requestedQty: line.requestedQty,
           warehouseComment: line.warehouseComment ?? "",
           pricePerDaySnapshot: line.pricePerDaySnapshot,
@@ -1281,12 +1549,13 @@ function RequisiteSectionEditor({
     setLines((prev) => prev.filter((_, idx) => idx !== index));
   }
 
-  function addLine(itemId: string, name: string, qty: number) {
+  function addLine(itemId: string, name: string, qty: number, description: string) {
     setLines((prev) => [
       ...prev,
       {
         itemId,
         name,
+        description,
         requestedQty: qty,
         warehouseComment: "",
         pricePerDaySnapshot: catalogItems.find((item) => item.id === itemId)?.pricePerDay ?? null,
@@ -1304,23 +1573,27 @@ function RequisiteSectionEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventName: eventName.trim() || null,
+          comment: orderComment.trim() || null,
           deliveryEnabled: services.deliveryEnabled,
           deliveryComment: services.deliveryComment.trim() || null,
-          deliveryPrice: services.deliveryEnabled
+          deliveryPrice:
+            order.source === "WOWSTORG_EXTERNAL" && services.deliveryEnabled
             ? services.deliveryPrice.trim() === ""
               ? 0
               : Number(services.deliveryPrice.replace(",", "."))
             : 0,
           montageEnabled: services.montageEnabled,
           montageComment: services.montageComment.trim() || null,
-          montagePrice: services.montageEnabled
+          montagePrice:
+            order.source === "WOWSTORG_EXTERNAL" && services.montageEnabled
             ? services.montagePrice.trim() === ""
               ? 0
               : Number(services.montagePrice.replace(",", "."))
             : 0,
           demontageEnabled: services.demontageEnabled,
           demontageComment: services.demontageComment.trim() || null,
-          demontagePrice: services.demontageEnabled
+          demontagePrice:
+            order.source === "WOWSTORG_EXTERNAL" && services.demontageEnabled
             ? services.demontagePrice.trim() === ""
               ? 0
               : Number(services.demontagePrice.replace(",", "."))
@@ -1370,7 +1643,7 @@ function RequisiteSectionEditor({
   return (
     <div className="space-y-4 rounded-2xl border border-violet-200/80 bg-white/90 p-3 shadow-inner">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_120px_150px]">
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Связанная заявка</div>
             <div className="mt-1 text-sm font-semibold text-violet-950">{orderMeta?.label ?? "Заявка"}</div>
@@ -1380,11 +1653,17 @@ function RequisiteSectionEditor({
             <div className="mt-1 text-sm font-semibold text-zinc-900">{order.startDate} — {order.endDate}</div>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Статус</div>
-            <div className="mt-1 text-sm font-semibold text-zinc-900">{order.status}</div>
+            <div className="flex h-full items-center gap-2 text-sm font-semibold text-zinc-900">
+              <span
+                title={orderStatusLabel(order.status)}
+                className={`inline-flex h-3 w-3 animate-pulse rounded-full ${
+                  editable ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(34,197,94,0.16)]" : "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.12)]"
+                }`}
+              />
+              <span>{orderStatusLabel(order.status)}</span>
+            </div>
           </div>
           <div className={`rounded-xl border px-3 py-2 ${editable ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-zinc-100/80"}`}>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Редактирование</div>
             <div className={`mt-1 text-sm font-semibold ${editable ? "text-emerald-900" : "text-zinc-700"}`}>
               {editable ? "Можно редактировать" : "Только просмотр"}
             </div>
@@ -1414,19 +1693,31 @@ function RequisiteSectionEditor({
 
       {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="space-y-3">
         <div className="space-y-3">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Название мероприятия
-              <input
-                value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                className={`mt-2 w-full ${inputField}`}
-                disabled={!editable}
-                placeholder="Название заявки / события"
-              />
-            </label>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Название мероприятия
+                <input
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                  className={`mt-2 w-full ${inputField}`}
+                  disabled={!editable}
+                  placeholder="Название заявки / события"
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Общий комментарий
+                <input
+                  value={orderComment}
+                  onChange={(e) => setOrderComment(e.target.value)}
+                  className={`mt-2 w-full ${inputField}`}
+                  disabled={!editable}
+                  placeholder="Комментарий по заявке"
+                />
+              </label>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -1438,13 +1729,13 @@ function RequisiteSectionEditor({
                     <input value={line.name} readOnly className={`mt-1 w-full ${inputField} bg-zinc-50`} />
                   </label>
                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                    Комментарий
+                    Описание
                     <input
-                      value={line.warehouseComment}
-                      onChange={(e) => updateLine(index, { warehouseComment: e.target.value })}
+                      value={line.description}
+                      onChange={(e) => updateLine(index, { description: e.target.value })}
                       className={`mt-1 w-full ${inputField}`}
                       disabled={!editable}
-                      placeholder="Комментарий склада"
+                      placeholder="Описание / примечание"
                     />
                   </label>
                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -1491,17 +1782,17 @@ function RequisiteSectionEditor({
             </div>
           ) : null}
         </div>
-
-        <div className="space-y-3">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Доп. услуги</div>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <OrderServiceCard
                 title="Доставка"
                 enabled={services.deliveryEnabled}
                 comment={services.deliveryComment}
                 price={services.deliveryPrice}
                 editable={editable}
+                showPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("deliveryEnabled", value)}
                 onCommentChange={(value) => setServiceField("deliveryComment", value)}
                 onPriceChange={(value) => setServiceField("deliveryPrice", value)}
@@ -1512,6 +1803,7 @@ function RequisiteSectionEditor({
                 comment={services.montageComment}
                 price={services.montagePrice}
                 editable={editable}
+                showPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("montageEnabled", value)}
                 onCommentChange={(value) => setServiceField("montageComment", value)}
                 onPriceChange={(value) => setServiceField("montagePrice", value)}
@@ -1522,6 +1814,7 @@ function RequisiteSectionEditor({
                 comment={services.demontageComment}
                 price={services.demontagePrice}
                 editable={editable}
+                showPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("demontageEnabled", value)}
                 onCommentChange={(value) => setServiceField("demontageComment", value)}
                 onPriceChange={(value) => setServiceField("demontagePrice", value)}
@@ -1559,12 +1852,13 @@ function OrderLinePicker({
 }: {
   catalogItems: Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>;
   existingItemIds: string[];
-  onAdd: (itemId: string, name: string, qty: number) => void;
+  onAdd: (itemId: string, name: string, qty: number, description: string) => void;
 }) {
   const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [qty, setQty] = React.useState(1);
+  const [description, setDescription] = React.useState("");
   const available = catalogItems.filter((item) => !existingItemIds.includes(item.id));
   const filtered =
     search.trim() === ""
@@ -1618,7 +1912,7 @@ function OrderLinePicker({
       </div>
 
       {selected ? (
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="grid gap-2 md:grid-cols-[120px_minmax(0,1fr)_auto]">
           <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Кол-во
             <input
@@ -1629,13 +1923,23 @@ function OrderLinePicker({
               className={`mt-1 w-28 ${inputField}`}
             />
           </label>
+          <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Описание
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className={`mt-1 w-full ${inputField}`}
+              placeholder="Описание для новой строки"
+            />
+          </label>
           <button
             type="button"
-            className={btnPrimary}
+            className={`${btnPrimary} self-end`}
             onClick={() => {
-              onAdd(selected.id, selected.name, qty);
+              onAdd(selected.id, selected.name, qty, description);
               setSelectedId(null);
               setQty(1);
+              setDescription("");
             }}
           >
             Добавить
@@ -1652,6 +1956,7 @@ function OrderServiceCard({
   comment,
   price,
   editable,
+  showPrice,
   onEnabledChange,
   onCommentChange,
   onPriceChange,
@@ -1661,6 +1966,7 @@ function OrderServiceCard({
   comment: string;
   price: string;
   editable: boolean;
+  showPrice: boolean;
   onEnabledChange: (value: boolean) => void;
   onCommentChange: (value: string) => void;
   onPriceChange: (value: string) => void;
@@ -1680,14 +1986,16 @@ function OrderServiceCard({
             disabled={!editable}
             placeholder="Комментарий"
           />
-          <input
-            value={price}
-            onChange={(e) => onPriceChange(e.target.value)}
-            className={inputField}
-            disabled={!editable}
-            placeholder="Цена"
-            inputMode="decimal"
-          />
+          {showPrice ? (
+            <input
+              value={price}
+              onChange={(e) => onPriceChange(e.target.value)}
+              className={inputField}
+              disabled={!editable}
+              placeholder="Цена"
+              inputMode="decimal"
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

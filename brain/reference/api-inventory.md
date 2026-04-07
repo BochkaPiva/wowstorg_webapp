@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-07T17:23:10.783Z  
+> **Сгенерировано:** 2026-04-07T18:06:52.079Z  
 > **Файлов route.ts:** 86  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
@@ -66,7 +66,7 @@
 | GET, POST | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
 | GET | `/api/projects/[id]/estimate/pdf` | `src/app/api/projects/[id]/estimate/pdf/route.ts` |
-| GET | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |
+| GET, PATCH | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |
 | POST | `/api/projects/[id]/estimate/sections/[sectionId]/lines` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/lines/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/sections/[sectionId]` | `src/app/api/projects/[id]/estimate/sections/[sectionId]/route.ts` |
 | POST | `/api/projects/[id]/estimate/sections` | `src/app/api/projects/[id]/estimate/sections/route.ts` |
@@ -80,7 +80,7 @@
 | PATCH, DELETE | `/api/projects/[id]/schedule/days/[dayId]` | `src/app/api/projects/[id]/schedule/days/[dayId]/route.ts` |
 | POST | `/api/projects/[id]/schedule/days/[dayId]/slots` | `src/app/api/projects/[id]/schedule/days/[dayId]/slots/route.ts` |
 | GET | `/api/projects/[id]/schedule/export` | `src/app/api/projects/[id]/schedule/export/route.ts` |
-| GET, POST | `/api/projects/[id]/schedule` | `src/app/api/projects/[id]/schedule/route.ts` |
+| GET, POST, PATCH | `/api/projects/[id]/schedule` | `src/app/api/projects/[id]/schedule/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/schedule/slots/[slotId]` | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` |
 | GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
 | POST | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |

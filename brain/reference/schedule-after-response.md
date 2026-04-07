@@ -21,12 +21,13 @@
 | `src/app/api/projects/[id]/contacts/route.ts` | `notifyProjectContactCreated` |
 | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` | `notifyProjectContactUpdated` |
 | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` | `notifyProjectContactEntry` |
+| `src/app/api/projects/[id]/estimate/route.ts` | `notifyProjectEstimateDraftSaved` |
 | `src/app/api/projects/[id]/estimate/versions/route.ts` | `notifyProjectEstimateVersionCreated`, `notifyProjectEstimatePatched`, `notifyProjectEstimateDeleted` |
 | `src/app/api/projects/[id]/estimate/sections/route.ts` | `notifyProjectEstimateSectionCreated` |
 | `src/app/api/projects/[id]/estimate/sections/[sectionId]/route.ts` | `notifyProjectEstimateSectionUpdated`, `notifyProjectEstimateSectionDeleted` |
 | `src/app/api/projects/[id]/estimate/sections/[sectionId]/lines/route.ts` | `notifyProjectEstimateLineCreated` |
 | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` | `notifyProjectEstimateLineUpdated`, `notifyProjectEstimateLineDeleted` |
-| `src/app/api/projects/[id]/schedule/route.ts` | `notifyProjectScheduleCreated` |
+| `src/app/api/projects/[id]/schedule/route.ts` | `notifyProjectScheduleCreated`, `notifyProjectScheduleDraftSaved` |
 | `src/app/api/projects/[id]/schedule/days/[dayId]/route.ts` | `notifyProjectScheduleDayUpdated`, `notifyProjectScheduleDayDeleted` |
 | `src/app/api/projects/[id]/schedule/days/[dayId]/slots/route.ts` | `notifyProjectScheduleSlotCreated` |
 | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` | `notifyProjectScheduleSlotUpdated`, `notifyProjectScheduleSlotDeleted` |

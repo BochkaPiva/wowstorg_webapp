@@ -94,6 +94,7 @@ const workTabBtn = (active: boolean) =>
       ? "border border-violet-300 bg-violet-600 text-white shadow-sm"
       : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
   ].join(" ");
+const heroStatCard = "rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm";
 
 function projectStatusTone(status: ProjectStatus) {
   switch (status) {
@@ -564,59 +565,73 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-[28px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.11),rgba(255,255,255,0.98),rgba(250,204,21,0.08))] shadow-sm">
-            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.2fr)_340px]">
+          <section className="overflow-hidden rounded-[30px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.98),rgba(250,204,21,0.09))] shadow-sm">
+            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
-                <h1 className="mt-1 break-words text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">
-                  {project.title}
-                </h1>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className={`inline-flex items-center rounded-2xl border px-3 py-2 text-sm font-semibold shadow-sm ${projectStatusTone(project.status)}`}>
-                    Статус: {PROJECT_STATUS_LABEL[project.status]}
-                  </span>
-                  <span className={`inline-flex items-center rounded-2xl border px-3 py-2 text-sm font-semibold shadow-sm ${projectBallTone(project.ball)}`}>
-                    Мяч: {PROJECT_BALL_LABEL[project.ball]}
-                  </span>
-                  <span className={`${metaBadge} bg-white/90`}>Заказчик: {project.customer.name}</span>
-                  <span className={`${metaBadge} bg-white/90`}>Ответственный: {project.owner.displayName}</span>
-                  <span className={`${metaBadge} bg-white/90`}>Заявок: {project._count.orders}</span>
-                  <span className={`${metaBadge} bg-white/90`}>Создан {fmtDate(project.createdAt)}</span>
+                <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <h1 className="break-words text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl">
+                      {project.title}
+                    </h1>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
+                        disabled={readOnly}
+                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                      >
+                        Статус: {PROJECT_STATUS_LABEL[project.status]}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
+                        disabled={readOnly}
+                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                      >
+                        Мяч: {PROJECT_BALL_LABEL[project.ball]}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm">
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className={heroStatCard}>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Заказчик</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.customer.name}</div>
+                  </div>
+                  <div className={heroStatCard}>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ответственный</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.owner.displayName}</div>
+                  </div>
+                  <div className={heroStatCard}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
                     <div className="mt-1 text-sm font-semibold text-zinc-950">
                       {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
                     </div>
-                    <div className={`mt-2 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
-                      {project.eventDateConfirmed ? "Дата подтверждена" : "Дата ещё не подтверждена"}
+                    <div className={`mt-1 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
+                      {project.eventDateConfirmed ? "Дата подтверждена" : "Дата не подтверждена"}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Контроль</div>
-                    <div className="mt-1 text-sm text-zinc-700">
-                      Не забывай обновлять <span className="font-semibold text-zinc-950">статус</span> и{" "}
-                      <span className="font-semibold text-zinc-950">мяч</span> после каждого ключевого шага проекта.
-                    </div>
-                    {!readOnly ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditingField((v) => (v === "status" ? null : "status"))}
-                        className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
-                      >
-                        <PencilIcon />
-                        Обновить статус и мяч
-                      </button>
-                    ) : null}
+                  <div className={heroStatCard}>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Прогресс</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">Заявок: {project._count.orders}</div>
+                    <div className="mt-1 text-xs text-zinc-500">Создан {fmtDate(project.createdAt)}</div>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm">
+                <div className="rounded-2xl border border-white/80 bg-white/92 p-3 shadow-sm">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Быстрые действия</div>
                   <div className="mt-3 flex flex-col gap-2">
+                    <Link
+                      href={`/catalog?projectId=${encodeURIComponent(id)}`}
+                      className={`${primaryBtn} w-full text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                      aria-disabled={readOnly}
+                    >
+                      Каталог → новая заявка
+                    </Link>
                     {!readOnly ? (
                       <button
                         type="button"
@@ -632,13 +647,6 @@ export default function ProjectDetailPage() {
                         {archiveBusy ? "…" : "Завершить (в архив)"}
                       </button>
                     ) : null}
-                    <Link
-                      href={`/catalog?projectId=${encodeURIComponent(id)}`}
-                      className={`${primaryBtn} w-full text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
-                      aria-disabled={readOnly}
-                    >
-                      Каталог → новая заявка
-                    </Link>
                   </div>
                 </div>
               </div>

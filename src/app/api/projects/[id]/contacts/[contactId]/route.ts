@@ -1,9 +1,10 @@
-import { type Prisma, ProjectActivityKind } from "@prisma/client";
+import { type Prisma, ProjectActivityKind, ProjectContactCategory } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
@@ -12,6 +13,7 @@ const PatchSchema = z
     fullName: z.string().trim().min(1).max(200).optional(),
     phone: z.string().trim().max(80).optional().nullable(),
     email: z.string().trim().max(200).optional().nullable(),
+    category: z.nativeEnum(ProjectContactCategory).optional(),
     roleNote: z.string().trim().max(500).optional().nullable(),
     isActive: z.boolean().optional(),
   })
@@ -61,6 +63,7 @@ export async function PATCH(
     fullName?: string;
     phone?: string | null;
     email?: string | null;
+    category?: ProjectContactCategory;
     roleNote?: string | null;
     isActive?: boolean;
   } = {};
@@ -68,19 +71,21 @@ export async function PATCH(
   if (parsed.data.fullName !== undefined) data.fullName = parsed.data.fullName.trim();
   if (parsed.data.phone !== undefined) data.phone = normalizeOptional(parsed.data.phone ?? undefined);
   if (parsed.data.email !== undefined) data.email = emailIn ?? null;
+  if (parsed.data.category !== undefined) data.category = parsed.data.category;
   if (parsed.data.roleNote !== undefined) data.roleNote = normalizeOptional(parsed.data.roleNote ?? undefined);
   if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 
-  const fieldKeys = ["fullName", "phone", "email", "roleNote", "isActive"] as const;
+  const fieldKeys = ["fullName", "phone", "email", "category", "roleNote", "isActive"] as const;
 
   try {
-    const contact = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const before = await tx.projectContact.findFirst({
         where: { id: contactId, projectId },
         select: {
           fullName: true,
           phone: true,
           email: true,
+          category: true,
           roleNote: true,
           isActive: true,
         },
@@ -107,6 +112,7 @@ export async function PATCH(
           fullName: true,
           phone: true,
           email: true,
+          category: true,
           roleNote: true,
           isActive: true,
           createdAt: true,
@@ -126,14 +132,28 @@ export async function PATCH(
         });
       }
 
-      return row;
+      return { row, changes };
     });
+
+    if (Object.keys(result.changes).length > 0) {
+      scheduleAfterResponse("notifyProjectContactUpdated", async () => {
+        const { notifyProjectContactChange } = await import("@/server/projects/project-notifications");
+        await notifyProjectContactChange({
+          projectId,
+          actorUserId: auth.user.id,
+          contactName: result.row.fullName,
+          category: result.row.category,
+          action: "updated",
+          changes: result.changes,
+        });
+      });
+    }
 
     return jsonOk({
       contact: {
-        ...contact,
-        createdAt: contact.createdAt.toISOString(),
-        updatedAt: contact.updatedAt.toISOString(),
+        ...result.row,
+        createdAt: result.row.createdAt.toISOString(),
+        updatedAt: result.row.updatedAt.toISOString(),
       },
     });
   } catch (e) {

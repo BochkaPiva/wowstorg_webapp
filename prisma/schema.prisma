@@ -107,6 +107,13 @@ enum ProjectBall {
   NONE
 }
 
+enum ProjectContactCategory {
+  DECISION_MAKER
+  CONTRACTOR
+  VENUE
+  OTHER
+}
+
 enum ProjectActivityKind {
   PROJECT_CREATED
   PROJECT_UPDATED
@@ -258,6 +265,7 @@ model Project {
   orders        Order[]
   activityLogs  ProjectActivityLog[]
   contacts      ProjectContact[]
+  notificationCooldowns ProjectNotificationCooldown[]
   folders       ProjectFolder[]
   projectFiles  ProjectFile[]
   estimateVersions ProjectEstimateVersion[]
@@ -294,11 +302,12 @@ model ProjectContact {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  fullName String
-  phone    String?
-  email    String?
-  roleNote String?
-  isActive Boolean @default(true)
+  fullName  String
+  phone     String?
+  email     String?
+  category  ProjectContactCategory @default(DECISION_MAKER)
+  roleNote  String?
+  isActive  Boolean                @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -323,6 +332,22 @@ model ProjectCommunicationEntry {
   createdAt DateTime @default(now())
 
   @@index([contactId, createdAt])
+}
+
+model ProjectNotificationCooldown {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  blockKey  String
+  muteUntil DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, blockKey])
+  @@index([projectId])
+  @@index([projectId, muteUntil])
 }
 
 /// Папка в файловой зоне проекта (иерархия, корень = parentFolderId null).

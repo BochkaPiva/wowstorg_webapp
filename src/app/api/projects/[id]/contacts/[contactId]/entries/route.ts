@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const CreateEntrySchema = z
@@ -26,7 +27,7 @@ export async function POST(
 
   const contact = await prisma.projectContact.findFirst({
     where: { id: contactId, projectId },
-    select: { id: true },
+    select: { id: true, fullName: true, category: true },
   });
   if (!contact) return jsonError(404, "Контакт не найден");
 
@@ -54,6 +55,17 @@ export async function POST(
       createdAt: true,
       author: { select: { id: true, displayName: true } },
     },
+  });
+
+  scheduleAfterResponse("notifyProjectContactEntry", async () => {
+    const { notifyProjectContactChange } = await import("@/server/projects/project-notifications");
+    await notifyProjectContactChange({
+      projectId,
+      actorUserId: auth.user.id,
+      contactName: contact.fullName,
+      category: contact.category,
+      action: "entry",
+    });
   });
 
   return jsonOk({

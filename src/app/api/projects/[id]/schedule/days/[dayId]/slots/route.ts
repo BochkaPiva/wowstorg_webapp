@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const PostSchema = z
@@ -92,6 +93,16 @@ export async function POST(
       intervalText: parsed.data.intervalText.trim(),
       description: parsed.data.description.trim(),
     },
+  });
+
+  scheduleAfterResponse("notifyProjectScheduleSlotCreated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "schedule",
+      action: `Добавлен слот тайминга ${slot.intervalText}.`,
+    });
   });
 
   return jsonOk({ slot });

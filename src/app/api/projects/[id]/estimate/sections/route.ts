@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const PostSchema = z
@@ -63,6 +64,16 @@ export async function POST(
       title: parsed.data.title.trim(),
       kind: ProjectEstimateSectionKind.LOCAL,
     },
+  });
+
+  scheduleAfterResponse("notifyProjectEstimateSectionCreated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "estimate",
+      action: `Добавлен локальный раздел сметы «${section.title}».`,
+    });
   });
 
   return jsonOk({ section: { id: section.id, sortOrder: section.sortOrder, title: section.title, kind: section.kind } });

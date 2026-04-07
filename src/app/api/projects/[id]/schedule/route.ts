@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const PostDaySchema = z
@@ -91,6 +92,16 @@ export async function POST(
       sortOrder,
       dateNote: parsed.data.dateNote.trim(),
     },
+  });
+
+  scheduleAfterResponse("notifyProjectScheduleCreated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "schedule",
+      action: `Добавлен день тайминга «${day.dateNote}».`,
+    });
   });
 
   return jsonOk({ day: { id: day.id, sortOrder: day.sortOrder, dateNote: day.dateNote, slots: [] } });

@@ -1,7 +1,7 @@
 # Переменные окружения (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-06T20:19:53.782Z  
-> Уникальных имён `process.env.*`: 28  
+> **Сгенерировано:** 2026-04-07T17:23:10.783Z  
+> Уникальных имён `process.env.*`: 30  
 > Скан: `src/**/*.ts(x)` и `prisma/seed.cjs`  
 > Перегенерировать: `npm run brain:inventory`
 
@@ -31,6 +31,8 @@
 | `TELEGRAM_HTTPS_PROXY` |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` |
 | `TELEGRAM_NOTIFICATION_TOPIC_ID` |
+| `TELEGRAM_PROJECTS_TOPIC_ID` |
+| `TELEGRAM_PROJECT_TOPIC_ID` |
 | `TELEGRAM_PROXY` |
 | `TELEGRAM_SEND_TIMEOUT_MS` |
 | `TELEGRAM_WAREHOUSE_CHAT_ID` |

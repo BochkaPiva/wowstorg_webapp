@@ -1,9 +1,10 @@
-import { type Prisma, ProjectActivityKind } from "@prisma/client";
+import { type Prisma, ProjectActivityKind, ProjectContactCategory } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
@@ -12,6 +13,7 @@ const CreateContactSchema = z
     fullName: z.string().trim().min(1).max(200),
     phone: z.string().trim().max(80).optional().nullable(),
     email: z.string().trim().max(200).optional().nullable(),
+    category: z.nativeEnum(ProjectContactCategory).optional(),
     roleNote: z.string().trim().max(500).optional().nullable(),
   })
   .strict();
@@ -46,6 +48,7 @@ export async function GET(
       fullName: true,
       phone: true,
       email: true,
+      category: true,
       roleNote: true,
       isActive: true,
       createdAt: true,
@@ -113,6 +116,7 @@ export async function POST(
         fullName: parsed.data.fullName.trim(),
         phone: normalizeOptional(parsed.data.phone ?? undefined),
         email,
+        category: parsed.data.category ?? ProjectContactCategory.DECISION_MAKER,
         roleNote: normalizeOptional(parsed.data.roleNote ?? undefined),
       },
       select: {
@@ -120,6 +124,7 @@ export async function POST(
         fullName: true,
         phone: true,
         email: true,
+        category: true,
         roleNote: true,
         isActive: true,
         createdAt: true,
@@ -133,9 +138,21 @@ export async function POST(
       payload: {
         contactId: row.id,
         fullName: row.fullName,
+        category: row.category,
       } as Prisma.InputJsonValue,
     });
     return row;
+  });
+
+  scheduleAfterResponse("notifyProjectContactCreated", async () => {
+    const { notifyProjectContactChange } = await import("@/server/projects/project-notifications");
+    await notifyProjectContactChange({
+      projectId,
+      actorUserId: auth.user.id,
+      contactName: contact.fullName,
+      category: contact.category,
+      action: "created",
+    });
   });
 
   return jsonOk({

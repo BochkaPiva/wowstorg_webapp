@@ -16,6 +16,39 @@ type EstLine = {
   itemId: string | null;
 };
 
+type RequisiteOrderLine = {
+  id: string;
+  itemId: string;
+  requestedQty: number;
+  approvedQty: number | null;
+  issuedQty: number | null;
+  pricePerDaySnapshot: number | null;
+  warehouseComment: string | null;
+  item: { id: string; name: string; type: string };
+};
+
+type RequisiteOrder = {
+  id: string;
+  status: string;
+  source: string;
+  readyByDate: string;
+  startDate: string;
+  endDate: string;
+  eventName: string | null;
+  comment: string | null;
+  deliveryEnabled: boolean;
+  deliveryComment: string | null;
+  deliveryPrice: number | null;
+  montageEnabled: boolean;
+  montageComment: string | null;
+  montagePrice: number | null;
+  demontageEnabled: boolean;
+  demontageComment: string | null;
+  demontagePrice: number | null;
+  payMultiplier?: number | null;
+  lines: RequisiteOrderLine[];
+};
+
 type EstSection = {
   id: string;
   sortOrder: number;
@@ -70,6 +103,27 @@ const menuPanel =
   "absolute right-0 top-full z-20 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-zinc-200 bg-white p-1 shadow-[0_18px_48px_rgba(24,24,27,0.14)]";
 const menuAction =
   "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50";
+const sectionTone = {
+  requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
+  local: "border-sky-100 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]",
+};
+const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
+
+function isEditableOrderStatus(status: string) {
+  return EDITABLE_ORDER_STATUSES.includes(status as (typeof EDITABLE_ORDER_STATUSES)[number]);
+}
+
+function formatOrderMoney(n: number) {
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+}
+
+function daysBetween(startDate: string, endDate: string): number {
+  const a = new Date(`${startDate}T12:00:00`);
+  const b = new Date(`${endDate}T12:00:00`);
+  const ms = b.getTime() - a.getTime();
+  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
+  return days === 0 ? 1 : days;
+}
 
 export function ProjectEstimatePanel({
   projectId,
@@ -118,6 +172,14 @@ export function ProjectEstimatePanel({
 
   React.useEffect(() => {
     load(selectedVersion);
+  }, [load, selectedVersion]);
+
+  React.useEffect(() => {
+    function onRefresh() {
+      load(selectedVersion);
+    }
+    window.addEventListener("project-activity-refresh", onRefresh);
+    return () => window.removeEventListener("project-activity-refresh", onRefresh);
   }, [load, selectedVersion]);
 
   function refreshActivity() {
@@ -301,7 +363,7 @@ export function ProjectEstimatePanel({
 
   const vn = selectedVersion ?? data?.current?.versionNumber ?? null;
   const currentVersionMeta = data?.versions.find((v) => v.versionNumber === vn) ?? null;
-  const pdfHref =
+  const exportHref =
     vn != null
       ? `/api/projects/${projectId}/estimate/pdf?version=${encodeURIComponent(String(vn))}`
       : `/api/projects/${projectId}/estimate/pdf`;
@@ -314,6 +376,30 @@ export function ProjectEstimatePanel({
     );
     return data.projectOrders.filter((o) => !imported.has(o.id));
   }, [data]);
+  const orderedProjectOrders = React.useMemo(
+    () =>
+      [...(data?.projectOrders ?? [])].sort((a, b) => {
+        if (a.startDate === b.startDate) return a.id.localeCompare(b.id);
+        return a.startDate.localeCompare(b.startDate);
+      }),
+    [data?.projectOrders],
+  );
+  const orderMetaById = React.useMemo(() => {
+    const map = new Map<
+      string,
+      { index: number; label: string; dateLabel: string; status: string; eventName: string | null }
+    >();
+    orderedProjectOrders.forEach((order, index) => {
+      map.set(order.id, {
+        index: index + 1,
+        label: `Заявка №${index + 1}`,
+        dateLabel: `${order.startDate} — ${order.endDate}`,
+        status: order.status,
+        eventName: order.eventName,
+      });
+    });
+    return map;
+  }, [orderedProjectOrders]);
 
   const totals = React.useMemo(() => {
     const COMMISSION_RATE = 0.15;
@@ -353,12 +439,12 @@ export function ProjectEstimatePanel({
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
         {vn != null ? (
           <a
-            href={pdfHref}
+            href={exportHref}
             className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
             target="_blank"
             rel="noreferrer"
           >
-            Скачать PDF (клиент)
+            Скачать XLSX
           </a>
         ) : null}
       </div>
@@ -393,8 +479,8 @@ export function ProjectEstimatePanel({
         </div>
       ) : null}
       <p className="text-xs text-zinc-500">
-        Версии сметы независимы от Excel-сметы заявки. Блок «Реквизит» появляется при создании заявки из
-        проекта (копия позиций на тот момент). Комиссия 15% в PDF считается от суммы цен клиента по строкам.
+        Блоки реквизита читаются из живых заявок проекта, а локальные разделы остаются внутри версии сметы.
+        Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
       </p>
 
       {loading ? (
@@ -677,30 +763,46 @@ export function ProjectEstimatePanel({
                   <EstimateSectionBlock
                     key={sec.id}
                     sec={sec}
+                    orderMeta={sec.linkedOrderId ? orderMetaById.get(sec.linkedOrderId) ?? null : null}
                     readOnly={readOnly}
                     busy={busy}
                     onPatchSection={patchSection}
                     onDeleteSection={deleteSection}
                   >
-                    {sec.lines.map((ln) => (
-                      <LineEditor
-                        key={ln.id}
-                        line={ln}
-                        readOnly={readOnly}
-                        busy={busy}
-                        onSave={saveLine}
-                        onDelete={deleteLine}
-                      />
-                    ))}
-
-                    {!readOnly ? (
-                      <AddLineForm
+                    {sec.kind === "REQUISITE" && sec.linkedOrderId ? (
+                      <RequisiteSectionEditor
                         projectId={projectId}
-                        sectionId={sec.id}
-                        busy={busy}
-                        onDone={() => load(selectedVersion)}
+                        orderId={sec.linkedOrderId}
+                        orderMeta={orderMetaById.get(sec.linkedOrderId) ?? null}
+                        readOnly={readOnly}
+                        onDone={() => {
+                          load(selectedVersion);
+                          refreshActivity();
+                        }}
                       />
-                    ) : null}
+                    ) : (
+                      <>
+                        {sec.lines.map((ln) => (
+                          <LineEditor
+                            key={ln.id}
+                            line={ln}
+                            readOnly={readOnly}
+                            busy={busy}
+                            onSave={saveLine}
+                            onDelete={deleteLine}
+                          />
+                        ))}
+
+                        {!readOnly ? (
+                          <AddLineForm
+                            projectId={projectId}
+                            sectionId={sec.id}
+                            busy={busy}
+                            onDone={() => load(selectedVersion)}
+                          />
+                        ) : null}
+                      </>
+                    )}
                   </EstimateSectionBlock>
                 ))}
               </div>
@@ -714,6 +816,7 @@ export function ProjectEstimatePanel({
 
 function EstimateSectionBlock({
   sec,
+  orderMeta,
   readOnly,
   busy,
   onPatchSection,
@@ -721,6 +824,7 @@ function EstimateSectionBlock({
   children,
 }: {
   sec: EstSection;
+  orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
   readOnly: boolean;
   busy: boolean;
   onPatchSection: (id: string, patch: { title?: string }) => void | Promise<void>;
@@ -742,28 +846,77 @@ function EstimateSectionBlock({
   }
 
   return (
-    <details className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3" open>
-      <summary className="cursor-pointer font-medium text-zinc-900">
-        {sec.title}{" "}
-        <span className="font-normal text-zinc-500">
-          ({sec.kind === "REQUISITE" ? "реквизит" : "локально"})
-        </span>
-        {sec.linkedOrderId ? (
-          <>
-            {" "}
-            <Link
-              href={`/orders/${sec.linkedOrderId}`}
-              className="text-violet-700 hover:text-violet-900"
-              onClick={(e) => e.stopPropagation()}
-            >
-              заявка
-            </Link>
-          </>
-        ) : null}
+    <details
+      className={`rounded-2xl border p-3 shadow-sm sm:p-4 ${
+        sec.kind === "REQUISITE" ? sectionTone.requisite : sectionTone.local
+      }`}
+      open
+    >
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                  sec.kind === "REQUISITE"
+                    ? "border border-violet-200 bg-violet-100 text-violet-900"
+                    : "border border-sky-200 bg-sky-50 text-sky-900"
+                }`}
+              >
+                {sec.kind === "REQUISITE" ? "Реквизит" : "Локальный раздел"}
+              </span>
+              {orderMeta ? (
+                <span className="rounded-full border border-white/80 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-700">
+                  {orderMeta.label}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-2 text-lg font-semibold text-zinc-950">
+              {sec.kind === "REQUISITE" ? orderMeta?.label ?? "Реквизит" : sec.title}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+              {sec.kind === "REQUISITE" ? (
+                <>
+                  {orderMeta?.eventName?.trim() ? (
+                    <span className="rounded-full border border-zinc-200 bg-white/80 px-2 py-1">
+                      {orderMeta.eventName}
+                    </span>
+                  ) : null}
+                  {orderMeta?.dateLabel ? (
+                    <span className="rounded-full border border-zinc-200 bg-white/80 px-2 py-1">
+                      {orderMeta.dateLabel}
+                    </span>
+                  ) : null}
+                  {orderMeta?.status ? (
+                    <span className="rounded-full border border-zinc-200 bg-white/80 px-2 py-1">
+                      Статус: {orderMeta.status}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span>Раздел проекта без связи с заявкой</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start">
+            {sec.linkedOrderId ? (
+              <Link
+                href={`/orders/${sec.linkedOrderId}`}
+                className="rounded-lg border border-violet-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Открыть заявку
+              </Link>
+            ) : null}
+            <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 text-zinc-400" aria-hidden>
+              <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
+            </svg>
+          </div>
+        </div>
       </summary>
-      <div className="mt-2 space-y-2">
+      <div className="mt-3 space-y-3">
         {!readOnly ? (
-          editingTitle ? (
+          sec.kind === "LOCAL" && editingTitle ? (
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
               <input
                 value={titleDraft}
@@ -794,7 +947,7 @@ function EstimateSectionBlock({
                 Отмена
               </button>
             </div>
-          ) : (
+          ) : sec.kind === "LOCAL" ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
@@ -820,7 +973,7 @@ function EstimateSectionBlock({
                 </button>
               ) : null}
             </div>
-          )
+          ) : null
         ) : null}
 
         {children}
@@ -1004,5 +1157,539 @@ function AddLineForm({
         + строка
       </button>
     </form>
+  );
+}
+
+function RequisiteSectionEditor({
+  projectId,
+  orderId,
+  orderMeta,
+  readOnly,
+  onDone,
+}: {
+  projectId: string;
+  orderId: string;
+  orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
+  readOnly: boolean;
+  onDone: () => void;
+}) {
+  const [order, setOrder] = React.useState<RequisiteOrder | null>(null);
+  const [catalogItems, setCatalogItems] = React.useState<
+    Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>
+  >([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [eventName, setEventName] = React.useState("");
+  const [lines, setLines] = React.useState<
+    Array<{
+      id?: string;
+      itemId: string;
+      name: string;
+      requestedQty: number;
+      warehouseComment: string;
+      pricePerDaySnapshot: number | null;
+    }>
+  >([]);
+  const [services, setServices] = React.useState({
+    deliveryEnabled: false,
+    deliveryComment: "",
+    deliveryPrice: "",
+    montageEnabled: false,
+    montageComment: "",
+    montagePrice: "",
+    demontageEnabled: false,
+    demontageComment: "",
+    demontagePrice: "",
+  });
+
+  const editable = !readOnly && !!order && isEditableOrderStatus(order.status);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [orderRes, catalogRes] = await Promise.all([
+        fetch(`/api/orders/${orderId}`, { cache: "no-store" }),
+        fetch(
+          `/api/catalog/items?startDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[0] ?? "")}&endDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[1] ?? "")}&excludeOrderId=${encodeURIComponent(orderId)}`,
+          { cache: "no-store" },
+        ),
+      ]);
+      const orderJson = (await orderRes.json().catch(() => null)) as { order?: RequisiteOrder; error?: { message?: string } } | null;
+      const catalogJson = (await catalogRes.json().catch(() => null)) as
+        | { items?: { id: string; name: string; pricePerDay?: number; availability?: { availableForDates?: number } }[] }
+        | null;
+      if (!orderRes.ok || !orderJson?.order) {
+        setError(orderJson?.error?.message ?? "Не удалось загрузить связанную заявку");
+        setOrder(null);
+        return;
+      }
+      const nextOrder = orderJson.order;
+      setOrder(nextOrder);
+      setEventName(nextOrder.eventName ?? "");
+      setLines(
+        nextOrder.lines.map((line) => ({
+          id: line.id,
+          itemId: line.itemId,
+          name: line.item.name,
+          requestedQty: line.requestedQty,
+          warehouseComment: line.warehouseComment ?? "",
+          pricePerDaySnapshot: line.pricePerDaySnapshot,
+        })),
+      );
+      setServices({
+        deliveryEnabled: nextOrder.deliveryEnabled,
+        deliveryComment: nextOrder.deliveryComment ?? "",
+        deliveryPrice: nextOrder.deliveryPrice != null ? String(nextOrder.deliveryPrice) : "",
+        montageEnabled: nextOrder.montageEnabled,
+        montageComment: nextOrder.montageComment ?? "",
+        montagePrice: nextOrder.montagePrice != null ? String(nextOrder.montagePrice) : "",
+        demontageEnabled: nextOrder.demontageEnabled,
+        demontageComment: nextOrder.demontageComment ?? "",
+        demontagePrice: nextOrder.demontagePrice != null ? String(nextOrder.demontagePrice) : "",
+      });
+      setCatalogItems(
+        (catalogJson?.items ?? []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          availableForDates: item.availability?.availableForDates,
+          pricePerDay: typeof item.pricePerDay === "number" ? item.pricePerDay : undefined,
+        })),
+      );
+    } catch {
+      setError("Не удалось загрузить связанную заявку");
+      setOrder(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, orderMeta?.dateLabel]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  function setServiceField<K extends keyof typeof services>(key: K, value: (typeof services)[K]) {
+    setServices((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateLine(index: number, patch: Partial<(typeof lines)[number]>) {
+    setLines((prev) => prev.map((line, idx) => (idx === index ? { ...line, ...patch } : line)));
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  function addLine(itemId: string, name: string, qty: number) {
+    setLines((prev) => [
+      ...prev,
+      {
+        itemId,
+        name,
+        requestedQty: qty,
+        warehouseComment: "",
+        pricePerDaySnapshot: catalogItems.find((item) => item.id === itemId)?.pricePerDay ?? null,
+      },
+    ]);
+  }
+
+  async function saveOrder() {
+    if (!order) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/warehouse-edit`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventName: eventName.trim() || null,
+          deliveryEnabled: services.deliveryEnabled,
+          deliveryComment: services.deliveryComment.trim() || null,
+          deliveryPrice: services.deliveryEnabled
+            ? services.deliveryPrice.trim() === ""
+              ? 0
+              : Number(services.deliveryPrice.replace(",", "."))
+            : 0,
+          montageEnabled: services.montageEnabled,
+          montageComment: services.montageComment.trim() || null,
+          montagePrice: services.montageEnabled
+            ? services.montagePrice.trim() === ""
+              ? 0
+              : Number(services.montagePrice.replace(",", "."))
+            : 0,
+          demontageEnabled: services.demontageEnabled,
+          demontageComment: services.demontageComment.trim() || null,
+          demontagePrice: services.demontageEnabled
+            ? services.demontagePrice.trim() === ""
+              ? 0
+              : Number(services.demontagePrice.replace(",", "."))
+            : 0,
+          lines: lines.map((line) => ({
+            ...(line.id ? { id: line.id } : {}),
+            itemId: line.itemId,
+            requestedQty: Math.max(1, Number(line.requestedQty) || 1),
+            warehouseComment: line.warehouseComment.trim() || null,
+          })),
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!res.ok) {
+        setError(json?.error?.message ?? "Не удалось сохранить заявку");
+        return;
+      }
+      await load();
+      onDone();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const rentalTotal = React.useMemo(() => {
+    if (!order) return 0;
+    const days = daysBetween(order.startDate, order.endDate);
+    const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+    return lines.reduce(
+      (sum, line) => sum + (line.pricePerDaySnapshot ?? 0) * line.requestedQty * days * multiplier,
+      0,
+    );
+  }, [lines, order]);
+  const servicesTotal =
+    (services.deliveryEnabled ? Number(services.deliveryPrice || 0) : 0) +
+    (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
+    (services.demontageEnabled ? Number(services.demontagePrice || 0) : 0);
+
+  if (loading) {
+    return <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>;
+  }
+
+  if (!order) {
+    return <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{error ?? "Связанная заявка не найдена"}</div>;
+  }
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-violet-200/80 bg-white/90 p-3 shadow-inner">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Связанная заявка</div>
+            <div className="mt-1 text-sm font-semibold text-violet-950">{orderMeta?.label ?? "Заявка"}</div>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Период</div>
+            <div className="mt-1 text-sm font-semibold text-zinc-900">{order.startDate} — {order.endDate}</div>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Статус</div>
+            <div className="mt-1 text-sm font-semibold text-zinc-900">{order.status}</div>
+          </div>
+          <div className={`rounded-xl border px-3 py-2 ${editable ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-zinc-100/80"}`}>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Редактирование</div>
+            <div className={`mt-1 text-sm font-semibold ${editable ? "text-emerald-900" : "text-zinc-700"}`}>
+              {editable ? "Можно редактировать" : "Только просмотр"}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+          <Link
+            href={`/orders/${order.id}?from=project`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Полная заявка
+          </Link>
+          {editable ? (
+            <button
+              type="button"
+              disabled={saving || lines.length === 0}
+              onClick={() => void saveOrder()}
+              className={btnPrimary}
+            >
+              {saving ? "Сохранение…" : "Сохранить заявку"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Название мероприятия
+              <input
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+                className={`mt-2 w-full ${inputField}`}
+                disabled={!editable}
+                placeholder="Название заявки / события"
+              />
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            {lines.map((line, index) => (
+              <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.3fr)_120px_132px_auto]">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Позиция
+                    <input value={line.name} readOnly className={`mt-1 w-full ${inputField} bg-zinc-50`} />
+                  </label>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Комментарий
+                    <input
+                      value={line.warehouseComment}
+                      onChange={(e) => updateLine(index, { warehouseComment: e.target.value })}
+                      className={`mt-1 w-full ${inputField}`}
+                      disabled={!editable}
+                      placeholder="Комментарий склада"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Кол-во
+                    <input
+                      type="number"
+                      min={1}
+                      value={line.requestedQty}
+                      onChange={(e) => updateLine(index, { requestedQty: Math.max(1, Number(e.target.value) || 1) })}
+                      className={`mt-1 w-full ${inputField}`}
+                      disabled={!editable}
+                    />
+                  </label>
+                  <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Сумма</div>
+                    <div className="mt-1 text-sm font-bold text-violet-950">
+                      {formatOrderMoney((line.pricePerDaySnapshot ?? 0) * line.requestedQty * daysBetween(order.startDate, order.endDate) * (order.payMultiplier != null ? Number(order.payMultiplier) : 1))} ₽
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-end gap-2">
+                    {editable ? (
+                      <button
+                        type="button"
+                        onClick={() => removeLine(index)}
+                        className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
+                      >
+                        Удалить
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {editable ? (
+            <div className="rounded-2xl border border-dashed border-violet-300 bg-violet-50/50 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-700">Добавить позицию в заявку</div>
+              <OrderLinePicker
+                catalogItems={catalogItems}
+                existingItemIds={lines.map((line) => line.itemId)}
+                onAdd={addLine}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Доп. услуги</div>
+            <div className="mt-3 space-y-3">
+              <OrderServiceCard
+                title="Доставка"
+                enabled={services.deliveryEnabled}
+                comment={services.deliveryComment}
+                price={services.deliveryPrice}
+                editable={editable}
+                onEnabledChange={(value) => setServiceField("deliveryEnabled", value)}
+                onCommentChange={(value) => setServiceField("deliveryComment", value)}
+                onPriceChange={(value) => setServiceField("deliveryPrice", value)}
+              />
+              <OrderServiceCard
+                title="Монтаж"
+                enabled={services.montageEnabled}
+                comment={services.montageComment}
+                price={services.montagePrice}
+                editable={editable}
+                onEnabledChange={(value) => setServiceField("montageEnabled", value)}
+                onCommentChange={(value) => setServiceField("montageComment", value)}
+                onPriceChange={(value) => setServiceField("montagePrice", value)}
+              />
+              <OrderServiceCard
+                title="Демонтаж"
+                enabled={services.demontageEnabled}
+                comment={services.demontageComment}
+                price={services.demontagePrice}
+                editable={editable}
+                onEnabledChange={(value) => setServiceField("demontageEnabled", value)}
+                onCommentChange={(value) => setServiceField("demontageComment", value)}
+                onPriceChange={(value) => setServiceField("demontagePrice", value)}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">Итого по заявке</div>
+            <div className="mt-3 space-y-2 text-sm text-zinc-700">
+              <div className="flex items-center justify-between gap-3">
+                <span>Аренда</span>
+                <span className="font-semibold text-zinc-950">{formatOrderMoney(rentalTotal)} ₽</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span>Доп. услуги</span>
+                <span className="font-semibold text-zinc-950">{formatOrderMoney(servicesTotal)} ₽</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base font-bold text-violet-950">
+                <span>Всего</span>
+                <span>{formatOrderMoney(rentalTotal + servicesTotal)} ₽</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderLinePicker({
+  catalogItems,
+  existingItemIds,
+  onAdd,
+}: {
+  catalogItems: Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>;
+  existingItemIds: string[];
+  onAdd: (itemId: string, name: string, qty: number) => void;
+}) {
+  const [search, setSearch] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [qty, setQty] = React.useState(1);
+  const available = catalogItems.filter((item) => !existingItemIds.includes(item.id));
+  const filtered =
+    search.trim() === ""
+      ? available
+      : available.filter((item) => item.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const selected = available.find((item) => item.id === selectedId) ?? null;
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <input
+          type="text"
+          value={selected ? selected.name : search}
+          onChange={(e) => {
+            setSelectedId(null);
+            setSearch(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Найти позицию в каталоге"
+          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+        />
+        {open ? (
+          <>
+            <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
+            <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-2xl border border-zinc-200 bg-white p-1 shadow-lg">
+              {filtered.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-zinc-500">Нет доступных позиций</div>
+              ) : (
+                filtered.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-violet-50"
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setSearch("");
+                      setOpen(false);
+                    }}
+                  >
+                    <span>{item.name}</span>
+                    {item.availableForDates != null ? (
+                      <span className="text-xs text-zinc-500">Доступно: {item.availableForDates}</span>
+                    ) : null}
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      {selected ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Кол-во
+            <input
+              type="number"
+              min={1}
+              value={qty}
+              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+              className={`mt-1 w-28 ${inputField}`}
+            />
+          </label>
+          <button
+            type="button"
+            className={btnPrimary}
+            onClick={() => {
+              onAdd(selected.id, selected.name, qty);
+              setSelectedId(null);
+              setQty(1);
+            }}
+          >
+            Добавить
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OrderServiceCard({
+  title,
+  enabled,
+  comment,
+  price,
+  editable,
+  onEnabledChange,
+  onCommentChange,
+  onPriceChange,
+}: {
+  title: string;
+  enabled: boolean;
+  comment: string;
+  price: string;
+  editable: boolean;
+  onEnabledChange: (value: boolean) => void;
+  onCommentChange: (value: string) => void;
+  onPriceChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white/90 p-3">
+      <label className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+        <input type="checkbox" checked={enabled} onChange={(e) => onEnabledChange(e.target.checked)} disabled={!editable} />
+        {title}
+      </label>
+      {enabled ? (
+        <div className="mt-3 grid gap-3">
+          <input
+            value={comment}
+            onChange={(e) => onCommentChange(e.target.value)}
+            className={inputField}
+            disabled={!editable}
+            placeholder="Комментарий"
+          />
+          <input
+            value={price}
+            onChange={(e) => onPriceChange(e.target.value)}
+            className={inputField}
+            disabled={!editable}
+            placeholder="Цена"
+            inputMode="decimal"
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }

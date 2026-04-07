@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
@@ -142,6 +143,16 @@ export async function POST(
     throw e;
   }
 
+  scheduleAfterResponse("notifyProjectEstimateVersionCreated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "estimate",
+      action: `Создана версия сметы v${version.versionNumber}.`,
+    });
+  });
+
   return jsonOk({
     version: {
       id: version.id,
@@ -234,6 +245,17 @@ export async function PATCH(
       return { versionNumber: version.versionNumber, importedCount };
     });
 
+    scheduleAfterResponse("notifyProjectEstimatePatched", async () => {
+      const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+      await notifyProjectNoisyBlock({
+        projectId,
+        actorUserId: auth.user.id,
+        block: "estimate",
+        action: importOrderIds?.length
+          ? `В версию v${result.versionNumber} подтянуты позиции из заявок проекта.`
+          : `Обновлена версия сметы v${result.versionNumber}.`,
+      });
+    });
     return jsonOk(result);
   } catch (e) {
     if (e instanceof Error) {
@@ -300,6 +322,15 @@ export async function DELETE(
       return { deletedVersionNumber: target.versionNumber };
     });
 
+    scheduleAfterResponse("notifyProjectEstimateDeleted", async () => {
+      const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+      await notifyProjectNoisyBlock({
+        projectId,
+        actorUserId: auth.user.id,
+        block: "estimate",
+        action: `Удалена версия сметы v${result.deletedVersionNumber}.`,
+      });
+    });
     return jsonOk(result);
   } catch (e) {
     if (e instanceof Error) {

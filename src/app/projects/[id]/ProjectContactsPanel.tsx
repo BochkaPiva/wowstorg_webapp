@@ -14,11 +14,33 @@ type Contact = {
   fullName: string;
   phone: string | null;
   email: string | null;
+  category: "DECISION_MAKER" | "CONTRACTOR" | "VENUE" | "OTHER";
   roleNote: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   entries: Entry[];
+};
+
+const CATEGORY_OPTIONS = [
+  { value: "DECISION_MAKER", label: "ЛПР" },
+  { value: "CONTRACTOR", label: "Подрядчик" },
+  { value: "VENUE", label: "Площадка" },
+  { value: "OTHER", label: "Прочее" },
+] as const;
+
+const CATEGORY_LABEL: Record<Contact["category"], string> = {
+  DECISION_MAKER: "ЛПР",
+  CONTRACTOR: "Подрядчик",
+  VENUE: "Площадка",
+  OTHER: "Прочее",
+};
+
+const CATEGORY_TONE: Record<Contact["category"], string> = {
+  DECISION_MAKER: "border-violet-200 bg-violet-50/80",
+  CONTRACTOR: "border-sky-200 bg-sky-50/80",
+  VENUE: "border-amber-200 bg-amber-50/80",
+  OTHER: "border-zinc-200 bg-zinc-50/80",
 };
 
 function fmtDateTime(iso: string) {
@@ -47,6 +69,7 @@ export function ProjectContactsPanel({
   const [newFullName, setNewFullName] = React.useState("");
   const [newPhone, setNewPhone] = React.useState("");
   const [newEmail, setNewEmail] = React.useState("");
+  const [newCategory, setNewCategory] = React.useState<Contact["category"]>("DECISION_MAKER");
   const [newRoleNote, setNewRoleNote] = React.useState("");
   const [createBusy, setCreateBusy] = React.useState(false);
 
@@ -93,6 +116,7 @@ export function ProjectContactsPanel({
           fullName: newFullName.trim(),
           phone: newPhone.trim() || null,
           email: newEmail.trim() || null,
+          category: newCategory,
           roleNote: newRoleNote.trim() || null,
         }),
       });
@@ -101,6 +125,7 @@ export function ProjectContactsPanel({
         setNewFullName("");
         setNewPhone("");
         setNewEmail("");
+        setNewCategory("DECISION_MAKER");
         setNewRoleNote("");
         await load();
         notifyParentRefresh();
@@ -182,16 +207,21 @@ export function ProjectContactsPanel({
               key={c.id}
               className={[
                 "rounded-xl border bg-white p-3 shadow-sm",
-                c.isActive ? "border-zinc-200" : "border-zinc-300 opacity-75",
+                c.isActive ? CATEGORY_TONE[c.category] : "border-zinc-300 opacity-75",
               ].join(" ")}
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                 <div>
-                  <div className="font-semibold text-zinc-900">{c.fullName}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-semibold text-zinc-900">{c.fullName}</div>
+                    <span className="rounded-full border border-white/90 bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
+                      {CATEGORY_LABEL[c.category]}
+                    </span>
+                  </div>
                   <div className="mt-1 text-xs text-zinc-600 space-y-0.5">
                     {c.phone ? <div>Тел.: {c.phone}</div> : null}
                     {c.email ? <div>{c.email}</div> : null}
-                    {c.roleNote ? <div className="text-zinc-500">{c.roleNote}</div> : null}
+                    {c.roleNote ? <div className="text-zinc-500">Уточнение: {c.roleNote}</div> : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -314,10 +344,24 @@ export function ProjectContactsPanel({
                   maxLength={200}
                 />
               </div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Категория контакта
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value as Contact["category"])}
+                  className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                >
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <input
                 value={newRoleNote}
                 onChange={(e) => setNewRoleNote(e.target.value)}
-                placeholder="Роль или примечание (ЛПР, бухгалтерия…)"
+                placeholder="Уточнение роли, зона ответственности, комментарий"
                 className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
                 maxLength={500}
               />

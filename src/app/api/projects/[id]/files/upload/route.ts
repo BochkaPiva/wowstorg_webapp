@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { putProjectFile } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 import {
@@ -129,6 +130,16 @@ export async function POST(
         } as Prisma.InputJsonValue,
       });
       return created;
+    });
+
+    scheduleAfterResponse("notifyProjectFileUploaded", async () => {
+      const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+      await notifyProjectNoisyBlock({
+        projectId,
+        actorUserId: auth.user.id,
+        block: "files",
+        action: `Загружен файл «${row.originalName}».`,
+      });
     });
 
     return jsonOk({

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const PatchSchema = z
@@ -87,6 +88,16 @@ export async function PATCH(
     },
   });
 
+  scheduleAfterResponse("notifyProjectScheduleSlotUpdated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "schedule",
+      action: `Обновлён слот тайминга ${updated.intervalText}.`,
+    });
+  });
+
   return jsonOk({ slot: updated });
 }
 
@@ -110,5 +121,14 @@ export async function DELETE(
   if (!slot) return jsonError(404, "Слот не найден");
 
   await prisma.projectScheduleSlot.delete({ where: { id: slotId } });
+  scheduleAfterResponse("notifyProjectScheduleSlotDeleted", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "schedule",
+      action: "Удалён слот тайминга проекта.",
+    });
+  });
   return jsonOk({ ok: true });
 }

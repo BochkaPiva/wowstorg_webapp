@@ -34,8 +34,16 @@ export const CONTACT_PATCH_FIELD_LABEL: Record<string, string> = {
   fullName: "ФИО",
   phone: "Телефон",
   email: "Email",
+  category: "Категория",
   roleNote: "Роль / примечание",
   isActive: "Активен",
+};
+
+export const PROJECT_CONTACT_CATEGORY_LABEL: Record<string, string> = {
+  DECISION_MAKER: "ЛПР",
+  CONTRACTOR: "Подрядчик",
+  VENUE: "Площадка",
+  OTHER: "Прочее",
 };
 
 export function formatActivityValue(field: string, v: unknown): string {
@@ -45,6 +53,9 @@ export function formatActivityValue(field: string, v: unknown): string {
   }
   if (field === "ball" && typeof v === "string") {
     return PROJECT_BALL_LABEL[v as ProjectBall] ?? String(v);
+  }
+  if (field === "category" && typeof v === "string") {
+    return PROJECT_CONTACT_CATEGORY_LABEL[v] ?? String(v);
   }
   if (typeof v === "boolean") return v ? "да" : "нет";
   const s = String(v);

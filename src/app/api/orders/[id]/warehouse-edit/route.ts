@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
@@ -52,6 +53,7 @@ export async function PATCH(
   const data = parsed.data;
 
   let wasCycleStatus = false;
+  let projectIdForNotify: string | null = null;
 
   try {
     await prisma.$transaction(
@@ -69,6 +71,7 @@ export async function PATCH(
         });
 
         if (!order) throw new Error("NOT_FOUND");
+        projectIdForNotify = order.projectId;
 
         const quickRow = await tx.$queryRaw<Array<{ parentOrderId: string | null }>>`
           SELECT "parentOrderId"
@@ -230,6 +233,18 @@ export async function PATCH(
     }
     console.error("[warehouse-edit] transaction error:", e);
     return jsonError(500, e instanceof Error ? e.message : "Ошибка при сохранении");
+  }
+
+  if (projectIdForNotify) {
+    scheduleAfterResponse("notifyProjectEstimateFromWarehouseEdit", async () => {
+      const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+      await notifyProjectNoisyBlock({
+        projectId: projectIdForNotify!,
+        actorUserId: auth.user.id,
+        block: "estimate",
+        action: "Связанная заявка проекта была обновлена со стороны склада.",
+      });
+    });
   }
 
   return jsonOk({ ok: true });

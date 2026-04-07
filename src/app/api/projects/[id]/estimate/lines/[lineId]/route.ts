@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
 const PatchSchema = z
@@ -85,6 +86,16 @@ export async function PATCH(
     data,
   });
 
+  scheduleAfterResponse("notifyProjectEstimateLineUpdated", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "estimate",
+      action: `Обновлена строка сметы «${updated.name}».`,
+    });
+  });
+
   return jsonOk({
     line: {
       ...updated,
@@ -120,5 +131,14 @@ export async function DELETE(
   }
 
   await prisma.projectEstimateLine.delete({ where: { id: lineId } });
+  scheduleAfterResponse("notifyProjectEstimateLineDeleted", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "estimate",
+      action: "Удалена строка сметы.",
+    });
+  });
   return jsonOk({ ok: true });
 }

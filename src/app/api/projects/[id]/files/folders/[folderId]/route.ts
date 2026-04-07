@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
@@ -99,6 +100,16 @@ export async function PATCH(
     throw e;
   }
 
+  scheduleAfterResponse("notifyProjectFolderRenamed", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "files",
+      action: `Переименована папка в «${folder.name}».`,
+    });
+  });
+
   return jsonOk({
     folder: {
       ...folder,
@@ -169,6 +180,16 @@ export async function DELETE(
     }
     throw e;
   }
+
+  scheduleAfterResponse("notifyProjectFolderDeleted", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "files",
+      action: "Удалена папка проекта.",
+    });
+  });
 
   return jsonOk({ ok: true });
 }

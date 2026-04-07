@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
 const FINAL_ORDER_STATUSES = ["CLOSED", "CANCELLED"] as const;
 
@@ -193,7 +194,7 @@ export async function PATCH(
   } as const;
 
   try {
-    const project = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const before = await tx.project.findUnique({
         where: { id },
         select: {
@@ -274,13 +275,27 @@ export async function PATCH(
       }
 
       return {
-        ...projectRow,
-        eventStartDate: toDateOnly(projectRow.eventStartDate),
-        eventEndDate: toDateOnly(projectRow.eventEndDate),
+        project: {
+          ...projectRow,
+          eventStartDate: toDateOnly(projectRow.eventStartDate),
+          eventEndDate: toDateOnly(projectRow.eventEndDate),
+        },
+        changes,
       };
     });
 
-    return jsonOk({ project });
+    if (Object.keys(result.changes).length > 0) {
+      scheduleAfterResponse("notifyProjectFieldChanges", async () => {
+        const { notifyProjectFieldChanges } = await import("@/server/projects/project-notifications");
+        await notifyProjectFieldChanges({
+          projectId: id,
+          actorUserId: auth.user.id,
+          changes: result.changes,
+        });
+      });
+    }
+
+    return jsonOk({ project: result.project });
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
       return jsonError(404, "Проект не найден");

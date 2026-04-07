@@ -120,6 +120,8 @@ enum ProjectActivityKind {
   PROJECT_ARCHIVED
   ORDER_LINKED
   ORDER_CANCELLED
+  PROJECT_DRAFT_ORDER_UPDATED
+  PROJECT_DRAFT_ORDER_MATERIALIZED
   PROJECT_CONTACT_CREATED
   PROJECT_CONTACT_UPDATED
   PROJECT_FOLDER_CREATED
@@ -178,6 +180,8 @@ model User {
   projectCommunicationEntries   ProjectCommunicationEntry[]
   projectFilesUploaded          ProjectFile[]
   projectEstimateVersionsCreated ProjectEstimateVersion[]
+  projectDraftOrdersCreated     ProjectDraftOrder[]         @relation("project_draft_order_created_by")
+  projectDraftOrdersUpdated     ProjectDraftOrder[]         @relation("project_draft_order_updated_by")
 
   @@index([role, isActive])
 }
@@ -265,6 +269,7 @@ model Project {
   orders        Order[]
   activityLogs  ProjectActivityLog[]
   contacts      ProjectContact[]
+  draftOrders   ProjectDraftOrder[]
   notificationCooldowns ProjectNotificationCooldown[]
   folders       ProjectFolder[]
   projectFiles  ProjectFile[]
@@ -350,6 +355,53 @@ model ProjectNotificationCooldown {
   @@unique([projectId, blockKey])
   @@index([projectId])
   @@index([projectId, muteUntil])
+}
+
+/// Demo/draft-заявка проекта до materialize в реальные заявки склада.
+model ProjectDraftOrder {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title   String?
+  comment String?
+
+  createdById String
+  createdBy   User   @relation("project_draft_order_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  updatedById String?
+  updatedBy   User?  @relation("project_draft_order_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines ProjectDraftOrderLine[]
+
+  @@unique([projectId])
+  @@index([projectId])
+}
+
+model ProjectDraftOrderLine {
+  id           String @id @default(cuid())
+  draftOrderId String
+  draftOrder   ProjectDraftOrder @relation(fields: [draftOrderId], references: [id], onDelete: Cascade)
+
+  sortOrder          Int     @default(0)
+  itemId             String
+  item               Item    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemNameSnapshot   String
+  qty                Int
+  comment            String?
+  periodGroup        String?
+  pricePerDaySnapshot Decimal? @db.Decimal(14, 2)
+  lastAvailableQty   Int?
+  lastAvailabilityNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([draftOrderId, sortOrder])
+  @@index([itemId])
 }
 
 /// Папка в файловой зоне проекта (иерархия, корень = parentFolderId null).
@@ -538,6 +590,7 @@ model Item {
   lossRecords LossRecord[]
   inventoryAuditResults InventoryAuditItemResult[]
   projectEstimateLines ProjectEstimateLine[]
+  projectDraftOrderLines ProjectDraftOrderLine[]
 
   @@index([isActive, internalOnly])
   @@index([name])

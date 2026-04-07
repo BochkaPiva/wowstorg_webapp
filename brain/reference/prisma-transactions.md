@@ -21,9 +21,11 @@
 | `src/app/api/orders/[id]/quick-supplement/warehouse/route.ts` | **да** |
 | `src/app/api/orders/[id]/return-declared/route.ts` | нет |
 | `src/app/api/orders/[id]/warehouse-edit/route.ts` | **да** |
+| `src/app/api/projects/[id]/draft-order/route.ts` | нет |
+| `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |
 | `src/app/api/warehouse/incidents/[id]/repair/route.ts` | нет |
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
 
-Итого **Serializable** только в пяти order-роутах (см. ADR 002).
+Итого **Serializable** на путях создания/редактирования реальных заявок и materialize demo-черновика проекта (см. ADR 002 и ADR 006).

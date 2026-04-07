@@ -15,6 +15,7 @@ import {
 import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { ProjectContactsPanel } from "./ProjectContactsPanel";
+import { ProjectDraftOrderPanel } from "./ProjectDraftOrderPanel";
 import { ProjectEstimatePanel } from "./ProjectEstimatePanel";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import { ProjectSchedulePanel } from "./ProjectSchedulePanel";
@@ -232,7 +233,9 @@ function InlineSelectMenu<T extends string>({
 }
 
 function ActivityDescription({ row }: { row: ActivityLogRow }) {
-  if (row.kind === "PROJECT_CREATED") {
+  const kind = String(row.kind);
+
+  if (kind === "PROJECT_CREATED") {
     const t =
       typeof row.payload === "object" &&
       row.payload !== null &&
@@ -241,10 +244,10 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
         : "";
     return t ? <span>Название: {t}</span> : null;
   }
-  if (row.kind === "PROJECT_ARCHIVED") {
+  if (kind === "PROJECT_ARCHIVED") {
     return <span>Проект убран из активного списка.</span>;
   }
-  if (row.kind === "ORDER_LINKED" || row.kind === "ORDER_CANCELLED") {
+  if (kind === "ORDER_LINKED" || kind === "ORDER_CANCELLED") {
     const oid =
       typeof row.payload === "object" &&
       row.payload !== null &&
@@ -259,10 +262,10 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
         </Link>
       </span>
     ) : (
-      <span>{row.kind === "ORDER_CANCELLED" ? "Отмена заявки" : "Связана заявка"}</span>
+      <span>{kind === "ORDER_CANCELLED" ? "Отмена заявки" : "Связана заявка"}</span>
     );
   }
-  if (row.kind === "PROJECT_CONTACT_CREATED") {
+  if (kind === "PROJECT_CONTACT_CREATED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { fullName?: unknown; contactId?: unknown })
@@ -270,7 +273,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     const name = p?.fullName != null ? String(p.fullName) : "";
     return name ? <span>ФИО: {name}</span> : null;
   }
-  if (row.kind === "PROJECT_CONTACT_UPDATED") {
+  if (kind === "PROJECT_CONTACT_UPDATED") {
     const raw =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { changes?: unknown; contactId?: unknown })
@@ -293,7 +296,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
       </ul>
     );
   }
-  if (row.kind === "PROJECT_FOLDER_CREATED") {
+  if (kind === "PROJECT_FOLDER_CREATED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { name?: unknown })
@@ -301,7 +304,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     const n = p?.name != null ? String(p.name) : "";
     return n ? <span>Папка: {n}</span> : null;
   }
-  if (row.kind === "PROJECT_FOLDER_RENAMED") {
+  if (kind === "PROJECT_FOLDER_RENAMED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { from?: unknown; to?: unknown })
@@ -315,7 +318,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
       </span>
     );
   }
-  if (row.kind === "PROJECT_FOLDER_DELETED") {
+  if (kind === "PROJECT_FOLDER_DELETED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { name?: unknown })
@@ -323,7 +326,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     const n = p?.name != null ? String(p.name) : "";
     return n ? <span>Удалена: {n}</span> : null;
   }
-  if (row.kind === "PROJECT_FILE_UPLOADED") {
+  if (kind === "PROJECT_FILE_UPLOADED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { originalName?: unknown; sizeBytes?: unknown })
@@ -338,7 +341,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
       </span>
     );
   }
-  if (row.kind === "PROJECT_ESTIMATE_VERSION_CREATED") {
+  if (kind === "PROJECT_ESTIMATE_VERSION_CREATED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { versionNumber?: unknown })
@@ -346,7 +349,7 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     const n = typeof p?.versionNumber === "number" ? p.versionNumber : null;
     return n != null ? <span>Версия {n}</span> : null;
   }
-  if (row.kind === "PROJECT_FILE_DELETED") {
+  if (kind === "PROJECT_FILE_DELETED") {
     const p =
       typeof row.payload === "object" && row.payload !== null
         ? (row.payload as { originalName?: unknown })
@@ -354,7 +357,35 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     const n = p?.originalName != null ? String(p.originalName) : "";
     return n ? <span>{n}</span> : null;
   }
-  if (row.kind === "PROJECT_UPDATED") {
+  if (kind === "PROJECT_DRAFT_ORDER_UPDATED") {
+    const p =
+      typeof row.payload === "object" && row.payload !== null
+        ? (row.payload as { lineCount?: unknown })
+        : null;
+    const count = typeof p?.lineCount === "number" ? p.lineCount : null;
+    return count != null ? <span>Строк в demo-черновике: {count}</span> : <span>Demo-черновик обновлён.</span>;
+  }
+  if (kind === "PROJECT_DRAFT_ORDER_MATERIALIZED") {
+    const p =
+      typeof row.payload === "object" && row.payload !== null
+        ? (row.payload as {
+            createdCount?: unknown;
+            remainingDraftLines?: unknown;
+            unavailableCount?: unknown;
+          })
+        : null;
+    const createdCount = typeof p?.createdCount === "number" ? p.createdCount : null;
+    const remaining = typeof p?.remainingDraftLines === "number" ? p.remainingDraftLines : null;
+    const unavailable = typeof p?.unavailableCount === "number" ? p.unavailableCount : null;
+    return (
+      <span>
+        Создано реальных заявок: {createdCount ?? 0}
+        {remaining != null ? ` · осталось строк в demo: ${remaining}` : ""}
+        {unavailable != null && unavailable > 0 ? ` · дефицитных строк: ${unavailable}` : ""}
+      </span>
+    );
+  }
+  if (kind === "PROJECT_UPDATED") {
     const ch =
       typeof row.payload === "object" &&
       row.payload !== null &&
@@ -992,6 +1023,8 @@ export default function ProjectDetailPage() {
           </div>
 
           <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+
+          <ProjectDraftOrderPanel projectId={id} readOnly={readOnly} />
 
           <div className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">

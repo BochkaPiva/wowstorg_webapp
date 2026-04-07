@@ -21,6 +21,8 @@
 | `src/app/api/projects/[id]/contacts/route.ts` | `notifyProjectContactCreated` |
 | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` | `notifyProjectContactUpdated` |
 | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` | `notifyProjectContactEntry` |
+| `src/app/api/projects/[id]/draft-order/route.ts` | `notifyProjectDraftOrderUpdated` |
+| `src/app/api/projects/[id]/draft-order/materialize/route.ts` | `notifyProjectDraftMaterialized` |
 | `src/app/api/projects/[id]/estimate/route.ts` | `notifyProjectEstimateDraftSaved` |
 | `src/app/api/projects/[id]/estimate/versions/route.ts` | `notifyProjectEstimateVersionCreated`, `notifyProjectEstimatePatched`, `notifyProjectEstimateDeleted` |
 | `src/app/api/projects/[id]/estimate/sections/route.ts` | `notifyProjectEstimateSectionCreated` |

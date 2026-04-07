@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-07T18:06:52.079Z  
-> **Файлов route.ts:** 86  
+> **Сгенерировано:** 2026-04-07T20:20:17.987Z  
+> **Файлов route.ts:** 88  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -62,8 +62,10 @@
 | GET | `/api/orders/my` | `src/app/api/orders/my/route.ts` |
 | POST | `/api/orders` | `src/app/api/orders/route.ts` |
 | POST | `/api/projects/[id]/contacts/[contactId]/entries` | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` |
-| PATCH | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
-| GET, POST | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
+| PATCH, DELETE | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
+| GET, POST, PATCH | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
+| POST | `/api/projects/[id]/draft-order/materialize` | `src/app/api/projects/[id]/draft-order/materialize/route.ts` |
+| GET, PATCH | `/api/projects/[id]/draft-order` | `src/app/api/projects/[id]/draft-order/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
 | GET | `/api/projects/[id]/estimate/pdf` | `src/app/api/projects/[id]/estimate/pdf/route.ts` |
 | GET, PATCH | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |

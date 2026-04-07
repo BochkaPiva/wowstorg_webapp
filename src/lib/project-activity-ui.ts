@@ -8,6 +8,8 @@ export const PROJECT_ACTIVITY_KIND_LABEL: Record<ProjectActivityKind, string> = 
   PROJECT_ARCHIVED: "Отправлен в архив",
   ORDER_LINKED: "Создана заявка реквизита",
   ORDER_CANCELLED: "Заявка реквизита отменена",
+  PROJECT_DRAFT_ORDER_UPDATED: "Обновлён demo-черновик",
+  PROJECT_DRAFT_ORDER_MATERIALIZED: "Demo-черновик материализован",
   PROJECT_CONTACT_CREATED: "Добавлен контакт",
   PROJECT_CONTACT_UPDATED: "Изменён контакт",
   PROJECT_FOLDER_CREATED: "Создана папка",

@@ -53,8 +53,9 @@ type EstSection = {
   id: string;
   sortOrder: number;
   title: string;
-  kind: "LOCAL" | "REQUISITE";
+  kind: "LOCAL" | "REQUISITE" | "DRAFT_REQUISITE";
   linkedOrderId: string | null;
+  linkedDraftOrderId?: string | null;
   lines: EstLine[];
 };
 
@@ -132,6 +133,7 @@ const menuAction =
   "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50";
 const sectionTone = {
   requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
+  draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
   local: "border-sky-100 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]",
 };
 const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
@@ -222,6 +224,12 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
       })),
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function isDraftRequisiteSection(
+  section: EstSection,
+): section is EstSection & { kind: "DRAFT_REQUISITE" } {
+  return section.kind === "DRAFT_REQUISITE";
 }
 
 export function ProjectEstimatePanel({
@@ -655,7 +663,9 @@ export function ProjectEstimatePanel({
 
   const renderedSections = React.useMemo(() => {
     if (!data?.current) return [];
-    const requisites = data.current.sections.filter((section) => section.kind === "REQUISITE");
+    const requisites = data.current.sections.filter(
+      (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
+    );
     return [...requisites, ...localSectionsDraft].sort((a, b) => a.sortOrder - b.sortOrder);
   }, [data?.current, localSectionsDraft]);
 
@@ -1043,6 +1053,8 @@ export function ProjectEstimatePanel({
                           refreshActivity();
                         }}
                       />
+                    ) : isDraftRequisiteSection(sec) ? (
+                      <DraftRequisiteReadOnlyBlock sec={sec} />
                     ) : (
                       <>
                         {sec.lines.map((ln) => (
@@ -1162,7 +1174,11 @@ function EstimateSectionBlock({
   return (
     <details
       className={`rounded-2xl border p-3 shadow-sm sm:p-4 ${
-        sec.kind === "REQUISITE" ? sectionTone.requisite : sectionTone.local
+        sec.kind === "REQUISITE"
+          ? sectionTone.requisite
+          : sec.kind === "DRAFT_REQUISITE"
+            ? sectionTone.draftRequisite
+            : sectionTone.local
       }`}
       open
     >
@@ -1174,10 +1190,16 @@ function EstimateSectionBlock({
                 className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                   sec.kind === "REQUISITE"
                     ? "border border-violet-200 bg-violet-100 text-violet-900"
+                    : sec.kind === "DRAFT_REQUISITE"
+                      ? "border border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900"
                     : "border border-sky-200 bg-sky-50 text-sky-900"
                 }`}
               >
-                {sec.kind === "REQUISITE" ? "Реквизит" : "Локальный раздел"}
+                {sec.kind === "REQUISITE"
+                  ? "Реквизит"
+                  : sec.kind === "DRAFT_REQUISITE"
+                    ? "Demo-реквизит"
+                    : "Локальный раздел"}
               </span>
               {orderMeta ? (
                 <span className="rounded-full border border-white/80 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-700">
@@ -1186,7 +1208,11 @@ function EstimateSectionBlock({
               ) : null}
             </div>
             <div className="mt-2 text-lg font-semibold text-zinc-950">
-              {sec.kind === "REQUISITE" ? orderMeta?.label ?? "Реквизит" : sec.title}
+              {sec.kind === "REQUISITE"
+                ? orderMeta?.label ?? "Реквизит"
+                : sec.kind === "DRAFT_REQUISITE"
+                  ? sec.title
+                  : sec.title}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
               {sec.kind === "REQUISITE" ? (
@@ -1205,6 +1231,8 @@ function EstimateSectionBlock({
                     </span>
                   ) : null}
                 </>
+              ) : sec.kind === "DRAFT_REQUISITE" ? (
+                <span>Черновик проекта без дат. В очередь склада не попадает, пока не подтверждены периоды.</span>
               ) : (
                 <span>Раздел проекта без связи с заявкой</span>
               )}
@@ -1867,6 +1895,49 @@ function RequisiteSectionEditor({
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DraftRequisiteReadOnlyBlock({ sec }: { sec: EstSection & { kind: "DRAFT_REQUISITE" } }) {
+  const total = sec.lines.reduce((sum, line) => sum + (line.costClient != null ? Number(line.costClient) : 0), 0);
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-fuchsia-200/80 bg-white/90 p-3 shadow-inner">
+      <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-3 text-sm text-fuchsia-950">
+        <div className="font-semibold">Demo-заявка пока живёт только внутри проекта.</div>
+        <div className="mt-1 text-fuchsia-900/80">
+          Она не резервирует остатки и не создаёт реальную заявку склада, пока не будут подтверждены даты и выполнена materialize.
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {sec.lines.map((line) => (
+          <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.4fr)_132px]">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Позиция</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-950">{line.name}</div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Описание</div>
+                <div className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{line.description?.trim() || "—"}</div>
+              </div>
+              <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-fuchsia-700">Сумма</div>
+                <div className="mt-1 text-sm font-bold text-fuchsia-950">
+                  {formatOrderMoney(line.costClient != null ? Number(line.costClient) : 0)} ₽
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50/70 p-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Предварительный итог demo-блока</div>
+        <div className="mt-2 text-lg font-extrabold text-fuchsia-950">{formatOrderMoney(total)} ₽</div>
       </div>
     </div>
   );

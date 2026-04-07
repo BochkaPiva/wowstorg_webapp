@@ -32,8 +32,9 @@ export type ProjectEstimateReadSection = {
   id: string;
   sortOrder: number;
   title: string;
-  kind: "LOCAL" | "REQUISITE";
+  kind: "LOCAL" | "REQUISITE" | "DRAFT_REQUISITE";
   linkedOrderId: string | null;
+  linkedDraftOrderId: string | null;
   linkedOrderStatus: string | null;
   linkedOrderEditable: boolean;
   lines: ProjectEstimateReadLine[];
@@ -122,6 +123,19 @@ export async function buildProjectEstimateReadModel(args: {
       : null;
 
   const orderById = new Map(project.orders.map((order) => [order.id, order]));
+  const draftOrder = await prisma.projectDraftOrder.findUnique({
+    where: { projectId: args.projectId },
+    include: {
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          item: {
+            select: { id: true, name: true },
+          },
+        },
+      },
+    },
+  });
 
   return {
     projectTitle: project.title,
@@ -144,7 +158,8 @@ export async function buildProjectEstimateReadModel(args: {
             versionNumber: versionRow.versionNumber,
             note: versionRow.note,
             createdAt: versionRow.createdAt.toISOString(),
-            sections: versionRow.sections.map<ProjectEstimateReadSection>((section) => {
+            sections: [
+              ...versionRow.sections.map<ProjectEstimateReadSection>((section) => {
               const linkedOrder =
                 section.kind === ProjectEstimateSectionKind.REQUISITE && section.linkedOrderId
                   ? orderById.get(section.linkedOrderId) ?? null
@@ -227,6 +242,7 @@ export async function buildProjectEstimateReadModel(args: {
                   title: section.title,
                   kind: "REQUISITE",
                   linkedOrderId: section.linkedOrderId,
+                  linkedDraftOrderId: null,
                   linkedOrderStatus: linkedOrder.status,
                   linkedOrderEditable: EDITABLE_ORDER_STATUSES.has(linkedOrder.status),
                   lines: [...orderLines, ...serviceRows],
@@ -239,6 +255,7 @@ export async function buildProjectEstimateReadModel(args: {
                 title: section.title,
                 kind: section.kind,
                 linkedOrderId: section.linkedOrderId,
+                linkedDraftOrderId: null,
                 linkedOrderStatus: null,
                 linkedOrderEditable: false,
                 lines: section.lines.map((line) => ({
@@ -255,6 +272,45 @@ export async function buildProjectEstimateReadModel(args: {
                 })),
               };
             }),
+              ...(draftOrder && draftOrder.lines.length > 0
+                ? [
+                    {
+                      id: `draft-order:${draftOrder.id}`,
+                      sortOrder:
+                        (versionRow.sections.length > 0
+                          ? Math.max(...versionRow.sections.map((section) => section.sortOrder)) + 1
+                          : 0),
+                      title: draftOrder.title?.trim() || "Demo-заявка без дат",
+                      kind: "DRAFT_REQUISITE" as const,
+                      linkedOrderId: null,
+                      linkedDraftOrderId: draftOrder.id,
+                      linkedOrderStatus: null,
+                      linkedOrderEditable: false,
+                      lines: draftOrder.lines.map((line, index) => ({
+                        id: line.id,
+                        position: line.sortOrder,
+                        lineNumber: index + 1,
+                        name: line.itemNameSnapshot || line.item.name,
+                        description:
+                          [line.comment, line.periodGroup ? `Группа периода: ${line.periodGroup}` : null]
+                            .filter(Boolean)
+                            .join("\n") || null,
+                        lineType: "DRAFT_RENTAL",
+                        costClient:
+                          line.pricePerDaySnapshot != null
+                            ? String(Math.round(Number(line.pricePerDaySnapshot) * line.qty))
+                            : null,
+                        costInternal:
+                          line.pricePerDaySnapshot != null
+                            ? String(Math.round(Number(line.pricePerDaySnapshot) * line.qty))
+                            : null,
+                        orderLineId: null,
+                        itemId: line.itemId,
+                      })),
+                    },
+                  ]
+                : []),
+            ].sort((a, b) => a.sortOrder - b.sortOrder),
           },
   };
 }

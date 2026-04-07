@@ -168,6 +168,13 @@ function daysBetween(startDate: string, endDate: string): number {
   return days === 0 ? 1 : days;
 }
 
+function formatDateRu(dateOnly: string | null | undefined) {
+  if (!dateOnly) return "—";
+  const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
+  if (!y || !m || !d) return dateOnly;
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
+}
+
 function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
@@ -198,6 +205,23 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
         itemId: null,
       })),
     }));
+}
+
+function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
+  return sections
+    .map((section, sectionIndex) => ({
+      title: section.title.trim(),
+      sortOrder: sectionIndex,
+      lines: section.lines.map((line, lineIndex) => ({
+        name: line.name.trim(),
+        description: line.description?.trim() || null,
+        costClient: line.costClient == null || line.costClient === "" ? null : String(Number(line.costClient)),
+        costInternal: line.costInternal == null || line.costInternal === "" ? null : String(Number(line.costInternal)),
+        position: lineIndex,
+        lineNumber: lineIndex + 1,
+      })),
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export function ProjectEstimatePanel({
@@ -466,7 +490,12 @@ export function ProjectEstimatePanel({
                       ...line,
                       ...(typeof patch.name === "string" ? { name: patch.name } : {}),
                       ...(Object.prototype.hasOwnProperty.call(patch, "description")
-                        ? { description: (patch.description as string | null) ?? null }
+                        ? {
+                            description:
+                              patch.description == null
+                                ? null
+                                : String(patch.description),
+                          }
                         : {}),
                       ...(Object.prototype.hasOwnProperty.call(patch, "costClient")
                         ? {
@@ -630,6 +659,39 @@ export function ProjectEstimatePanel({
     return [...requisites, ...localSectionsDraft].sort((a, b) => a.sortOrder - b.sortOrder);
   }, [data?.current, localSectionsDraft]);
 
+  const dirtyLocalLineIds = React.useMemo(() => {
+    const dirtyIds = new Set<string>();
+    if (!data?.current) return dirtyIds;
+    const baseline = cloneLocalSections(data.current.sections);
+    const normalizedBase = normalizeLocalSectionsForCompare(baseline);
+    const normalizedDraft = normalizeLocalSectionsForCompare(localSectionsDraft);
+    const baseBySectionTitle = new Map(
+      baseline.map((section, sectionIndex) => [
+        `${normalizedBase[sectionIndex]?.title ?? section.title.trim()}::${sectionIndex}`,
+        section,
+      ]),
+    );
+
+    localSectionsDraft.forEach((section, sectionIndex) => {
+      const normalizedSection = normalizedDraft[sectionIndex];
+      const baseSection = baseBySectionTitle.get(`${normalizedSection?.title ?? section.title.trim()}::${sectionIndex}`);
+      if (!baseSection) {
+        section.lines.forEach((line) => dirtyIds.add(line.id));
+        return;
+      }
+      const baseLines = normalizeLocalSectionsForCompare([baseSection])[0]?.lines ?? [];
+      section.lines.forEach((line, lineIndex) => {
+        const current = normalizedSection?.lines[lineIndex];
+        const previous = baseLines[lineIndex];
+        if (!previous || JSON.stringify(current) !== JSON.stringify(previous)) {
+          dirtyIds.add(line.id);
+        }
+      });
+    });
+
+    return dirtyIds;
+  }, [data?.current, localSectionsDraft]);
+
   const totals = React.useMemo(() => {
     const COMMISSION_RATE = 0.15;
     const sections = renderedSections;
@@ -667,26 +729,6 @@ export function ProjectEstimatePanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
         <div className="flex flex-wrap items-center gap-2">
-          {!readOnly && data?.current ? (
-            <>
-              <button
-                type="button"
-                disabled={busy || !estimateDraftDirty}
-                onClick={() => void saveEstimateDraft()}
-                className={btnPrimary}
-              >
-                Сохранить смету
-              </button>
-              <button
-                type="button"
-                disabled={busy || !estimateDraftDirty}
-                onClick={discardEstimateDraft}
-                className={btnSecondary}
-              >
-                Сбросить черновик
-              </button>
-            </>
-          ) : null}
           {vn != null ? (
             <a
               href={exportHref}
@@ -703,11 +745,6 @@ export function ProjectEstimatePanel({
         Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и сохранить в БД одним действием.
         Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
       </p>
-      {!readOnly && estimateDraftDirty ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-          Есть несохранённые изменения в локальных разделах сметы.
-        </div>
-      ) : null}
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -1013,6 +1050,7 @@ export function ProjectEstimatePanel({
                             key={ln.id}
                             sectionId={sec.id}
                             line={ln}
+                            isDirty={dirtyLocalLineIds.has(ln.id)}
                             readOnly={readOnly}
                             busy={busy}
                             onSave={saveLine}
@@ -1061,6 +1099,27 @@ export function ProjectEstimatePanel({
                   </div>
                 </div>
               </div>
+
+              {!readOnly && data?.current ? (
+                <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,rgba(251,191,36,0.14),rgba(255,255,255,0.98),rgba(249,115,22,0.08))] p-4">
+                  <button
+                    type="button"
+                    disabled={busy || !estimateDraftDirty}
+                    onClick={discardEstimateDraft}
+                    className={`${btnSecondary} min-h-11`}
+                  >
+                    Сбросить черновик
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !estimateDraftDirty}
+                    onClick={() => void saveEstimateDraft()}
+                    className="min-h-12 rounded-xl border border-amber-300 bg-[linear-gradient(135deg,#f59e0b,#f97316)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(249,115,22,0.24)] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? "Сохраняю смету…" : "Сохранить смету"}
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
         </>
@@ -1139,12 +1198,10 @@ function EstimateSectionBlock({
                   ) : null}
                   {orderMeta?.dateLabel ? (
                     <span className="rounded-full border border-zinc-200 bg-white/80 px-2 py-1">
-                      {orderMeta.dateLabel}
-                    </span>
-                  ) : null}
-                  {orderMeta?.status ? (
-                    <span className="rounded-full border border-zinc-200 bg-white/80 px-2 py-1">
-                      Статус: {orderMeta.status}
+                      {orderMeta.dateLabel
+                        .split(" — ")
+                        .map((value) => formatDateRu(value))
+                        .join(" — ")}
                     </span>
                   ) : null}
                 </>
@@ -1240,6 +1297,7 @@ function EstimateSectionBlock({
 function LineEditor({
   sectionId,
   line,
+  isDirty,
   readOnly,
   busy,
   onSave,
@@ -1247,25 +1305,20 @@ function LineEditor({
 }: {
   sectionId: string;
   line: EstLine;
+  isDirty: boolean;
   readOnly: boolean;
   busy: boolean;
   onSave: (sectionId: string, id: string, p: Record<string, unknown>) => void;
   onDelete: (sectionId: string, id: string) => void;
 }) {
-  const [name, setName] = React.useState(line.name);
-  const [cc, setCc] = React.useState(line.costClient ?? "");
-  const [ci, setCi] = React.useState(line.costInternal ?? "");
-  const [desc, setDesc] = React.useState(line.description ?? "");
-
-  React.useEffect(() => {
-    setName(line.name);
-    setCc(line.costClient ?? "");
-    setCi(line.costInternal ?? "");
-    setDesc(line.description ?? "");
-  }, [line]);
-
   return (
-    <div className="rounded-lg border border-zinc-100 bg-zinc-50/60 p-2.5 text-sm shadow-sm">
+    <div
+      className={`rounded-lg border p-2.5 text-sm shadow-sm ${
+        isDirty
+          ? "border-amber-300 bg-[linear-gradient(135deg,rgba(254,243,199,0.8),rgba(255,255,255,1))]"
+          : "border-zinc-100 bg-zinc-50/60"
+      }`}
+    >
       <div className="mb-2 text-[11px] font-medium text-zinc-500">
         №{line.lineNumber}
         {line.orderLineId ? " · из заявки" : ""}
@@ -1283,24 +1336,24 @@ function LineEditor({
           <label className="block text-[11px] font-semibold text-zinc-500">
             Название
             <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={line.name}
+              onChange={(e) => onSave(sectionId, line.id, { name: e.target.value })}
               className={`mt-1 w-full ${inputFieldCompact}`}
             />
           </label>
           <label className="block text-[11px] font-semibold text-zinc-500">
             Описание
             <input
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
+              value={line.description ?? ""}
+              onChange={(e) => onSave(sectionId, line.id, { description: e.target.value })}
               className={`mt-1 w-full ${inputFieldCompact}`}
             />
           </label>
           <label className="block text-[11px] font-semibold text-zinc-500">
             Клиент
             <input
-              value={cc}
-              onChange={(e) => setCc(e.target.value)}
+              value={line.costClient ?? ""}
+              onChange={(e) => onSave(sectionId, line.id, { costClient: e.target.value })}
               className={`mt-1 w-full ${inputFieldCompact}`}
               inputMode="decimal"
             />
@@ -1308,28 +1361,13 @@ function LineEditor({
           <label className="block text-[11px] font-semibold text-zinc-500">
             Внутр.
             <input
-              value={ci}
-              onChange={(e) => setCi(e.target.value)}
+              value={line.costInternal ?? ""}
+              onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
               className={`mt-1 w-full ${inputFieldCompact}`}
               inputMode="decimal"
             />
           </label>
           <div className="flex flex-wrap items-end gap-2 xl:justify-end">
-            <button
-              type="button"
-              disabled={busy}
-              className="min-h-10 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 xl:text-xs"
-              onClick={() =>
-                void onSave(sectionId, line.id, {
-                  name: name.trim(),
-                  description: desc.trim() || null,
-                  costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
-                  costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
-                })
-              }
-            >
-              Сохранить строку
-            </button>
             {!line.orderLineId ? (
               <button
                 type="button"
@@ -1437,6 +1475,7 @@ function RequisiteSectionEditor({
   readOnly: boolean;
   onDone: () => void;
 }) {
+  const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
   const [order, setOrder] = React.useState<RequisiteOrder | null>(null);
   const [catalogItems, setCatalogItems] = React.useState<
     Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>
@@ -1643,30 +1682,49 @@ function RequisiteSectionEditor({
   return (
     <div className="space-y-4 rounded-2xl border border-violet-200/80 bg-white/90 p-3 shadow-inner">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_180px_120px_150px]">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_max-content] xl:grid-cols-[minmax(0,1fr)_200px_max-content]">
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Связанная заявка</div>
             <div className="mt-1 text-sm font-semibold text-violet-950">{orderMeta?.label ?? "Заявка"}</div>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Период</div>
-            <div className="mt-1 text-sm font-semibold text-zinc-900">{order.startDate} — {order.endDate}</div>
+            <div className="mt-1 whitespace-nowrap text-sm font-semibold text-zinc-900">
+              {formatDateRu(order.startDate)} — {formatDateRu(order.endDate)}
+            </div>
           </div>
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <div className="flex h-full items-center gap-2 text-sm font-semibold text-zinc-900">
+          <div className="relative flex items-start justify-end">
+            <button
+              type="button"
+              onMouseEnter={() => setStatusLegendOpen(true)}
+              onMouseLeave={() => setStatusLegendOpen(false)}
+              onFocus={() => setStatusLegendOpen(true)}
+              onBlur={() => setStatusLegendOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/90"
+              aria-label="Статус редактирования заявки"
+            >
               <span
-                title={orderStatusLabel(order.status)}
-                className={`inline-flex h-3 w-3 animate-pulse rounded-full ${
-                  editable ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(34,197,94,0.16)]" : "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.12)]"
+                className={`inline-flex h-3.5 w-3.5 animate-pulse rounded-full ${
+                  editable
+                    ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(34,197,94,0.14)]"
+                    : "bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.12)]"
                 }`}
               />
-              <span>{orderStatusLabel(order.status)}</span>
-            </div>
-          </div>
-          <div className={`rounded-xl border px-3 py-2 ${editable ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-zinc-100/80"}`}>
-            <div className={`mt-1 text-sm font-semibold ${editable ? "text-emerald-900" : "text-zinc-700"}`}>
-              {editable ? "Можно редактировать" : "Только просмотр"}
-            </div>
+            </button>
+            {statusLegendOpen ? (
+              <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-zinc-200 bg-white p-3 text-xs shadow-xl">
+                <div className="font-semibold text-zinc-900">Легенда</div>
+                <div className="mt-2 flex items-center gap-2 text-zinc-700">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  Зелёный: заявку можно редактировать из сметы
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-zinc-700">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                  Красный: заявка заблокирована текущим этапом
+                </div>
+                <div className="mt-2 text-zinc-500">Статус заявки не дублируется здесь, он уже виден в степпере сверху.</div>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-wrap items-start gap-2 lg:justify-end">
@@ -1972,11 +2030,30 @@ function OrderServiceCard({
   onPriceChange: (value: string) => void;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white/90 p-3">
-      <label className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
-        <input type="checkbox" checked={enabled} onChange={(e) => onEnabledChange(e.target.checked)} disabled={!editable} />
-        {title}
-      </label>
+    <div className={`rounded-xl border bg-white/90 px-3 py-2 transition-all ${enabled ? "border-violet-200 shadow-sm" : "border-zinc-200"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-zinc-900">{title}</div>
+        <button
+          type="button"
+          onClick={() => editable && onEnabledChange(!enabled)}
+          disabled={!editable}
+          className={[
+            "relative inline-flex h-7 w-12 items-center rounded-full border transition",
+            enabled ? "border-violet-500 bg-violet-600" : "border-zinc-300 bg-zinc-200",
+            !editable ? "cursor-not-allowed opacity-60" : "",
+          ].join(" ")}
+          role="switch"
+          aria-checked={enabled}
+          aria-label={title}
+        >
+          <span
+            className={[
+              "inline-flex h-5 w-5 rounded-full bg-white shadow transition-transform",
+              enabled ? "translate-x-6" : "translate-x-1",
+            ].join(" ")}
+          />
+        </button>
+      </div>
       {enabled ? (
         <div className="mt-3 grid gap-3">
           <input

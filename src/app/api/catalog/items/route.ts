@@ -117,10 +117,11 @@ export async function GET(req: Request) {
           ? Math.max(0, availableNow - reserved)
           : undefined;
       const basePrice = Number(i.pricePerDay);
+      // Всегда число в JSON: иначе Prisma Decimal для WOWSTORG уезжает строкой, клиент теряет цену (сумма 0 в смете).
       const pricePerDay =
         priceMultiplier !== 1
           ? Math.round(basePrice * priceMultiplier * 100) / 100
-          : i.pricePerDay;
+          : basePrice;
 
       return {
         ...i,

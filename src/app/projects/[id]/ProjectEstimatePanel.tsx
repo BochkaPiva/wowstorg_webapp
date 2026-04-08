@@ -349,6 +349,29 @@ function maxPhysicalRemainingForRequisiteLine(
   return Math.max(0, cap - usedOthers);
 }
 
+/** Учитывает и вёдра на складе, и «доступно на даты» из каталога (как на сервере warehouse-edit). */
+function maxQtyAllowedForRequisiteLine(
+  lines: Array<{
+    itemId: string;
+    requestedQty: number;
+    item: { total: number; inRepair: number; broken: number; missing: number };
+  }>,
+  index: number,
+  availableForDatesByItemId: Map<string, number>,
+): number {
+  const physical = maxPhysicalRemainingForRequisiteLine(lines, index);
+  const row = lines[index];
+  if (!row) return physical;
+  const datePool = availableForDatesByItemId.get(row.itemId);
+  if (datePool == null) return physical;
+  const usedOthers = lines.reduce(
+    (sum, l, j) => (j !== index && l.itemId === row.itemId ? sum + l.requestedQty : sum),
+    0,
+  );
+  const dateRem = Math.max(0, datePool - usedOthers);
+  return Math.min(physical, dateRem);
+}
+
 export function ProjectEstimatePanel({
   projectId,
   readOnly,
@@ -1738,6 +1761,16 @@ function RequisiteSectionEditor({
 
   const editable = !readOnly && !!order && isEditableOrderStatus(order.status);
 
+  const availableForDatesByItemId = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of catalogItems) {
+      if (c.availableForDates != null && Number.isFinite(c.availableForDates)) {
+        m.set(c.id, c.availableForDates);
+      }
+    }
+    return m;
+  }, [catalogItems]);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1807,9 +1840,16 @@ function RequisiteSectionEditor({
           inRepair: item.inRepair,
           broken: item.broken,
           missing: item.missing,
-          availableNow: item.availability?.availableNow,
-          availableForDates: item.availability?.availableForDates,
-          pricePerDay: typeof item.pricePerDay === "number" ? item.pricePerDay : undefined,
+          availableNow:
+            item.availability?.availableNow != null ? Number(item.availability.availableNow) : undefined,
+          availableForDates:
+            item.availability?.availableForDates != null
+              ? Number(item.availability.availableForDates)
+              : undefined,
+          pricePerDay:
+            item.pricePerDay === undefined || item.pricePerDay === null
+              ? undefined
+              : Number(item.pricePerDay),
         })),
       );
     } catch {
@@ -1844,7 +1884,11 @@ function RequisiteSectionEditor({
     const physicalCap = usableStockUnits(buckets);
     setLines((prev) => {
       const used = prev.filter((l) => l.itemId === itemId).reduce((s, l) => s + l.requestedQty, 0);
-      const remaining = Math.max(0, physicalCap - used);
+      const remainingPhysical = Math.max(0, physicalCap - used);
+      const datePool = inv?.availableForDates;
+      const remainingDate =
+        datePool != null && Number.isFinite(datePool) ? Math.max(0, datePool - used) : Number.POSITIVE_INFINITY;
+      const remaining = Math.min(remainingPhysical, remainingDate);
       const requestedQty = remaining <= 0 ? 0 : Math.max(1, Math.min(qty, remaining));
       if (requestedQty <= 0) return prev;
       return [
@@ -2015,7 +2059,7 @@ function RequisiteSectionEditor({
           <div className="space-y-3">
             <div className="space-y-2">
               {lines.map((line, index) => {
-                const maxRemPhysical = maxPhysicalRemainingForRequisiteLine(lines, index);
+                const maxQty = maxQtyAllowedForRequisiteLine(lines, index, availableForDatesByItemId);
                 return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.3fr)_120px_132px_auto]">
@@ -2038,12 +2082,11 @@ function RequisiteSectionEditor({
                     <input
                       type="number"
                       min={1}
-                      max={maxRemPhysical > 0 ? maxRemPhysical : undefined}
+                      max={maxQty > 0 ? maxQty : undefined}
                       value={line.requestedQty}
                       onChange={(e) => {
                         const raw = Math.max(1, Number(e.target.value) || 1);
-                        const upper = Math.max(maxRemPhysical, line.requestedQty);
-                        const next = Math.min(raw, Math.max(upper, 1));
+                        const next = maxQty > 0 ? Math.min(raw, maxQty) : raw;
                         updateLine(index, { requestedQty: next });
                       }}
                       className={`mt-1 w-full ${inputField}`}
@@ -2464,15 +2507,19 @@ function OrderLinePicker({
             <input
               type="number"
               min={1}
-              max={
-                selected.availableNow != null ? Math.max(1, selected.availableNow) : undefined
-              }
+              max={(() => {
+                const n = selected.availableNow ?? Number.POSITIVE_INFINITY;
+                const d = selected.availableForDates ?? Number.POSITIVE_INFINITY;
+                const merged = Math.min(n, d);
+                return Number.isFinite(merged) && merged > 0 ? Math.max(1, Math.floor(merged)) : undefined;
+              })()}
               value={qty}
               onChange={(e) => {
-                const capKnown = selected.availableNow != null;
-                const cap = capKnown ? Math.max(0, selected.availableNow!) : Number.POSITIVE_INFINITY;
+                const n = selected.availableNow ?? Number.POSITIVE_INFINITY;
+                const d = selected.availableForDates ?? Number.POSITIVE_INFINITY;
+                const cap = Math.min(n, d);
                 const raw = Math.max(1, Number(e.target.value) || 1);
-                if (!capKnown) {
+                if (!Number.isFinite(cap)) {
                   setQty(raw);
                   return;
                 }
@@ -2480,7 +2527,7 @@ function OrderLinePicker({
                   setQty(1);
                   return;
                 }
-                setQty(Math.min(raw, cap));
+                setQty(Math.min(raw, Math.floor(cap)));
               }}
               className={`mt-1 w-28 ${inputField}`}
             />

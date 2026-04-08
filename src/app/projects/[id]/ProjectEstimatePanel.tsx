@@ -191,6 +191,32 @@ function formatDateRu(dateOnly: string | null | undefined) {
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
 }
 
+/** Как `HelpLegend` на странице проекта — легенда по наведению на «?». */
+function EstimateHelpLegend({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-bold text-zinc-600 hover:bg-zinc-50"
+        aria-label={title}
+      >
+        ?
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl sm:left-auto sm:right-0">
+          <div className="font-semibold text-zinc-950">{title}</div>
+          <div className="mt-2">{children}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
@@ -347,6 +373,8 @@ export function ProjectEstimatePanel({
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
   const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const versionPickerWrapRef = React.useRef<HTMLDivElement>(null);
+  const actionsWrapRef = React.useRef<HTMLDivElement>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
   const selectedVersion =
@@ -429,13 +457,16 @@ export function ProjectEstimatePanel({
   }, [load, selectedVersion]);
 
   React.useEffect(() => {
-    function closeMenus() {
+    if (!versionPickerOpen && !actionsOpen) return;
+    function handlePointerDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (versionPickerWrapRef.current?.contains(t)) return;
+      if (actionsWrapRef.current?.contains(t)) return;
       setVersionPickerOpen(false);
       setActionsOpen(false);
     }
-    if (!versionPickerOpen && !actionsOpen) return;
-    window.addEventListener("click", closeMenus);
-    return () => window.removeEventListener("click", closeMenus);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [versionPickerOpen, actionsOpen]);
 
   function refreshActivity() {
@@ -859,7 +890,13 @@ export function ProjectEstimatePanel({
   return (
     <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
+          <EstimateHelpLegend title="Как устроена смета проекта">
+            Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и
+            сохранить в БД одним действием. Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
+          </EstimateHelpLegend>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {vn != null ? (
             <a
@@ -873,10 +910,6 @@ export function ProjectEstimatePanel({
           ) : null}
         </div>
       </div>
-      <p className="text-xs text-zinc-500">
-        Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и сохранить в БД одним действием.
-        Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
-      </p>
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -904,7 +937,7 @@ export function ProjectEstimatePanel({
             <div className="space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Версия сметы</div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
+                <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
                     className="inline-flex min-h-11 min-w-[12rem] items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-left shadow-sm hover:border-violet-200 hover:bg-violet-50/60"
@@ -972,7 +1005,7 @@ export function ProjectEstimatePanel({
             </div>
 
             {!readOnly ? (
-              <div className="relative flex items-start justify-start lg:justify-end">
+              <div className="relative flex items-start justify-start lg:justify-end" ref={actionsWrapRef}>
                 <button
                   type="button"
                   disabled={busy}
@@ -1154,63 +1187,70 @@ export function ProjectEstimatePanel({
               ) : null}
 
               <div className="space-y-4">
-                {renderedSections.map((sec) => (
-                  <EstimateSectionBlock
-                    key={sec.id}
-                    sec={sec}
-                    orderMeta={sec.linkedOrderId ? orderMetaById.get(sec.linkedOrderId) ?? null : null}
-                    readOnly={readOnly}
-                    busy={busy}
-                    onPatchSection={patchSection}
-                    onDeleteSection={deleteSection}
-                  >
-                    {sec.kind === "REQUISITE" && sec.linkedOrderId ? (
-                      <RequisiteSectionEditor
-                        projectId={projectId}
-                        orderId={sec.linkedOrderId}
-                        orderMeta={orderMetaById.get(sec.linkedOrderId) ?? null}
-                        readOnly={readOnly}
-                        onDone={() => {
-                          load(selectedVersion);
-                          refreshActivity();
-                        }}
-                      />
-                    ) : isDraftRequisiteSection(sec) ? (
-                      <DraftRequisiteEditor
-                        projectId={projectId}
-                        sec={sec}
-                        readOnly={readOnly}
-                        onDone={() => {
-                          load(selectedVersion);
-                          refreshActivity();
-                        }}
-                      />
-                    ) : (
-                      <>
-                        {sec.lines.map((ln) => (
-                          <LineEditor
-                            key={ln.id}
-                            sectionId={sec.id}
-                            line={ln}
-                            isDirty={dirtyLocalLineIds.has(ln.id)}
-                            readOnly={readOnly}
-                            busy={busy}
-                            onSave={saveLine}
-                            onDelete={deleteLine}
-                          />
-                        ))}
+                {renderedSections.map((sec) =>
+                  sec.kind === "REQUISITE" && sec.linkedOrderId ? (
+                    <RequisiteSectionEditor
+                      key={sec.id}
+                      sec={sec}
+                      projectId={projectId}
+                      orderId={sec.linkedOrderId}
+                      orderMeta={orderMetaById.get(sec.linkedOrderId) ?? null}
+                      readOnly={readOnly}
+                      busy={busy}
+                      onPatchSection={patchSection}
+                      onDeleteSection={deleteSection}
+                      onDone={() => {
+                        load(selectedVersion);
+                        refreshActivity();
+                      }}
+                    />
+                  ) : (
+                    <EstimateSectionBlock
+                      key={sec.id}
+                      sec={sec}
+                      orderMeta={sec.linkedOrderId ? orderMetaById.get(sec.linkedOrderId) ?? null : null}
+                      readOnly={readOnly}
+                      busy={busy}
+                      onPatchSection={patchSection}
+                      onDeleteSection={deleteSection}
+                    >
+                      {isDraftRequisiteSection(sec) ? (
+                        <DraftRequisiteEditor
+                          projectId={projectId}
+                          sec={sec}
+                          readOnly={readOnly}
+                          onDone={() => {
+                            load(selectedVersion);
+                            refreshActivity();
+                          }}
+                        />
+                      ) : (
+                        <>
+                          {sec.lines.map((ln) => (
+                            <LineEditor
+                              key={ln.id}
+                              sectionId={sec.id}
+                              line={ln}
+                              isDirty={dirtyLocalLineIds.has(ln.id)}
+                              readOnly={readOnly}
+                              busy={busy}
+                              onSave={saveLine}
+                              onDelete={deleteLine}
+                            />
+                          ))}
 
-                        {!readOnly ? (
-                          <AddLineForm
-                            sectionId={sec.id}
-                            busy={busy}
-                            onAdd={addLine}
-                          />
-                        ) : null}
-                      </>
-                    )}
-                  </EstimateSectionBlock>
-                ))}
+                          {!readOnly ? (
+                            <AddLineForm
+                              sectionId={sec.id}
+                              busy={busy}
+                              onAdd={addLine}
+                            />
+                          ) : null}
+                        </>
+                      )}
+                    </EstimateSectionBlock>
+                  ),
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -1278,6 +1318,8 @@ function EstimateSectionBlock({
   onPatchSection,
   onDeleteSection,
   children,
+  summaryTitleAddon,
+  summaryTrailing,
 }: {
   sec: EstSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
@@ -1286,6 +1328,10 @@ function EstimateSectionBlock({
   onPatchSection: (id: string, patch: { title?: string }) => void | Promise<void>;
   onDeleteSection: (id: string) => void | Promise<void>;
   children: React.ReactNode;
+  /** Рядом с заголовком секции (например, индикатор редактирования заявки). */
+  summaryTitleAddon?: React.ReactNode;
+  /** Если задано — подменяет стандартную колонку «Открыть заявку» справа в summary. */
+  summaryTrailing?: React.ReactNode;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
@@ -1337,12 +1383,17 @@ function EstimateSectionBlock({
                 </span>
               ) : null}
             </div>
-            <div className="mt-2 text-lg font-semibold text-zinc-950">
-              {sec.kind === "REQUISITE"
-                ? orderMeta?.label ?? "Реквизит"
-                : sec.kind === "DRAFT_REQUISITE"
-                  ? sec.title
-                  : sec.title}
+            <div
+              className={`mt-2 text-lg font-semibold text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}
+            >
+              {summaryTitleAddon}
+              <span className="min-w-0">
+                {sec.kind === "REQUISITE"
+                  ? orderMeta?.label ?? "Реквизит"
+                  : sec.kind === "DRAFT_REQUISITE"
+                    ? sec.title
+                    : sec.title}
+              </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
               {sec.kind === "REQUISITE" ? (
@@ -1369,7 +1420,9 @@ function EstimateSectionBlock({
             </div>
           </div>
           <div className="flex items-center gap-2 self-start">
-            {sec.linkedOrderId ? (
+            {summaryTrailing !== undefined ? (
+              summaryTrailing
+            ) : sec.linkedOrderId ? (
               <Link
                 href={`/orders/${sec.linkedOrderId}`}
                 className="rounded-lg border border-violet-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900"
@@ -1621,16 +1674,24 @@ function AddLineForm({
 }
 
 function RequisiteSectionEditor({
+  sec,
   projectId,
   orderId,
   orderMeta,
   readOnly,
+  busy,
+  onPatchSection,
+  onDeleteSection,
   onDone,
 }: {
+  sec: EstSection;
   projectId: string;
   orderId: string;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
   readOnly: boolean;
+  busy: boolean;
+  onPatchSection: (id: string, patch: { title?: string }) => void | Promise<void>;
+  onDeleteSection: (id: string) => void | Promise<void>;
   onDone: () => void;
 }) {
   const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
@@ -1868,93 +1929,94 @@ function RequisiteSectionEditor({
     (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
     (services.demontageEnabled ? Number(services.demontagePrice || 0) : 0);
 
-  if (loading) {
-    return <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>;
-  }
+  const summaryTitleAddon =
+    order && !loading ? (
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onMouseEnter={() => setStatusLegendOpen(true)}
+          onMouseLeave={() => setStatusLegendOpen(false)}
+          onFocus={() => setStatusLegendOpen(true)}
+          onBlur={() => setStatusLegendOpen(false)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white/90"
+          aria-label="Статус редактирования заявки"
+        >
+          <span
+            className={`inline-flex h-3.5 w-3.5 animate-pulse rounded-full ${
+              editable
+                ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(34,197,94,0.14)]"
+                : "bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.12)]"
+            }`}
+          />
+        </button>
+        {statusLegendOpen ? (
+          <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-zinc-200 bg-white p-3 text-xs shadow-xl sm:left-auto sm:right-0">
+            <div className="font-semibold text-zinc-900">Легенда</div>
+            <div className="mt-2 flex items-center gap-2 text-zinc-700">
+              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              Зелёный: заявку можно редактировать из сметы
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-zinc-700">
+              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+              Красный: заявка заблокирована текущим этапом
+            </div>
+            <div className="mt-2 text-zinc-500">Статус заявки не дублируется здесь, он уже виден в степпере сверху.</div>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
-  if (!order) {
-    return <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{error ?? "Связанная заявка не найдена"}</div>;
-  }
+  const summaryTrailing = (
+    <>
+      <Link
+        href={`/orders/${orderId}`}
+        className="rounded-lg border border-violet-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        Открыть заявку
+      </Link>
+      {order && editable ? (
+        <button
+          type="button"
+          disabled={saving || lines.length === 0}
+          onClick={(e) => {
+            e.stopPropagation();
+            void saveOrder();
+          }}
+          className={btnPrimary}
+        >
+          {saving ? "Сохранение…" : "Сохранить заявку"}
+        </button>
+      ) : null}
+    </>
+  );
 
   return (
-    <div className="space-y-4 rounded-2xl border border-violet-200/80 bg-white/90 p-3 shadow-inner">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_max-content] xl:grid-cols-[minmax(0,1fr)_200px_max-content]">
-          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Связанная заявка</div>
-            <div className="mt-1 text-sm font-semibold text-violet-950">{orderMeta?.label ?? "Заявка"}</div>
-          </div>
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Период</div>
-            <div className="mt-1 whitespace-nowrap text-sm font-semibold text-zinc-900">
-              {formatDateRu(order.startDate)} — {formatDateRu(order.endDate)}
-            </div>
-          </div>
-          <div className="relative flex items-start justify-end">
-            <button
-              type="button"
-              onMouseEnter={() => setStatusLegendOpen(true)}
-              onMouseLeave={() => setStatusLegendOpen(false)}
-              onFocus={() => setStatusLegendOpen(true)}
-              onBlur={() => setStatusLegendOpen(false)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white/90"
-              aria-label="Статус редактирования заявки"
-            >
-              <span
-                className={`inline-flex h-3.5 w-3.5 animate-pulse rounded-full ${
-                  editable
-                    ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(34,197,94,0.14)]"
-                    : "bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.12)]"
-                }`}
-              />
-            </button>
-            {statusLegendOpen ? (
-              <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-zinc-200 bg-white p-3 text-xs shadow-xl">
-                <div className="font-semibold text-zinc-900">Легенда</div>
-                <div className="mt-2 flex items-center gap-2 text-zinc-700">
-                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  Зелёный: заявку можно редактировать из сметы
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-zinc-700">
-                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-                  Красный: заявка заблокирована текущим этапом
-                </div>
-                <div className="mt-2 text-zinc-500">Статус заявки не дублируется здесь, он уже виден в степпере сверху.</div>
-              </div>
-            ) : null}
-          </div>
+    <EstimateSectionBlock
+      sec={sec}
+      orderMeta={orderMeta}
+      readOnly={readOnly}
+      busy={busy}
+      onPatchSection={onPatchSection}
+      onDeleteSection={onDeleteSection}
+      summaryTitleAddon={summaryTitleAddon}
+      summaryTrailing={summaryTrailing}
+    >
+      {loading ? (
+        <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>
+      ) : !order ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {error ?? "Связанная заявка не найдена"}
         </div>
-        <div className="flex flex-wrap items-start gap-2 lg:justify-end">
-          <Link
-            href={`/orders/${order.id}?from=project`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Полная заявка
-          </Link>
-          {editable ? (
-            <button
-              type="button"
-              disabled={saving || lines.length === 0}
-              onClick={() => void saveOrder()}
-              className={btnPrimary}
-            >
-              {saving ? "Сохранение…" : "Сохранить заявку"}
-            </button>
-          ) : null}
-        </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
 
-      {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
-
-      <div className="space-y-3">
-        <div className="space-y-3">
-          <div className="space-y-2">
-            {lines.map((line, index) => {
-              const maxRemPhysical = maxPhysicalRemainingForRequisiteLine(lines, index);
-              const stockTotal = usableStockUnits(line.item);
-              return (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              {lines.map((line, index) => {
+                const maxRemPhysical = maxPhysicalRemainingForRequisiteLine(lines, index);
+                return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.3fr)_120px_132px_auto]">
                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -1987,10 +2049,6 @@ function RequisiteSectionEditor({
                       className={`mt-1 w-full ${inputField}`}
                       disabled={!editable}
                     />
-                    <div className="mt-1 text-[11px] text-zinc-500">
-                      На складе (годных): {stockTotal} шт. · макс. по строке (с учётом других строк той же позиции):{" "}
-                      {maxRemPhysical}
-                    </div>
                   </label>
                   <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Сумма</div>
@@ -2084,8 +2142,9 @@ function RequisiteSectionEditor({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+        </div>
+      )}
+    </EstimateSectionBlock>
   );
 }
 

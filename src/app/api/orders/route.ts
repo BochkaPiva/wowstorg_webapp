@@ -39,6 +39,9 @@ const BodySchema = z.object({
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).optional(),
   demontagePrice: z.number().min(0).optional(),
+  deliveryInternalCost: z.number().min(0).nullable().optional(),
+  montageInternalCost: z.number().min(0).nullable().optional(),
+  demontageInternalCost: z.number().min(0).nullable().optional(),
 
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
@@ -126,6 +129,13 @@ export async function POST(req: Request) {
           demontageEnabled: data.demontageEnabled,
           demontageComment: data.demontageComment,
           demontagePrice: data.demontagePrice,
+          ...(isWarehouse
+            ? {
+                deliveryInternalCost: data.deliveryInternalCost,
+                montageInternalCost: data.montageInternalCost,
+                demontageInternalCost: data.demontageInternalCost,
+              }
+            : {}),
           source: data.source,
           greenwichUserId: data.greenwichUserId,
           projectId: data.projectId,

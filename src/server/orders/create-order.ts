@@ -33,6 +33,10 @@ export type CreateOrderInput = {
   demontageEnabled?: boolean;
   demontageComment?: string | null;
   demontagePrice?: number;
+  /** Только склад (WOWSTORG); не передаётся от Greenwich. */
+  deliveryInternalCost?: number | null;
+  montageInternalCost?: number | null;
+  demontageInternalCost?: number | null;
   source?: OrderSource;
   greenwichUserId?: string | null;
   projectId?: string | null;
@@ -266,6 +270,15 @@ export async function createOrderInTransaction(
       demontageEnabled: input.demontageEnabled ?? false,
       demontageComment: normalizeNullableComment(input.demontageComment),
       demontagePrice: input.demontagePrice != null ? input.demontagePrice : undefined,
+      ...(isWarehouse && input.deliveryInternalCost !== undefined
+        ? { deliveryInternalCost: input.deliveryInternalCost }
+        : {}),
+      ...(isWarehouse && input.montageInternalCost !== undefined
+        ? { montageInternalCost: input.montageInternalCost }
+        : {}),
+      ...(isWarehouse && input.demontageInternalCost !== undefined
+        ? { demontageInternalCost: input.demontageInternalCost }
+        : {}),
       payMultiplier,
       lines: {
         create: lines.map((line, index) => ({

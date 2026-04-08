@@ -159,12 +159,15 @@ export default function CartPage() {
   const [deliveryEnabled, setDeliveryEnabled] = React.useState(false);
   const [deliveryComment, setDeliveryComment] = React.useState("");
   const [deliveryPrice, setDeliveryPrice] = React.useState("");
+  const [deliveryInternalCost, setDeliveryInternalCost] = React.useState("");
   const [montageEnabled, setMontageEnabled] = React.useState(false);
   const [montageComment, setMontageComment] = React.useState("");
   const [montagePrice, setMontagePrice] = React.useState("");
+  const [montageInternalCost, setMontageInternalCost] = React.useState("");
   const [demontageEnabled, setDemontageEnabled] = React.useState(false);
   const [demontageComment, setDemontageComment] = React.useState("");
   const [demontagePrice, setDemontagePrice] = React.useState("");
+  const [demontageInternalCost, setDemontageInternalCost] = React.useState("");
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -213,8 +216,11 @@ export default function CartPage() {
         setMontageComment("");
         setDemontageComment("");
         setDeliveryPrice("");
+        setDeliveryInternalCost("");
         setMontagePrice("");
+        setMontageInternalCost("");
         setDemontagePrice("");
+        setDemontageInternalCost("");
 
         // Для расчётов итоговой суммы в quick режиме используем Greenwich-коэффициент.
         setOrderType("greenwich");
@@ -744,6 +750,12 @@ export default function CartPage() {
         if (dp != null && !Number.isNaN(dp)) payload.deliveryPrice = dp;
         if (mp != null && !Number.isNaN(mp)) payload.montagePrice = mp;
         if (dmp != null && !Number.isNaN(dmp)) payload.demontagePrice = dmp;
+        const di = deliveryInternalCost.trim() ? Number(deliveryInternalCost.replace(",", ".")) : undefined;
+        const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
+        const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
+        if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
         payload.source = orderType === "greenwich" ? "GREENWICH_INTERNAL" : "WOWSTORG_EXTERNAL";
         if (orderType === "greenwich" && greenwichUserId)
           payload.greenwichUserId = greenwichUserId;
@@ -755,6 +767,12 @@ export default function CartPage() {
         if (dp != null && !Number.isNaN(dp)) payload.deliveryPrice = dp;
         if (mp != null && !Number.isNaN(mp)) payload.montagePrice = mp;
         if (dmp != null && !Number.isNaN(dmp)) payload.demontagePrice = dmp;
+        const di = deliveryInternalCost.trim() ? Number(deliveryInternalCost.replace(",", ".")) : undefined;
+        const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
+        const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
+        if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
       }
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -1165,17 +1183,30 @@ export default function CartPage() {
                             placeholder="Комментарий к доставке…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={deliveryPrice}
-                              onChange={(e) => setDeliveryPrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={deliveryPrice}
+                                onChange={(e) => setDeliveryPrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={deliveryInternalCost}
+                                onChange={(e) => setDeliveryInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}
@@ -1192,17 +1223,30 @@ export default function CartPage() {
                             placeholder="Комментарий к монтажу…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={montagePrice}
-                              onChange={(e) => setMontagePrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={montagePrice}
+                                onChange={(e) => setMontagePrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={montageInternalCost}
+                                onChange={(e) => setMontageInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}
@@ -1219,17 +1263,30 @@ export default function CartPage() {
                             placeholder="Комментарий к демонтажу…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={demontagePrice}
-                              onChange={(e) => setDemontagePrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={demontagePrice}
+                                onChange={(e) => setDemontagePrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={demontageInternalCost}
+                                onChange={(e) => setDemontageInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}

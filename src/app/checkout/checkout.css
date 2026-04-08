@@ -368,6 +368,16 @@ select.co-input {
 .co-serviceRow .co-textarea--compact {
   margin-top: 0.5rem;
 }
+.co-priceRowGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.5rem;
+}
+.co-priceRowGroup .co-priceRow {
+  margin-top: 0;
+}
 .co-priceRow {
   display: flex;
   align-items: center;

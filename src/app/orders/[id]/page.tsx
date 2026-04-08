@@ -52,12 +52,15 @@ type Order = {
   deliveryEnabled: boolean;
   deliveryComment: string | null;
   deliveryPrice: number | null;
+  deliveryInternalCost?: number | null;
   montageEnabled: boolean;
   montageComment: string | null;
   montagePrice: number | null;
+  montageInternalCost?: number | null;
   demontageEnabled: boolean;
   demontageComment: string | null;
   demontagePrice: number | null;
+  demontageInternalCost?: number | null;
   payMultiplier?: number | null;
   warehouseInternalNote?: string | null;
   estimateFileKey?: string | null;
@@ -118,6 +121,27 @@ function orderTotal(order: {
   const services =
     (order.deliveryPrice ?? 0) + (order.montagePrice ?? 0) + (order.demontagePrice ?? 0);
   return Math.round(rental + services);
+}
+
+function orderServicesInternalTotal(order: {
+  deliveryEnabled: boolean;
+  deliveryInternalCost?: number | null;
+  montageEnabled: boolean;
+  montageInternalCost?: number | null;
+  demontageEnabled: boolean;
+  demontageInternalCost?: number | null;
+}): number {
+  let s = 0;
+  if (order.deliveryEnabled && order.deliveryInternalCost != null) {
+    s += Number(order.deliveryInternalCost);
+  }
+  if (order.montageEnabled && order.montageInternalCost != null) {
+    s += Number(order.montageInternalCost);
+  }
+  if (order.demontageEnabled && order.demontageInternalCost != null) {
+    s += Number(order.demontageInternalCost);
+  }
+  return Math.round(s);
 }
 
 function lineIssuedQty(l: OrderLine): number {
@@ -364,6 +388,9 @@ function ServiceEditRow({
   showPrice,
   price,
   onPriceChange,
+  showInternalPrice,
+  internalPrice,
+  onInternalPriceChange,
 }: {
   label: string;
   enabled: boolean;
@@ -373,9 +400,18 @@ function ServiceEditRow({
   showPrice: boolean;
   price: number | "";
   onPriceChange: (v: number | "") => void;
+  showInternalPrice?: boolean;
+  internalPrice?: number | "";
+  onInternalPriceChange?: (v: number | "") => void;
 }) {
   const priceNum = price === "" ? 0 : Number(price);
   const priceMissing = enabled && (price === "" || priceNum <= 0);
+  const gridCols =
+    showPrice && showInternalPrice
+      ? "sm:grid-cols-[1fr_auto_auto]"
+      : showPrice
+        ? "sm:grid-cols-[1fr_auto]"
+        : "";
   return (
     <div className="rounded-xl border border-zinc-200 bg-zinc-50/30 p-4">
       <label className="flex items-center gap-2 cursor-pointer">
@@ -388,7 +424,7 @@ function ServiceEditRow({
         <span className="text-sm font-semibold text-zinc-800">{label}</span>
       </label>
       {enabled && (
-        <div className={`mt-3 grid gap-3 ${showPrice ? "sm:grid-cols-[1fr_auto]" : ""}`}>
+        <div className={`mt-3 grid gap-3 ${gridCols}`}>
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
             <input
@@ -420,6 +456,22 @@ function ServiceEditRow({
               {priceMissing && (
                 <p className="mt-1 text-xs text-amber-600">Укажите цену для отправки сметы</p>
               )}
+            </div>
+          ) : null}
+          {showInternalPrice && internalPrice !== undefined && onInternalPriceChange ? (
+            <div className="min-w-[120px]">
+              <label className="block text-xs font-medium text-zinc-500 mb-1">Внутр. (₽)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={internalPrice === "" ? "" : internalPrice}
+                onChange={(e) =>
+                  onInternalPriceChange(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                placeholder="необяз."
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-right tabular-nums focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+              />
             </div>
           ) : null}
         </div>
@@ -454,12 +506,15 @@ export default function OrderDetailsPage() {
   const [editDeliveryEnabled, setEditDeliveryEnabled] = React.useState(false);
   const [editDeliveryComment, setEditDeliveryComment] = React.useState("");
   const [editDeliveryPrice, setEditDeliveryPrice] = React.useState<number | "">("");
+  const [editDeliveryInternalCost, setEditDeliveryInternalCost] = React.useState<number | "">("");
   const [editMontageEnabled, setEditMontageEnabled] = React.useState(false);
   const [editMontageComment, setEditMontageComment] = React.useState("");
   const [editMontagePrice, setEditMontagePrice] = React.useState<number | "">("");
+  const [editMontageInternalCost, setEditMontageInternalCost] = React.useState<number | "">("");
   const [editDemontageEnabled, setEditDemontageEnabled] = React.useState(false);
   const [editDemontageComment, setEditDemontageComment] = React.useState("");
   const [editDemontagePrice, setEditDemontagePrice] = React.useState<number | "">("");
+  const [editDemontageInternalCost, setEditDemontageInternalCost] = React.useState<number | "">("");
   const [catalogItems, setCatalogItems] = React.useState<{ id: string; name: string; availableForDates?: number }[]>([]);
 
   const user = state.status === "authenticated" ? state.user : null;
@@ -669,12 +724,21 @@ export default function OrderDetailsPage() {
     setEditDeliveryEnabled(order.deliveryEnabled);
     setEditDeliveryComment(order.deliveryComment ?? "");
     setEditDeliveryPrice(order.deliveryPrice ?? "");
+    setEditDeliveryInternalCost(
+      order.deliveryInternalCost != null ? Number(order.deliveryInternalCost) : "",
+    );
     setEditMontageEnabled(order.montageEnabled);
     setEditMontageComment(order.montageComment ?? "");
     setEditMontagePrice(order.montagePrice ?? "");
+    setEditMontageInternalCost(
+      order.montageInternalCost != null ? Number(order.montageInternalCost) : "",
+    );
     setEditDemontageEnabled(order.demontageEnabled);
     setEditDemontageComment(order.demontageComment ?? "");
     setEditDemontagePrice(order.demontagePrice ?? "");
+    setEditDemontageInternalCost(
+      order.demontageInternalCost != null ? Number(order.demontageInternalCost) : "",
+    );
     setIsEditing(true);
     setActionError(null);
     const start = order.startDate.slice(0, 10);
@@ -732,12 +796,39 @@ export default function OrderDetailsPage() {
           deliveryEnabled: editDeliveryEnabled,
           deliveryComment: editDeliveryComment.trim() || undefined,
           ...(isWarehouse ? { deliveryPrice: editDeliveryEnabled && editDeliveryPrice !== "" ? Number(editDeliveryPrice) : undefined } : {}),
+          ...(isWarehouse
+            ? {
+                deliveryInternalCost: editDeliveryEnabled
+                  ? editDeliveryInternalCost === ""
+                    ? null
+                    : Number(editDeliveryInternalCost)
+                  : null,
+              }
+            : {}),
           montageEnabled: editMontageEnabled,
           montageComment: editMontageComment.trim() || undefined,
           ...(isWarehouse ? { montagePrice: editMontageEnabled && editMontagePrice !== "" ? Number(editMontagePrice) : undefined } : {}),
+          ...(isWarehouse
+            ? {
+                montageInternalCost: editMontageEnabled
+                  ? editMontageInternalCost === ""
+                    ? null
+                    : Number(editMontageInternalCost)
+                  : null,
+              }
+            : {}),
           demontageEnabled: editDemontageEnabled,
           demontageComment: editDemontageComment.trim() || undefined,
           ...(isWarehouse ? { demontagePrice: editDemontageEnabled && editDemontagePrice !== "" ? Number(editDemontagePrice) : undefined } : {}),
+          ...(isWarehouse
+            ? {
+                demontageInternalCost: editDemontageEnabled
+                  ? editDemontageInternalCost === ""
+                    ? null
+                    : Number(editDemontageInternalCost)
+                  : null,
+              }
+            : {}),
           lines: editLines.map((l) => ({
             id: l.id,
             itemId: l.itemId,
@@ -943,6 +1034,23 @@ export default function OrderDetailsPage() {
                   {orderTotal(order).toLocaleString("ru-RU")} ₽
                 </span>
               </p>
+              {isWarehouse ? (
+                <p className="mt-1 text-xs text-zinc-600">
+                  Себестоимость доп. услуг (внутр.):{" "}
+                  <span className="font-semibold tabular-nums text-zinc-800">
+                    {orderServicesInternalTotal(order).toLocaleString("ru-RU")} ₽
+                  </span>
+                  {" · "}
+                  оценка прибыли (без себестоимости аренды реквизита):{" "}
+                  <span className="font-semibold tabular-nums text-emerald-800">
+                    {Math.max(
+                      0,
+                      orderTotal(order) - orderServicesInternalTotal(order),
+                    ).toLocaleString("ru-RU")}{" "}
+                    ₽
+                  </span>
+                </p>
+              ) : null}
               {order.estimateFileKey ? (
                 <p className="mt-3">
                   <a
@@ -1162,6 +1270,9 @@ export default function OrderDetailsPage() {
                   showPrice={isWarehouse}
                   price={editDeliveryPrice}
                   onPriceChange={setEditDeliveryPrice}
+                  showInternalPrice={isWarehouse}
+                  internalPrice={editDeliveryInternalCost}
+                  onInternalPriceChange={setEditDeliveryInternalCost}
                 />
                 <ServiceEditRow
                   label="Монтаж"
@@ -1172,6 +1283,9 @@ export default function OrderDetailsPage() {
                   showPrice={isWarehouse}
                   price={editMontagePrice}
                   onPriceChange={setEditMontagePrice}
+                  showInternalPrice={isWarehouse}
+                  internalPrice={editMontageInternalCost}
+                  onInternalPriceChange={setEditMontageInternalCost}
                 />
                 <ServiceEditRow
                   label="Демонтаж"
@@ -1182,6 +1296,9 @@ export default function OrderDetailsPage() {
                   showPrice={isWarehouse}
                   price={editDemontagePrice}
                   onPriceChange={setEditDemontagePrice}
+                  showInternalPrice={isWarehouse}
+                  internalPrice={editDemontageInternalCost}
+                  onInternalPriceChange={setEditDemontageInternalCost}
                 />
               </div>
             </div>
@@ -1241,6 +1358,9 @@ export default function OrderDetailsPage() {
                       Доставка
                       {order.deliveryComment ? `: ${order.deliveryComment}` : ""}
                       {order.deliveryPrice != null ? ` · ${order.deliveryPrice} ₽` : ""}
+                      {isWarehouse && order.deliveryInternalCost != null
+                        ? ` · внутр. ${Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽`
+                        : ""}
                     </li>
                   ) : null}
                   {order.montageEnabled ? (
@@ -1248,6 +1368,9 @@ export default function OrderDetailsPage() {
                       Монтаж
                       {order.montageComment ? `: ${order.montageComment}` : ""}
                       {order.montagePrice != null ? ` · ${order.montagePrice} ₽` : ""}
+                      {isWarehouse && order.montageInternalCost != null
+                        ? ` · внутр. ${Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽`
+                        : ""}
                     </li>
                   ) : null}
                   {order.demontageEnabled ? (
@@ -1255,6 +1378,9 @@ export default function OrderDetailsPage() {
                       Демонтаж
                       {order.demontageComment ? `: ${order.demontageComment}` : ""}
                       {order.demontagePrice != null ? ` · ${order.demontagePrice} ₽` : ""}
+                      {isWarehouse && order.demontageInternalCost != null
+                        ? ` · внутр. ${Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽`
+                        : ""}
                     </li>
                   ) : null}
                 </ul>

@@ -74,6 +74,7 @@ type DraftOrderResponse = {
       itemId: string;
       itemName: string;
       qty: number;
+      plannedDays: number;
       comment: string | null;
       periodGroup: string | null;
       pricePerDaySnapshot: number | null;
@@ -128,6 +129,17 @@ export default function CartPage() {
     } | null;
   } | null>(null);
   const [projectCartError, setProjectCartError] = React.useState<string | null>(null);
+  const [draftLineMetaByItemId, setDraftLineMetaByItemId] = React.useState<
+    Record<
+      string,
+      {
+        id?: string;
+        plannedDays: number;
+        comment: string | null;
+        periodGroup: string | null;
+      }
+    >
+  >({});
 
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
@@ -386,12 +398,25 @@ export default function CartPage() {
         const res = await fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as DraftOrderResponse | null;
         if (!res.ok || !data || cancelled) return;
+        const metaByItemId = Object.fromEntries(
+          (data.draftOrder?.lines ?? []).map((line) => [
+            line.itemId,
+            {
+              id: line.id,
+              plannedDays: Math.max(1, line.plannedDays ?? 1),
+              comment: line.comment ?? null,
+              periodGroup: line.periodGroup ?? null,
+            },
+          ]),
+        );
+        setDraftLineMetaByItemId(metaByItemId);
         const next = (data.draftOrder?.lines ?? []).map((line) => ({
           itemId: line.itemId,
           qty: line.qty,
           pricePerDay: line.pricePerDaySnapshot ?? undefined,
         }));
-        if (next.length > 0) {
+        const localCart = loadCart(cartScope);
+        if (localCart.length === 0 && next.length > 0) {
           saveCart(next, cartScope);
           setCart(next);
         }
@@ -605,12 +630,15 @@ export default function CartPage() {
             comment: comment.trim() || null,
             lines: cart.map((l, index) => {
               const item = itemMap.get(l.itemId);
+              const meta = draftLineMetaByItemId[l.itemId];
               return {
+                ...(meta?.id ? { id: meta.id } : {}),
                 itemId: l.itemId,
                 itemName: item?.name ?? l.itemId,
                 qty: l.qty,
-                comment: null,
-                periodGroup: null,
+                plannedDays: Math.max(1, meta?.plannedDays ?? 1),
+                comment: meta?.comment ?? null,
+                periodGroup: meta?.periodGroup ?? null,
                 pricePerDaySnapshot:
                   l.pricePerDay ?? (item ? Number(item.pricePerDay) : null),
                 sortOrder: index,

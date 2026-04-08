@@ -395,6 +395,7 @@ model ProjectDraftOrderLine {
   item               Item    @relation(fields: [itemId], references: [id], onDelete: Restrict)
   itemNameSnapshot   String
   qty                Int
+  plannedDays        Int     @default(1)
   comment            String?
   periodGroup        String?
   pricePerDaySnapshot Decimal? @db.Decimal(14, 2)

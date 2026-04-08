@@ -180,6 +180,38 @@ function PencilIcon() {
   );
 }
 
+function HelpLegend({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-bold text-zinc-600 hover:bg-zinc-50"
+        aria-label={title}
+      >
+        ?
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl">
+          <div className="font-semibold text-zinc-950">{title}</div>
+          <div className="mt-2">{children}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function InlineSelectMenu<T extends string>({
   value,
   options,
@@ -1101,17 +1133,19 @@ export default function ProjectDetailPage() {
 
           <div className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
+                <HelpLegend title="Как работает блок заявок">
+                  Один вход `Каталог → реквизит` ведёт либо в demo-каталог без дат, либо в обычный project-каталог с
+                  датами мероприятия. Реальные заявки попадают в выбранную версию сметы автоматически.
+                </HelpLegend>
+              </div>
               {!readOnly ? (
                 <button type="button" onClick={openProjectCatalogEntry} className={`${primaryBtn} w-full sm:w-auto`}>
                   Каталог → реквизит
                 </button>
               ) : null}
             </div>
-            <p className="text-xs text-zinc-600">
-              Одна точка входа ведёт либо в demo-каталог без дат, либо в обычный project-каталог с датами
-              мероприятия. Все созданные заявки сразу попадают в выбранную версию сметы.
-            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className={metaBadge}>
                 Версия сметы: {activeEstimateVersionNumber != null ? `v${activeEstimateVersionNumber}` : "будет создана автоматически"}
@@ -1131,31 +1165,42 @@ export default function ProjectDetailPage() {
               <ul className="space-y-3">
                 {project.draftOrder && project.draftOrder.linesCount > 0 ? (
                   <li className="rounded-xl border border-red-200 bg-[linear-gradient(180deg,rgba(254,242,242,0.94),rgba(255,255,255,0.98))] shadow-sm overflow-hidden">
-                    <div className="px-3 py-3 sm:px-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-red-200 bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
-                              Демо-заявка без дат
-                            </span>
-                            <span className="text-sm font-semibold text-zinc-900">
-                              {project.draftOrder.title?.trim() || "Без названия demo-набора"}
-                            </span>
+                    <details className="group">
+                      <summary className="cursor-pointer list-none px-3 py-3 sm:px-4 [&::-webkit-details-marker]:hidden">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-red-200 bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                                Демо-заявка без дат
+                              </span>
+                              <span className="text-sm font-semibold text-zinc-900">
+                                {project.draftOrder.title?.trim() || "Без названия demo-набора"}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                              <span>{project.draftOrder.linesCount} поз.</span>
+                              <span>·</span>
+                              <span>обновлено {fmtDateTime(project.draftOrder.updatedAt)}</span>
+                              {project.draftOrder.estimateVersionId === activeEstimateVersionId && activeEstimateVersionNumber != null ? (
+                                <>
+                                  <span>·</span>
+                                  <span className="font-medium text-red-700">привязано к v{activeEstimateVersionNumber}</span>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                            <span>{project.draftOrder.linesCount} поз.</span>
-                            <span>·</span>
-                            <span>обновлено {fmtDateTime(project.draftOrder.updatedAt)}</span>
-                            {project.draftOrder.estimateVersionId === activeEstimateVersionId && activeEstimateVersionNumber != null ? (
-                              <>
-                                <span>·</span>
-                                <span className="font-medium text-red-700">привязано к v{activeEstimateVersionNumber}</span>
-                              </>
-                            ) : null}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium text-red-700 group-open:hidden">Развернуть</span>
+                            <span className="hidden text-xs font-medium text-red-700 group-open:inline">Свернуть</span>
                           </div>
                         </div>
+                      </summary>
+                      <div className="border-t border-red-100 px-3 pb-3 pt-3 sm:px-4">
+                        <div className="rounded-xl border border-red-100 bg-white/85 px-3 py-2 text-sm text-zinc-700">
+                          Черновик проекта без дат. Состав и смету можно уточнять до подтверждения реальных интервалов.
+                        </div>
                         {!readOnly ? (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2">
                             <Link
                               href={buildProjectCatalogHref({
                                 projectId: id,
@@ -1175,17 +1220,13 @@ export default function ProjectDetailPage() {
                                 })}
                                 className={primaryBtn}
                               >
-                                Подтвердить даты и создать реальную
+                                Перейти к реальной заявке
                               </Link>
                             ) : null}
                           </div>
                         ) : null}
                       </div>
-                      <div className="mt-3 rounded-xl border border-red-100 bg-white/85 px-3 py-2 text-sm text-zinc-700">
-                        Demo-заявка живёт только внутри проекта, не резервирует остатки и нужна для ранней сборки
-                        корзины до подтверждения дат.
-                      </div>
-                    </div>
+                    </details>
                   </li>
                 ) : null}
                 {(project.orders ?? []).map((o) => (

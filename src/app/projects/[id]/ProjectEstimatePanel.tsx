@@ -14,6 +14,9 @@ type EstLine = {
   costInternal: string | null;
   orderLineId: string | null;
   itemId: string | null;
+  qty?: number | null;
+  plannedDays?: number | null;
+  pricePerDaySnapshot?: number | null;
 };
 
 type RequisiteOrderLine = {
@@ -230,6 +233,45 @@ function isDraftRequisiteSection(
   section: EstSection,
 ): section is EstSection & { kind: "DRAFT_REQUISITE" } {
   return section.kind === "DRAFT_REQUISITE";
+}
+
+function parseDraftLineMeta(line: EstLine) {
+  const qty =
+    typeof line.qty === "number" && Number.isFinite(line.qty)
+      ? Math.max(1, line.qty)
+      : (() => {
+          const match = line.description?.match(/Кол-во:\s*(\d+)/);
+          return match ? Math.max(1, Number(match[1])) : 1;
+        })();
+  const plannedDays =
+    typeof line.plannedDays === "number" && Number.isFinite(line.plannedDays)
+      ? Math.max(1, line.plannedDays)
+      : (() => {
+          const match = line.description?.match(/Дней:\s*(\d+)/);
+          return match ? Math.max(1, Number(match[1])) : 1;
+        })();
+  const pricePerDay =
+    typeof line.pricePerDaySnapshot === "number" && Number.isFinite(line.pricePerDaySnapshot)
+      ? line.pricePerDaySnapshot
+      : (() => {
+          if (line.costClient == null) return 0;
+          const total = Number(line.costClient);
+          if (!Number.isFinite(total) || qty <= 0 || plannedDays <= 0) return 0;
+          return total / qty / plannedDays;
+        })();
+  const extraDescription =
+    line.description
+      ?.split("\n")
+      .filter((chunk) => !/^Кол-во:\s*\d+$/i.test(chunk.trim()) && !/^Дней:\s*\d+$/i.test(chunk.trim()))
+      .join("\n")
+      .trim() || "";
+
+  return {
+    qty,
+    plannedDays,
+    pricePerDay,
+    extraDescription,
+  };
 }
 
 export function ProjectEstimatePanel({
@@ -1085,7 +1127,15 @@ export function ProjectEstimatePanel({
                         }}
                       />
                     ) : isDraftRequisiteSection(sec) ? (
-                      <DraftRequisiteReadOnlyBlock sec={sec} />
+                      <DraftRequisiteEditor
+                        projectId={projectId}
+                        sec={sec}
+                        readOnly={readOnly}
+                        onDone={() => {
+                          load(selectedVersion);
+                          refreshActivity();
+                        }}
+                      />
                     ) : (
                       <>
                         {sec.lines.map((ln) => (
@@ -1931,39 +1981,206 @@ function RequisiteSectionEditor({
   );
 }
 
-function DraftRequisiteReadOnlyBlock({ sec }: { sec: EstSection & { kind: "DRAFT_REQUISITE" } }) {
-  const total = sec.lines.reduce((sum, line) => sum + (line.costClient != null ? Number(line.costClient) : 0), 0);
+function DraftRequisiteEditor({
+  projectId,
+  sec,
+  readOnly,
+  onDone,
+}: {
+  projectId: string;
+  sec: EstSection & { kind: "DRAFT_REQUISITE" };
+  readOnly: boolean;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [legendOpen, setLegendOpen] = React.useState(false);
+  const [lines, setLines] = React.useState(() =>
+    sec.lines.map((line) => {
+      const meta = parseDraftLineMeta(line);
+      return {
+        id: line.id,
+        itemId: line.itemId ?? "",
+        name: line.name,
+        qty: meta.qty,
+        plannedDays: meta.plannedDays,
+        pricePerDaySnapshot: meta.pricePerDay,
+        comment: meta.extraDescription,
+      };
+    }),
+  );
+
+  React.useEffect(() => {
+    setLines(
+      sec.lines.map((line) => {
+        const meta = parseDraftLineMeta(line);
+        return {
+          id: line.id,
+          itemId: line.itemId ?? "",
+          name: line.name,
+          qty: meta.qty,
+          plannedDays: meta.plannedDays,
+          pricePerDaySnapshot: meta.pricePerDay,
+          comment: meta.extraDescription,
+        };
+      }),
+    );
+    setError(null);
+  }, [sec]);
+
+  const total = React.useMemo(
+    () =>
+      lines.reduce(
+        (sum, line) =>
+          sum + Math.round((line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays)),
+        0,
+      ),
+    [lines],
+  );
+
+  function updateLine(
+    index: number,
+    patch: Partial<{
+      qty: number;
+      plannedDays: number;
+      comment: string;
+    }>,
+  ) {
+    setLines((prev) => prev.map((line, idx) => (idx === index ? { ...line, ...patch } : line)));
+  }
+
+  async function saveDraft() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/draft-order`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estimateVersionId: sec.linkedDraftOrderId ? undefined : null,
+          title: sec.title,
+          comment: null,
+          lines: lines.map((line, index) => ({
+            id: line.id,
+            itemId: line.itemId,
+            itemName: line.name,
+            qty: Math.max(1, Number(line.qty) || 1),
+            plannedDays: Math.max(1, Number(line.plannedDays) || 1),
+            comment: line.comment.trim() || null,
+            periodGroup: null,
+            pricePerDaySnapshot: line.pricePerDaySnapshot,
+            sortOrder: index,
+          })),
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!res.ok) {
+        setError(data?.error?.message ?? "Не удалось сохранить demo-заявку");
+        return;
+      }
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-3 rounded-2xl border border-fuchsia-200/80 bg-white/90 p-3 shadow-inner">
-      <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-3 text-sm text-fuchsia-950">
-        <div className="font-semibold">Demo-заявка пока живёт только внутри проекта.</div>
-        <div className="mt-1 text-fuchsia-900/80">
-          Она не резервирует остатки и не создаёт реальную заявку склада, пока не будут подтверждены даты и выполнена materialize.
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {sec.lines.map((line) => (
-          <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.4fr)_132px]">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Позиция</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-950">{line.name}</div>
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Описание</div>
-                <div className="mt-1 whitespace-pre-wrap text-sm text-zinc-700">{line.description?.trim() || "—"}</div>
-              </div>
-              <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-fuchsia-700">Сумма</div>
-                <div className="mt-1 text-sm font-bold text-fuchsia-950">
-                  {formatOrderMoney(line.costClient != null ? Number(line.costClient) : 0)} ₽
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-sm font-semibold text-fuchsia-950">
+            Demo-заявка без дат
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onMouseEnter={() => setLegendOpen(true)}
+              onMouseLeave={() => setLegendOpen(false)}
+              onFocus={() => setLegendOpen(true)}
+              onBlur={() => setLegendOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-fuchsia-200 bg-white text-fuchsia-700"
+              aria-label="Пояснение по demo-заявке"
+            >
+              ?
+            </button>
+            {legendOpen ? (
+              <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl">
+                <div className="font-semibold text-zinc-950">Легенда</div>
+                <div className="mt-2">
+                  Demo-заявка не резервирует остатки и нужна для расчёта сметы до подтверждения конкретных интервалов.
+                </div>
+                <div className="mt-2">
+                  Поле `Дней` влияет только на предварительную смету. На этапе materialize ты всё равно задаёшь реальные
+                  интервалы дат.
                 </div>
               </div>
-            </div>
+            ) : null}
           </div>
-        ))}
+        </div>
+        {!readOnly ? (
+          <button type="button" onClick={() => void saveDraft()} disabled={busy} className={btnPrimary}>
+            {busy ? "Сохраняю demo…" : "Сохранить demo"}
+          </button>
+        ) : null}
+      </div>
+
+      {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
+
+      <div className="space-y-2">
+        {lines.map((line, index) => {
+          const lineTotal = Math.round(
+            (line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays),
+          );
+          return (
+            <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_112px_112px_132px_minmax(0,1.2fr)]">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Позиция</div>
+                  <div className="mt-1 text-sm font-semibold text-zinc-950">{line.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    {formatOrderMoney(line.pricePerDaySnapshot ?? 0)} ₽ / день
+                  </div>
+                </div>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Кол-во
+                  <input
+                    type="number"
+                    min={1}
+                    value={line.qty}
+                    onChange={(e) => updateLine(index, { qty: Math.max(1, Number(e.target.value) || 1) })}
+                    className={`mt-1 w-full ${inputField}`}
+                    disabled={readOnly}
+                  />
+                </label>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Дней
+                  <input
+                    type="number"
+                    min={1}
+                    value={line.plannedDays}
+                    onChange={(e) => updateLine(index, { plannedDays: Math.max(1, Number(e.target.value) || 1) })}
+                    className={`mt-1 w-full ${inputField}`}
+                    disabled={readOnly}
+                  />
+                </label>
+                <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-fuchsia-700">Сумма</div>
+                  <div className="mt-1 text-sm font-bold text-fuchsia-950">{formatOrderMoney(lineTotal)} ₽</div>
+                </div>
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Комментарий
+                  <input
+                    value={line.comment}
+                    onChange={(e) => updateLine(index, { comment: e.target.value })}
+                    className={`mt-1 w-full ${inputField}`}
+                    disabled={readOnly}
+                    placeholder="Опционально"
+                  />
+                </label>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50/70 p-3">

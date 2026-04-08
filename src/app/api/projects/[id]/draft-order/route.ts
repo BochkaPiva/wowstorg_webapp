@@ -15,6 +15,7 @@ const DraftLineSchema = z
     itemId: z.string().trim().min(1),
     itemName: z.string().trim().min(1).max(300),
     qty: z.number().int().positive().max(100000),
+    plannedDays: z.number().int().positive().max(3650).optional(),
     comment: z.string().trim().max(2000).nullable().optional(),
     periodGroup: z.string().trim().max(120).nullable().optional(),
     pricePerDaySnapshot: z.number().finite().nullable().optional(),
@@ -128,9 +129,11 @@ export async function PATCH(
     await tx.projectDraftOrder.update({
       where: { id: upserted.id },
       data: {
-        estimateVersionId: payload.estimateVersionId?.trim() || null,
-        title: payload.title?.trim() || null,
-        comment: payload.comment?.trim() || null,
+        ...(payload.estimateVersionId !== undefined
+          ? { estimateVersionId: payload.estimateVersionId?.trim() || null }
+          : {}),
+        ...(payload.title !== undefined ? { title: payload.title?.trim() || null } : {}),
+        ...(payload.comment !== undefined ? { comment: payload.comment?.trim() || null } : {}),
         updatedById: auth.user.id,
       },
     });
@@ -168,6 +171,7 @@ export async function PATCH(
           itemId: line.itemId,
           itemNameSnapshot: line.itemName.trim() || item.name,
           qty: line.qty,
+          plannedDays: Math.max(1, line.plannedDays ?? 1),
           comment: line.comment?.trim() || null,
           periodGroup: line.periodGroup?.trim() || null,
           pricePerDaySnapshot:

@@ -26,6 +26,9 @@ export type ProjectEstimateReadLine = {
   costInternal: string | null;
   orderLineId: string | null;
   itemId: string | null;
+  qty?: number | null;
+  plannedDays?: number | null;
+  pricePerDaySnapshot?: number | null;
 };
 
 export type ProjectEstimateReadSection = {
@@ -186,6 +189,9 @@ export async function buildProjectEstimateReadModel(args: {
                   ),
                   orderLineId: line.id,
                   itemId: line.itemId,
+                  qty: line.requestedQty,
+                  plannedDays: dayCount,
+                  pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
                 }));
 
                 const serviceRows = [
@@ -292,20 +298,37 @@ export async function buildProjectEstimateReadModel(args: {
                         lineNumber: index + 1,
                         name: line.itemNameSnapshot || line.item.name,
                         description:
-                          [line.comment, line.periodGroup ? `Группа периода: ${line.periodGroup}` : null]
+                          [
+                            `Кол-во: ${line.qty}`,
+                            `Дней: ${Math.max(1, line.plannedDays ?? 1)}`,
+                            line.comment,
+                            line.periodGroup ? `Группа периода: ${line.periodGroup}` : null,
+                          ]
                             .filter(Boolean)
                             .join("\n") || null,
                         lineType: "DRAFT_RENTAL",
                         costClient:
                           line.pricePerDaySnapshot != null
-                            ? String(Math.round(Number(line.pricePerDaySnapshot) * line.qty))
+                            ? String(
+                                Math.round(
+                                  Number(line.pricePerDaySnapshot) * line.qty * Math.max(1, line.plannedDays ?? 1),
+                                ),
+                              )
                             : null,
                         costInternal:
                           line.pricePerDaySnapshot != null
-                            ? String(Math.round(Number(line.pricePerDaySnapshot) * line.qty))
+                            ? String(
+                                Math.round(
+                                  Number(line.pricePerDaySnapshot) * line.qty * Math.max(1, line.plannedDays ?? 1),
+                                ),
+                              )
                             : null,
                         orderLineId: null,
                         itemId: line.itemId,
+                        qty: line.qty,
+                        plannedDays: Math.max(1, line.plannedDays ?? 1),
+                        pricePerDaySnapshot:
+                          line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
                       })),
                     },
                   ]

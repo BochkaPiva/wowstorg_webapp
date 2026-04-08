@@ -20,6 +20,7 @@ export type DraftOrderLineDto = {
   itemId: string;
   itemName: string;
   qty: number;
+  plannedDays: number;
   comment: string | null;
   periodGroup: string | null;
   pricePerDaySnapshot: number | null;
@@ -73,6 +74,7 @@ export function serializeDraftOrder(row: DraftOrderRow | null): DraftOrderDto | 
       itemId: line.itemId,
       itemName: line.itemNameSnapshot || line.item.name,
       qty: line.qty,
+      plannedDays: Math.max(1, line.plannedDays ?? 1),
       comment: line.comment ?? null,
       periodGroup: line.periodGroup ?? null,
       pricePerDaySnapshot: line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,

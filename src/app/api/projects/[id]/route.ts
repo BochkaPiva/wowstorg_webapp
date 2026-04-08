@@ -72,9 +72,22 @@ export async function GET(
         select: {
           id: true,
           title: true,
+          comment: true,
           updatedAt: true,
           estimateVersionId: true,
           _count: { select: { lines: true } },
+          lines: {
+            orderBy: { sortOrder: "asc" as const },
+            select: {
+              id: true,
+              itemId: true,
+              itemNameSnapshot: true,
+              qty: true,
+              plannedDays: true,
+              comment: true,
+              pricePerDaySnapshot: true,
+            },
+          },
         },
       },
       estimateVersions: {
@@ -133,9 +146,20 @@ export async function GET(
           : {
               id: project.draftOrders[0].id,
               title: project.draftOrders[0].title,
+              comment: project.draftOrders[0].comment,
               updatedAt: project.draftOrders[0].updatedAt,
               estimateVersionId: project.draftOrders[0].estimateVersionId,
               linesCount: project.draftOrders[0]._count.lines,
+              lines: project.draftOrders[0].lines.map((line) => ({
+                id: line.id,
+                itemId: line.itemId,
+                itemName: line.itemNameSnapshot,
+                qty: line.qty,
+                plannedDays: line.plannedDays,
+                comment: line.comment,
+                pricePerDaySnapshot:
+                  line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
+              })),
             },
       estimateCurrent: project.estimateVersions[0] ?? null,
     },

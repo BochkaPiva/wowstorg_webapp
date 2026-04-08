@@ -32,6 +32,16 @@ type LinkedOrder = {
   createdAt: string;
 };
 
+type DraftOrderLinePreview = {
+  id: string;
+  itemId: string;
+  itemName: string;
+  qty: number;
+  plannedDays: number;
+  comment: string | null;
+  pricePerDaySnapshot: number | null;
+};
+
 type ProjectDetail = {
   id: string;
   title: string;
@@ -52,9 +62,11 @@ type ProjectDetail = {
   draftOrder?: {
     id: string;
     title: string | null;
+    comment: string | null;
     updatedAt: string;
     estimateVersionId: string | null;
     linesCount: number;
+    lines: DraftOrderLinePreview[];
   } | null;
   estimateCurrent?: {
     id: string;
@@ -170,6 +182,10 @@ function fmtDateTime(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function fmtMoney(value: number) {
+  return new Intl.NumberFormat("ru-RU").format(Math.round(value));
 }
 
 function PencilIcon() {
@@ -475,6 +491,8 @@ export default function ProjectDetailPage() {
   const [initialLoading, setInitialLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [saveBusy, setSaveBusy] = React.useState(false);
+  const [draftDeleteBusy, setDraftDeleteBusy] = React.useState(false);
+  const [draftDeleteError, setDraftDeleteError] = React.useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = React.useState(false);
   const [archiveError, setArchiveError] = React.useState<string | null>(null);
   const [showAllLog, setShowAllLog] = React.useState(false);
@@ -655,6 +673,30 @@ export default function ProjectDetailPage() {
       return;
     }
     setCatalogModeOpen(true);
+  }
+
+  async function deleteDraftOrder() {
+    if (!id || readOnly || !project?.draftOrder) return;
+    const title = project.draftOrder.title?.trim() || "demo-заявку";
+    if (!window.confirm(`Удалить ${title}? Черновик и его позиции исчезнут из проекта и сметы.`)) return;
+
+    setDraftDeleteBusy(true);
+    setDraftDeleteError(null);
+    try {
+      const res = await fetch(`/api/projects/${id}/draft-order`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await load();
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      setDraftDeleteError(data?.error?.message ?? "Не удалось удалить demo-заявку");
+    } catch {
+      setDraftDeleteError("Не удалось удалить demo-заявку");
+    } finally {
+      setDraftDeleteBusy(false);
+    }
   }
 
   const statusOptions = Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[];
@@ -1196,35 +1238,101 @@ export default function ProjectDetailPage() {
                         </div>
                       </summary>
                       <div className="border-t border-red-100 px-3 pb-3 pt-3 sm:px-4">
-                        <div className="rounded-xl border border-red-100 bg-white/85 px-3 py-2 text-sm text-zinc-700">
-                          Черновик проекта без дат. Состав и смету можно уточнять до подтверждения реальных интервалов.
-                        </div>
-                        {!readOnly ? (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Link
-                              href={buildProjectCatalogHref({
-                                projectId: id,
-                                mode: "demo",
-                                estimateVersionId: activeEstimateVersionId,
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_18rem]">
+                          <div className="min-w-0 rounded-2xl border border-red-100 bg-white/90 p-3 shadow-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-zinc-900">Содержимое demo-заявки</div>
+                              <span className="rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                                без дат
+                              </span>
+                            </div>
+                            {project.draftOrder.comment?.trim() ? (
+                              <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-sm text-zinc-700">
+                                {project.draftOrder.comment}
+                              </div>
+                            ) : null}
+                            <div className="mt-3 space-y-2">
+                              {project.draftOrder.lines.map((line, index) => {
+                                const pricePerDay = line.pricePerDaySnapshot ?? 0;
+                                const lineTotal = line.qty * Math.max(1, line.plannedDays) * pricePerDay;
+                                return (
+                                  <div
+                                    key={line.id}
+                                    className="rounded-xl border border-zinc-200 bg-white px-3 py-3 shadow-sm"
+                                  >
+                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-50 px-2 text-[11px] font-bold text-red-700">
+                                            {index + 1}
+                                          </span>
+                                          <span className="truncate text-sm font-semibold text-zinc-900">{line.itemName}</span>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                          <span className={metaBadge}>Кол-во: {line.qty}</span>
+                                          <span className={metaBadge}>Дней: {Math.max(1, line.plannedDays)}</span>
+                                          <span className={metaBadge}>
+                                            Цена/день: {pricePerDay > 0 ? `${fmtMoney(pricePerDay)} ₽` : "не задана"}
+                                          </span>
+                                        </div>
+                                        {line.comment?.trim() ? (
+                                          <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-sm text-zinc-700">
+                                            {line.comment}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      <div className="shrink-0 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2 text-right">
+                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-red-600">Сумма</div>
+                                        <div className="text-sm font-bold text-red-900">{fmtMoney(lineTotal)} ₽</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
                               })}
-                              className={secondaryBtn}
-                            >
-                              Открыть demo-каталог
-                            </Link>
-                            {projectHasConfirmedDates ? (
-                              <Link
-                                href={buildProjectCatalogHref({
-                                  projectId: id,
-                                  mode: "dated",
-                                  estimateVersionId: activeEstimateVersionId,
-                                })}
-                                className={primaryBtn}
-                              >
-                                Перейти к реальной заявке
-                              </Link>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-red-100 bg-white/90 p-3 shadow-sm">
+                            <div className="text-sm font-semibold text-zinc-900">Действия</div>
+                            <div className="mt-2 text-xs leading-5 text-zinc-600">
+                              Черновик проекта без дат. Состав и смету можно уточнять до подтверждения реальных интервалов.
+                            </div>
+                            {!readOnly ? (
+                              <div className="mt-3 flex flex-col gap-2">
+                                <Link
+                                  href={buildProjectCatalogHref({
+                                    projectId: id,
+                                    mode: "demo",
+                                    estimateVersionId: activeEstimateVersionId,
+                                  })}
+                                  className={`${secondaryBtn} justify-center text-center`}
+                                >
+                                  Открыть demo-каталог
+                                </Link>
+                                {projectHasConfirmedDates ? (
+                                  <Link
+                                    href={buildProjectCatalogHref({
+                                      projectId: id,
+                                      mode: "dated",
+                                      estimateVersionId: activeEstimateVersionId,
+                                    })}
+                                    className={`${primaryBtn} justify-center text-center`}
+                                  >
+                                    Перейти к реальной заявке
+                                  </Link>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={deleteDraftOrder}
+                                  disabled={draftDeleteBusy}
+                                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                                >
+                                  {draftDeleteBusy ? "Удаляем..." : "Удалить demo-заявку"}
+                                </button>
+                                {draftDeleteError ? <div className="text-xs text-red-600">{draftDeleteError}</div> : null}
+                              </div>
                             ) : null}
                           </div>
-                        ) : null}
+                        </div>
                       </div>
                     </details>
                   </li>

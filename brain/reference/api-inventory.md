@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-07T20:20:17.987Z  
+> **Сгенерировано:** 2026-04-08T06:44:16.823Z  
 > **Файлов route.ts:** 88  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
@@ -65,7 +65,7 @@
 | PATCH, DELETE | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
 | GET, POST, PATCH | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
 | POST | `/api/projects/[id]/draft-order/materialize` | `src/app/api/projects/[id]/draft-order/materialize/route.ts` |
-| GET, PATCH | `/api/projects/[id]/draft-order` | `src/app/api/projects/[id]/draft-order/route.ts` |
+| GET, PATCH, DELETE | `/api/projects/[id]/draft-order` | `src/app/api/projects/[id]/draft-order/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
 | GET | `/api/projects/[id]/estimate/pdf` | `src/app/api/projects/[id]/estimate/pdf/route.ts` |
 | GET, PATCH | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |

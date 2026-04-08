@@ -240,3 +240,57 @@ export async function PATCH(
 
   return jsonOk({ draftOrder: serializeDraftOrder(draftOrder) });
 }
+
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id: projectId } = await ctx.params;
+  if (!projectId?.trim()) return jsonError(400, "Invalid id");
+
+  const guard = await assertProjectEditable(projectId);
+  if (!guard.ok) return jsonError(guard.status, guard.message);
+
+  const deleted = await prisma.$transaction(async (tx) => {
+    const existing = await tx.projectDraftOrder.findUnique({
+      where: { projectId },
+      select: { id: true, _count: { select: { lines: true } } },
+    });
+    if (!existing) return null;
+
+    await tx.projectDraftOrderLine.deleteMany({
+      where: { draftOrderId: existing.id },
+    });
+    await tx.projectDraftOrder.delete({
+      where: { id: existing.id },
+    });
+
+    await appendProjectActivityLog(tx, {
+      projectId,
+      actorUserId: auth.user.id,
+      kind: ProjectActivityKind.PROJECT_DRAFT_ORDER_UPDATED,
+      payload: {
+        deleted: true,
+        previousLineCount: existing._count.lines,
+        lineCount: 0,
+      } as Prisma.InputJsonValue,
+    });
+
+    return existing;
+  });
+
+  scheduleAfterResponse("notifyProjectDraftOrderDeleted", async () => {
+    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+    await notifyProjectNoisyBlock({
+      projectId,
+      actorUserId: auth.user.id,
+      block: "estimate",
+      action: "Удалён demo-черновик реквизита проекта.",
+    });
+  });
+
+  return jsonOk({ ok: true, deleted: deleted != null });
+}

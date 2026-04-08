@@ -1,5 +1,6 @@
 import { ProjectEstimateSectionKind } from "@prisma/client";
 
+import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { daysBetween } from "@/server/orders/order-total";
 
@@ -29,6 +30,8 @@ export type ProjectEstimateReadLine = {
   qty?: number | null;
   plannedDays?: number | null;
   pricePerDaySnapshot?: number | null;
+  /** Годные единицы на складе (ведра), без резерва по датам; для строк без позиции каталога — null */
+  maxQtyPhysical?: number | null;
 };
 
 export type ProjectEstimateReadSection = {
@@ -81,7 +84,15 @@ export async function buildProjectEstimateReadModel(args: {
               warehouseComment: true,
               greenwichComment: true,
               itemId: true,
-              item: { select: { name: true } },
+              item: {
+                select: {
+                  name: true,
+                  total: true,
+                  inRepair: true,
+                  broken: true,
+                  missing: true,
+                },
+              },
             },
           },
         },
@@ -133,7 +144,14 @@ export async function buildProjectEstimateReadModel(args: {
         orderBy: { sortOrder: "asc" },
         include: {
           item: {
-            select: { id: true, name: true },
+            select: {
+              id: true,
+              name: true,
+              total: true,
+              inRepair: true,
+              broken: true,
+              missing: true,
+            },
           },
         },
       },
@@ -192,6 +210,7 @@ export async function buildProjectEstimateReadModel(args: {
                   qty: line.requestedQty,
                   plannedDays: dayCount,
                   pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
+                  maxQtyPhysical: usableStockUnits(line.item),
                 }));
 
                 const serviceRows = [
@@ -208,6 +227,7 @@ export async function buildProjectEstimateReadModel(args: {
                         costInternal: null,
                         orderLineId: null,
                         itemId: null,
+                        maxQtyPhysical: null,
                       }
                     : null,
                   linkedOrder.montageEnabled
@@ -223,6 +243,7 @@ export async function buildProjectEstimateReadModel(args: {
                         costInternal: null,
                         orderLineId: null,
                         itemId: null,
+                        maxQtyPhysical: null,
                       }
                     : null,
                   linkedOrder.demontageEnabled
@@ -238,6 +259,7 @@ export async function buildProjectEstimateReadModel(args: {
                         costInternal: null,
                         orderLineId: null,
                         itemId: null,
+                        maxQtyPhysical: null,
                       }
                     : null,
                 ].filter((line): line is NonNullable<typeof line> => line !== null);
@@ -275,6 +297,7 @@ export async function buildProjectEstimateReadModel(args: {
                   costInternal: dec(line.costInternal),
                   orderLineId: line.orderLineId,
                   itemId: line.itemId,
+                  maxQtyPhysical: null,
                 })),
               };
             }),
@@ -329,6 +352,7 @@ export async function buildProjectEstimateReadModel(args: {
                         plannedDays: Math.max(1, line.plannedDays ?? 1),
                         pricePerDaySnapshot:
                           line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
+                        maxQtyPhysical: usableStockUnits(line.item),
                       })),
                     },
                   ]

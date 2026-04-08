@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { usableStockUnits } from "@/lib/inventory-stock";
 
 const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
@@ -17,15 +18,6 @@ const QuerySchema = z.object({
   excludeOrderId: z.string().trim().min(1).max(64).optional(),
   ids: z.string().trim().max(2000).optional(), // comma-separated item ids for cart
 });
-
-function computeAvailableNow(item: {
-  total: number;
-  inRepair: number;
-  broken: number;
-  missing: number;
-}) {
-  return Math.max(0, item.total - item.inRepair - item.broken - item.missing);
-}
 
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -118,7 +110,7 @@ export async function GET(req: Request) {
 
   return jsonOk({
     items: items.map((i) => {
-      const availableNow = computeAvailableNow(i);
+      const availableNow = usableStockUnits(i);
       const reserved = reservedByItemId.get(i.id) ?? 0;
       const availableForDates =
         startDate && endDate

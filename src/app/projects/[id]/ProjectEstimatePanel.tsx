@@ -3,6 +3,8 @@
 import Link from "next/link";
 import React from "react";
 
+import { usableStockUnits } from "@/lib/inventory-stock";
+
 type EstLine = {
   id: string;
   position: number;
@@ -17,6 +19,7 @@ type EstLine = {
   qty?: number | null;
   plannedDays?: number | null;
   pricePerDaySnapshot?: number | null;
+  maxQtyPhysical?: number | null;
 };
 
 type RequisiteOrderLine = {
@@ -27,7 +30,15 @@ type RequisiteOrderLine = {
   issuedQty: number | null;
   pricePerDaySnapshot: number | null;
   warehouseComment: string | null;
-  item: { id: string; name: string; type: string };
+  item: {
+    id: string;
+    name: string;
+    type: string;
+    total: number;
+    inRepair: number;
+    broken: number;
+    missing: number;
+  };
 };
 
 type RequisiteOrder = {
@@ -271,7 +282,45 @@ function parseDraftLineMeta(line: EstLine) {
     plannedDays,
     pricePerDay,
     extraDescription,
+    maxQtyPhysical:
+      typeof line.maxQtyPhysical === "number" && Number.isFinite(line.maxQtyPhysical) ? line.maxQtyPhysical : null,
   };
+}
+
+function maxPhysicalRemainingForDraftLine(
+  lines: Array<{ itemId: string; qty: number; maxQtyPhysical: number | null }>,
+  index: number,
+): number {
+  const row = lines[index];
+  if (!row) return 0;
+  const cap =
+    row.maxQtyPhysical != null && Number.isFinite(row.maxQtyPhysical)
+      ? Math.max(0, row.maxQtyPhysical)
+      : Number.POSITIVE_INFINITY;
+  const usedOthers = lines.reduce(
+    (sum, l, j) => (j !== index && l.itemId === row.itemId ? sum + l.qty : sum),
+    0,
+  );
+  if (cap === Number.POSITIVE_INFINITY) return Number.POSITIVE_INFINITY;
+  return Math.max(0, cap - usedOthers);
+}
+
+function maxPhysicalRemainingForRequisiteLine(
+  lines: Array<{
+    itemId: string;
+    requestedQty: number;
+    item: { total: number; inRepair: number; broken: number; missing: number };
+  }>,
+  index: number,
+): number {
+  const row = lines[index];
+  if (!row) return 0;
+  const cap = usableStockUnits(row.item);
+  const usedOthers = lines.reduce(
+    (sum, l, j) => (j !== index && l.itemId === row.itemId ? sum + l.requestedQty : sum),
+    0,
+  );
+  return Math.max(0, cap - usedOthers);
 }
 
 export function ProjectEstimatePanel({
@@ -1587,7 +1636,17 @@ function RequisiteSectionEditor({
   const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
   const [order, setOrder] = React.useState<RequisiteOrder | null>(null);
   const [catalogItems, setCatalogItems] = React.useState<
-    Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>
+    Array<{
+      id: string;
+      name: string;
+      total: number;
+      inRepair: number;
+      broken: number;
+      missing: number;
+      availableNow?: number;
+      availableForDates?: number;
+      pricePerDay?: number;
+    }>
   >([]);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -1601,6 +1660,7 @@ function RequisiteSectionEditor({
       requestedQty: number;
       warehouseComment: string;
       pricePerDaySnapshot: number | null;
+      item: { total: number; inRepair: number; broken: number; missing: number };
     }>
   >([]);
   const [services, setServices] = React.useState({
@@ -1630,7 +1690,18 @@ function RequisiteSectionEditor({
       ]);
       const orderJson = (await orderRes.json().catch(() => null)) as { order?: RequisiteOrder; error?: { message?: string } } | null;
       const catalogJson = (await catalogRes.json().catch(() => null)) as
-        | { items?: { id: string; name: string; pricePerDay?: number; availability?: { availableForDates?: number } }[] }
+        | {
+            items?: Array<{
+              id: string;
+              name: string;
+              total: number;
+              inRepair: number;
+              broken: number;
+              missing: number;
+              pricePerDay?: number;
+              availability?: { availableNow: number; availableForDates?: number };
+            }>;
+          }
         | null;
       if (!orderRes.ok || !orderJson?.order) {
         setError(orderJson?.error?.message ?? "Не удалось загрузить связанную заявку");
@@ -1648,6 +1719,12 @@ function RequisiteSectionEditor({
           requestedQty: line.requestedQty,
           warehouseComment: line.warehouseComment ?? "",
           pricePerDaySnapshot: line.pricePerDaySnapshot,
+          item: {
+            total: line.item.total,
+            inRepair: line.item.inRepair,
+            broken: line.item.broken,
+            missing: line.item.missing,
+          },
         })),
       );
       setServices({
@@ -1665,6 +1742,11 @@ function RequisiteSectionEditor({
         (catalogJson?.items ?? []).map((item) => ({
           id: item.id,
           name: item.name,
+          total: item.total,
+          inRepair: item.inRepair,
+          broken: item.broken,
+          missing: item.missing,
+          availableNow: item.availability?.availableNow,
           availableForDates: item.availability?.availableForDates,
           pricePerDay: typeof item.pricePerDay === "number" ? item.pricePerDay : undefined,
         })),
@@ -1694,17 +1776,29 @@ function RequisiteSectionEditor({
   }
 
   function addLine(itemId: string, name: string, qty: number, description: string) {
-    setLines((prev) => [
-      ...prev,
-      {
-        itemId,
-        name,
-        description,
-        requestedQty: qty,
-        warehouseComment: "",
-        pricePerDaySnapshot: catalogItems.find((item) => item.id === itemId)?.pricePerDay ?? null,
-      },
-    ]);
+    const inv = catalogItems.find((item) => item.id === itemId);
+    const buckets = inv
+      ? { total: inv.total, inRepair: inv.inRepair, broken: inv.broken, missing: inv.missing }
+      : { total: 0, inRepair: 0, broken: 0, missing: 0 };
+    const physicalCap = usableStockUnits(buckets);
+    setLines((prev) => {
+      const used = prev.filter((l) => l.itemId === itemId).reduce((s, l) => s + l.requestedQty, 0);
+      const remaining = Math.max(0, physicalCap - used);
+      const requestedQty = remaining <= 0 ? 0 : Math.max(1, Math.min(qty, remaining));
+      if (requestedQty <= 0) return prev;
+      return [
+        ...prev,
+        {
+          itemId,
+          name,
+          description,
+          requestedQty,
+          warehouseComment: "",
+          pricePerDaySnapshot: inv?.pricePerDay ?? null,
+          item: buckets,
+        },
+      ];
+    });
   }
 
   async function saveOrder() {
@@ -1857,7 +1951,10 @@ function RequisiteSectionEditor({
       <div className="space-y-3">
         <div className="space-y-3">
           <div className="space-y-2">
-            {lines.map((line, index) => (
+            {lines.map((line, index) => {
+              const maxRemPhysical = maxPhysicalRemainingForRequisiteLine(lines, index);
+              const stockTotal = usableStockUnits(line.item);
+              return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.3fr)_120px_132px_auto]">
                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -1879,11 +1976,21 @@ function RequisiteSectionEditor({
                     <input
                       type="number"
                       min={1}
+                      max={maxRemPhysical > 0 ? maxRemPhysical : undefined}
                       value={line.requestedQty}
-                      onChange={(e) => updateLine(index, { requestedQty: Math.max(1, Number(e.target.value) || 1) })}
+                      onChange={(e) => {
+                        const raw = Math.max(1, Number(e.target.value) || 1);
+                        const upper = Math.max(maxRemPhysical, line.requestedQty);
+                        const next = Math.min(raw, Math.max(upper, 1));
+                        updateLine(index, { requestedQty: next });
+                      }}
                       className={`mt-1 w-full ${inputField}`}
                       disabled={!editable}
                     />
+                    <div className="mt-1 text-[11px] text-zinc-500">
+                      На складе (годных): {stockTotal} шт. · макс. по строке (с учётом других строк той же позиции):{" "}
+                      {maxRemPhysical}
+                    </div>
                   </label>
                   <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Сумма</div>
@@ -1904,7 +2011,8 @@ function RequisiteSectionEditor({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           {editable ? (
@@ -2006,6 +2114,7 @@ function DraftRequisiteEditor({
         plannedDays: meta.plannedDays,
         pricePerDaySnapshot: meta.pricePerDay,
         comment: meta.extraDescription,
+        maxQtyPhysical: meta.maxQtyPhysical,
       };
     }),
   );
@@ -2022,6 +2131,7 @@ function DraftRequisiteEditor({
           plannedDays: meta.plannedDays,
           pricePerDaySnapshot: meta.pricePerDay,
           comment: meta.extraDescription,
+          maxQtyPhysical: meta.maxQtyPhysical,
         };
       }),
     );
@@ -2126,11 +2236,18 @@ function DraftRequisiteEditor({
 
       {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
 
+      <p className="text-xs text-zinc-600">
+        Количество ограничено физическим остатком на складе (годные единицы по вёдрам: total − ремонт − брак − недостача), без учёта резерва по датам. При переводе в реальные заявки дополнительно проверяется доступность на выбранные периоды.
+      </p>
+
       <div className="space-y-2">
         {lines.map((line, index) => {
           const lineTotal = Math.round(
             (line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays),
           );
+          const maxRemPhysical = maxPhysicalRemainingForDraftLine(lines, index);
+          const stockLabel =
+            line.maxQtyPhysical != null ? `${line.maxQtyPhysical} шт. на складе (годных)` : "лимит уточнится при сохранении";
           return (
             <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_112px_112px_132px_minmax(0,1.2fr)]">
@@ -2146,11 +2263,26 @@ function DraftRequisiteEditor({
                   <input
                     type="number"
                     min={1}
+                    max={Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY ? maxRemPhysical : undefined}
                     value={line.qty}
-                    onChange={(e) => updateLine(index, { qty: Math.max(1, Number(e.target.value) || 1) })}
+                    onChange={(e) => {
+                      const raw = Math.max(1, Number(e.target.value) || 1);
+                      if (!Number.isFinite(maxRemPhysical) || maxRemPhysical === Number.POSITIVE_INFINITY) {
+                        updateLine(index, { qty: raw });
+                        return;
+                      }
+                      const upper = Math.max(maxRemPhysical, line.qty);
+                      updateLine(index, { qty: Math.min(raw, Math.max(upper, 1)) });
+                    }}
                     className={`mt-1 w-full ${inputField}`}
                     disabled={readOnly}
                   />
+                  <div className="mt-1 text-[11px] text-zinc-500">
+                    {stockLabel}
+                    {Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY ? (
+                      <> · макс. по строке (сумма по той же позиции): {maxRemPhysical}</>
+                    ) : null}
+                  </div>
                 </label>
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Дней
@@ -2196,7 +2328,13 @@ function OrderLinePicker({
   existingItemIds,
   onAdd,
 }: {
-  catalogItems: Array<{ id: string; name: string; availableForDates?: number; pricePerDay?: number }>;
+  catalogItems: Array<{
+    id: string;
+    name: string;
+    availableNow?: number;
+    availableForDates?: number;
+    pricePerDay?: number;
+  }>;
   existingItemIds: string[];
   onAdd: (itemId: string, name: string, qty: number, description: string) => void;
 }) {
@@ -2246,9 +2384,12 @@ function OrderLinePicker({
                     }}
                   >
                     <span>{item.name}</span>
-                    {item.availableForDates != null ? (
-                      <span className="text-xs text-zinc-500">Доступно: {item.availableForDates}</span>
-                    ) : null}
+                    <span className="text-xs text-zinc-500">
+                      {item.availableNow != null ? <>Годных: {item.availableNow}</> : null}
+                      {item.availableForDates != null ? (
+                        <> · на даты: {item.availableForDates}</>
+                      ) : null}
+                    </span>
                   </button>
                 ))
               )}
@@ -2264,8 +2405,24 @@ function OrderLinePicker({
             <input
               type="number"
               min={1}
+              max={
+                selected.availableNow != null ? Math.max(1, selected.availableNow) : undefined
+              }
               value={qty}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(e) => {
+                const capKnown = selected.availableNow != null;
+                const cap = capKnown ? Math.max(0, selected.availableNow!) : Number.POSITIVE_INFINITY;
+                const raw = Math.max(1, Number(e.target.value) || 1);
+                if (!capKnown) {
+                  setQty(raw);
+                  return;
+                }
+                if (cap <= 0) {
+                  setQty(1);
+                  return;
+                }
+                setQty(Math.min(raw, cap));
+              }}
               className={`mt-1 w-28 ${inputField}`}
             />
           </label>

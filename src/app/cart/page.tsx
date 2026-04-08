@@ -485,6 +485,9 @@ export default function CartPage() {
   function maxQtyForItem(itemId: string): number | null {
     const inv = items.find((i) => i.id === itemId);
     if (!inv) return null;
+    if (isProjectDemoCart) {
+      return Math.max(0, inv.availability.availableNow);
+    }
     const max = inv.availability.availableForDates ?? inv.availability.availableNow;
     return Math.max(0, max);
   }
@@ -512,7 +515,9 @@ export default function CartPage() {
         .map((l) => {
           const inv = items.find((i) => i.id === l.itemId);
           if (!inv) return l;
-          const cap = inv.availability.availableForDates ?? inv.availability.availableNow;
+          const cap = isProjectDemoCart
+            ? inv.availability.availableNow
+            : inv.availability.availableForDates ?? inv.availability.availableNow;
           const max = Math.max(0, cap);
           const clamped = max <= 0 ? 0 : Math.min(l.qty, max);
           if (clamped !== l.qty) changed = true;
@@ -523,7 +528,7 @@ export default function CartPage() {
       saveCart(next, cartScope);
       return next;
     });
-  }, [items, cartScope]);
+  }, [items, cartScope, isProjectDemoCart]);
 
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));

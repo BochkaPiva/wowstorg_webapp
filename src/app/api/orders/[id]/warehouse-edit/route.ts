@@ -10,7 +10,7 @@ import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifact
 const LineSchema = z.object({
   id: z.string().optional(),
   itemId: z.string().min(1),
-  requestedQty: z.number().int().min(0).max(100000),
+  requestedQty: z.number().int().min(0),
   warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
 

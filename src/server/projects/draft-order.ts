@@ -1,18 +1,10 @@
 import { Prisma, ProjectActivityKind } from "@prisma/client";
 
+import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { CreateOrderError, createOrderInTransaction } from "@/server/orders/create-order";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
-
-function computeAvailableNow(item: {
-  total: number;
-  inRepair: number;
-  broken: number;
-  missing: number;
-}) {
-  return Math.max(0, item.total - item.inRepair - item.broken - item.missing);
-}
 
 export type DraftOrderLineDto = {
   id: string;
@@ -78,7 +70,7 @@ export function serializeDraftOrder(row: DraftOrderRow | null): DraftOrderDto | 
       comment: line.comment ?? null,
       periodGroup: line.periodGroup ?? null,
       pricePerDaySnapshot: line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
-      availableNow: computeAvailableNow(line.item),
+      availableNow: usableStockUnits(line.item),
       lastAvailableQty: line.lastAvailableQty ?? null,
       lastAvailabilityNote: line.lastAvailabilityNote ?? null,
     })),
@@ -192,7 +184,7 @@ export async function materializeProjectDraftOrder(args: {
 
         for (const line of groupLines) {
           const item = line.item;
-          const availableNow = computeAvailableNow(item);
+          const availableNow = usableStockUnits(item);
           const reservedQty = reserved.get(line.itemId) ?? 0;
           const alreadyAllocated = allocatedByItem.get(line.itemId) ?? 0;
           const availableForPeriod = Math.max(0, availableNow - reservedQty - alreadyAllocated);

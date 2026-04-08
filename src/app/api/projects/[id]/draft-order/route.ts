@@ -1,6 +1,7 @@
 import { Prisma, ProjectActivityKind } from "@prisma/client";
 import { z } from "zod";
 
+import { usableStockUnits } from "@/lib/inventory-stock";
 import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
@@ -14,7 +15,7 @@ const DraftLineSchema = z
     id: z.string().trim().min(1).optional(),
     itemId: z.string().trim().min(1),
     itemName: z.string().trim().min(1).max(300),
-    qty: z.number().int().positive().max(100000),
+    qty: z.number().int().positive(),
     plannedDays: z.number().int().positive().max(3650).optional(),
     comment: z.string().trim().max(2000).nullable().optional(),
     periodGroup: z.string().trim().max(120).nullable().optional(),
@@ -93,7 +94,9 @@ export async function PATCH(
 
   const payload = parsed.data;
 
-  const draftOrder = await prisma.$transaction(async (tx) => {
+  let draftOrder;
+  try {
+    draftOrder = await prisma.$transaction(async (tx) => {
     const existing = await tx.projectDraftOrder.findUnique({
       where: { projectId },
       include: {
@@ -156,12 +159,34 @@ export async function PATCH(
     if (itemIds.length > 0) {
       const items = await tx.item.findMany({
         where: { id: { in: itemIds }, isActive: true },
-        select: { id: true, name: true, pricePerDay: true },
+        select: {
+          id: true,
+          name: true,
+          pricePerDay: true,
+          total: true,
+          inRepair: true,
+          broken: true,
+          missing: true,
+        },
       });
       if (items.length !== itemIds.length) {
         throw new Error("ITEM_NOT_FOUND");
       }
       const itemById = new Map(items.map((item) => [item.id, item]));
+
+      const qtySumByItemId = new Map<string, number>();
+      for (const line of payload.lines) {
+        qtySumByItemId.set(line.itemId, (qtySumByItemId.get(line.itemId) ?? 0) + line.qty);
+      }
+      for (const [itemId, sumQty] of qtySumByItemId) {
+        const item = itemById.get(itemId)!;
+        const cap = usableStockUnits(item);
+        if (sumQty > cap) {
+          throw new Error(
+            `QTY_EXCEEDS_PHYSICAL_STOCK:${JSON.stringify({ itemName: item.name, cap, sumQty })}`,
+          );
+        }
+      }
 
       for (const line of payload.lines.sort((a, b) => a.sortOrder - b.sortOrder)) {
         const item = itemById.get(line.itemId)!;
@@ -227,6 +252,29 @@ export async function PATCH(
       },
     });
   });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "PROJECT_NOT_FOUND") return jsonError(404, "Проект не найден");
+    if (msg === "ITEM_NOT_FOUND") return jsonError(400, "Позиция не найдена или неактивна");
+    if (msg.startsWith("QTY_EXCEEDS_PHYSICAL_STOCK:")) {
+      try {
+        const detail = JSON.parse(msg.slice("QTY_EXCEEDS_PHYSICAL_STOCK:".length)) as {
+          itemName: string;
+          cap: number;
+          sumQty: number;
+        };
+        return jsonError(
+          400,
+          `По позиции «${detail.itemName}» в demo-наборе запрошено ${detail.sumQty} шт., на складе годных единиц: ${detail.cap} (без учёта резерва по датам). Уменьшите количество или учтите остаток по строкам.`,
+        );
+      } catch {
+        return jsonError(400, "Превышен физический остаток по позиции в demo-наборе");
+      }
+    }
+    throw e;
+  }
+
+  if (!draftOrder) return jsonError(500, "Не удалось сохранить черновик");
 
   scheduleAfterResponse("notifyProjectDraftOrderUpdated", async () => {
     const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");

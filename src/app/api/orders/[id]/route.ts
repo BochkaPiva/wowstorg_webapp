@@ -25,7 +25,19 @@ export async function GET(
       },
       lines: {
         orderBy: [{ position: "asc" }],
-        include: { item: { select: { id: true, name: true, type: true } } },
+        include: {
+          item: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              total: true,
+              inRepair: true,
+              broken: true,
+              missing: true,
+            },
+          },
+        },
       },
       returnSplits: {
         select: {

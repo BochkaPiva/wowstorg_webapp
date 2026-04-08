@@ -112,6 +112,8 @@ export default function CatalogPage() {
   itemsRef.current = items;
   const cartScopeRef = React.useRef(cartScope);
   cartScopeRef.current = cartScope;
+  const isProjectDemoCatalogRef = React.useRef(isProjectDemoCatalog);
+  isProjectDemoCatalogRef.current = isProjectDemoCatalog;
 
   const datesRef = React.useRef({ readyByDate, startDate, endDate });
   datesRef.current = { readyByDate, startDate, endDate };
@@ -358,8 +360,11 @@ export default function CatalogPage() {
     setCart((prev) => {
       const catalog = itemsRef.current;
       const item = catalog.find((i) => i.id === itemId);
+      const demo = isProjectDemoCatalogRef.current;
       const max = item
-        ? (item.availability.availableForDates ?? item.availability.availableNow)
+        ? demo
+          ? item.availability.availableNow
+          : item.availability.availableForDates ?? item.availability.availableNow
         : 0;
       const price = pricePerDay ?? (item ? Number(item.pricePerDay) : undefined);
       const next = [...prev];
@@ -384,8 +389,11 @@ export default function CatalogPage() {
     setCart((prev) => {
       const catalog = itemsRef.current;
       const item = catalog.find((i) => i.id === itemId);
+      const demo = isProjectDemoCatalogRef.current;
       const max = item
-        ? (item.availability.availableForDates ?? item.availability.availableNow)
+        ? demo
+          ? item.availability.availableNow
+          : item.availability.availableForDates ?? item.availability.availableNow
         : 0;
       const clamped = max <= 0 ? 0 : Math.max(0, Math.min(qty, max));
       const next = prev
@@ -407,12 +415,15 @@ export default function CatalogPage() {
     // Обновляем корзину ОДНИМ апдейтом, чтобы не словить race condition и не выйти за лимит доступности
     setCart((prev) => {
       const catalog = itemsRef.current;
+      const demo = isProjectDemoCatalogRef.current;
       const next = [...prev];
       for (const l of kit.lines) {
         const itemId = l.item.id;
         const inv = catalog.find((i) => i.id === itemId);
         const max = inv
-          ? (inv.availability.availableForDates ?? inv.availability.availableNow)
+          ? demo
+            ? inv.availability.availableNow
+            : inv.availability.availableForDates ?? inv.availability.availableNow
           : 0;
         const idx = next.findIndex((x) => x.itemId === itemId);
         const currentQty = idx >= 0 ? next[idx].qty : 0;

@@ -45,6 +45,7 @@ const BodySchema = z.object({
 
   /// Заявка реквизита в рамках проекта (только WOWSTORG): заказчик и источник берутся из проекта.
   projectId: z.string().trim().min(1).optional(),
+  targetEstimateVersionId: z.string().trim().min(1).optional(),
 
   lines: z.array(LineSchema).min(1).max(500),
 });
@@ -128,6 +129,7 @@ export async function POST(req: Request) {
           source: data.source,
           greenwichUserId: data.greenwichUserId,
           projectId: data.projectId,
+          targetEstimateVersionId: data.targetEstimateVersionId,
           lines: data.lines,
         });
       },

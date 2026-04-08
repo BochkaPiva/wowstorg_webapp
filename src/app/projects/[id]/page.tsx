@@ -15,7 +15,6 @@ import {
 import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { ProjectContactsPanel } from "./ProjectContactsPanel";
-import { ProjectDraftOrderPanel } from "./ProjectDraftOrderPanel";
 import { ProjectEstimatePanel } from "./ProjectEstimatePanel";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import { ProjectSchedulePanel } from "./ProjectSchedulePanel";
@@ -50,6 +49,17 @@ type ProjectDetail = {
   customer: { id: string; name: string };
   owner: { id: string; displayName: string };
   _count: { orders: number };
+  draftOrder?: {
+    id: string;
+    title: string | null;
+    updatedAt: string;
+    estimateVersionId: string | null;
+    linesCount: number;
+  } | null;
+  estimateCurrent?: {
+    id: string;
+    versionNumber: number;
+  } | null;
   orders?: LinkedOrder[];
   activityLogs?: ActivityLogRow[];
 };
@@ -73,6 +83,18 @@ function formatProjectDateRange(start: string | null, end: string | null, fallba
   if (start) return `c ${fmtDate(start)}`;
   if (end) return `до ${fmtDate(end)}`;
   return fallback?.trim() ? fallback : "—";
+}
+
+function buildProjectCatalogHref(args: {
+  projectId: string;
+  mode: "demo" | "dated";
+  estimateVersionId?: string | null;
+}) {
+  const params = new URLSearchParams();
+  params.set("projectId", args.projectId);
+  if (args.mode === "demo") params.set("projectMode", "demo");
+  if (args.estimateVersionId?.trim()) params.set("estimateVersionId", args.estimateVersionId.trim());
+  return `/catalog?${params.toString()}`;
 }
 
 const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-sm sm:p-4";
@@ -425,6 +447,9 @@ export default function ProjectDetailPage() {
   const [archiveError, setArchiveError] = React.useState<string | null>(null);
   const [showAllLog, setShowAllLog] = React.useState(false);
   const [activeWorkTab, setActiveWorkTab] = React.useState<"estimate" | "schedule" | "files" | "journal">("estimate");
+  const [catalogModeOpen, setCatalogModeOpen] = React.useState(false);
+  const [selectedEstimateVersionNumber, setSelectedEstimateVersionNumber] = React.useState<number | null>(null);
+  const [resolvedEstimateVersion, setResolvedEstimateVersion] = React.useState<{ id: string; versionNumber: number } | null>(null);
 
   const [title, setTitle] = React.useState("");
   const [status, setStatus] = React.useState<ProjectStatus>("LEAD");
@@ -444,6 +469,12 @@ export default function ProjectDetailPage() {
   const canArchiveProject =
     (project?.orders?.length ?? 0) === 0 ||
     project?.orders?.every((order) => order.status === "CLOSED" || order.status === "CANCELLED");
+  const activeEstimateVersionId = resolvedEstimateVersion?.id ?? project?.estimateCurrent?.id ?? null;
+  const activeEstimateVersionNumber =
+    resolvedEstimateVersion?.versionNumber ?? selectedEstimateVersionNumber ?? project?.estimateCurrent?.versionNumber ?? null;
+  const hasDraftOrder = Boolean(project?.draftOrder && project.draftOrder.linesCount > 0);
+  const projectHasConfirmedDates =
+    Boolean(project?.eventDateConfirmed) && Boolean(project?.eventStartDate) && Boolean(project?.eventEndDate);
 
   /** true после первой успешной загрузки проекта — чтобы обновления не размонтировали страницу */
   const hasProjectRef = React.useRef(false);
@@ -493,6 +524,17 @@ export default function ProjectDetailPage() {
     window.addEventListener("project-activity-refresh", onRefresh);
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
   }, [load]);
+
+  React.useEffect(() => {
+    if (!catalogModeOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-catalog-mode-modal]")) return;
+      setCatalogModeOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [catalogModeOpen]);
 
   /** iframe с заявкой (`?embed=1`) шлёт событие — обновляем шапку/список заявок без перезагрузки */
   React.useEffect(() => {
@@ -556,6 +598,31 @@ export default function ProjectDetailPage() {
     } finally {
       setArchiveBusy(false);
     }
+  }
+
+  function openProjectCatalogEntry() {
+    if (readOnly) return;
+    if (!projectHasConfirmedDates) {
+      router.push(
+        buildProjectCatalogHref({
+          projectId: id,
+          mode: "demo",
+          estimateVersionId: activeEstimateVersionId,
+        }),
+      );
+      return;
+    }
+    if (!hasDraftOrder) {
+      router.push(
+        buildProjectCatalogHref({
+          projectId: id,
+          mode: "dated",
+          estimateVersionId: activeEstimateVersionId,
+        }),
+      );
+      return;
+    }
+    setCatalogModeOpen(true);
   }
 
   const statusOptions = Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[];
@@ -657,11 +724,19 @@ export default function ProjectDetailPage() {
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Быстрые действия</div>
                   <div className="mt-3 flex flex-col gap-2">
                     <Link
-                      href={`/catalog?projectId=${encodeURIComponent(id)}`}
+                      href={buildProjectCatalogHref({
+                        projectId: id,
+                        mode: projectHasConfirmedDates ? "dated" : "demo",
+                        estimateVersionId: activeEstimateVersionId,
+                      })}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openProjectCatalogEntry();
+                      }}
                       className={`${primaryBtn} w-full text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
                       aria-disabled={readOnly}
                     >
-                      Каталог → новая заявка
+                      Каталог → реквизит
                     </Link>
                     {!readOnly ? (
                       <button
@@ -1024,29 +1099,96 @@ export default function ProjectDetailPage() {
 
           <ProjectContactsPanel projectId={id} readOnly={readOnly} />
 
-          <ProjectDraftOrderPanel projectId={id} readOnly={readOnly} />
-
           <div className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
               {!readOnly ? (
-                <Link
-                  href={`/catalog?projectId=${encodeURIComponent(id)}`}
-                  className={`${primaryBtn} w-full sm:w-auto`}
-                >
-                  Каталог → новая заявка
-                </Link>
+                <button type="button" onClick={openProjectCatalogEntry} className={`${primaryBtn} w-full sm:w-auto`}>
+                  Каталог → реквизит
+                </button>
               ) : null}
             </div>
             <p className="text-xs text-zinc-600">
-              Разверни заявку — внутри тот же экран, что и в очереди/карточке заявки: статусы, редактирование,
-              приёмка. Отдельная вкладка — по ссылке под блоком.
+              Одна точка входа ведёт либо в demo-каталог без дат, либо в обычный project-каталог с датами
+              мероприятия. Все созданные заявки сразу попадают в выбранную версию сметы.
             </p>
-            {!project.orders?.length ? (
-              <p className="text-sm text-zinc-600">Пока нет привязанных заявок.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={metaBadge}>
+                Версия сметы: {activeEstimateVersionNumber != null ? `v${activeEstimateVersionNumber}` : "будет создана автоматически"}
+              </span>
+              <span className={metaBadge}>
+                {projectHasConfirmedDates ? "Даты подтверждены: доступен обычный каталог" : "Даты не подтверждены: доступен demo-каталог"}
+              </span>
+              {hasDraftOrder ? (
+                <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                  Есть demo-заявка без дат
+                </span>
+              ) : null}
+            </div>
+            {!hasDraftOrder && !project.orders?.length ? (
+              <p className="mt-3 text-sm text-zinc-600">Пока нет ни demo-заявки, ни привязанных реальных заявок.</p>
             ) : (
               <ul className="space-y-3">
-                {project.orders.map((o) => (
+                {project.draftOrder && project.draftOrder.linesCount > 0 ? (
+                  <li className="rounded-xl border border-red-200 bg-[linear-gradient(180deg,rgba(254,242,242,0.94),rgba(255,255,255,0.98))] shadow-sm overflow-hidden">
+                    <div className="px-3 py-3 sm:px-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-red-200 bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                              Демо-заявка без дат
+                            </span>
+                            <span className="text-sm font-semibold text-zinc-900">
+                              {project.draftOrder.title?.trim() || "Без названия demo-набора"}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                            <span>{project.draftOrder.linesCount} поз.</span>
+                            <span>·</span>
+                            <span>обновлено {fmtDateTime(project.draftOrder.updatedAt)}</span>
+                            {project.draftOrder.estimateVersionId === activeEstimateVersionId && activeEstimateVersionNumber != null ? (
+                              <>
+                                <span>·</span>
+                                <span className="font-medium text-red-700">привязано к v{activeEstimateVersionNumber}</span>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                        {!readOnly ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Link
+                              href={buildProjectCatalogHref({
+                                projectId: id,
+                                mode: "demo",
+                                estimateVersionId: activeEstimateVersionId,
+                              })}
+                              className={secondaryBtn}
+                            >
+                              Открыть demo-каталог
+                            </Link>
+                            {projectHasConfirmedDates ? (
+                              <Link
+                                href={buildProjectCatalogHref({
+                                  projectId: id,
+                                  mode: "dated",
+                                  estimateVersionId: activeEstimateVersionId,
+                                })}
+                                className={primaryBtn}
+                              >
+                                Подтвердить даты и создать реальную
+                              </Link>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 rounded-xl border border-red-100 bg-white/85 px-3 py-2 text-sm text-zinc-700">
+                        Demo-заявка живёт только внутри проекта, не резервирует остатки и нужна для ранней сборки
+                        корзины до подтверждения дат.
+                      </div>
+                    </div>
+                  </li>
+                ) : null}
+                {(project.orders ?? []).map((o) => (
                   <li key={o.id} className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                     <details className="group">
                       <summary className="cursor-pointer list-none px-3 py-3 sm:px-4 [&::-webkit-details-marker]:hidden">
@@ -1132,7 +1274,15 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="mt-4">
-              {activeWorkTab === "estimate" ? <ProjectEstimatePanel projectId={id} readOnly={readOnly} /> : null}
+              {activeWorkTab === "estimate" ? (
+                <ProjectEstimatePanel
+                  projectId={id}
+                  readOnly={readOnly}
+                  selectedVersionNumber={selectedEstimateVersionNumber}
+                  onSelectedVersionNumberChange={setSelectedEstimateVersionNumber}
+                  onResolvedVersionChange={setResolvedEstimateVersion}
+                />
+              ) : null}
               {activeWorkTab === "schedule" ? <ProjectSchedulePanel projectId={id} readOnly={readOnly} /> : null}
               {activeWorkTab === "files" ? <ProjectFilesPanel projectId={id} readOnly={readOnly} /> : null}
               {activeWorkTab === "journal" ? (
@@ -1173,6 +1323,64 @@ export default function ProjectDetailPage() {
               ) : null}
             </div>
           </section>
+          {catalogModeOpen ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4">
+              <div
+                data-catalog-mode-modal
+                className="w-full max-w-2xl rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xl font-extrabold tracking-tight text-zinc-950">Какой режим открыть?</div>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Даты проекта уже подтверждены, поэтому можно либо продолжить demo-сценарий без дат, либо сразу
+                      перейти к реальной заявке с предзаполненным периодом мероприятия.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setCatalogModeOpen(false)} className={secondaryBtn}>
+                    Закрыть
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <Link
+                    href={buildProjectCatalogHref({
+                      projectId: id,
+                      mode: "demo",
+                      estimateVersionId: activeEstimateVersionId,
+                    })}
+                    className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm transition hover:border-red-300 hover:bg-red-100"
+                    onClick={() => setCatalogModeOpen(false)}
+                  >
+                    <div className="inline-flex rounded-full border border-red-200 bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                      Demo без дат
+                    </div>
+                    <div className="mt-3 text-lg font-bold text-red-950">Собрать или обновить demo-корзину</div>
+                    <p className="mt-2 text-sm text-red-900/80">
+                      Подходит, если период ещё плавает или нужно дособрать состав без резервирования остатков.
+                    </p>
+                  </Link>
+                  <Link
+                    href={buildProjectCatalogHref({
+                      projectId: id,
+                      mode: "dated",
+                      estimateVersionId: activeEstimateVersionId,
+                    })}
+                    className="rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm transition hover:border-violet-300 hover:bg-violet-100"
+                    onClick={() => setCatalogModeOpen(false)}
+                  >
+                    <div className="inline-flex rounded-full border border-violet-200 bg-violet-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                      Реальная заявка
+                    </div>
+                    <div className="mt-3 text-lg font-bold text-violet-950">Открыть каталог с датами мероприятия</div>
+                    <p className="mt-2 text-sm text-violet-900/80">
+                      Период подставится из проекта, но ты сможешь изменить даты и оформить заявку только на часть
+                      мероприятия.
+                    </p>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </AppShell>

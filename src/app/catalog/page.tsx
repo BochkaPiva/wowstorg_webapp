@@ -52,9 +52,21 @@ function daysBetweenDateOnly(start: string, end: string) {
   return days === 0 ? 1 : days;
 }
 
-function catalogCartHref(quickParentId: string | null, projectId: string | null): string {
+function catalogCartHref(args: {
+  quickParentId: string | null;
+  projectId: string | null;
+  projectMode: "dated" | "demo";
+  estimateVersionId: string | null;
+}): string {
+  const { quickParentId, projectId, projectMode, estimateVersionId } = args;
   if (quickParentId) return `/cart?quickParentId=${encodeURIComponent(quickParentId)}`;
-  if (projectId) return `/cart?projectId=${encodeURIComponent(projectId)}`;
+  if (projectId) {
+    const params = new URLSearchParams();
+    params.set("projectId", projectId);
+    if (projectMode === "demo") params.set("projectMode", "demo");
+    if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
+    return `/cart?${params.toString()}`;
+  }
   return "/cart";
 }
 
@@ -65,10 +77,20 @@ export default function CatalogPage() {
   const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
   const [projectId, setProjectId] = React.useState<string | null>(null);
   const [projectBannerTitle, setProjectBannerTitle] = React.useState<string | null>(null);
+  const [projectMode, setProjectMode] = React.useState<"dated" | "demo">("dated");
+  const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(null);
 
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCatalog = Boolean(projectId) && !quickParentId;
-  const cartScope = quickParentId ? `quick:${quickParentId}` : projectId ? `project:${projectId}` : undefined;
+  const isProjectDemoCatalog = isProjectCatalog && projectMode === "demo";
+  const cartScope = quickParentId
+    ? `quick:${quickParentId}`
+    : projectId
+      ? isProjectDemoCatalog
+        ? `project-demo:${projectId}`
+        : `project:${projectId}`
+      : undefined;
+  const [projectBannerNote, setProjectBannerNote] = React.useState<string | null>(null);
 
   const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
@@ -84,6 +106,7 @@ export default function CatalogPage() {
   const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
   const [readyByDate, setReadyByDate] = React.useState(() => getDefaultCatalogDates().readyByDate);
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
+  const projectDatesPrefilledRef = React.useRef<string | null>(null);
 
   const itemsRef = React.useRef(items);
   itemsRef.current = items;
@@ -116,12 +139,15 @@ export default function CatalogPage() {
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
     setProjectId(params.get("projectId"));
+    setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
+    setEstimateVersionId(params.get("estimateVersionId"));
   }, []);
 
   /** После монтирования подставляем даты из localStorage (не в useState — иначе mismatch гидратации). */
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("quickParentId")) return;
+    if (new URLSearchParams(window.location.search).get("projectMode") === "demo") return;
     const n = catalogDatesFromStorage();
     setStartDate(n.startDate);
     setEndDate(n.endDate);
@@ -154,38 +180,106 @@ export default function CatalogPage() {
   React.useEffect(() => {
     if (!isProjectCatalog || !projectId || !isWarehouse) {
       setProjectBannerTitle(null);
+      setProjectBannerNote(null);
+      projectDatesPrefilledRef.current = null;
       return;
     }
     let cancelled = false;
     fetch(`/api/projects/${projectId}`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
-      .then((data: { project?: { title?: string } } | null) => {
-        if (!cancelled) setProjectBannerTitle(data?.project?.title ?? null);
+      .then((
+        data: {
+          project?: {
+            title?: string;
+            eventStartDate?: string | null;
+            eventEndDate?: string | null;
+            eventDateConfirmed?: boolean;
+            draftOrder?: { linesCount?: number } | null;
+          };
+        } | null,
+      ) => {
+        if (cancelled) return;
+        setProjectBannerTitle(data?.project?.title ?? null);
+        const project = data?.project;
+        if (!project) {
+          setProjectBannerNote(null);
+          return;
+        }
+        if (projectMode === "demo") {
+          setProjectBannerNote("Demo-режим без дат: собираешь корзину, не резервируя остатки.");
+          return;
+        }
+        const hasDates = Boolean(project.eventStartDate && project.eventEndDate);
+        if (project.eventDateConfirmed && hasDates) {
+          setProjectBannerNote("Даты проекта подставлены автоматически, но их можно изменить под часть мероприятия.");
+          if (projectDatesPrefilledRef.current !== projectId) {
+            setStartDate(project.eventStartDate ?? startDate);
+            setEndDate(project.eventEndDate ?? endDate);
+            setReadyByDate(project.eventStartDate ?? readyByDate);
+            projectDatesPrefilledRef.current = projectId;
+          }
+        } else {
+          setProjectBannerNote("У проекта ещё нет подтверждённых дат. Для предварительной сборки открой demo-режим.");
+        }
       })
       .catch(() => {
-        if (!cancelled) setProjectBannerTitle(null);
+        if (!cancelled) {
+          setProjectBannerTitle(null);
+          setProjectBannerNote(null);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [isProjectCatalog, projectId, isWarehouse]);
+  }, [endDate, isProjectCatalog, isWarehouse, projectId, projectMode, readyByDate, startDate]);
+
+  React.useEffect(() => {
+    if (!isProjectDemoCatalog || !projectId || !cartScope) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as
+          | {
+              draftOrder?: {
+                lines?: Array<{ itemId: string; qty: number; pricePerDaySnapshot: number | null }>;
+              } | null;
+            }
+          | null;
+        if (!res.ok || cancelled) return;
+        const next =
+          data?.draftOrder?.lines?.map((line) => ({
+            itemId: line.itemId,
+            qty: line.qty,
+            pricePerDay: line.pricePerDaySnapshot ?? undefined,
+          })) ?? [];
+        saveCart(next, cartScope);
+        setCart(next);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cartScope, isProjectDemoCatalog, projectId]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      if (!isQuickSupplement) {
+      if (!isQuickSupplement && !isProjectDemoCatalog) {
         localStorage.setItem("catalog_readyByDate", readyByDate);
       }
     }
-  }, [readyByDate, isQuickSupplement]);
+  }, [readyByDate, isProjectDemoCatalog, isQuickSupplement]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      if (!isQuickSupplement) {
+      if (!isQuickSupplement && !isProjectDemoCatalog) {
         localStorage.setItem("catalog_startDate", startDate);
         localStorage.setItem("catalog_endDate", endDate);
       }
     }
-  }, [startDate, endDate, isQuickSupplement]);
+  }, [startDate, endDate, isProjectDemoCatalog, isQuickSupplement]);
 
   React.useEffect(() => {
     setCart(loadCart(cartScope));
@@ -232,8 +326,10 @@ export default function CatalogPage() {
         const url = new URL("/api/catalog/items", window.location.origin);
         if (query.trim()) url.searchParams.set("query", query.trim());
         if (fetchCategoryId) url.searchParams.set("category", fetchCategoryId);
-        url.searchParams.set("startDate", startDate);
-        url.searchParams.set("endDate", endDate);
+        if (!isProjectDemoCatalog) {
+          url.searchParams.set("startDate", startDate);
+          url.searchParams.set("endDate", endDate);
+        }
         const res = await fetch(url.toString(), { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
         if (!cancelled) {
@@ -256,7 +352,7 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [query, fetchCategoryId, startDate, endDate]);
+  }, [query, fetchCategoryId, startDate, endDate, isProjectDemoCatalog]);
 
   const addToCart = React.useCallback((itemId: string, pricePerDay?: number) => {
     setCart((prev) => {
@@ -376,26 +472,42 @@ export default function CatalogPage() {
       l.pricePerDay ?? Number(items.find((i) => i.id === l.itemId)?.pricePerDay) ?? 0;
     return sum + l.qty * price;
   }, 0);
-  const rentalDays = daysBetweenDateOnly(startDate, endDate);
+  const rentalDays = isProjectDemoCatalog ? 1 : daysBetweenDateOnly(startDate, endDate);
   const cartTotalForPeriod = cartTotalPerDay * (rentalDays || 1);
 
-  const cartHref = catalogCartHref(quickParentId, projectId);
+  const cartHref = catalogCartHref({
+    quickParentId,
+    projectId,
+    projectMode,
+    estimateVersionId,
+  });
 
   return (
     <AppShell title="Каталог">
       <section className="mk-section">
         {isProjectCatalog && projectId ? (
-          <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50/90 px-4 py-3 text-sm text-zinc-800">
-            <div className="font-semibold text-violet-900">
-              Каталог для проекта
+          <div
+            className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+              isProjectDemoCatalog
+                ? "border border-red-200 bg-red-50/90 text-red-950"
+                : "border border-violet-200 bg-violet-50/90 text-zinc-800"
+            }`}
+          >
+            <div className={`font-semibold ${isProjectDemoCatalog ? "text-red-950" : "text-violet-900"}`}>
+              {isProjectDemoCatalog ? "Demo-каталог проекта" : "Каталог для проекта"}
               {projectBannerTitle ? `: ${projectBannerTitle}` : "…"}
             </div>
-            <p className="mt-1 text-zinc-600">
-              Корзина и заявка отдельные от обычной: полная цена, привязка к проекту.
+            <p className={`mt-1 ${isProjectDemoCatalog ? "text-red-900/80" : "text-zinc-600"}`}>
+              {projectBannerNote ??
+                (isProjectDemoCatalog
+                  ? "Здесь нет дат и реальной заявки: ты просто собираешь demo-корзину без резервирования."
+                  : "Корзина и заявка отдельные от обычной: полная цена, привязка к проекту.")}
             </p>
             <Link
               href={`/projects/${projectId}`}
-              className="mt-2 inline-block font-medium text-violet-700 hover:text-violet-900"
+              className={`mt-2 inline-block font-medium ${
+                isProjectDemoCatalog ? "text-red-700 hover:text-red-900" : "text-violet-700 hover:text-violet-900"
+              }`}
             >
               ← К карточке проекта
             </Link>
@@ -404,17 +516,23 @@ export default function CatalogPage() {
 
         <div className="mk-head">
           <div className="mk-title">
-            {isQuickSupplement ? "Быстрая доп.-выдача" : "Реквизит, который работает на ваши события"}
+            {isQuickSupplement
+              ? "Быстрая доп.-выдача"
+              : isProjectDemoCatalog
+                ? "Demo-каталог без дат"
+                : "Реквизит, который работает на ваши события"}
           </div>
           <div className="mk-subtitle">
             {isQuickSupplement
               ? "Добавь нужные позиции и оформи доп.-заявку. Даты и заказчик будут взяты из родительской заявки."
-              : isProjectCatalog
+              : isProjectDemoCatalog
+                ? "Собери позиции заранее без дат. Корзина сохранится в demo-черновик проекта и не создаст реальную складскую заявку."
+                : isProjectCatalog
                 ? "Выбирай позиции и даты — оформи заявку реквизита в корзине; заказчик подставится из проекта."
                 : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
           </div>
 
-          {!isQuickSupplement ? (
+          {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
               <div className="mk-datesRow">
                 <CatalogDateField
@@ -445,9 +563,17 @@ export default function CatalogPage() {
                 готовность сегодня, аренда с завтра до послезавтра.
               </span>
             </>
-          ) : (
+          ) : isQuickSupplement ? (
             <div className="mk-subtitle">
               Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-950">
+              <div className="font-semibold">Демо-режим без дат</div>
+              <div className="mt-1 text-red-900/80">
+                Доступность считается по остатку на сейчас, а итог ниже показывает предварительную сумму за 1 день для
+                ориентира.
+              </div>
             </div>
           )}
 
@@ -460,8 +586,10 @@ export default function CatalogPage() {
             />
             <div className="flex items-center gap-2 justify-between md:justify-end">
               <Link href={cartHref} className="mk-cartPill">
-                Корзина: <strong>{cartTotalQty}</strong>
-                {cartTotalForPeriod > 0 ? ` · ${Math.round(cartTotalForPeriod)} ₽` : ""}
+                {isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}: <strong>{cartTotalQty}</strong>
+                {cartTotalForPeriod > 0
+                  ? ` · ${Math.round(cartTotalForPeriod)} ₽${isProjectDemoCatalog ? " / предв. день" : ""}`
+                  : ""}
               </Link>
             </div>
           </div>
@@ -617,7 +745,7 @@ export default function CatalogPage() {
                 </svg>
               </span>
               <span className="mk-floatingCartSum">
-                {cartTotalQty} поз. · {Math.round(cartTotalForPeriod)} ₽
+                {cartTotalQty} поз. · {Math.round(cartTotalForPeriod)} ₽{isProjectDemoCatalog ? " / день" : ""}
               </span>
             </Link>,
             document.body

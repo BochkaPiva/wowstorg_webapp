@@ -63,6 +63,24 @@ function Toggle({
 
 type Customer = { id: string; name: string };
 type GreenwichUser = { id: string; displayName: string };
+type DraftOrderResponse = {
+  draftOrder?: {
+    id: string;
+    estimateVersionId: string | null;
+    title: string | null;
+    comment: string | null;
+    lines: Array<{
+      id: string;
+      itemId: string;
+      itemName: string;
+      qty: number;
+      comment: string | null;
+      periodGroup: string | null;
+      pricePerDaySnapshot: number | null;
+    }>;
+  } | null;
+  error?: { message?: string };
+};
 
 export default function CartPage() {
   const router = useRouter();
@@ -75,15 +93,39 @@ export default function CartPage() {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("projectId");
   });
+  const [projectMode, setProjectMode] = React.useState<"dated" | "demo">(() => {
+    if (typeof window === "undefined") return "dated";
+    return new URLSearchParams(window.location.search).get("projectMode") === "demo" ? "demo" : "dated";
+  });
+  const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("estimateVersionId");
+  });
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCart = Boolean(projectId) && !quickParentId;
-  const cartScope = quickParentId ? `quick:${quickParentId}` : projectId ? `project:${projectId}` : undefined;
+  const isProjectDemoCart = isProjectCart && projectMode === "demo";
+  const cartScope = quickParentId
+    ? `quick:${quickParentId}`
+    : projectId
+      ? isProjectDemoCart
+        ? `project-demo:${projectId}`
+        : `project:${projectId}`
+      : undefined;
 
   const [projectContext, setProjectContext] = React.useState<{
     id: string;
     title: string;
     customerId: string;
     customerName: string;
+    eventStartDate?: string | null;
+    eventEndDate?: string | null;
+    eventDateConfirmed?: boolean;
+    draftOrder?: {
+      id: string;
+      title: string | null;
+      linesCount: number;
+      estimateVersionId: string | null;
+    } | null;
   } | null>(null);
   const [projectCartError, setProjectCartError] = React.useState<string | null>(null);
 
@@ -128,6 +170,8 @@ export default function CartPage() {
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
     setProjectId(params.get("projectId"));
+    setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
+    setEstimateVersionId(params.get("estimateVersionId"));
   }, []);
 
   React.useEffect(() => {
@@ -197,7 +241,20 @@ export default function CartPage() {
       .then((r) => r.json().catch(() => null))
       .then(
         (data: {
-          project?: { id: string; title: string; customer: { id: string; name: string } };
+          project?: {
+            id: string;
+            title: string;
+            customer: { id: string; name: string };
+            eventStartDate?: string | null;
+            eventEndDate?: string | null;
+            eventDateConfirmed?: boolean;
+            draftOrder?: {
+              id: string;
+              title: string | null;
+              linesCount: number;
+              estimateVersionId: string | null;
+            } | null;
+          };
           error?: { message?: string };
         } | null) => {
           if (cancelled) return;
@@ -211,6 +268,10 @@ export default function CartPage() {
             title: p.title,
             customerId: p.customer.id,
             customerName: p.customer.name,
+            eventStartDate: p.eventStartDate ?? null,
+            eventEndDate: p.eventEndDate ?? null,
+            eventDateConfirmed: p.eventDateConfirmed ?? false,
+            draftOrder: p.draftOrder ?? null,
           });
           setCustomerInput(p.customer.name);
           setCustomerId(p.customer.id);
@@ -258,7 +319,7 @@ export default function CartPage() {
   }, [cart]);
 
   React.useEffect(() => {
-    if (isQuickSupplement) return;
+    if (isQuickSupplement || isProjectDemoCart) return;
     if (typeof window === "undefined") return;
     const n = catalogDatesFromStorage();
     setStartDate(n.startDate);
@@ -267,7 +328,7 @@ export default function CartPage() {
     localStorage.setItem("catalog_readyByDate", n.readyByDate);
     localStorage.setItem("catalog_startDate", n.startDate);
     localStorage.setItem("catalog_endDate", n.endDate);
-  }, [isQuickSupplement]);
+  }, [isProjectDemoCart, isQuickSupplement]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -318,6 +379,46 @@ export default function CartPage() {
   const cartItemIdsKey = React.useMemo(() => cart.map((l) => l.itemId).sort().join(","), [cart]);
 
   React.useEffect(() => {
+    if (!isProjectDemoCart || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as DraftOrderResponse | null;
+        if (!res.ok || !data || cancelled) return;
+        const next = (data.draftOrder?.lines ?? []).map((line) => ({
+          itemId: line.itemId,
+          qty: line.qty,
+          pricePerDay: line.pricePerDaySnapshot ?? undefined,
+        }));
+        if (next.length > 0) {
+          saveCart(next, cartScope);
+          setCart(next);
+        }
+        if (data.draftOrder?.estimateVersionId) {
+          setEstimateVersionId(data.draftOrder.estimateVersionId);
+        }
+        setComment(data.draftOrder?.comment ?? "");
+        setEventName((prev) => prev.trim() || data.draftOrder?.title?.trim() || "");
+      } catch {
+        // ignore: empty draft is normal
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cartScope, isProjectDemoCart, projectId]);
+
+  React.useEffect(() => {
+    if (!isProjectCart || !projectContext || isProjectDemoCart) return;
+    if (!projectContext.eventDateConfirmed) return;
+    if (!projectContext.eventStartDate || !projectContext.eventEndDate) return;
+    setStartDate((prev) => prev ?? projectContext.eventStartDate ?? null);
+    setEndDate((prev) => prev ?? projectContext.eventEndDate ?? null);
+    setReadyByDate((prev) => prev ?? projectContext.eventStartDate ?? null);
+  }, [isProjectCart, isProjectDemoCart, projectContext]);
+
+  React.useEffect(() => {
     if (cart.length === 0) {
       setItems([]);
       setLoading(false);
@@ -328,7 +429,7 @@ export default function CartPage() {
 
     const params = new URLSearchParams();
     params.set("ids", ids);
-    if (startDate && endDate) {
+    if (!isProjectDemoCart && startDate && endDate) {
       params.set("startDate", startDate);
       params.set("endDate", endDate);
     }
@@ -354,7 +455,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [cartItemIdsKey, startDate, endDate, quickParentId]);
+  }, [cartItemIdsKey, startDate, endDate, quickParentId, isProjectDemoCart]);
 
   function maxQtyForItem(itemId: string): number | null {
     const inv = items.find((i) => i.id === itemId);
@@ -484,11 +585,54 @@ export default function CartPage() {
     cart.length > 0 &&
     canSubmitCustomer &&
     (isProjectCart || orderType !== "greenwich" || Boolean(greenwichUserId));
-  const canCheckout = isQuickSupplement
-    ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
-    : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
+  const canCheckout = isProjectDemoCart
+    ? cart.length > 0 && Boolean(projectContext)
+    : isQuickSupplement
+      ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
+      : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
 
   async function submit() {
+    if (isProjectDemoCart && projectContext) {
+      setError(null);
+      setSubmitting(true);
+      try {
+        const res = await fetch(`/api/projects/${projectContext.id}/draft-order`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            estimateVersionId: estimateVersionId ?? undefined,
+            title: eventName.trim() || projectContext.title,
+            comment: comment.trim() || null,
+            lines: cart.map((l, index) => {
+              const item = itemMap.get(l.itemId);
+              return {
+                itemId: l.itemId,
+                itemName: item?.name ?? l.itemId,
+                qty: l.qty,
+                comment: null,
+                periodGroup: null,
+                pricePerDaySnapshot:
+                  l.pricePerDay ?? (item ? Number(item.pricePerDay) : null),
+                sortOrder: index,
+              };
+            }),
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as DraftOrderResponse | null;
+        if (!res.ok) {
+          setError(data?.error?.message ?? "Не удалось сохранить demo-черновик");
+          return;
+        }
+        router.replace(`/projects/${projectContext.id}`);
+        return;
+      } catch (e) {
+        console.error("project demo save failed", e);
+        setError(e instanceof Error ? e.message : "Не удалось сохранить demo-черновик");
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
     if (!startDate || !endDate || !readyByDate) return;
     if (isProjectCart && !projectContext) {
       setError("Не загружены данные проекта");
@@ -531,6 +675,7 @@ export default function CartPage() {
         ? {
             customerId: projectContext.customerId,
             projectId: projectContext.id,
+            targetEstimateVersionId: estimateVersionId ?? undefined,
             readyByDate,
             startDate,
             endDate,
@@ -742,6 +887,8 @@ export default function CartPage() {
                   <div className="co-subtitle">
                     {isQuickSupplement
                       ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки."
+                      : isProjectDemoCart
+                        ? "Demo-черновик проекта: сохраняет корзину без дат и без создания реальной заявки."
                       : isProjectCart
                         ? "Заявка реквизита в рамках проекта: полная цена, заказчик из карточки проекта."
                         : isWarehouse
@@ -750,7 +897,7 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                {readyByDate && startDate && endDate ? (
+                {readyByDate && startDate && endDate && !isProjectDemoCart ? (
                   <div className="co-dates">
                     <div className="co-datePill">
                       Готовность: <strong>{formatDateRu(readyByDate)}</strong>
@@ -771,6 +918,16 @@ export default function CartPage() {
                         Изменить даты →
                       </Link>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {isProjectDemoCart ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950">
+                    <div className="font-semibold">Demo-заявка без дат</div>
+                    <div className="mt-1 text-red-900/80">
+                      Эта корзина не создаёт реальную складскую заявку и не резервирует остатки, пока ты не перейдёшь в
+                      режим с датами из карточки проекта.
+                    </div>
                   </div>
                 ) : null}
 
@@ -960,7 +1117,7 @@ export default function CartPage() {
                   </label>
                 ) : null}
 
-                {!isQuickSupplement ? (
+                {!isQuickSupplement && !isProjectDemoCart ? (
                   <div className="co-services">
                   <div className="co-servicesTitle">Доп. услуги</div>
                   <div className="co-serviceRow">
@@ -1077,7 +1234,15 @@ export default function CartPage() {
                     onClick={submit}
                     className="co-btn co-btn--primary"
                   >
-                    {submitting ? "Создаём заявку…" : isQuickSupplement ? "Оформить доп.-заявку" : "Создать заявку"}
+                    {submitting
+                      ? isProjectDemoCart
+                        ? "Сохраняем demo…"
+                        : "Создаём заявку…"
+                      : isProjectDemoCart
+                        ? "Сохранить demo-черновик"
+                        : isQuickSupplement
+                          ? "Оформить доп.-заявку"
+                          : "Создать заявку"}
                   </button>
                 </div>
               </>
@@ -1108,7 +1273,19 @@ export default function CartPage() {
           typeof document !== "undefined" &&
           createPortal(
             <Link
-              href={isQuickSupplement ? `/catalog?quickParentId=${quickParentId}` : "/catalog"}
+              href={
+                isQuickSupplement
+                  ? `/catalog?quickParentId=${quickParentId}`
+                  : isProjectCart && projectId
+                    ? (() => {
+                        const params = new URLSearchParams();
+                        params.set("projectId", projectId);
+                        if (projectMode === "demo") params.set("projectMode", "demo");
+                        if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
+                        return `/catalog?${params.toString()}`;
+                      })()
+                    : "/catalog"
+              }
               className="cart-floatCatalog"
               aria-label="В каталог"
             >

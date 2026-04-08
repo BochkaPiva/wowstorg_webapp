@@ -30,6 +30,7 @@ export type DraftOrderLineDto = {
 
 export type DraftOrderDto = {
   id: string;
+  estimateVersionId: string | null;
   title: string | null;
   comment: string | null;
   createdAt: string;
@@ -61,6 +62,7 @@ export function serializeDraftOrder(row: DraftOrderRow | null): DraftOrderDto | 
   if (!row) return null;
   return {
     id: row.id,
+    estimateVersionId: row.estimateVersionId ?? null,
     title: row.title ?? null,
     comment: row.comment ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -104,6 +106,7 @@ export class ProjectDraftOrderError extends Error {
 export async function materializeProjectDraftOrder(args: {
   projectId: string;
   actorUserId: string;
+  targetEstimateVersionId?: string | null;
   periods: MaterializeDraftPeriodInput[];
 }) {
   return prisma.$transaction(
@@ -137,6 +140,15 @@ export async function materializeProjectDraftOrder(args: {
       if (!draft) throw new ProjectDraftOrderError("DRAFT_NOT_FOUND");
       if (draft.lines.length === 0) throw new ProjectDraftOrderError("DRAFT_EMPTY");
       if (args.periods.length === 0) throw new ProjectDraftOrderError("PERIODS_REQUIRED");
+
+      const targetEstimateVersionId = args.targetEstimateVersionId?.trim() || draft.estimateVersionId || null;
+      if (targetEstimateVersionId) {
+        const version = await tx.projectEstimateVersion.findFirst({
+          where: { id: targetEstimateVersionId, projectId: args.projectId },
+          select: { id: true },
+        });
+        if (!version) throw new ProjectDraftOrderError("ESTIMATE_VERSION_NOT_FOUND");
+      }
 
       const uniqueLineIds = new Set<string>();
       for (const period of args.periods) {
@@ -223,6 +235,7 @@ export async function materializeProjectDraftOrder(args: {
           comment: draft.comment ?? undefined,
           projectId: project.id,
           source: "WOWSTORG_EXTERNAL",
+          targetEstimateVersionId,
           lines: orderLines,
         });
 

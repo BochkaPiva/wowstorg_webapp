@@ -235,13 +235,19 @@ function isDraftRequisiteSection(
 export function ProjectEstimatePanel({
   projectId,
   readOnly,
+  selectedVersionNumber: selectedVersionNumberProp,
+  onSelectedVersionNumberChange,
+  onResolvedVersionChange,
 }: {
   projectId: string;
   readOnly: boolean;
+  selectedVersionNumber?: number | null;
+  onSelectedVersionNumberChange?: (value: number | null) => void;
+  onResolvedVersionChange?: (value: { id: string; versionNumber: number } | null) => void;
 }) {
   const [data, setData] = React.useState<EstimatePayload | null>(null);
   /** null = основная версия с сервера; число = явный выбор */
-  const [selectedVersion, setSelectedVersion] = React.useState<number | null>(null);
+  const [uncontrolledSelectedVersion, setUncontrolledSelectedVersion] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
@@ -252,6 +258,19 @@ export function ProjectEstimatePanel({
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
+  const selectedVersion =
+    selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
+
+  const setSelectedVersion = React.useCallback(
+    (value: number | null) => {
+      if (onSelectedVersionNumberChange) {
+        onSelectedVersionNumberChange(value);
+        return;
+      }
+      setUncontrolledSelectedVersion(value);
+    },
+    [onSelectedVersionNumberChange],
+  );
 
   const load = React.useCallback(
     (v: number | null) => {
@@ -331,6 +350,18 @@ export function ProjectEstimatePanel({
   function refreshActivity() {
     window.dispatchEvent(new CustomEvent("project-activity-refresh"));
   }
+
+  React.useEffect(() => {
+    if (!onResolvedVersionChange) return;
+    if (!data?.current) {
+      onResolvedVersionChange(null);
+      return;
+    }
+    onResolvedVersionChange({
+      id: data.current.id,
+      versionNumber: data.current.versionNumber,
+    });
+  }, [data?.current, onResolvedVersionChange]);
 
   const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
   const estimateDraftStorageKey =

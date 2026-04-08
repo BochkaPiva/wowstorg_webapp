@@ -363,6 +363,9 @@ model ProjectDraftOrder {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  estimateVersionId String?
+  estimateVersion   ProjectEstimateVersion? @relation(fields: [estimateVersionId], references: [id], onDelete: SetNull)
+
   title   String?
   comment String?
 
@@ -379,6 +382,7 @@ model ProjectDraftOrder {
 
   @@unique([projectId])
   @@index([projectId])
+  @@index([estimateVersionId])
 }
 
 model ProjectDraftOrderLine {
@@ -466,7 +470,8 @@ model ProjectEstimateVersion {
 
   createdAt DateTime @default(now())
 
-  sections ProjectEstimateSection[]
+  sections    ProjectEstimateSection[]
+  draftOrders ProjectDraftOrder[]
 
   @@unique([projectId, versionNumber])
   @@index([projectId])

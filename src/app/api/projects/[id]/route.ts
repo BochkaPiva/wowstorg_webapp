@@ -67,6 +67,24 @@ export async function GET(
       customer: { select: { id: true, name: true } },
       owner: { select: { id: true, displayName: true } },
       _count: { select: { orders: true } },
+      draftOrders: {
+        take: 1,
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
+          estimateVersionId: true,
+          _count: { select: { lines: true } },
+        },
+      },
+      estimateVersions: {
+        take: 1,
+        orderBy: [{ isPrimary: "desc" as const }, { versionNumber: "desc" as const }],
+        select: {
+          id: true,
+          versionNumber: true,
+        },
+      },
       ...(includeOrders
         ? {
             orders: {
@@ -109,6 +127,17 @@ export async function GET(
       ...project,
       eventStartDate: toDateOnly(project.eventStartDate),
       eventEndDate: toDateOnly(project.eventEndDate),
+      draftOrder:
+        project.draftOrders[0] == null
+          ? null
+          : {
+              id: project.draftOrders[0].id,
+              title: project.draftOrders[0].title,
+              updatedAt: project.draftOrders[0].updatedAt,
+              estimateVersionId: project.draftOrders[0].estimateVersionId,
+              linesCount: project.draftOrders[0]._count.lines,
+            },
+      estimateCurrent: project.estimateVersions[0] ?? null,
     },
   });
 }

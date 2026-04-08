@@ -23,6 +23,7 @@ const PeriodSchema = z
 
 const BodySchema = z
   .object({
+    targetEstimateVersionId: z.string().trim().min(1).optional(),
     periods: z.array(PeriodSchema).min(1).max(50),
   })
   .strict();
@@ -56,6 +57,7 @@ export async function POST(
     const result = await materializeProjectDraftOrder({
       projectId,
       actorUserId: auth.user.id,
+        targetEstimateVersionId: parsed.data.targetEstimateVersionId,
       periods: parsed.data.periods,
     });
 
@@ -89,6 +91,9 @@ export async function POST(
       if (error.code === "LINE_NOT_FOUND") return jsonError(400, "Одна из строк demo-черновика не найдена");
       if (error.code === "NOTHING_MATERIALIZED") {
         return jsonError(400, "Не удалось создать ни одной реальной заявки: по всем строкам сейчас нет доступности", error.details);
+      }
+      if (error.code === "ESTIMATE_VERSION_NOT_FOUND") {
+        return jsonError(400, "Выбранная версия сметы не найдена");
       }
       return jsonError(400, "Не удалось материализовать demo-черновик", error.details);
     }

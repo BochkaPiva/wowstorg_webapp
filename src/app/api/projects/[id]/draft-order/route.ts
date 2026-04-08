@@ -24,6 +24,7 @@ const DraftLineSchema = z
 
 const PatchSchema = z
   .object({
+    estimateVersionId: z.string().trim().min(1).nullable().optional(),
     title: z.string().trim().max(300).nullable().optional(),
     comment: z.string().trim().max(5000).nullable().optional(),
     lines: z.array(DraftLineSchema).max(1000),
@@ -127,6 +128,7 @@ export async function PATCH(
     await tx.projectDraftOrder.update({
       where: { id: upserted.id },
       data: {
+        estimateVersionId: payload.estimateVersionId?.trim() || null,
         title: payload.title?.trim() || null,
         comment: payload.comment?.trim() || null,
         updatedById: auth.user.id,

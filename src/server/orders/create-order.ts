@@ -36,6 +36,7 @@ export type CreateOrderInput = {
   source?: OrderSource;
   greenwichUserId?: string | null;
   projectId?: string | null;
+  targetEstimateVersionId?: string | null;
   lines: InputLine[];
 };
 
@@ -301,6 +302,7 @@ export async function createOrderInTransaction(
       projectId: orderProjectId,
       orderId: order.id,
       actorUserId: input.actorUserId,
+      targetVersionId: input.targetEstimateVersionId?.trim() || undefined,
     });
     await appendProjectActivityLog(tx, {
       projectId: orderProjectId,

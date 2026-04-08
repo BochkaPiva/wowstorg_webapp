@@ -68,12 +68,15 @@ export async function buildProjectEstimateReadModel(args: {
           deliveryEnabled: true,
           deliveryComment: true,
           deliveryPrice: true,
+          deliveryInternalCost: true,
           montageEnabled: true,
           montageComment: true,
           montagePrice: true,
+          montageInternalCost: true,
           demontageEnabled: true,
           demontageComment: true,
           demontagePrice: true,
+          demontageInternalCost: true,
           lines: {
             orderBy: { position: "asc" },
             select: {
@@ -202,9 +205,8 @@ export async function buildProjectEstimateReadModel(args: {
                       Number(line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayCount * payMultiplier,
                     ),
                   ),
-                  costInternal: String(
-                    Math.round(Number(line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayCount),
-                  ),
+                  // Собственный реквизит на складе не задаётся отдельной «себестоимостью» в строке — в марже участвуют только реальные затраты (доп. услуги с полем «внутр.»).
+                  costInternal: "0",
                   orderLineId: line.id,
                   itemId: line.itemId,
                   qty: line.requestedQty,
@@ -224,7 +226,10 @@ export async function buildProjectEstimateReadModel(args: {
                         lineType: "SERVICE",
                         costClient:
                           linkedOrder.deliveryPrice != null ? String(Number(linkedOrder.deliveryPrice)) : null,
-                        costInternal: null,
+                        costInternal:
+                          linkedOrder.deliveryInternalCost != null
+                            ? String(Math.round(Number(linkedOrder.deliveryInternalCost)))
+                            : "0",
                         orderLineId: null,
                         itemId: null,
                         maxQtyPhysical: null,
@@ -240,7 +245,10 @@ export async function buildProjectEstimateReadModel(args: {
                         lineType: "SERVICE",
                         costClient:
                           linkedOrder.montagePrice != null ? String(Number(linkedOrder.montagePrice)) : null,
-                        costInternal: null,
+                        costInternal:
+                          linkedOrder.montageInternalCost != null
+                            ? String(Math.round(Number(linkedOrder.montageInternalCost)))
+                            : "0",
                         orderLineId: null,
                         itemId: null,
                         maxQtyPhysical: null,
@@ -256,7 +264,10 @@ export async function buildProjectEstimateReadModel(args: {
                         lineType: "SERVICE",
                         costClient:
                           linkedOrder.demontagePrice != null ? String(Number(linkedOrder.demontagePrice)) : null,
-                        costInternal: null,
+                        costInternal:
+                          linkedOrder.demontageInternalCost != null
+                            ? String(Math.round(Number(linkedOrder.demontageInternalCost)))
+                            : "0",
                         orderLineId: null,
                         itemId: null,
                         maxQtyPhysical: null,
@@ -338,14 +349,7 @@ export async function buildProjectEstimateReadModel(args: {
                                 ),
                               )
                             : null,
-                        costInternal:
-                          line.pricePerDaySnapshot != null
-                            ? String(
-                                Math.round(
-                                  Number(line.pricePerDaySnapshot) * line.qty * Math.max(1, line.plannedDays ?? 1),
-                                ),
-                              )
-                            : null,
+                        costInternal: "0",
                         orderLineId: null,
                         itemId: line.itemId,
                         qty: line.qty,

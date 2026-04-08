@@ -88,7 +88,7 @@ export async function seedProjectEstimateFromOrder(
         description: descParts.length > 0 ? descParts.join("\n") : null,
         lineType: "RENTAL",
         costClient: total,
-        costInternal: total,
+        costInternal: new Prisma.Decimal(0),
         orderLineId: ol.id,
         itemId: ol.itemId,
       },
@@ -96,10 +96,30 @@ export async function seedProjectEstimateFromOrder(
   }
 
   // Доп. услуги из заявки (фиксированные суммы за заказ, без умножения на дни).
-  const services: Array<{ label: string; enabled: boolean; price: Prisma.Decimal | null }> = [
-    { label: "Доставка", enabled: order.deliveryEnabled, price: order.deliveryPrice },
-    { label: "Монтаж", enabled: order.montageEnabled, price: order.montagePrice },
-    { label: "Демонтаж", enabled: order.demontageEnabled, price: order.demontagePrice },
+  const services: Array<{
+    label: string;
+    enabled: boolean;
+    price: Prisma.Decimal | null;
+    internal: Prisma.Decimal | null;
+  }> = [
+    {
+      label: "Доставка",
+      enabled: order.deliveryEnabled,
+      price: order.deliveryPrice,
+      internal: order.deliveryInternalCost ?? null,
+    },
+    {
+      label: "Монтаж",
+      enabled: order.montageEnabled,
+      price: order.montagePrice,
+      internal: order.montageInternalCost ?? null,
+    },
+    {
+      label: "Демонтаж",
+      enabled: order.demontageEnabled,
+      price: order.demontagePrice,
+      internal: order.demontageInternalCost ?? null,
+    },
   ];
   const basePos = order.lines.length;
   let serviceIndex = 0;
@@ -107,6 +127,7 @@ export async function seedProjectEstimateFromOrder(
     const p = s.price != null ? new Prisma.Decimal(s.price.toString()) : null;
     if (!s.enabled) continue;
     if (!p || p.lte(0)) continue;
+    const int = s.internal != null ? new Prisma.Decimal(s.internal.toString()) : new Prisma.Decimal(0);
     await tx.projectEstimateLine.create({
       data: {
         sectionId: section.id,
@@ -116,7 +137,7 @@ export async function seedProjectEstimateFromOrder(
         description: null,
         lineType: "SERVICE",
         costClient: p,
-        costInternal: new Prisma.Decimal(0),
+        costInternal: int,
         orderLineId: null,
         itemId: null,
       },

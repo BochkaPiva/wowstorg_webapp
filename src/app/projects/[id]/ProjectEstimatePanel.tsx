@@ -53,12 +53,15 @@ type RequisiteOrder = {
   deliveryEnabled: boolean;
   deliveryComment: string | null;
   deliveryPrice: number | null;
+  deliveryInternalCost: number | null;
   montageEnabled: boolean;
   montageComment: string | null;
   montagePrice: number | null;
+  montageInternalCost: number | null;
   demontageEnabled: boolean;
   demontageComment: string | null;
   demontagePrice: number | null;
+  demontageInternalCost: number | null;
   payMultiplier?: number | null;
   lines: RequisiteOrderLine[];
 };
@@ -158,6 +161,14 @@ function isEditableOrderStatus(status: string) {
 
 function formatOrderMoney(n: number) {
   return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+}
+
+/** Пустая строка → null; иначе число ≥ 0 или null при невалидном вводе. */
+function parseMoneyInputOrNull(s: string): number | null {
+  const t = s.trim();
+  if (t === "") return null;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 const ORDER_STATUS_LABEL: Record<string, string> = {
@@ -917,7 +928,9 @@ export function ProjectEstimatePanel({
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
             Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и
-            сохранить в БД одним действием. Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку.
+            сохранить в БД одним действием. Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку. В итогах
+            снизу «себестоимость» для аренды своего реквизита не дублирует цену клиенту (остаётся 0, пока не заложены реальные
+            затраты); для доп. услуг укажите при необходимости поле «Внутр. ₽».
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1751,12 +1764,15 @@ function RequisiteSectionEditor({
     deliveryEnabled: false,
     deliveryComment: "",
     deliveryPrice: "",
+    deliveryInternalCost: "",
     montageEnabled: false,
     montageComment: "",
     montagePrice: "",
+    montageInternalCost: "",
     demontageEnabled: false,
     demontageComment: "",
     demontagePrice: "",
+    demontageInternalCost: "",
   });
 
   const editable = !readOnly && !!order && isEditableOrderStatus(order.status);
@@ -1825,12 +1841,18 @@ function RequisiteSectionEditor({
         deliveryEnabled: nextOrder.deliveryEnabled,
         deliveryComment: nextOrder.deliveryComment ?? "",
         deliveryPrice: nextOrder.deliveryPrice != null ? String(nextOrder.deliveryPrice) : "",
+        deliveryInternalCost:
+          nextOrder.deliveryInternalCost != null ? String(nextOrder.deliveryInternalCost) : "",
         montageEnabled: nextOrder.montageEnabled,
         montageComment: nextOrder.montageComment ?? "",
         montagePrice: nextOrder.montagePrice != null ? String(nextOrder.montagePrice) : "",
+        montageInternalCost:
+          nextOrder.montageInternalCost != null ? String(nextOrder.montageInternalCost) : "",
         demontageEnabled: nextOrder.demontageEnabled,
         demontageComment: nextOrder.demontageComment ?? "",
         demontagePrice: nextOrder.demontagePrice != null ? String(nextOrder.demontagePrice) : "",
+        demontageInternalCost:
+          nextOrder.demontageInternalCost != null ? String(nextOrder.demontageInternalCost) : "",
       });
       setCatalogItems(
         (catalogJson?.items ?? []).map((item) => ({
@@ -1939,6 +1961,9 @@ function RequisiteSectionEditor({
               ? 0
               : Number(services.demontagePrice.replace(",", "."))
             : 0,
+          deliveryInternalCost: services.deliveryEnabled ? parseMoneyInputOrNull(services.deliveryInternalCost) : null,
+          montageInternalCost: services.montageEnabled ? parseMoneyInputOrNull(services.montageInternalCost) : null,
+          demontageInternalCost: services.demontageEnabled ? parseMoneyInputOrNull(services.demontageInternalCost) : null,
           lines: lines.map((line) => ({
             ...(line.id ? { id: line.id } : {}),
             itemId: line.itemId,
@@ -2130,39 +2155,45 @@ function RequisiteSectionEditor({
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Доп. услуги</div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+            <div className="mt-3 space-y-2">
               <OrderServiceCard
                 title="Доставка"
                 enabled={services.deliveryEnabled}
                 comment={services.deliveryComment}
-                price={services.deliveryPrice}
+                clientPrice={services.deliveryPrice}
+                internalCost={services.deliveryInternalCost}
                 editable={editable}
-                showPrice={order.source === "WOWSTORG_EXTERNAL"}
+                showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("deliveryEnabled", value)}
                 onCommentChange={(value) => setServiceField("deliveryComment", value)}
-                onPriceChange={(value) => setServiceField("deliveryPrice", value)}
+                onClientPriceChange={(value) => setServiceField("deliveryPrice", value)}
+                onInternalCostChange={(value) => setServiceField("deliveryInternalCost", value)}
               />
               <OrderServiceCard
                 title="Монтаж"
                 enabled={services.montageEnabled}
                 comment={services.montageComment}
-                price={services.montagePrice}
+                clientPrice={services.montagePrice}
+                internalCost={services.montageInternalCost}
                 editable={editable}
-                showPrice={order.source === "WOWSTORG_EXTERNAL"}
+                showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("montageEnabled", value)}
                 onCommentChange={(value) => setServiceField("montageComment", value)}
-                onPriceChange={(value) => setServiceField("montagePrice", value)}
+                onClientPriceChange={(value) => setServiceField("montagePrice", value)}
+                onInternalCostChange={(value) => setServiceField("montageInternalCost", value)}
               />
               <OrderServiceCard
                 title="Демонтаж"
                 enabled={services.demontageEnabled}
                 comment={services.demontageComment}
-                price={services.demontagePrice}
+                clientPrice={services.demontagePrice}
+                internalCost={services.demontageInternalCost}
                 editable={editable}
-                showPrice={order.source === "WOWSTORG_EXTERNAL"}
+                showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("demontageEnabled", value)}
                 onCommentChange={(value) => setServiceField("demontageComment", value)}
-                onPriceChange={(value) => setServiceField("demontagePrice", value)}
+                onClientPriceChange={(value) => setServiceField("demontagePrice", value)}
+                onInternalCostChange={(value) => setServiceField("demontageInternalCost", value)}
               />
             </div>
           </div>
@@ -2563,23 +2594,28 @@ function OrderServiceCard({
   title,
   enabled,
   comment,
-  price,
+  clientPrice,
+  internalCost,
   editable,
-  showPrice,
+  showClientPrice,
   onEnabledChange,
   onCommentChange,
-  onPriceChange,
+  onClientPriceChange,
+  onInternalCostChange,
 }: {
   title: string;
   enabled: boolean;
   comment: string;
-  price: string;
+  clientPrice: string;
+  internalCost: string;
   editable: boolean;
-  showPrice: boolean;
+  showClientPrice: boolean;
   onEnabledChange: (value: boolean) => void;
   onCommentChange: (value: string) => void;
-  onPriceChange: (value: string) => void;
+  onClientPriceChange: (value: string) => void;
+  onInternalCostChange: (value: string) => void;
 }) {
+  const priceInputClass = `${inputField} py-1.5 text-sm tabular-nums`;
   return (
     <div className={`rounded-xl border bg-white/90 px-3 py-2 transition-all ${enabled ? "border-violet-200 shadow-sm" : "border-zinc-200"}`}>
       <div className="flex items-center justify-between gap-3">
@@ -2589,7 +2625,7 @@ function OrderServiceCard({
           onClick={() => editable && onEnabledChange(!enabled)}
           disabled={!editable}
           className={[
-            "relative inline-flex h-7 w-12 items-center rounded-full border transition",
+            "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition",
             enabled ? "border-violet-500 bg-violet-600" : "border-zinc-300 bg-zinc-200",
             !editable ? "cursor-not-allowed opacity-60" : "",
           ].join(" ")}
@@ -2606,24 +2642,40 @@ function OrderServiceCard({
         </button>
       </div>
       {enabled ? (
-        <div className="mt-3 grid gap-3">
+        <div className="mt-2 space-y-2">
           <input
             value={comment}
             onChange={(e) => onCommentChange(e.target.value)}
-            className={inputField}
+            className={`${inputField} py-1.5 text-sm`}
             disabled={!editable}
             placeholder="Комментарий"
           />
-          {showPrice ? (
-            <input
-              value={price}
-              onChange={(e) => onPriceChange(e.target.value)}
-              className={inputField}
-              disabled={!editable}
-              placeholder="Цена"
-              inputMode="decimal"
-            />
-          ) : null}
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+            {showClientPrice ? (
+              <label className="min-w-[6.5rem] flex-1">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Клиент ₽</span>
+                <input
+                  value={clientPrice}
+                  onChange={(e) => onClientPriceChange(e.target.value)}
+                  className={`mt-0.5 w-full ${priceInputClass}`}
+                  disabled={!editable}
+                  placeholder="0"
+                  inputMode="decimal"
+                />
+              </label>
+            ) : null}
+            <label className="min-w-[6.5rem] flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Внутр. ₽</span>
+              <input
+                value={internalCost}
+                onChange={(e) => onInternalCostChange(e.target.value)}
+                className={`mt-0.5 w-full ${priceInputClass}`}
+                disabled={!editable}
+                placeholder="0"
+                inputMode="decimal"
+              />
+            </label>
+          </div>
         </div>
       ) : null}
     </div>

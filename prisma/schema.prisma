@@ -706,6 +706,11 @@ model Order {
   demontageComment String?
   demontagePrice   Decimal? @db.Decimal(12, 2)
 
+  /// Наша себестоимость доп. услуг (для маржи в смете проекта; клиентские суммы — deliveryPrice / montagePrice / demontagePrice).
+  deliveryInternalCost  Decimal? @db.Decimal(12, 2)
+  montageInternalCost   Decimal? @db.Decimal(12, 2)
+  demontageInternalCost Decimal? @db.Decimal(12, 2)
+
   /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
   /// чтобы изменения правил не ломали историю.
   payMultiplier Decimal @db.Decimal(5, 4)

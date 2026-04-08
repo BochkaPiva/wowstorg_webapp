@@ -20,12 +20,15 @@ const BodySchema = z.object({
   deliveryEnabled: z.boolean().optional(),
   deliveryComment: z.string().trim().max(2000).nullable().optional(),
   deliveryPrice: z.number().min(0).optional(),
+  deliveryInternalCost: z.number().min(0).nullable().optional(),
   montageEnabled: z.boolean().optional(),
   montageComment: z.string().trim().max(2000).nullable().optional(),
   montagePrice: z.number().min(0).optional(),
+  montageInternalCost: z.number().min(0).nullable().optional(),
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).nullable().optional(),
   demontagePrice: z.number().min(0).optional(),
+  demontageInternalCost: z.number().min(0).nullable().optional(),
   lines: z.array(LineSchema).min(1).max(500),
 });
 
@@ -170,12 +173,15 @@ export async function PATCH(
             ...(data.deliveryEnabled !== undefined ? { deliveryEnabled: data.deliveryEnabled } : {}),
             ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment?.trim() || null } : {}),
             ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
+            ...(data.deliveryInternalCost !== undefined ? { deliveryInternalCost: data.deliveryInternalCost } : {}),
             ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
             ...(data.montageComment !== undefined ? { montageComment: data.montageComment?.trim() || null } : {}),
             ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
+            ...(data.montageInternalCost !== undefined ? { montageInternalCost: data.montageInternalCost } : {}),
             ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
             ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment?.trim() || null } : {}),
             ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
+            ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
             ...(wasCycleStatus
               ? {
                   status:

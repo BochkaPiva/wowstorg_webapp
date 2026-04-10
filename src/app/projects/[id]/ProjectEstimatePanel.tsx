@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
 
@@ -2958,7 +2959,6 @@ function DraftRequisiteEditor({
   >([]);
   const [catalogLoading, setCatalogLoading] = React.useState(true);
   const [materializeOpen, setMaterializeOpen] = React.useState(false);
-  const [matReadyBy, setMatReadyBy] = React.useState(draftMaterializeTodayISO);
   const [matStart, setMatStart] = React.useState(draftMaterializeTodayISO);
   const [matEnd, setMatEnd] = React.useState(draftMaterializeTodayISO);
   const [matBusy, setMatBusy] = React.useState(false);
@@ -3161,7 +3161,7 @@ function DraftRequisiteEditor({
             {
               key: "single",
               title: "Период из сметы",
-              readyByDate: matReadyBy,
+              readyByDate: matStart,
               startDate: matStart,
               endDate: matEnd,
               lineIds: lines.map((l) => l.id),
@@ -3209,7 +3209,8 @@ function DraftRequisiteEditor({
                 </div>
                 <div className="mt-2">
                   Поле `Дней` влияет только на предварительную смету. Кнопка «В реальную заявку» открывает выбор дат и
-                  создаёт настоящую заявку (нужно предварительно сохранить demo).
+                  создаёт складскую заявку выдачи для третьих лиц (как у проекта), не Greenwich. Дата готовности в системе
+                  совпадает с датой начала периода (нужно предварительно сохранить demo).
                 </div>
               </div>
             ) : null}
@@ -3221,9 +3222,9 @@ function DraftRequisiteEditor({
               type="button"
               onClick={() => {
                 setMatError(null);
-                setMatReadyBy(draftMaterializeTodayISO());
-                setMatStart(draftMaterializeTodayISO());
-                setMatEnd(draftMaterializeTodayISO());
+                const today = draftMaterializeTodayISO();
+                setMatStart(today);
+                setMatEnd(today);
                 setMaterializeOpen(true);
               }}
               disabled={busy || lines.length === 0 || draftDirty}
@@ -3334,91 +3335,85 @@ function DraftRequisiteEditor({
         <div className="mt-2 text-lg font-extrabold text-fuchsia-950">{formatOrderMoney(total)} ₽</div>
       </div>
 
-      {materializeOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40 p-4">
-          <div
-            className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="draft-materialize-title"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div id="draft-materialize-title" className="text-lg font-extrabold tracking-tight text-zinc-950">
-                  Реальная заявка из demo
+      {materializeOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/40 p-4">
+              <div
+                className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="draft-materialize-title"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div id="draft-materialize-title" className="text-lg font-extrabold tracking-tight text-zinc-950">
+                      Реальная заявка из demo
+                    </div>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Укажи даты периода аренды: будет создана одна складская заявка выдачи для третьих лиц (проектная),
+                      со всеми строками demo-блока. Доступность остатков проверяется на эти даты.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={() => {
+                      setMaterializeOpen(false);
+                      setMatError(null);
+                    }}
+                  >
+                    Закрыть
+                  </button>
                 </div>
-                <p className="mt-1 text-sm text-zinc-600">
-                  Укажи даты периода: будет создана одна заявка со всеми строками demo-блока. Система проверит доступность
-                  остатков на эти даты.
-                </p>
+                {matError ? (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {matError}
+                  </div>
+                ) : null}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Начало
+                    <input
+                      type="date"
+                      value={matStart}
+                      onChange={(e) => setMatStart(e.target.value)}
+                      className={`mt-1 w-full ${inputField}`}
+                    />
+                  </label>
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Конец
+                    <input
+                      type="date"
+                      value={matEnd}
+                      onChange={(e) => setMatEnd(e.target.value)}
+                      className={`mt-1 w-full ${inputField}`}
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2 text-sm text-zinc-700">
+                  Будет создана одна заявка на период {formatRuDateFromISO(matStart)} — {formatRuDateFromISO(matEnd)} (
+                  {lines.length} поз.).
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    onClick={() => {
+                      setMaterializeOpen(false);
+                      setMatError(null);
+                    }}
+                  >
+                    Отмена
+                  </button>
+                  <button type="button" className={btnPrimary} disabled={matBusy} onClick={() => void materializeDraft()}>
+                    {matBusy ? "Создаю заявку…" : "Создать заявку"}
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                className={btnSecondary}
-                onClick={() => {
-                  setMaterializeOpen(false);
-                  setMatError(null);
-                }}
-              >
-                Закрыть
-              </button>
-            </div>
-            {matError ? (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {matError}
-              </div>
-            ) : null}
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                Готовность
-                <input
-                  type="date"
-                  value={matReadyBy}
-                  onChange={(e) => setMatReadyBy(e.target.value)}
-                  className={`mt-1 w-full ${inputField}`}
-                />
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                Начало
-                <input
-                  type="date"
-                  value={matStart}
-                  onChange={(e) => setMatStart(e.target.value)}
-                  className={`mt-1 w-full ${inputField}`}
-                />
-              </label>
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                Конец
-                <input
-                  type="date"
-                  value={matEnd}
-                  onChange={(e) => setMatEnd(e.target.value)}
-                  className={`mt-1 w-full ${inputField}`}
-                />
-              </label>
-            </div>
-            <div className="mt-4 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2 text-sm text-zinc-700">
-              Будет создана одна заявка на период {formatRuDateFromISO(matStart)} — {formatRuDateFromISO(matEnd)} (
-              {lines.length} поз.).
-            </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className={btnSecondary}
-                onClick={() => {
-                  setMaterializeOpen(false);
-                  setMatError(null);
-                }}
-              >
-                Отмена
-              </button>
-              <button type="button" className={btnPrimary} disabled={matBusy} onClick={() => void materializeDraft()}>
-                {matBusy ? "Создаю заявку…" : "Создать заявку"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

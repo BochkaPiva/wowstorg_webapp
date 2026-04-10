@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 
 type DraftLine = {
   id: string;
@@ -35,7 +36,6 @@ type CatalogItem = {
 type MaterializePeriod = {
   key: string;
   title: string;
-  readyByDate: string;
   startDate: string;
   endDate: string;
   lineIds: string[];
@@ -104,7 +104,6 @@ export function ProjectDraftOrderPanel({
   const [catalogItems, setCatalogItems] = React.useState<CatalogItem[]>([]);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmMode, setConfirmMode] = React.useState<"single" | "manual">("single");
-  const [singleReadyByDate, setSingleReadyByDate] = React.useState(todayDateOnly());
   const [singleStartDate, setSingleStartDate] = React.useState(todayDateOnly());
   const [singleEndDate, setSingleEndDate] = React.useState(todayDateOnly());
   const [manualPeriods, setManualPeriods] = React.useState<MaterializePeriod[]>([]);
@@ -267,7 +266,6 @@ export function ProjectDraftOrderPanel({
       groups.map((group, index) => ({
         key: group,
         title: group === "default" ? `Период ${index + 1}` : group,
-        readyByDate: today,
         startDate: today,
         endDate: today,
         lineIds: lines.filter((line) => (group === "default" ? !line.periodGroup.trim() : line.periodGroup.trim() === group)).map((line) => line.id),
@@ -295,14 +293,18 @@ export function ProjectDraftOrderPanel({
               {
                 key: "single",
                 title: "Общий период",
-                readyByDate: singleReadyByDate,
+                readyByDate: singleStartDate,
                 startDate: singleStartDate,
                 endDate: singleEndDate,
                 lineIds: lines.map((line) => line.id),
               },
             ]
           : manualPeriods.map((period) => ({
-              ...period,
+              key: period.key,
+              title: period.title,
+              readyByDate: period.startDate,
+              startDate: period.startDate,
+              endDate: period.endDate,
               lineIds: period.lineIds,
             }));
       const res = await fetch(`/api/projects/${projectId}/draft-order/materialize`, {
@@ -335,7 +337,7 @@ export function ProjectDraftOrderPanel({
         <div>
           <div className="text-lg font-extrabold tracking-tight text-fuchsia-950">Demo-заявка без дат</div>
           <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-            Собирай позиции заранее, не создавая реальную складскую заявку. После подтверждения дат система проверит доступность и материализует 1..N настоящих заказов.
+            Собирай позиции заранее, не создавая реальную складскую заявку. После подтверждения дат система проверит доступность и материализует 1..N заявок выдачи для третьих лиц (проектные); дата готовности в заявке совпадает с датой начала периода.
           </p>
         </div>
         {!readOnly ? (
@@ -488,8 +490,9 @@ export function ProjectDraftOrderPanel({
         </div>
       )}
 
-      {confirmOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40 p-4">
+      {confirmOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/40 p-4">
           <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -521,11 +524,7 @@ export function ProjectDraftOrderPanel({
             </div>
 
             {confirmMode === "single" ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                  Готовность
-                  <input type="date" value={singleReadyByDate} onChange={(e) => setSingleReadyByDate(e.target.value)} className={`mt-1 ${inputField}`} />
-                </label>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Начало
                   <input type="date" value={singleStartDate} onChange={(e) => setSingleStartDate(e.target.value)} className={`mt-1 ${inputField}`} />
@@ -539,7 +538,7 @@ export function ProjectDraftOrderPanel({
               <div className="mt-4 space-y-4">
                 {manualPeriods.map((period, index) => (
                   <div key={period.key} className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_repeat(2,minmax(0,1fr))]">
                       <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                         Название периода
                         <input
@@ -547,19 +546,6 @@ export function ProjectDraftOrderPanel({
                           onChange={(e) =>
                             setManualPeriods((prev) =>
                               prev.map((item, idx) => (idx === index ? { ...item, title: e.target.value } : item)),
-                            )
-                          }
-                          className={`mt-1 ${inputField}`}
-                        />
-                      </label>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                        Готовность
-                        <input
-                          type="date"
-                          value={period.readyByDate}
-                          onChange={(e) =>
-                            setManualPeriods((prev) =>
-                              prev.map((item, idx) => (idx === index ? { ...item, readyByDate: e.target.value } : item)),
                             )
                           }
                           className={`mt-1 ${inputField}`}
@@ -631,8 +617,10 @@ export function ProjectDraftOrderPanel({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

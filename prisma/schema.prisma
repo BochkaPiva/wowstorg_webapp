@@ -256,6 +256,8 @@ model Project {
 
   /// Не null — проект в архиве (только просмотр в UI, без правок).
   archivedAt DateTime?
+  /// Комментарий при переводе в архив (виден в списке архива).
+  archiveNote String?
 
   eventStartDate     DateTime?
   eventEndDate       DateTime?

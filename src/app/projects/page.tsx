@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
+import type { ProjectBall, ProjectStatus } from "@prisma/client";
 
 type ProjectCard = {
   id: string;
   title: string;
-  status: keyof typeof PROJECT_STATUS_LABEL;
-  ball: keyof typeof PROJECT_BALL_LABEL;
+  status: ProjectStatus;
+  ball: ProjectBall;
   archivedAt: string | null;
+  archiveNote: string | null;
   updatedAt: string;
   createdAt: string;
   customer: { id: string; name: string };
@@ -21,12 +23,82 @@ type ProjectCard = {
   _count: { orders: number };
 };
 
+const PROJECT_SORT_OPTIONS = [
+  { value: "updated_desc", label: "По обновлению (новые сверху)" },
+  { value: "updated_asc", label: "По обновлению (старые сверху)" },
+  { value: "created_desc", label: "По созданию (новые сверху)" },
+  { value: "created_asc", label: "По созданию (старые сверху)" },
+  { value: "title_asc", label: "Название А → Я" },
+] as const;
+
+const PROJECT_STATUS_FILTERS: Array<{ value: "all" | ProjectStatus; label: string }> = [
+  { value: "all", label: "Все статусы" },
+  ...(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => ({
+    value: s,
+    label: PROJECT_STATUS_LABEL[s],
+  })),
+];
+
+const PROJECT_BALL_FILTERS: Array<{ value: "all" | ProjectBall; label: string }> = [
+  { value: "all", label: "Все (мяч)" },
+  ...(Object.keys(PROJECT_BALL_LABEL) as ProjectBall[]).map((b) => ({
+    value: b,
+    label: PROJECT_BALL_LABEL[b],
+  })),
+];
+
+function buildProjectsListQuery(args: {
+  tab: "active" | "archive";
+  sort: string;
+  q: string;
+  status: string;
+  ball: string;
+}): string {
+  const p = new URLSearchParams();
+  if (args.tab === "archive") p.set("archive", "1");
+  if (args.sort && args.sort !== "updated_desc") p.set("sort", args.sort);
+  const q = args.q.trim();
+  if (q) p.set("q", q);
+  if (args.status !== "all") p.set("status", args.status);
+  if (args.ball !== "all") p.set("ball", args.ball);
+  return p.toString();
+}
+
+function buildProjectsPageQuery(args: {
+  tab: "active" | "archive";
+  sort: string;
+  q: string;
+  status: string;
+  ball: string;
+}): string {
+  const p = new URLSearchParams();
+  if (args.tab === "archive") p.set("tab", "archive");
+  if (args.sort && args.sort !== "updated_desc") p.set("sort", args.sort);
+  const q = args.q.trim();
+  if (q) p.set("q", q);
+  if (args.status !== "all") p.set("status", args.status);
+  if (args.ball !== "all") p.set("ball", args.ball);
+  return p.toString();
+}
+
 type CustomerOpt = { id: string; name: string };
 
 function tabFromSearchParams(sp: { get: (k: string) => string | null }): "active" | "archive" {
   const t = sp.get("tab");
   if (t === "archive" || sp.get("archive") === "1") return "archive";
   return "active";
+}
+
+function parseStatusFilter(raw: string | null): "all" | ProjectStatus {
+  if (!raw || raw === "all") return "all";
+  if (raw in PROJECT_STATUS_LABEL) return raw as ProjectStatus;
+  return "all";
+}
+
+function parseBallFilter(raw: string | null): "all" | ProjectBall {
+  if (!raw || raw === "all") return "all";
+  if (raw in PROJECT_BALL_LABEL) return raw as ProjectBall;
+  return "all";
 }
 
 function fmtDate(iso: string) {
@@ -38,6 +110,7 @@ function fmtDate(iso: string) {
 function ProjectsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
@@ -47,6 +120,28 @@ function ProjectsContent() {
   React.useEffect(() => {
     setTab(tabFromSearchParams(searchParams));
   }, [searchParams]);
+
+  const [sort, setSort] = React.useState(() => searchParams.get("sort") || "updated_desc");
+  const [qInput, setQInput] = React.useState(() => searchParams.get("q") ?? "");
+  const [qDebounced, setQDebounced] = React.useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | ProjectStatus>(() =>
+    parseStatusFilter(searchParams.get("status")),
+  );
+  const [ballFilter, setBallFilter] = React.useState<"all" | ProjectBall>(() => parseBallFilter(searchParams.get("ball")));
+
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setQDebounced(qInput), 320);
+    return () => window.clearTimeout(t);
+  }, [qInput]);
+
+  React.useEffect(() => {
+    setSort(searchParams.get("sort") || "updated_desc");
+    setQInput(searchParams.get("q") ?? "");
+    setQDebounced(searchParams.get("q") ?? "");
+    setStatusFilter(parseStatusFilter(searchParams.get("status")));
+    setBallFilter(parseBallFilter(searchParams.get("ball")));
+  }, [searchParams]);
+
   const [projects, setProjects] = React.useState<ProjectCard[]>([]);
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -73,20 +168,38 @@ function ProjectsContent() {
 
   const loadProjects = React.useCallback(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
-    const qs = tab === "archive" ? "?archive=1" : "";
+    const qs = buildProjectsListQuery({
+      tab,
+      sort,
+      q: qDebounced,
+      status: statusFilter,
+      ball: ballFilter,
+    });
     setLoading(true);
-    fetch(`/api/projects${qs}`, { cache: "no-store" })
+    fetch(`/api/projects${qs ? `?${qs}` : ""}`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
       .then((data: { projects?: ProjectCard[] } | null) => {
         setProjects(data?.projects ?? []);
       })
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
-  }, [state.status, role, tab]);
+  }, [state.status, role, tab, sort, qDebounced, statusFilter, ballFilter]);
 
   React.useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  React.useEffect(() => {
+    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
+    const pageQs = buildProjectsPageQuery({
+      tab,
+      sort,
+      q: qDebounced,
+      status: statusFilter,
+      ball: ballFilter,
+    });
+    router.replace(pageQs ? `${pathname}?${pageQs}` : pathname, { scroll: false });
+  }, [state.status, role, tab, sort, qDebounced, statusFilter, ballFilter, pathname, router]);
 
   React.useEffect(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
@@ -147,7 +260,10 @@ function ProjectsContent() {
           <div className="flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
             <button
               type="button"
-              onClick={() => setTab("active")}
+              onClick={() => {
+                setTab("active");
+                setSort("updated_desc");
+              }}
               className={[
                 "rounded-lg px-3 py-1.5 text-sm font-medium",
                 tab === "active"
@@ -159,7 +275,10 @@ function ProjectsContent() {
             </button>
             <button
               type="button"
-              onClick={() => setTab("archive")}
+              onClick={() => {
+                setTab("archive");
+                setSort("updated_desc");
+              }}
               className={[
                 "rounded-lg px-3 py-1.5 text-sm font-medium",
                 tab === "archive"
@@ -252,10 +371,69 @@ function ProjectsContent() {
             </form>
           ) : null}
 
-          <div className="text-sm text-zinc-600">
-            {tab === "active"
-              ? "Проекты без архивной отметки. До 500 записей."
-              : "Архив: полные данные, в карточке — только просмотр."}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-zinc-600">
+              {tab === "active"
+                ? "Активные проекты. До 500 записей с учётом фильтров."
+                : "Архив: только просмотр. До 500 записей с учётом фильтров."}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                <span className="text-xs font-semibold text-zinc-500">Поиск</span>
+                <input
+                  type="search"
+                  value={qInput}
+                  onChange={(e) => setQInput(e.target.value)}
+                  placeholder="Название, заказчик, ответственный, id…"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="flex min-w-[220px] flex-col gap-1">
+                <span className="text-xs font-semibold text-zinc-500">Сортировка</span>
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                >
+                  {PROJECT_SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-[200px] flex-col gap-1">
+                <span className="text-xs font-semibold text-zinc-500">Статус</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(parseStatusFilter(e.target.value))}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                >
+                  {PROJECT_STATUS_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-[160px] flex-col gap-1">
+                <span className="text-xs font-semibold text-zinc-500">Мяч</span>
+                <select
+                  value={ballFilter}
+                  onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                >
+                  {PROJECT_BALL_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           {loading ? (
@@ -275,6 +453,11 @@ function ProjectsContent() {
                       <div className="text-xs text-zinc-500">обновл. {fmtDate(p.updatedAt)}</div>
                     </div>
                     <div className="mt-1 text-sm text-zinc-600">{p.customer.name}</div>
+                    {tab === "archive" && p.archiveNote?.trim() ? (
+                      <p className="mt-2 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 text-sm text-zinc-700 whitespace-pre-wrap">
+                        {p.archiveNote.trim()}
+                      </p>
+                    ) : null}
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-medium text-zinc-700">
                         {PROJECT_STATUS_LABEL[p.status]}

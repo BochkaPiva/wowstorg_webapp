@@ -1,5 +1,12 @@
 import type { ProjectBall, ProjectStatus } from "@prisma/client";
 
+/** Статусы, при которых проект можно убрать в архив (завершён или отменён). */
+export const PROJECT_TERMINAL_STATUSES = ["COMPLETED", "CANCELLED"] as const satisfies readonly ProjectStatus[];
+
+export function isProjectTerminalStatus(status: ProjectStatus): boolean {
+  return status === "COMPLETED" || status === "CANCELLED";
+}
+
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   LEAD: "Лид / первичный запрос",
   BRIEFING: "Сбор брифа / уточнение задачи",

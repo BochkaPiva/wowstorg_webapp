@@ -1,4 +1,4 @@
-import { ProjectActivityKind, ProjectBall, ProjectStatus } from "@prisma/client";
+import { Prisma, ProjectActivityKind, ProjectBall, ProjectStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -17,16 +17,79 @@ const CreateSchema = z
   })
   .strict();
 
+const SORT_VALUES = ["updated_desc", "updated_asc", "created_desc", "created_asc", "title_asc"] as const;
+
+const ListQuerySchema = z.object({
+  archive: z.enum(["0", "1"]).optional().default("0"),
+  sort: z.enum(SORT_VALUES).optional().default("updated_desc"),
+  status: z.union([z.literal("all"), z.nativeEnum(ProjectStatus)]).optional().default("all"),
+  ball: z.union([z.literal("all"), z.nativeEnum(ProjectBall)]).optional().default("all"),
+  q: z.string().trim().max(120).optional(),
+});
+
+function orderByFromSort(sort: (typeof SORT_VALUES)[number]): Prisma.ProjectOrderByWithRelationInput[] {
+  switch (sort) {
+    case "updated_asc":
+      return [{ updatedAt: "asc" }];
+    case "created_desc":
+      return [{ createdAt: "desc" }];
+    case "created_asc":
+      return [{ createdAt: "asc" }];
+    case "title_asc":
+      return [{ title: "asc" }];
+    case "updated_desc":
+    default:
+      return [{ updatedAt: "desc" }];
+  }
+}
+
 export async function GET(req: Request) {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
-  const archived = url.searchParams.get("archive") === "1";
+  const parsed = ListQuerySchema.safeParse({
+    archive: url.searchParams.get("archive") === "1" ? "1" : "0",
+    sort: url.searchParams.get("sort") ?? undefined,
+    status: url.searchParams.get("status") ?? undefined,
+    ball: url.searchParams.get("ball") ?? undefined,
+    q: url.searchParams.get("q") ?? undefined,
+  });
+  if (!parsed.success) {
+    return jsonError(400, "Некорректные параметры запроса", parsed.error.flatten());
+  }
+
+  const { archive, sort, status: statusFilter, ball: ballFilter, q } = parsed.data;
+  const archived = archive === "1";
+
+  const searchWhere: Prisma.ProjectWhereInput | undefined =
+    q && q.length > 0
+      ? {
+          OR: [
+            { title: { contains: q, mode: "insensitive" } },
+            { customer: { name: { contains: q, mode: "insensitive" } } },
+            { id: { contains: q, mode: "insensitive" } },
+            { owner: { displayName: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : undefined;
+
+  const statusWhere: Prisma.ProjectWhereInput | undefined =
+    statusFilter === "all" ? undefined : { status: statusFilter };
+
+  const ballWhere: Prisma.ProjectWhereInput | undefined =
+    ballFilter === "all" ? undefined : { ball: ballFilter };
 
   const projects = await prisma.project.findMany({
-    where: archived ? { archivedAt: { not: null } } : { archivedAt: null },
-    orderBy: { updatedAt: "desc" },
+    where: {
+      AND: [
+        archived ? { archivedAt: { not: null } } : { archivedAt: null },
+        ...(statusWhere ? [statusWhere] : []),
+        ...(ballWhere ? [ballWhere] : []),
+        ...(searchWhere ? [searchWhere] : []),
+      ],
+    },
+    orderBy: orderByFromSort(sort),
     take: 500,
     select: {
       id: true,
@@ -34,6 +97,7 @@ export async function GET(req: Request) {
       status: true,
       ball: true,
       archivedAt: true,
+      archiveNote: true,
       updatedAt: true,
       createdAt: true,
       customer: { select: { id: true, name: true } },

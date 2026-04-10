@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
+import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, orderStatusLabelRu, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
@@ -12,7 +13,12 @@ import {
   PROJECT_PATCH_FIELD_LABEL,
   formatActivityValue,
 } from "@/lib/project-activity-ui";
-import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
+import {
+  PROJECT_BALL_LABEL,
+  PROJECT_STATUS_LABEL,
+  PROJECT_TERMINAL_STATUSES,
+  isProjectTerminalStatus,
+} from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { ProjectContactsPanel } from "./ProjectContactsPanel";
 import { ProjectEstimatePanel } from "./ProjectEstimatePanel";
@@ -48,6 +54,7 @@ type ProjectDetail = {
   status: ProjectStatus;
   ball: ProjectBall;
   archivedAt: string | null;
+  archiveNote: string | null;
   eventStartDate: string | null;
   eventEndDate: string | null;
   eventDateNote: string | null;
@@ -315,7 +322,20 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     return t ? <span>Название: {t}</span> : null;
   }
   if (kind === "PROJECT_ARCHIVED") {
-    return <span>Проект убран из активного списка.</span>;
+    const p =
+      typeof row.payload === "object" && row.payload !== null
+        ? (row.payload as { status?: unknown; archiveNote?: unknown })
+        : null;
+    const st = p?.status != null ? String(p.status) : "";
+    const note = p?.archiveNote != null ? String(p.archiveNote).trim() : "";
+    const statusLabel =
+      st && st in PROJECT_STATUS_LABEL ? PROJECT_STATUS_LABEL[st as ProjectStatus] : st;
+    return (
+      <span className="block space-y-1">
+        <span>Проект убран в архив{statusLabel ? ` (${statusLabel})` : ""}.</span>
+        {note ? <span className="block text-zinc-600 whitespace-pre-wrap">Комментарий: {note}</span> : null}
+      </span>
+    );
   }
   if (kind === "ORDER_LINKED" || kind === "ORDER_CANCELLED") {
     const oid =
@@ -495,6 +515,9 @@ export default function ProjectDetailPage() {
   const [draftDeleteError, setDraftDeleteError] = React.useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = React.useState(false);
   const [archiveError, setArchiveError] = React.useState<string | null>(null);
+  const [archiveModalOpen, setArchiveModalOpen] = React.useState(false);
+  const [archiveModalStatus, setArchiveModalStatus] = React.useState<"COMPLETED" | "CANCELLED">("COMPLETED");
+  const [archiveModalNote, setArchiveModalNote] = React.useState("");
   const [showAllLog, setShowAllLog] = React.useState(false);
   const [activeWorkTab, setActiveWorkTab] = React.useState<"estimate" | "schedule" | "files" | "journal">("estimate");
   const [catalogModeOpen, setCatalogModeOpen] = React.useState(false);
@@ -627,19 +650,34 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function archive() {
+  function openArchiveModal() {
+    if (!project || readOnly) return;
+    setArchiveError(null);
+    setArchiveModalStatus(
+      isProjectTerminalStatus(project.status) ? (project.status as "COMPLETED" | "CANCELLED") : "COMPLETED",
+    );
+    setArchiveModalNote("");
+    setArchiveModalOpen(true);
+  }
+
+  async function confirmArchiveToModal() {
     if (!id || readOnly) return;
-    if (!window.confirm("Убрать проект в архив? После этого редактирование будет недоступно.")) return;
     setArchiveBusy(true);
     setArchiveError(null);
     try {
+      const note = archiveModalNote.trim();
       const res = await fetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ archive: true }),
+        body: JSON.stringify({
+          status: archiveModalStatus,
+          archive: true,
+          ...(note ? { archiveNote: note } : { archiveNote: null }),
+        }),
       });
       if (res.ok) {
-        router.push("/projects");
+        setArchiveModalOpen(false);
+        router.push("/projects?tab=archive");
         router.refresh();
       } else {
         const data = await res.json().catch(() => null);
@@ -727,8 +765,16 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
           {readOnly ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              Архив: только просмотр.
+            <div className="space-y-2">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Архив: только просмотр.
+              </div>
+              {project.archiveNote?.trim() ? (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Комментарий при закрытии</div>
+                  <p className="mt-1 whitespace-pre-wrap">{project.archiveNote.trim()}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {archiveError ? (
@@ -815,7 +861,7 @@ export default function ProjectDetailPage() {
                     {!readOnly ? (
                       <button
                         type="button"
-                        onClick={() => void archive()}
+                        onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
                         className={`${secondaryBtn} w-full justify-center`}
                         title={
@@ -824,7 +870,7 @@ export default function ProjectDetailPage() {
                             : "Сначала завершите или отмените все заявки, привязанные к проекту"
                         }
                       >
-                        {archiveBusy ? "…" : "Завершить (в архив)"}
+                        Завершить (в архив)
                       </button>
                     ) : null}
                   </div>
@@ -1530,6 +1576,92 @@ export default function ProjectDetailPage() {
               </div>
             </div>
           ) : null}
+
+          {archiveModalOpen && typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/40 p-4">
+                  <div
+                    className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="project-archive-title"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div id="project-archive-title" className="text-lg font-extrabold tracking-tight text-zinc-950">
+                          Убрать проект в архив
+                        </div>
+                        <p className="mt-1 text-sm text-zinc-600">
+                          Выбери итоговый статус и при необходимости оставь комментарий — он появится на карточке в списке
+                          архива. После архивации редактирование проекта будет недоступно.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className={secondaryBtn}
+                        onClick={() => {
+                          setArchiveModalOpen(false);
+                          setArchiveError(null);
+                        }}
+                      >
+                        Закрыть
+                      </button>
+                    </div>
+                    {archiveError ? (
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                        {archiveError}
+                      </div>
+                    ) : null}
+                    <label className="mt-4 block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Статус при закрытии
+                      <select
+                        value={archiveModalStatus}
+                        onChange={(e) => setArchiveModalStatus(e.target.value as "COMPLETED" | "CANCELLED")}
+                        className={`mt-1 ${inputField}`}
+                      >
+                        {PROJECT_TERMINAL_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {PROJECT_STATUS_LABEL[s]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="mt-3 block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Комментарий (необязательно)
+                      <textarea
+                        value={archiveModalNote}
+                        onChange={(e) => setArchiveModalNote(e.target.value)}
+                        rows={3}
+                        maxLength={2000}
+                        placeholder="Кратко: итог, причина отмены, ссылка на акт…"
+                        className={`mt-1 ${inputField}`}
+                      />
+                    </label>
+                    <div className="mt-4 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        className={secondaryBtn}
+                        onClick={() => {
+                          setArchiveModalOpen(false);
+                          setArchiveError(null);
+                        }}
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="button"
+                        className={primaryBtn}
+                        disabled={archiveBusy}
+                        onClick={() => void confirmArchiveToModal()}
+                      >
+                        {archiveBusy ? "Сохраняю…" : "В архив"}
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
         </div>
       )}
     </AppShell>

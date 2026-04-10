@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { isProjectTerminalStatus } from "@/lib/project-ui-labels";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 
@@ -21,6 +22,8 @@ const PatchSchema = z
     openBlockers: z.string().trim().max(5000).optional().nullable(),
     internalSummary: z.string().trim().max(5000).optional().nullable(),
     archive: z.boolean().optional(),
+    /** Только вместе с `archive: true` — комментарий на карточке в архиве. */
+    archiveNote: z.string().trim().max(2000).optional().nullable(),
   })
   .strict();
 
@@ -56,6 +59,7 @@ export async function GET(
       status: true,
       ball: true,
       archivedAt: true,
+      archiveNote: true,
       eventStartDate: true,
       eventEndDate: true,
       eventDateNote: true,
@@ -188,9 +192,13 @@ export async function PATCH(
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  const { archive, ...rest } = parsed.data;
+  const { archive, archiveNote: archiveNoteRaw, ...rest } = parsed.data;
   if (Object.keys(parsed.data).length === 0) {
     return jsonError(400, "Нет полей для обновления");
+  }
+
+  if (archiveNoteRaw !== undefined && archive !== true) {
+    return jsonError(400, "Поле archiveNote допустимо только вместе с archive: true");
   }
 
   const data: {
@@ -204,6 +212,7 @@ export async function PATCH(
     openBlockers?: string | null;
     internalSummary?: string | null;
     archivedAt?: Date;
+    archiveNote?: string | null;
   } = {};
 
   if (rest.title !== undefined) data.title = rest.title;
@@ -215,7 +224,13 @@ export async function PATCH(
   if (rest.eventDateConfirmed !== undefined) data.eventDateConfirmed = rest.eventDateConfirmed;
   if (rest.openBlockers !== undefined) data.openBlockers = rest.openBlockers;
   if (rest.internalSummary !== undefined) data.internalSummary = rest.internalSummary;
-  if (archive === true) data.archivedAt = new Date();
+  if (archive === true) {
+    data.archivedAt = new Date();
+    if (archiveNoteRaw !== undefined) {
+      const t = archiveNoteRaw?.trim() ?? "";
+      data.archiveNote = t === "" ? null : t;
+    }
+  }
 
   const effectiveStart = data.eventStartDate !== undefined ? data.eventStartDate : undefined;
   const effectiveEnd = data.eventEndDate !== undefined ? data.eventEndDate : undefined;
@@ -233,6 +248,7 @@ export async function PATCH(
     status: true,
     ball: true,
     archivedAt: true,
+    archiveNote: true,
     eventStartDate: true,
     eventEndDate: true,
     eventDateNote: true,
@@ -270,6 +286,10 @@ export async function PATCH(
         throw new Error("ARCHIVED");
       }
       if (archive === true) {
+        const statusAfterPatch = data.status !== undefined ? data.status : before.status;
+        if (!isProjectTerminalStatus(statusAfterPatch)) {
+          throw new Error("ARCHIVE_STATUS");
+        }
         const openOrders = await tx.order.count({
           where: {
             projectId: id,
@@ -323,7 +343,12 @@ export async function PATCH(
           projectId: id,
           actorUserId: auth.user.id,
           kind: ProjectActivityKind.PROJECT_ARCHIVED,
-          payload: {} as Prisma.InputJsonValue,
+          payload: {
+            status: data.status ?? before.status,
+            ...(data.archiveNote != null && data.archiveNote !== ""
+              ? { archiveNote: data.archiveNote }
+              : {}),
+          } as Prisma.InputJsonValue,
         });
       }
 
@@ -358,6 +383,12 @@ export async function PATCH(
     }
     if (e instanceof Error && e.message === "OPEN_ORDERS") {
       return jsonError(400, "Нельзя завершить проект, пока по нему есть незавершённые заявки");
+    }
+    if (e instanceof Error && e.message === "ARCHIVE_STATUS") {
+      return jsonError(
+        400,
+        "В архив можно убрать только проект со статусом «Завершён» или «Отменён». Укажите один из них в том же запросе.",
+      );
     }
     throw e;
   }

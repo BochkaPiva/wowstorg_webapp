@@ -19,13 +19,40 @@ const CreateSchema = z
 
 const SORT_VALUES = ["updated_desc", "updated_asc", "created_desc", "created_asc", "title_asc"] as const;
 
-const ListQuerySchema = z.object({
-  archive: z.enum(["0", "1"]).optional().default("0"),
-  sort: z.enum(SORT_VALUES).optional().default("updated_desc"),
-  status: z.union([z.literal("all"), z.nativeEnum(ProjectStatus)]).optional().default("all"),
-  ball: z.union([z.literal("all"), z.nativeEnum(ProjectBall)]).optional().default("all"),
-  q: z.string().trim().max(120).optional(),
-});
+const PROJECT_STATUS_SET = new Set<string>(Object.values(ProjectStatus));
+const PROJECT_BALL_SET = new Set<string>(Object.values(ProjectBall));
+
+function parseProjectsListQuery(url: URL): {
+  archived: boolean;
+  sort: (typeof SORT_VALUES)[number];
+  statusFilter: "all" | ProjectStatus;
+  ballFilter: "all" | ProjectBall;
+  q?: string;
+} {
+  const archived = url.searchParams.get("archive") === "1";
+
+  const sortRaw = url.searchParams.get("sort") ?? "";
+  const sort = (SORT_VALUES as readonly string[]).includes(sortRaw)
+    ? (sortRaw as (typeof SORT_VALUES)[number])
+    : "updated_desc";
+
+  const statusRaw = url.searchParams.get("status");
+  let statusFilter: "all" | ProjectStatus = "all";
+  if (statusRaw && statusRaw !== "all" && PROJECT_STATUS_SET.has(statusRaw)) {
+    statusFilter = statusRaw as ProjectStatus;
+  }
+
+  const ballRaw = url.searchParams.get("ball");
+  let ballFilter: "all" | ProjectBall = "all";
+  if (ballRaw && ballRaw !== "all" && PROJECT_BALL_SET.has(ballRaw)) {
+    ballFilter = ballRaw as ProjectBall;
+  }
+
+  const qRaw = url.searchParams.get("q")?.trim() ?? "";
+  const q = qRaw.length > 0 ? qRaw.slice(0, 120) : undefined;
+
+  return { archived, sort, statusFilter, ballFilter, q };
+}
 
 function orderByFromSort(sort: (typeof SORT_VALUES)[number]): Prisma.ProjectOrderByWithRelationInput[] {
   switch (sort) {
@@ -48,19 +75,7 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
-  const parsed = ListQuerySchema.safeParse({
-    archive: url.searchParams.get("archive") === "1" ? "1" : "0",
-    sort: url.searchParams.get("sort") ?? undefined,
-    status: url.searchParams.get("status") ?? undefined,
-    ball: url.searchParams.get("ball") ?? undefined,
-    q: url.searchParams.get("q") ?? undefined,
-  });
-  if (!parsed.success) {
-    return jsonError(400, "Некорректные параметры запроса", parsed.error.flatten());
-  }
-
-  const { archive, sort, status: statusFilter, ball: ballFilter, q } = parsed.data;
-  const archived = archive === "1";
+  const { archived, sort, statusFilter, ballFilter, q } = parseProjectsListQuery(url);
 
   const searchWhere: Prisma.ProjectWhereInput | undefined =
     q && q.length > 0

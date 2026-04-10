@@ -143,6 +143,7 @@ function ProjectsContent() {
   }, [searchParams]);
 
   const [projects, setProjects] = React.useState<ProjectCard[]>([]);
+  const [listError, setListError] = React.useState<string | null>(null);
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [createBusy, setCreateBusy] = React.useState(false);
@@ -167,7 +168,11 @@ function ProjectsContent() {
   );
 
   const loadProjects = React.useCallback(() => {
-    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
+    if (state.status === "loading") return;
+    if (state.status !== "authenticated" || role !== "WOWSTORG") {
+      setLoading(false);
+      return;
+    }
     const qs = buildProjectsListQuery({
       tab,
       sort,
@@ -176,12 +181,24 @@ function ProjectsContent() {
       ball: ballFilter,
     });
     setLoading(true);
+    setListError(null);
     fetch(`/api/projects${qs ? `?${qs}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then((data: { projects?: ProjectCard[] } | null) => {
+      .then(async (r) => {
+        const data = (await r.json().catch(() => null)) as
+          | { projects?: ProjectCard[]; error?: { message?: string } }
+          | null;
+        if (!r.ok) {
+          setProjects([]);
+          setListError(data?.error?.message ?? `Не удалось загрузить проекты (${r.status})`);
+          return;
+        }
+        setListError(null);
         setProjects(data?.projects ?? []);
       })
-      .catch(() => setProjects([]))
+      .catch(() => {
+        setProjects([]);
+        setListError("Сеть или сервер недоступны. Проверьте подключение и попробуйте снова.");
+      })
       .finally(() => setLoading(false));
   }, [state.status, role, tab, sort, qDebounced, statusFilter, ballFilter]);
 
@@ -436,11 +453,23 @@ function ProjectsContent() {
             </div>
           </div>
 
+          {listError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <div className="font-semibold">Не удалось загрузить список</div>
+              <p className="mt-1 text-red-800">{listError}</p>
+              <p className="mt-2 text-xs text-red-700/90">
+                Если недавно обновляли приложение, на базе должна быть миграция с полем{" "}
+                <code className="rounded bg-red-100/80 px-1">Project.archiveNote</code> — выполните{" "}
+                <code className="rounded bg-red-100/80 px-1">npx prisma migrate deploy</code> на окружении с БД.
+              </p>
+            </div>
+          ) : null}
+
           {loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>
-          ) : projects.length === 0 ? (
+          ) : !listError && projects.length === 0 ? (
             <div className="text-sm text-zinc-600">Пока нет проектов.</div>
-          ) : (
+          ) : !listError ? (
             <ul className="space-y-2">
               {projects.map((p) => (
                 <li key={p.id}>
@@ -476,7 +505,7 @@ function ProjectsContent() {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
         </div>
       )}
     </AppShell>

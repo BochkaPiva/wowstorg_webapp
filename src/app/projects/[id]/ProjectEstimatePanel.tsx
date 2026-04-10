@@ -165,8 +165,8 @@ const menuAction =
 const sectionTone = {
   requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
   draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
-  local: "border-sky-100 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]",
-  contractor: "border-amber-100 bg-[linear-gradient(180deg,rgba(255,251,235,0.95),rgba(255,255,255,1))]",
+  local: "border-violet-100 bg-[linear-gradient(180deg,rgba(250,245,255,0.9),rgba(255,255,255,1))]",
+  contractor: "border-zinc-200 bg-[linear-gradient(180deg,rgba(244,244,245,0.65),rgba(255,255,255,1))]",
 };
 const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 
@@ -1116,7 +1116,7 @@ export function ProjectEstimatePanel({
               </a>
               <a
                 href={exportHrefClient}
-                className="rounded-lg border border-sky-500/40 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                className="rounded-lg border border-indigo-500/35 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-950 hover:bg-indigo-100"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -1510,13 +1510,13 @@ export function ProjectEstimatePanel({
               </div>
 
               <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-                <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-sky-900">Сумма (клиент)</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-sky-950">{money(totals.clientSubtotal)} ₽</div>
+                <div className="rounded-xl border border-violet-200 bg-violet-50/90 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-violet-900">Сумма (клиент)</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-violet-950">{money(totals.clientSubtotal)} ₽</div>
                 </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-amber-900">Условный налог 6%</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.tax6)} ₽</div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-slate-800">Условный налог 6%</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-slate-900">{money(totals.tax6)} ₽</div>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                   <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
@@ -1526,9 +1526,9 @@ export function ProjectEstimatePanel({
                   <div className="text-[11px] font-semibold text-violet-900">Итого клиент</div>
                   <div className="mt-1 text-base font-extrabold tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</div>
                 </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-amber-900">Себестоимость</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.internalSubtotal)} ₽</div>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-zinc-800">Себестоимость</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.internalSubtotal)} ₽</div>
                 </div>
                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
                   <div className="text-[11px] font-semibold text-zinc-700">Валовая маржа</div>
@@ -1548,7 +1548,7 @@ export function ProjectEstimatePanel({
               </div>
 
               {!readOnly && data?.current ? (
-                <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,rgba(251,191,36,0.14),rgba(255,255,255,0.98),rgba(249,115,22,0.08))] p-4">
+                <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(237,233,254,0.55),rgba(255,255,255,0.98),rgba(196,181,253,0.12))] p-4">
                   <button
                     type="button"
                     disabled={busy || !estimateDraftDirty}
@@ -1561,7 +1561,7 @@ export function ProjectEstimatePanel({
                     type="button"
                     disabled={busy || !estimateDraftDirty}
                     onClick={() => void saveEstimateDraft()}
-                    className="min-h-12 rounded-xl border border-amber-300 bg-[linear-gradient(135deg,#f59e0b,#f97316)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(249,115,22,0.24)] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-12 rounded-xl border border-violet-500 bg-[linear-gradient(135deg,#7c3aed,#6d28d9)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(124,58,237,0.28)] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy ? "Сохраняю смету…" : "Сохранить смету"}
                   </button>
@@ -1636,8 +1636,8 @@ function EstimateSectionBlock({
                     : sec.kind === "DRAFT_REQUISITE"
                       ? "border border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900"
                       : sec.kind === "CONTRACTOR"
-                        ? "border border-amber-200 bg-amber-50 text-amber-950"
-                    : "border border-sky-200 bg-sky-50 text-sky-900"
+                        ? "border border-zinc-300 bg-zinc-100 text-zinc-900"
+                    : "border border-indigo-200 bg-indigo-50 text-indigo-950"
                 }`}
               >
                 {sec.kind === "REQUISITE"
@@ -1863,7 +1863,7 @@ function LineEditor({
     <div
       className={`rounded-lg border p-2 text-xs shadow-sm ${
         isDirty
-          ? "border-amber-300 bg-[linear-gradient(135deg,rgba(254,243,199,0.8),rgba(255,255,255,1))]"
+          ? "border-orange-300 bg-[linear-gradient(135deg,rgba(254,215,170,0.72),rgba(255,255,255,1))]"
           : "border-zinc-100 bg-zinc-50/60"
       }`}
     >
@@ -1881,8 +1881,8 @@ function LineEditor({
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 p-2">
-            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-sky-900/80">Клиенту</div>
+          <div className="rounded-lg border border-violet-200/80 bg-violet-50/50 p-2">
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-violet-900/85">Клиенту</div>
             <div className={ESTIMATE_CLIENT_ROW_GRID}>
               <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                 Позиция
@@ -1941,8 +1941,8 @@ function LineEditor({
             </div>
           </div>
 
-          <div className="rounded-lg border border-amber-200/85 bg-amber-50/40 p-2">
-            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-amber-950/85">Наши поля</div>
+          <div className="rounded-lg border border-zinc-200/95 bg-zinc-50/85 p-2">
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-zinc-600">Наши поля</div>
             {isContractor ? (
               <div className="grid gap-1.5 xl:grid-cols-[4.5rem_7rem_1fr_minmax(0,1fr)_minmax(0,1fr)_auto]">
                 <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -2128,8 +2128,8 @@ function AddLineForm({
 
   return (
     <form onSubmit={submit} className="space-y-2 text-xs">
-      <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 p-2">
-        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-sky-900/80">Новая строка · клиенту</div>
+      <div className="rounded-lg border border-violet-200/80 bg-violet-50/50 p-2">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-violet-900/85">Новая строка · клиенту</div>
         <div className={ESTIMATE_CLIENT_ROW_GRID}>
           <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
             Позиция
@@ -2192,8 +2192,8 @@ function AddLineForm({
         </div>
       </div>
 
-      <div className="rounded-lg border border-amber-200/85 bg-amber-50/40 p-2">
-        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-amber-950/85">Новая строка · наши поля</div>
+      <div className="rounded-lg border border-zinc-200/95 bg-zinc-50/85 p-2">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-zinc-600">Новая строка · наши поля</div>
         {isContractor ? (
           <div className="grid gap-1.5 xl:grid-cols-[4.5rem_7rem_1fr_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">

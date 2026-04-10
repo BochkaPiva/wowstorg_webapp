@@ -251,6 +251,18 @@ function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Дата YYYY-MM-DD по UTC (для полей materialize demo-заявки). */
+function draftMaterializeTodayISO() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+}
+
+function formatRuDateFromISO(dateOnly: string) {
+  const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
+  if (!y || !m || !d) return dateOnly;
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
+}
+
 const UNIT_DATALIST_ID = "project-estimate-unit-presets";
 
 function UnitPresetDatalist() {
@@ -2930,6 +2942,27 @@ function DraftRequisiteEditor({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [legendOpen, setLegendOpen] = React.useState(false);
+  const [draftDirty, setDraftDirty] = React.useState(false);
+  const [catalogItems, setCatalogItems] = React.useState<
+    Array<{
+      id: string;
+      name: string;
+      total: number;
+      inRepair: number;
+      broken: number;
+      missing: number;
+      availableNow?: number;
+      availableForDates?: number;
+      pricePerDay?: number;
+    }>
+  >([]);
+  const [catalogLoading, setCatalogLoading] = React.useState(true);
+  const [materializeOpen, setMaterializeOpen] = React.useState(false);
+  const [matReadyBy, setMatReadyBy] = React.useState(draftMaterializeTodayISO);
+  const [matStart, setMatStart] = React.useState(draftMaterializeTodayISO);
+  const [matEnd, setMatEnd] = React.useState(draftMaterializeTodayISO);
+  const [matBusy, setMatBusy] = React.useState(false);
+  const [matError, setMatError] = React.useState<string | null>(null);
   const [lines, setLines] = React.useState(() =>
     sec.lines.map((line) => {
       const meta = parseDraftLineMeta(line);
@@ -2963,7 +2996,60 @@ function DraftRequisiteEditor({
       }),
     );
     setError(null);
+    setDraftDirty(false);
   }, [sec]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setCatalogLoading(true);
+    fetch("/api/catalog/items", { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then(
+        (
+          j: null | {
+            items?: Array<{
+              id: string;
+              name: string;
+              total: number;
+              inRepair: number;
+              broken: number;
+              missing: number;
+              pricePerDay?: number | null;
+              availability?: { availableNow?: number; availableForDates?: number };
+            }>;
+          },
+        ) => {
+          if (cancelled) return;
+          setCatalogItems(
+            (j?.items ?? []).map((item) => ({
+              id: item.id,
+              name: item.name,
+              total: item.total,
+              inRepair: item.inRepair,
+              broken: item.broken,
+              missing: item.missing,
+              availableNow:
+                item.availability?.availableNow != null ? Number(item.availability.availableNow) : undefined,
+              availableForDates:
+                item.availability?.availableForDates != null
+                  ? Number(item.availability.availableForDates)
+                  : undefined,
+              pricePerDay:
+                item.pricePerDay === undefined || item.pricePerDay === null ? undefined : Number(item.pricePerDay),
+            })),
+          );
+        },
+      )
+      .catch(() => {
+        if (!cancelled) setCatalogItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const total = React.useMemo(
     () =>
@@ -2983,7 +3069,36 @@ function DraftRequisiteEditor({
       comment: string;
     }>,
   ) {
+    setDraftDirty(true);
     setLines((prev) => prev.map((line, idx) => (idx === index ? { ...line, ...patch } : line)));
+  }
+
+  function addDraftCatalogLine(itemId: string, name: string, qty: number, description: string) {
+    const inv = catalogItems.find((i) => i.id === itemId);
+    const buckets = inv
+      ? { total: inv.total, inRepair: inv.inRepair, broken: inv.broken, missing: inv.missing }
+      : { total: 0, inRepair: 0, broken: 0, missing: 0 };
+    const maxQtyPhysical = usableStockUnits(buckets);
+    setDraftDirty(true);
+    setLines((prev) => {
+      const used = prev.filter((l) => l.itemId === itemId).reduce((s, l) => s + l.qty, 0);
+      const remaining = Math.max(0, maxQtyPhysical - used);
+      const q = remaining <= 0 ? 0 : Math.max(1, Math.min(qty, remaining));
+      if (q <= 0) return prev;
+      return [
+        ...prev,
+        {
+          id: makeTempId("line"),
+          itemId,
+          name,
+          qty: q,
+          plannedDays: 1,
+          pricePerDaySnapshot: inv?.pricePerDay ?? 0,
+          comment: description.trim(),
+          maxQtyPhysical,
+        },
+      ];
+    });
   }
 
   async function saveDraft() {
@@ -3015,9 +3130,55 @@ function DraftRequisiteEditor({
         setError(data?.error?.message ?? "Не удалось сохранить demo-заявку");
         return;
       }
+      setDraftDirty(false);
       onDone();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function materializeDraft() {
+    setMatError(null);
+    if (draftDirty) {
+      setMatError("Сначала сохраните изменения кнопкой «Сохранить demo».");
+      return;
+    }
+    if (lines.length === 0) {
+      setMatError("Нет позиций для материализации.");
+      return;
+    }
+    if (lines.some((l) => l.id.startsWith("draft-"))) {
+      setMatError("Сохраните demo-заявку: у новых строк ещё нет идентификаторов на сервере.");
+      return;
+    }
+    setMatBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/draft-order/materialize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periods: [
+            {
+              key: "single",
+              title: "Период из сметы",
+              readyByDate: matReadyBy,
+              startDate: matStart,
+              endDate: matEnd,
+              lineIds: lines.map((l) => l.id),
+            },
+          ],
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!res.ok) {
+        setMatError(data?.error?.message ?? "Не удалось создать заявки");
+        return;
+      }
+      setMaterializeOpen(false);
+      onDone();
+      window.dispatchEvent(new CustomEvent("project-activity-refresh"));
+    } finally {
+      setMatBusy(false);
     }
   }
 
@@ -3047,17 +3208,34 @@ function DraftRequisiteEditor({
                   Demo-заявка не резервирует остатки и нужна для расчёта сметы до подтверждения конкретных интервалов.
                 </div>
                 <div className="mt-2">
-                  Поле `Дней` влияет только на предварительную смету. На этапе materialize ты всё равно задаёшь реальные
-                  интервалы дат.
+                  Поле `Дней` влияет только на предварительную смету. Кнопка «В реальную заявку» открывает выбор дат и
+                  создаёт настоящую заявку (нужно предварительно сохранить demo).
                 </div>
               </div>
             ) : null}
           </div>
         </div>
         {!readOnly ? (
-          <button type="button" onClick={() => void saveDraft()} disabled={busy} className={btnPrimary}>
-            {busy ? "Сохраняю demo…" : "Сохранить demo"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMatError(null);
+                setMatReadyBy(draftMaterializeTodayISO());
+                setMatStart(draftMaterializeTodayISO());
+                setMatEnd(draftMaterializeTodayISO());
+                setMaterializeOpen(true);
+              }}
+              disabled={busy || lines.length === 0 || draftDirty}
+              title={draftDirty ? "Сначала сохраните изменения кнопкой «Сохранить demo»" : undefined}
+              className={btnSecondary}
+            >
+              В реальную заявку
+            </button>
+            <button type="button" onClick={() => void saveDraft()} disabled={busy} className={btnPrimary}>
+              {busy ? "Сохраняю demo…" : "Сохранить demo"}
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -3067,14 +3245,29 @@ function DraftRequisiteEditor({
         Количество ограничено физическим остатком на складе (годные единицы по вёдрам: total − ремонт − брак − недостача), без учёта резерва по датам. При переводе в реальные заявки дополнительно проверяется доступность на выбранные периоды.
       </p>
 
+      {!readOnly ? (
+        <div className="rounded-2xl border border-dashed border-fuchsia-300 bg-fuchsia-50/40 p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-fuchsia-800">
+            Добавить позицию из каталога
+          </div>
+          {catalogLoading ? (
+            <p className="text-sm text-zinc-600">Загрузка каталога…</p>
+          ) : (
+            <OrderLinePicker
+              catalogItems={catalogItems}
+              existingItemIds={lines.map((l) => l.itemId)}
+              onAdd={(itemId, name, qty, description) => addDraftCatalogLine(itemId, name, qty, description)}
+            />
+          )}
+        </div>
+      ) : null}
+
       <div className="space-y-2">
         {lines.map((line, index) => {
           const lineTotal = Math.round(
             (line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays),
           );
           const maxRemPhysical = maxPhysicalRemainingForDraftLine(lines, index);
-          const stockLabel =
-            line.maxQtyPhysical != null ? `${line.maxQtyPhysical} шт. на складе (годных)` : "лимит уточнится при сохранении";
           return (
             <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_112px_112px_132px_minmax(0,1.2fr)]">
@@ -3104,12 +3297,6 @@ function DraftRequisiteEditor({
                     className={`mt-1 w-full ${inputField}`}
                     disabled={readOnly}
                   />
-                  <div className="mt-1 text-[11px] text-zinc-500">
-                    {stockLabel}
-                    {Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY ? (
-                      <> · макс. по строке (сумма по той же позиции): {maxRemPhysical}</>
-                    ) : null}
-                  </div>
                 </label>
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Дней
@@ -3146,6 +3333,92 @@ function DraftRequisiteEditor({
         <div className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Предварительный итог demo-блока</div>
         <div className="mt-2 text-lg font-extrabold text-fuchsia-950">{formatOrderMoney(total)} ₽</div>
       </div>
+
+      {materializeOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-zinc-950/40 p-4">
+          <div
+            className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="draft-materialize-title"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div id="draft-materialize-title" className="text-lg font-extrabold tracking-tight text-zinc-950">
+                  Реальная заявка из demo
+                </div>
+                <p className="mt-1 text-sm text-zinc-600">
+                  Укажи даты периода: будет создана одна заявка со всеми строками demo-блока. Система проверит доступность
+                  остатков на эти даты.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setMaterializeOpen(false);
+                  setMatError(null);
+                }}
+              >
+                Закрыть
+              </button>
+            </div>
+            {matError ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {matError}
+              </div>
+            ) : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Готовность
+                <input
+                  type="date"
+                  value={matReadyBy}
+                  onChange={(e) => setMatReadyBy(e.target.value)}
+                  className={`mt-1 w-full ${inputField}`}
+                />
+              </label>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Начало
+                <input
+                  type="date"
+                  value={matStart}
+                  onChange={(e) => setMatStart(e.target.value)}
+                  className={`mt-1 w-full ${inputField}`}
+                />
+              </label>
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Конец
+                <input
+                  type="date"
+                  value={matEnd}
+                  onChange={(e) => setMatEnd(e.target.value)}
+                  className={`mt-1 w-full ${inputField}`}
+                />
+              </label>
+            </div>
+            <div className="mt-4 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2 text-sm text-zinc-700">
+              Будет создана одна заявка на период {formatRuDateFromISO(matStart)} — {formatRuDateFromISO(matEnd)} (
+              {lines.length} поз.).
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={btnSecondary}
+                onClick={() => {
+                  setMaterializeOpen(false);
+                  setMatError(null);
+                }}
+              >
+                Отмена
+              </button>
+              <button type="button" className={btnPrimary} disabled={matBusy} onClick={() => void materializeDraft()}>
+                {matBusy ? "Создаю заявку…" : "Создать заявку"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

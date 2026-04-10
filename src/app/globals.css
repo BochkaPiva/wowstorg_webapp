@@ -70,27 +70,3 @@ body {
     animation: none;
   }
 }
-
-/* Смета: мягкое мигание статуса оплаты подрядчика */
-@keyframes estimate-pay-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
-  }
-  50% {
-    opacity: 0.92;
-    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
-  }
-}
-
-.estimate-pay-pulse {
-  animation: estimate-pay-pulse 1.6s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .estimate-pay-pulse {
-    animation: none;
-    box-shadow: none;
-  }
-}

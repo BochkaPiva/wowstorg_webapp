@@ -1505,7 +1505,6 @@ export function ProjectEstimatePanel({
                 <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
                   <div className="text-[11px] font-semibold text-amber-900">Условный налог 6%</div>
                   <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.tax6)} ₽</div>
-                  <div className="mt-0.5 text-[10px] text-amber-800/90">от суммы клиентских строк</div>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                   <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
@@ -1779,6 +1778,8 @@ const COMMISSION_RATE_UI = 0.15;
 const PAYMENT_METHOD_OPTIONS = ["Наличные", "Безнал"] as const;
 const PAYMENT_STATUS_PAID = "Оплачено";
 const PAYMENT_STATUS_UNPAID = "Не оплачено";
+/** Уникальный id datalist для комбобокса статуса (input list=… + datalist). */
+const paymentStatusDatalistId = (suffix: string) => `project-estimate-pst-${suffix}`;
 
 function parseEstimateQtyUp(line: {
   qty?: string | number | null;
@@ -1808,15 +1809,12 @@ function displayLocalLineClientSum(line: {
   return "—";
 }
 
-function paymentStatusHighlightClass(raw: string | null | undefined): string {
+/** Цвет текста значения статуса (без фона и анимации). */
+function paymentStatusTextClass(raw: string | null | undefined): string {
   const t = raw?.trim() ?? "";
-  if (t === PAYMENT_STATUS_PAID) {
-    return "border-emerald-300 bg-emerald-50/95 text-emerald-950 estimate-pay-pulse";
-  }
-  if (t === PAYMENT_STATUS_UNPAID) {
-    return "border-red-300 bg-red-50/95 text-red-950 estimate-pay-pulse";
-  }
-  return "border-zinc-200 bg-zinc-50/90 text-zinc-800 estimate-pay-pulse";
+  if (t === PAYMENT_STATUS_PAID) return "font-semibold text-emerald-700";
+  if (t === PAYMENT_STATUS_UNPAID) return "font-semibold text-red-700";
+  return "text-zinc-900";
 }
 
 function LineEditor({
@@ -1840,26 +1838,6 @@ function LineEditor({
 }) {
   const isContractor = sectionKind === "CONTRACTOR";
   const paymentStatusRaw = "paymentStatus" in line ? line.paymentStatus : null;
-  const paymentStatusIsCustomText =
-    paymentStatusRaw != null &&
-    paymentStatusRaw !== "" &&
-    paymentStatusRaw !== PAYMENT_STATUS_PAID &&
-    paymentStatusRaw !== PAYMENT_STATUS_UNPAID;
-  const [pickCustomPaymentStatus, setPickCustomPaymentStatus] = React.useState(false);
-  React.useEffect(() => {
-    if (paymentStatusIsCustomText) setPickCustomPaymentStatus(false);
-  }, [paymentStatusIsCustomText, paymentStatusRaw]);
-
-  const paymentStatusSelectVal: "" | "PAID" | "UNPAID" | "CUSTOM" = pickCustomPaymentStatus
-    ? "CUSTOM"
-    : paymentStatusRaw === PAYMENT_STATUS_PAID
-      ? "PAID"
-      : paymentStatusRaw === PAYMENT_STATUS_UNPAID
-        ? "UNPAID"
-        : paymentStatusRaw == null || paymentStatusRaw === "" || paymentStatusRaw.trim() === ""
-          ? ""
-          : "CUSTOM";
-
   const unitVal = line.unit?.trim() ? line.unit : "";
   const qtyStr =
     "qty" in line && line.qty != null && line.qty !== ""
@@ -1985,52 +1963,23 @@ function LineEditor({
                 </label>
                 <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
                   Статус оплаты
-                  <div className="mt-0.5 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
-                    <select
-                      value={paymentStatusSelectVal}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "") {
-                          setPickCustomPaymentStatus(false);
-                          onSave(sectionId, line.id, { paymentStatus: null });
-                        } else if (v === "PAID") {
-                          setPickCustomPaymentStatus(false);
-                          onSave(sectionId, line.id, { paymentStatus: PAYMENT_STATUS_PAID });
-                        } else if (v === "UNPAID") {
-                          setPickCustomPaymentStatus(false);
-                          onSave(sectionId, line.id, { paymentStatus: PAYMENT_STATUS_UNPAID });
-                        } else {
-                          setPickCustomPaymentStatus(true);
-                          onSave(sectionId, line.id, { paymentStatus: null });
-                        }
-                      }}
-                      className={`w-full min-w-0 shrink-0 sm:max-w-[9.5rem] ${cellXs} bg-white ${paymentStatusHighlightClass(
-                        pickCustomPaymentStatus ? null : paymentStatusRaw,
-                      )}`}
-                    >
-                      <option value="">Не задано</option>
-                      <option value="PAID">{PAYMENT_STATUS_PAID}</option>
-                      <option value="UNPAID">{PAYMENT_STATUS_UNPAID}</option>
-                      <option value="CUSTOM">Свой вариант…</option>
-                    </select>
-                    {paymentStatusSelectVal === "CUSTOM" ? (
-                      <input
-                        value={
-                          pickCustomPaymentStatus && (paymentStatusRaw == null || paymentStatusRaw === "")
-                            ? ""
-                            : (paymentStatusRaw ?? "")
-                        }
-                        onChange={(e) => {
-                          const t = e.target.value;
-                          onSave(sectionId, line.id, {
-                            paymentStatus: t.trim() === "" ? null : t,
-                          });
-                        }}
-                        placeholder="Текст статуса"
-                        className={`min-w-0 flex-1 ${cellXs}`}
-                      />
-                    ) : null}
-                  </div>
+                  <input
+                    value={paymentStatusRaw ?? ""}
+                    onChange={(e) => {
+                      const t = e.target.value;
+                      onSave(sectionId, line.id, {
+                        paymentStatus: t.trim() === "" ? null : t,
+                      });
+                    }}
+                    list={paymentStatusDatalistId(line.id)}
+                    placeholder="Выберите из списка или введите"
+                    autoComplete="off"
+                    className={`mt-0.5 w-full min-w-0 ${cellXs} bg-white ${paymentStatusTextClass(paymentStatusRaw)}`}
+                  />
+                  <datalist id={paymentStatusDatalistId(line.id)}>
+                    <option value={PAYMENT_STATUS_PAID} />
+                    <option value={PAYMENT_STATUS_UNPAID} />
+                  </datalist>
                 </label>
                 <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
                   Коммент. подрядчику
@@ -2125,8 +2074,7 @@ function AddLineForm({
   const [up, setUp] = React.useState("");
   const [ci, setCi] = React.useState("");
   const [pm, setPm] = React.useState("");
-  const [statusSel, setStatusSel] = React.useState<"" | "PAID" | "UNPAID" | "CUSTOM">("");
-  const [statusCustom, setStatusCustom] = React.useState("");
+  const [paymentStatus, setPaymentStatus] = React.useState("");
   const [cn, setCn] = React.useState("");
   const [cr, setCr] = React.useState("");
 
@@ -2139,10 +2087,7 @@ function AddLineForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    let paymentStatus: string | null = null;
-    if (statusSel === "PAID") paymentStatus = PAYMENT_STATUS_PAID;
-    else if (statusSel === "UNPAID") paymentStatus = PAYMENT_STATUS_UNPAID;
-    else if (statusSel === "CUSTOM") paymentStatus = statusCustom.trim() || null;
+    const paymentStatusSaved = paymentStatus.trim() === "" ? null : paymentStatus.trim();
 
     onAdd(sectionId, {
       name: name.trim(),
@@ -2153,7 +2098,7 @@ function AddLineForm({
       costClient: null,
       costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
       paymentMethod: pm.trim() || null,
-      paymentStatus,
+      paymentStatus: paymentStatusSaved,
       contractorNote: cn.trim() || null,
       contractorRequisites: cr.trim() || null,
     });
@@ -2164,8 +2109,7 @@ function AddLineForm({
     setUp("");
     setCi("");
     setPm("");
-    setStatusSel("");
-    setStatusCustom("");
+    setPaymentStatus("");
     setCn("");
     setCr("");
   }
@@ -2267,34 +2211,18 @@ function AddLineForm({
             </label>
             <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Статус оплаты
-              <div className="mt-0.5 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
-                <select
-                  value={statusSel}
-                  onChange={(e) => setStatusSel(e.target.value as typeof statusSel)}
-                  className={`w-full min-w-0 shrink-0 sm:max-w-[9.5rem] ${cellXs} bg-white ${paymentStatusHighlightClass(
-                    statusSel === "PAID"
-                      ? PAYMENT_STATUS_PAID
-                      : statusSel === "UNPAID"
-                        ? PAYMENT_STATUS_UNPAID
-                        : statusSel === "CUSTOM" && statusCustom.trim()
-                          ? statusCustom
-                          : null,
-                  )}`}
-                >
-                  <option value="">Не задано</option>
-                  <option value="PAID">{PAYMENT_STATUS_PAID}</option>
-                  <option value="UNPAID">{PAYMENT_STATUS_UNPAID}</option>
-                  <option value="CUSTOM">Свой вариант…</option>
-                </select>
-                {statusSel === "CUSTOM" ? (
-                  <input
-                    value={statusCustom}
-                    onChange={(e) => setStatusCustom(e.target.value)}
-                    placeholder="Текст статуса"
-                    className={`min-w-0 flex-1 ${cellXs}`}
-                  />
-                ) : null}
-              </div>
+              <input
+                value={paymentStatus}
+                onChange={(e) => setPaymentStatus(e.target.value)}
+                list={paymentStatusDatalistId(`new-${sectionId}`)}
+                placeholder="Выберите из списка или введите"
+                autoComplete="off"
+                className={`mt-0.5 w-full min-w-0 ${cellXs} bg-white ${paymentStatusTextClass(paymentStatus)}`}
+              />
+              <datalist id={paymentStatusDatalistId(`new-${sectionId}`)}>
+                <option value={PAYMENT_STATUS_PAID} />
+                <option value={PAYMENT_STATUS_UNPAID} />
+              </datalist>
             </label>
             <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Коммент. подрядчику

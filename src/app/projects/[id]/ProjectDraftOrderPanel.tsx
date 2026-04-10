@@ -63,6 +63,24 @@ function todayDateOnly() {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
 }
 
+function digitsOnlyQty(raw: string): string {
+  return raw.replace(/\D/g, "");
+}
+
+function parseQtyDisplayInt(raw: string): number {
+  const t = raw.trim();
+  if (t === "") return 0;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 0;
+}
+
+function parseQtyCommitInt(raw: string, fallback = 1): number {
+  const t = raw.trim();
+  if (t === "") return fallback;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
 function cloneDraft(draft: DraftOrder | null) {
   return {
     title: draft?.title ?? "",
@@ -70,6 +88,7 @@ function cloneDraft(draft: DraftOrder | null) {
     lines:
       draft?.lines.map((line) => ({
         ...line,
+        qty: String(line.qty),
         comment: line.comment ?? "",
         periodGroup: line.periodGroup ?? "",
       })) ?? [],
@@ -92,9 +111,10 @@ export function ProjectDraftOrderPanel({
   const [comment, setComment] = React.useState("");
   const [lines, setLines] = React.useState<
     Array<
-      Omit<DraftLine, "comment" | "periodGroup"> & {
+      Omit<DraftLine, "comment" | "periodGroup" | "qty"> & {
         comment: string;
         periodGroup: string;
+        qty: string;
       }
     >
   >([]);
@@ -157,7 +177,7 @@ export function ProjectDraftOrderPanel({
       lines: lines.map((line, index) => ({
         itemId: line.itemId,
         itemName: line.itemName,
-        qty: line.qty,
+        qty: parseQtyCommitInt(line.qty, 1),
         comment: line.comment.trim(),
         periodGroup: line.periodGroup.trim(),
         sortOrder: index,
@@ -204,7 +224,7 @@ export function ProjectDraftOrderPanel({
             id: line.id.startsWith("draft-") ? undefined : line.id,
             itemId: line.itemId,
             itemName: line.itemName,
-            qty: Math.max(1, Number(line.qty) || 1),
+            qty: parseQtyCommitInt(line.qty, 1),
             comment: line.comment.trim() || null,
             periodGroup: line.periodGroup.trim() || null,
             pricePerDaySnapshot: line.pricePerDaySnapshot,
@@ -238,7 +258,7 @@ export function ProjectDraftOrderPanel({
         sortOrder: prev.length,
         itemId: item.id,
         itemName: item.name,
-        qty: 1,
+        qty: "1",
         comment: "",
         periodGroup: "",
         pricePerDaySnapshot: typeof item.pricePerDay === "number" ? item.pricePerDay : null,
@@ -434,11 +454,11 @@ export function ProjectDraftOrderPanel({
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Кол-во
                   <input
-                    type="number"
-                    min={1}
                     value={line.qty}
-                    onChange={(e) => updateLine(index, { qty: Math.max(1, Number(e.target.value) || 1) })}
-                    className={`mt-1 ${inputField}`}
+                    inputMode="numeric"
+                    onChange={(e) => updateLine(index, { qty: digitsOnlyQty(e.target.value) })}
+                    onBlur={() => updateLine(index, { qty: String(parseQtyCommitInt(line.qty, 1)) })}
+                    className={`mt-1 ${inputField} tabular-nums`}
                     disabled={readOnly}
                   />
                 </label>
@@ -465,7 +485,8 @@ export function ProjectDraftOrderPanel({
                 <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50 px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-fuchsia-700">Предв. сумма</div>
                   <div className="mt-1 text-sm font-bold text-fuchsia-950">
-                    {Math.round((line.pricePerDaySnapshot ?? 0) * line.qty).toLocaleString("ru-RU")} ₽
+                    {Math.round((line.pricePerDaySnapshot ?? 0) * parseQtyDisplayInt(line.qty)).toLocaleString("ru-RU")}{" "}
+                    ₽
                   </div>
                 </div>
                 {!readOnly ? (

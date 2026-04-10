@@ -392,8 +392,29 @@ function parseDraftLineMeta(line: EstLine) {
   };
 }
 
+/** Только цифры (для input количества). */
+function digitsOnlyInput(raw: string): string {
+  return raw.replace(/\D/g, "");
+}
+
+/** Для отображения суммы при редактировании: пусто → 0; иначе целое ≥ 1, мусор → 0 */
+function parseQtyDisplayInt(raw: string): number {
+  const t = raw.trim();
+  if (t === "") return 0;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 1 ? n : 0;
+}
+
+/** После blur: пусто или мусор → fallback (обычно 1) */
+function parseQtyCommitInt(raw: string, fallback = 1): number {
+  const t = raw.trim();
+  if (t === "") return fallback;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
 function maxPhysicalRemainingForDraftLine(
-  lines: Array<{ itemId: string; qty: number; maxQtyPhysical: number | null }>,
+  lines: Array<{ itemId: string; qty: string; maxQtyPhysical: number | null }>,
   index: number,
 ): number {
   const row = lines[index];
@@ -402,8 +423,9 @@ function maxPhysicalRemainingForDraftLine(
     row.maxQtyPhysical != null && Number.isFinite(row.maxQtyPhysical)
       ? Math.max(0, row.maxQtyPhysical)
       : Number.POSITIVE_INFINITY;
+  const qtyForSibling = (q: string) => parseQtyCommitInt(q, 1);
   const usedOthers = lines.reduce(
-    (sum, l, j) => (j !== index && l.itemId === row.itemId ? sum + l.qty : sum),
+    (sum, l, j) => (j !== index && l.itemId === row.itemId ? sum + qtyForSibling(l.qty) : sum),
     0,
   );
   if (cap === Number.POSITIVE_INFINITY) return Number.POSITIVE_INFINITY;
@@ -2348,6 +2370,7 @@ function RequisiteSectionEditor({
   });
 
   const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>({});
+  const [requisiteQtyDraft, setRequisiteQtyDraft] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     const ex = sec.lineLocalExtras ?? {};
@@ -2394,6 +2417,24 @@ function RequisiteSectionEditor({
     return m;
   }, [catalogItems]);
 
+  const linesForCap = React.useMemo(
+    () =>
+      lines.map((l, j) => {
+        const lk = String(l.id ?? `${l.itemId}-${j}`);
+        const d = requisiteQtyDraft[lk];
+        let rq = l.requestedQty;
+        if (d !== undefined) {
+          const t = d.trim();
+          if (t !== "") {
+            const n = Number.parseInt(t, 10);
+            if (Number.isFinite(n) && n >= 1) rq = n;
+          }
+        }
+        return { ...l, requestedQty: rq };
+      }),
+    [lines, requisiteQtyDraft],
+  );
+
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -2427,6 +2468,7 @@ function RequisiteSectionEditor({
       }
       const nextOrder = orderJson.order;
       setOrder(nextOrder);
+      setRequisiteQtyDraft({});
       setLines(
         nextOrder.lines.map((line) => ({
           id: line.id,
@@ -2691,14 +2733,19 @@ function RequisiteSectionEditor({
           <div className="space-y-3">
             <div className="space-y-2">
               {lines.map((line, index) => {
-                const maxQty = maxQtyAllowedForRequisiteLine(lines, index, availableForDatesByItemId);
+                const maxQty = maxQtyAllowedForRequisiteLine(linesForCap, index, availableForDatesByItemId);
                 const dayC = daysBetween(order.startDate, order.endDate);
                 const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-                const lineTotal = Math.round(
-                  (line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayC * mult,
-                );
-                const ppu = line.requestedQty > 0 ? Math.round(lineTotal / line.requestedQty) : 0;
-                const lk = line.id as string;
+                const lk = String(line.id ?? `${line.itemId}-${index}`);
+                const qtyDraftRaw = requisiteQtyDraft[lk];
+                const qtyDisplay =
+                  qtyDraftRaw !== undefined
+                    ? qtyDraftRaw.trim() === ""
+                      ? 0
+                      : Math.max(1, Number.parseInt(qtyDraftRaw, 10) || 0)
+                    : line.requestedQty;
+                const lineTotal = Math.round((line.pricePerDaySnapshot ?? 0) * qtyDisplay * dayC * mult);
+                const ppu = qtyDisplay > 0 ? Math.round(lineTotal / qtyDisplay) : 0;
                 return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
                 <div className="grid gap-2 text-xs xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_5rem_auto]">
@@ -2735,17 +2782,27 @@ function RequisiteSectionEditor({
                   <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Кол-во
                     <input
-                      type="number"
-                      min={1}
-                      max={maxQty > 0 ? maxQty : undefined}
-                      value={line.requestedQty}
-                      onChange={(e) => {
-                        const raw = Math.max(1, Number(e.target.value) || 1);
-                        const next = maxQty > 0 ? Math.min(raw, maxQty) : raw;
-                        updateLine(index, { requestedQty: next });
+                      value={requisiteQtyDraft[lk] !== undefined ? requisiteQtyDraft[lk] : String(line.requestedQty)}
+                      inputMode="numeric"
+                      onChange={(e) =>
+                        setRequisiteQtyDraft((prev) => ({ ...prev, [lk]: digitsOnlyInput(e.target.value) }))
+                      }
+                      onBlur={() => {
+                        const raw =
+                          requisiteQtyDraft[lk] !== undefined ? requisiteQtyDraft[lk] : String(line.requestedQty);
+                        let n = parseQtyCommitInt(raw, 1);
+                        if (maxQty > 0) n = Math.min(n, maxQty);
+                        updateLine(index, { requestedQty: n });
+                        setRequisiteQtyDraft((prev) => {
+                          const next = { ...prev };
+                          delete next[lk];
+                          return next;
+                        });
                       }}
                       className={`mt-0.5 w-full ${cellXs} tabular-nums`}
                       disabled={!editable}
+                      aria-valuemin={1}
+                      aria-valuemax={maxQty > 0 ? maxQty : undefined}
                     />
                   </label>
                   <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
@@ -2970,8 +3027,8 @@ function DraftRequisiteEditor({
         id: line.id,
         itemId: line.itemId ?? "",
         name: line.name,
-        qty: meta.qty,
-        plannedDays: meta.plannedDays,
+        qty: String(meta.qty),
+        plannedDays: String(meta.plannedDays),
         pricePerDaySnapshot: meta.pricePerDay,
         comment: meta.extraDescription,
         maxQtyPhysical: meta.maxQtyPhysical,
@@ -2987,8 +3044,8 @@ function DraftRequisiteEditor({
           id: line.id,
           itemId: line.itemId ?? "",
           name: line.name,
-          qty: meta.qty,
-          plannedDays: meta.plannedDays,
+          qty: String(meta.qty),
+          plannedDays: String(meta.plannedDays),
           pricePerDaySnapshot: meta.pricePerDay,
           comment: meta.extraDescription,
           maxQtyPhysical: meta.maxQtyPhysical,
@@ -3053,24 +3110,30 @@ function DraftRequisiteEditor({
 
   const total = React.useMemo(
     () =>
-      lines.reduce(
-        (sum, line) =>
-          sum + Math.round((line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays)),
-        0,
-      ),
+      lines.reduce((sum, line) => {
+        const q = parseQtyDisplayInt(line.qty);
+        const d = parseQtyDisplayInt(line.plannedDays);
+        if (q <= 0 || d <= 0) return sum;
+        return sum + Math.round((line.pricePerDaySnapshot ?? 0) * q * d);
+      }, 0),
     [lines],
   );
 
   function updateLine(
     index: number,
     patch: Partial<{
-      qty: number;
-      plannedDays: number;
+      qty: string;
+      plannedDays: string;
       comment: string;
     }>,
   ) {
     setDraftDirty(true);
     setLines((prev) => prev.map((line, idx) => (idx === index ? { ...line, ...patch } : line)));
+  }
+
+  function removeDraftLine(index: number) {
+    setDraftDirty(true);
+    setLines((prev) => prev.filter((_, idx) => idx !== index));
   }
 
   function addDraftCatalogLine(itemId: string, name: string, qty: number, description: string) {
@@ -3081,7 +3144,7 @@ function DraftRequisiteEditor({
     const maxQtyPhysical = usableStockUnits(buckets);
     setDraftDirty(true);
     setLines((prev) => {
-      const used = prev.filter((l) => l.itemId === itemId).reduce((s, l) => s + l.qty, 0);
+      const used = prev.filter((l) => l.itemId === itemId).reduce((s, l) => s + parseQtyCommitInt(l.qty, 1), 0);
       const remaining = Math.max(0, maxQtyPhysical - used);
       const q = remaining <= 0 ? 0 : Math.max(1, Math.min(qty, remaining));
       if (q <= 0) return prev;
@@ -3091,8 +3154,8 @@ function DraftRequisiteEditor({
           id: makeTempId("line"),
           itemId,
           name,
-          qty: q,
-          plannedDays: 1,
+          qty: String(q),
+          plannedDays: "1",
           pricePerDaySnapshot: inv?.pricePerDay ?? 0,
           comment: description.trim(),
           maxQtyPhysical,
@@ -3116,8 +3179,8 @@ function DraftRequisiteEditor({
             id: line.id,
             itemId: line.itemId,
             itemName: line.name,
-            qty: Math.max(1, Number(line.qty) || 1),
-            plannedDays: Math.max(1, Number(line.plannedDays) || 1),
+            qty: parseQtyCommitInt(line.qty, 1),
+            plannedDays: parseQtyCommitInt(line.plannedDays, 1),
             comment: line.comment.trim() || null,
             periodGroup: null,
             pricePerDaySnapshot: line.pricePerDaySnapshot,
@@ -3265,13 +3328,18 @@ function DraftRequisiteEditor({
 
       <div className="space-y-2">
         {lines.map((line, index) => {
-          const lineTotal = Math.round(
-            (line.pricePerDaySnapshot ?? 0) * Math.max(1, line.qty) * Math.max(1, line.plannedDays),
-          );
+          const qDisp = parseQtyDisplayInt(line.qty);
+          const dDisp = parseQtyDisplayInt(line.plannedDays);
+          const lineTotal =
+            qDisp > 0 && dDisp > 0 ? Math.round((line.pricePerDaySnapshot ?? 0) * qDisp * dDisp) : 0;
           const maxRemPhysical = maxPhysicalRemainingForDraftLine(lines, index);
+          const maxQtyCap =
+            Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY
+              ? Math.max(parseQtyCommitInt(line.qty, 1), maxRemPhysical)
+              : undefined;
           return (
             <div key={line.id} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_112px_112px_132px_minmax(0,1.2fr)]">
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_112px_112px_132px_minmax(0,1.2fr)_auto]">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Позиция</div>
                   <div className="mt-1 text-sm font-semibold text-zinc-950">{line.name}</div>
@@ -3282,31 +3350,28 @@ function DraftRequisiteEditor({
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Кол-во
                   <input
-                    type="number"
-                    min={1}
-                    max={Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY ? maxRemPhysical : undefined}
                     value={line.qty}
-                    onChange={(e) => {
-                      const raw = Math.max(1, Number(e.target.value) || 1);
-                      if (!Number.isFinite(maxRemPhysical) || maxRemPhysical === Number.POSITIVE_INFINITY) {
-                        updateLine(index, { qty: raw });
-                        return;
-                      }
-                      const upper = Math.max(maxRemPhysical, line.qty);
-                      updateLine(index, { qty: Math.min(raw, Math.max(upper, 1)) });
+                    inputMode="numeric"
+                    onChange={(e) => updateLine(index, { qty: digitsOnlyInput(e.target.value) })}
+                    onBlur={() => {
+                      let n = parseQtyCommitInt(line.qty, 1);
+                      if (maxQtyCap != null) n = Math.min(n, maxQtyCap);
+                      updateLine(index, { qty: String(n) });
                     }}
-                    className={`mt-1 w-full ${inputField}`}
+                    className={`mt-1 w-full ${inputField} tabular-nums`}
                     disabled={readOnly}
+                    aria-valuemin={1}
+                    aria-valuemax={maxQtyCap}
                   />
                 </label>
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   Дней
                   <input
-                    type="number"
-                    min={1}
                     value={line.plannedDays}
-                    onChange={(e) => updateLine(index, { plannedDays: Math.max(1, Number(e.target.value) || 1) })}
-                    className={`mt-1 w-full ${inputField}`}
+                    inputMode="numeric"
+                    onChange={(e) => updateLine(index, { plannedDays: digitsOnlyInput(e.target.value) })}
+                    onBlur={() => updateLine(index, { plannedDays: String(parseQtyCommitInt(line.plannedDays, 1)) })}
+                    className={`mt-1 w-full ${inputField} tabular-nums`}
                     disabled={readOnly}
                   />
                 </label>
@@ -3324,6 +3389,19 @@ function DraftRequisiteEditor({
                     placeholder="Опционально"
                   />
                 </label>
+                {!readOnly ? (
+                  <div className="flex items-end justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeDraftLine(index)}
+                      className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                ) : (
+                  <div className="hidden xl:block" aria-hidden />
+                )}
               </div>
             </div>
           );
@@ -3436,7 +3514,7 @@ function OrderLinePicker({
   const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [qty, setQty] = React.useState(1);
+  const [qtyStr, setQtyStr] = React.useState("1");
   const [description, setDescription] = React.useState("");
   const available = catalogItems.filter((item) => !existingItemIds.includes(item.id));
   const filtered =
@@ -3498,31 +3576,19 @@ function OrderLinePicker({
           <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Кол-во
             <input
-              type="number"
-              min={1}
-              max={(() => {
-                const n = selected.availableNow ?? Number.POSITIVE_INFINITY;
-                const d = selected.availableForDates ?? Number.POSITIVE_INFINITY;
-                const merged = Math.min(n, d);
-                return Number.isFinite(merged) && merged > 0 ? Math.max(1, Math.floor(merged)) : undefined;
-              })()}
-              value={qty}
-              onChange={(e) => {
+              value={qtyStr}
+              inputMode="numeric"
+              onChange={(e) => setQtyStr(digitsOnlyInput(e.target.value))}
+              onBlur={() => {
                 const n = selected.availableNow ?? Number.POSITIVE_INFINITY;
                 const d = selected.availableForDates ?? Number.POSITIVE_INFINITY;
                 const cap = Math.min(n, d);
-                const raw = Math.max(1, Number(e.target.value) || 1);
-                if (!Number.isFinite(cap)) {
-                  setQty(raw);
-                  return;
-                }
-                if (cap <= 0) {
-                  setQty(1);
-                  return;
-                }
-                setQty(Math.min(raw, Math.floor(cap)));
+                let v = parseQtyCommitInt(qtyStr, 1);
+                if (Number.isFinite(cap) && cap > 0) v = Math.min(v, Math.floor(cap));
+                if (Number.isFinite(cap) && cap <= 0) v = 1;
+                setQtyStr(String(v));
               }}
-              className={`mt-1 w-28 ${inputField}`}
+              className={`mt-1 w-28 ${inputField} tabular-nums`}
             />
           </label>
           <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -3538,9 +3604,14 @@ function OrderLinePicker({
             type="button"
             className={`${btnPrimary} self-end`}
             onClick={() => {
-              onAdd(selected.id, selected.name, qty, description);
+              const n = selected.availableNow ?? Number.POSITIVE_INFINITY;
+              const d = selected.availableForDates ?? Number.POSITIVE_INFINITY;
+              const cap = Math.min(n, d);
+              let v = parseQtyCommitInt(qtyStr, 1);
+              if (Number.isFinite(cap) && cap > 0) v = Math.min(v, Math.floor(cap));
+              onAdd(selected.id, selected.name, v, description);
               setSelectedId(null);
-              setQty(1);
+              setQtyStr("1");
               setDescription("");
             }}
           >

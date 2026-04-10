@@ -15,6 +15,13 @@ const PostSchema = z
     lineNumber: z.number().int().min(0).max(9999).optional(),
     costClient: z.number().finite().optional().nullable(),
     costInternal: z.number().finite().optional().nullable(),
+    unit: z.string().trim().max(40).optional().nullable(),
+    qty: z.number().finite().optional().nullable(),
+    unitPriceClient: z.number().finite().optional().nullable(),
+    paymentMethod: z.string().trim().max(40).optional().nullable(),
+    paymentStatus: z.string().trim().max(120).optional().nullable(),
+    contractorNote: z.string().trim().max(5000).optional().nullable(),
+    contractorRequisites: z.string().trim().max(500).optional().nullable(),
   })
   .strict();
 
@@ -68,6 +75,28 @@ export async function POST(
         parsed.data.costClient != null ? new Prisma.Decimal(parsed.data.costClient) : undefined,
       costInternal:
         parsed.data.costInternal != null ? new Prisma.Decimal(parsed.data.costInternal) : undefined,
+      unit: parsed.data.unit === undefined ? undefined : parsed.data.unit?.trim() || null,
+      qty: parsed.data.qty == null ? undefined : new Prisma.Decimal(parsed.data.qty),
+      unitPriceClient:
+        parsed.data.unitPriceClient == null
+          ? undefined
+          : new Prisma.Decimal(parsed.data.unitPriceClient),
+      paymentMethod:
+        parsed.data.paymentMethod === undefined
+          ? undefined
+          : parsed.data.paymentMethod?.trim() || null,
+      paymentStatus:
+        parsed.data.paymentStatus === undefined
+          ? undefined
+          : parsed.data.paymentStatus?.trim() || null,
+      contractorNote:
+        parsed.data.contractorNote === undefined
+          ? undefined
+          : parsed.data.contractorNote?.trim() || null,
+      contractorRequisites:
+        parsed.data.contractorRequisites === undefined
+          ? undefined
+          : parsed.data.contractorRequisites?.trim() || null,
     },
   });
 

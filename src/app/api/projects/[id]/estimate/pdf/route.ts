@@ -13,8 +13,12 @@ export async function GET(
   const { id: projectId } = await ctx.params;
   if (!projectId?.trim()) return jsonError(400, "Invalid id");
 
-  const versionParam = new URL(req.url).searchParams.get("version");
+  const url = new URL(req.url);
+  const versionParam = url.searchParams.get("version");
   const versionNumber = versionParam != null ? parseInt(versionParam, 10) : null;
+  const variantRaw = url.searchParams.get("variant");
+  const variant =
+    variantRaw === "client" ? "client" : ("internal" as const);
   const model = await buildProjectEstimateReadModel({
     projectId,
     versionNumber: versionNumber != null && !Number.isNaN(versionNumber) ? versionNumber : null,
@@ -28,15 +32,17 @@ export async function GET(
     projectTitle: model.projectTitle,
     versionNumber: model.current.versionNumber,
     sections: model.current.sections,
+    variant,
   });
 
   const safeTitle = model.projectTitle.replace(/[^\w.\-]+/g, "_").slice(0, 80) || "estimate";
+  const suffix = variant === "client" ? "_client" : "_vnutr";
   return new Response(Buffer.from(xlsxBytes), {
     status: 200,
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="smeta_${safeTitle}_v${model.current.versionNumber}.xlsx"`,
+      "Content-Disposition": `attachment; filename="smeta_${safeTitle}_v${model.current.versionNumber}${suffix}.xlsx"`,
       "Cache-Control": "private, no-store",
     },
   });

@@ -16,10 +16,16 @@ type EstLine = {
   costInternal: string | null;
   orderLineId: string | null;
   itemId: string | null;
+  unit?: string | null;
+  unitPriceClient?: number | null;
   qty?: number | null;
   plannedDays?: number | null;
   pricePerDaySnapshot?: number | null;
   maxQtyPhysical?: number | null;
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  contractorNote?: string | null;
+  contractorRequisites?: string | null;
 };
 
 type RequisiteOrderLine = {
@@ -70,9 +76,10 @@ type EstSection = {
   id: string;
   sortOrder: number;
   title: string;
-  kind: "LOCAL" | "REQUISITE" | "DRAFT_REQUISITE";
+  kind: "LOCAL" | "REQUISITE" | "CONTRACTOR" | "DRAFT_REQUISITE";
   linkedOrderId: string | null;
   linkedDraftOrderId?: string | null;
+  lineLocalExtras?: Record<string, { unit?: string | null }> | null;
   lines: EstLine[];
 };
 
@@ -85,6 +92,13 @@ type LocalDraftLine = {
   lineType: string;
   costClient: string | null;
   costInternal: string | null;
+  unit: string | null;
+  qty: string | null;
+  unitPriceClient: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  contractorNote: string | null;
+  contractorRequisites: string | null;
   orderLineId: null;
   itemId: null;
 };
@@ -93,7 +107,7 @@ type LocalDraftSection = {
   id: string;
   sortOrder: number;
   title: string;
-  kind: "LOCAL";
+  kind: "LOCAL" | "CONTRACTOR";
   linkedOrderId: null;
   lines: LocalDraftLine[];
 };
@@ -152,6 +166,7 @@ const sectionTone = {
   requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
   draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
   local: "border-sky-100 bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]",
+  contractor: "border-amber-100 bg-[linear-gradient(180deg,rgba(255,251,235,0.95),rgba(255,255,255,1))]",
 };
 const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 
@@ -236,14 +251,29 @@ function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const UNIT_DATALIST_ID = "project-estimate-unit-presets";
+
+function UnitPresetDatalist() {
+  return (
+    <datalist id={UNIT_DATALIST_ID}>
+      <option value="шт" />
+      <option value="час" />
+      <option value="усл." />
+    </datalist>
+  );
+}
+
 function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
   return sections
-    .filter((section): section is EstSection & { kind: "LOCAL" } => section.kind === "LOCAL")
+    .filter(
+      (section): section is EstSection & { kind: "LOCAL" | "CONTRACTOR" } =>
+        section.kind === "LOCAL" || section.kind === "CONTRACTOR",
+    )
     .map((section) => ({
       id: section.id,
       sortOrder: section.sortOrder,
       title: section.title,
-      kind: "LOCAL",
+      kind: section.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL",
       linkedOrderId: null,
       lines: section.lines.map((line) => ({
         id: line.id,
@@ -254,6 +284,17 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
         lineType: line.lineType,
         costClient: line.costClient,
         costInternal: line.costInternal,
+        unit: line.unit?.trim() || null,
+        qty:
+          line.qty != null && Number.isFinite(Number(line.qty)) ? String(line.qty) : null,
+        unitPriceClient:
+          line.unitPriceClient != null && Number.isFinite(line.unitPriceClient)
+            ? String(line.unitPriceClient)
+            : null,
+        paymentMethod: line.paymentMethod ?? null,
+        paymentStatus: line.paymentStatus ?? null,
+        contractorNote: line.contractorNote ?? null,
+        contractorRequisites: line.contractorRequisites ?? null,
         orderLineId: null,
         itemId: null,
       })),
@@ -265,11 +306,19 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
     .map((section, sectionIndex) => ({
       title: section.title.trim(),
       sortOrder: sectionIndex,
+      kind: section.kind,
       lines: section.lines.map((line, lineIndex) => ({
         name: line.name.trim(),
         description: line.description?.trim() || null,
         costClient: line.costClient == null || line.costClient === "" ? null : String(Number(line.costClient)),
         costInternal: line.costInternal == null || line.costInternal === "" ? null : String(Number(line.costInternal)),
+        unit: line.unit?.trim() || null,
+        qty: line.qty?.trim() || null,
+        unitPriceClient: line.unitPriceClient?.trim() || null,
+        paymentMethod: line.paymentMethod?.trim() || null,
+        paymentStatus: line.paymentStatus?.trim() || null,
+        contractorNote: line.contractorNote?.trim() || null,
+        contractorRequisites: line.contractorRequisites?.trim() || null,
         position: lineIndex,
         lineNumber: lineIndex + 1,
       })),
@@ -278,9 +327,15 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
 }
 
 function isDraftRequisiteSection(
-  section: EstSection,
+  section: EstSection | LocalDraftSection,
 ): section is EstSection & { kind: "DRAFT_REQUISITE" } {
   return section.kind === "DRAFT_REQUISITE";
+}
+
+function isRequisiteSectionWithOrder(
+  section: EstSection | LocalDraftSection,
+): section is EstSection & { kind: "REQUISITE"; linkedOrderId: string } {
+  return section.kind === "REQUISITE" && Boolean(section.linkedOrderId);
 }
 
 function parseDraftLineMeta(line: EstLine) {
@@ -402,6 +457,7 @@ export function ProjectEstimatePanel({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
+  const [newSectionKind, setNewSectionKind] = React.useState<"LOCAL" | "CONTRACTOR">("LOCAL");
   const [busy, setBusy] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
@@ -643,7 +699,7 @@ export function ProjectEstimatePanel({
         id: makeTempId("section"),
         sortOrder: prev.length,
         title: newSectionTitle.trim(),
-        kind: "LOCAL",
+        kind: newSectionKind,
         linkedOrderId: null,
         lines: [],
       },
@@ -679,34 +735,85 @@ export function ProjectEstimatePanel({
         section.id === sectionId
           ? {
               ...section,
-              lines: section.lines.map((line) =>
-                line.id === lineId
-                  ? {
-                      ...line,
-                      ...(typeof patch.name === "string" ? { name: patch.name } : {}),
-                      ...(Object.prototype.hasOwnProperty.call(patch, "description")
-                        ? {
-                            description:
-                              patch.description == null
-                                ? null
-                                : String(patch.description),
-                          }
-                        : {}),
-                      ...(Object.prototype.hasOwnProperty.call(patch, "costClient")
-                        ? {
-                            costClient:
-                              patch.costClient == null ? null : String(patch.costClient),
-                          }
-                        : {}),
-                      ...(Object.prototype.hasOwnProperty.call(patch, "costInternal")
-                        ? {
-                            costInternal:
-                              patch.costInternal == null ? null : String(patch.costInternal),
-                          }
-                        : {}),
-                    }
-                  : line,
-              ),
+              lines: section.lines.map((line) => {
+                if (line.id !== lineId) return line;
+                let next: LocalDraftLine = { ...line };
+                if (typeof patch.name === "string") next = { ...next, name: patch.name };
+                if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+                  next = {
+                    ...next,
+                    description: patch.description == null ? null : String(patch.description),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "costClient")) {
+                  next = {
+                    ...next,
+                    costClient: patch.costClient == null ? null : String(patch.costClient),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "costInternal")) {
+                  next = {
+                    ...next,
+                    costInternal: patch.costInternal == null ? null : String(patch.costInternal),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "unit")) {
+                  next = {
+                    ...next,
+                    unit: patch.unit == null || String(patch.unit).trim() === "" ? null : String(patch.unit).trim(),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "qty")) {
+                  next = {
+                    ...next,
+                    qty: patch.qty == null || String(patch.qty).trim() === "" ? null : String(patch.qty),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "unitPriceClient")) {
+                  next = {
+                    ...next,
+                    unitPriceClient:
+                      patch.unitPriceClient == null || String(patch.unitPriceClient).trim() === ""
+                        ? null
+                        : String(patch.unitPriceClient),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "paymentMethod")) {
+                  next = {
+                    ...next,
+                    paymentMethod:
+                      patch.paymentMethod == null ? null : String(patch.paymentMethod).trim() || null,
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "paymentStatus")) {
+                  next = {
+                    ...next,
+                    paymentStatus:
+                      patch.paymentStatus == null ? null : String(patch.paymentStatus).trim() || null,
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "contractorNote")) {
+                  next = {
+                    ...next,
+                    contractorNote:
+                      patch.contractorNote == null ? null : String(patch.contractorNote),
+                  };
+                }
+                if (Object.prototype.hasOwnProperty.call(patch, "contractorRequisites")) {
+                  next = {
+                    ...next,
+                    contractorRequisites:
+                      patch.contractorRequisites == null ? null : String(patch.contractorRequisites),
+                  };
+                }
+                const q = next.qty != null ? Number(next.qty.replace(",", ".")) : NaN;
+                const up =
+                  next.unitPriceClient != null ? Number(next.unitPriceClient.replace(",", ".")) : NaN;
+                if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
+                  next = { ...next, costClient: String(Math.round(q * up)) };
+                }
+                return next;
+              }),
             }
           : section,
       ),
@@ -728,16 +835,33 @@ export function ProjectEstimatePanel({
     );
   }
 
-  function addLine(sectionId: string, payload: {
-    name: string;
-    description: string | null;
-    costClient: number | null;
-    costInternal: number | null;
-  }) {
+  function addLine(
+    sectionId: string,
+    payload: {
+      name: string;
+      description: string | null;
+      unit: string | null;
+      qty: string | null;
+      unitPriceClient: string | null;
+      costClient: number | null;
+      costInternal: number | null;
+      paymentMethod: string | null;
+      paymentStatus: string | null;
+      contractorNote: string | null;
+      contractorRequisites: string | null;
+    },
+  ) {
     mutateLocalSections((prev) =>
       prev.map((section) => {
         if (section.id !== sectionId) return section;
         const index = section.lines.length;
+        let costClientStr = payload.costClient == null ? null : String(payload.costClient);
+        const q = payload.qty != null ? Number(payload.qty.replace(",", ".")) : NaN;
+        const up =
+          payload.unitPriceClient != null ? Number(payload.unitPriceClient.replace(",", ".")) : NaN;
+        if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
+          costClientStr = String(Math.round(q * up));
+        }
         return {
           ...section,
           lines: [
@@ -749,8 +873,15 @@ export function ProjectEstimatePanel({
               name: payload.name,
               description: payload.description,
               lineType: "OTHER",
-              costClient: payload.costClient == null ? null : String(payload.costClient),
+              costClient: costClientStr,
               costInternal: payload.costInternal == null ? null : String(payload.costInternal),
+              unit: payload.unit?.trim() || null,
+              qty: payload.qty?.trim() || null,
+              unitPriceClient: payload.unitPriceClient?.trim() || null,
+              paymentMethod: payload.paymentMethod?.trim() || null,
+              paymentStatus: payload.paymentStatus?.trim() || null,
+              contractorNote: payload.contractorNote?.trim() || null,
+              contractorRequisites: payload.contractorRequisites?.trim() || null,
               orderLineId: null,
               itemId: null,
             },
@@ -773,6 +904,7 @@ export function ProjectEstimatePanel({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
             sortOrder: sectionIndex,
+            kind: section.kind,
             lines: section.lines.map((line, lineIndex) => ({
               id: line.id.startsWith("draft-") ? undefined : line.id,
               position: lineIndex,
@@ -782,6 +914,19 @@ export function ProjectEstimatePanel({
               lineType: line.lineType || "OTHER",
               costClient: line.costClient == null || line.costClient === "" ? null : Number(line.costClient),
               costInternal: line.costInternal == null || line.costInternal === "" ? null : Number(line.costInternal),
+              unit: line.unit?.trim() || null,
+              qty:
+                line.qty == null || line.qty.trim() === ""
+                  ? null
+                  : Number(line.qty.replace(",", ".")),
+              unitPriceClient:
+                line.unitPriceClient == null || line.unitPriceClient.trim() === ""
+                  ? null
+                  : Number(line.unitPriceClient.replace(",", ".")),
+              paymentMethod: line.paymentMethod?.trim() || null,
+              paymentStatus: line.paymentStatus?.trim() || null,
+              contractorNote: line.contractorNote?.trim() || null,
+              contractorRequisites: line.contractorRequisites?.trim() || null,
             })),
           })),
         }),
@@ -810,10 +955,12 @@ export function ProjectEstimatePanel({
 
   const vn = currentVersionNumber;
   const currentVersionMeta = data?.versions.find((v) => v.versionNumber === vn) ?? null;
-  const exportHref =
+  const exportBase =
     vn != null
       ? `/api/projects/${projectId}/estimate/pdf?version=${encodeURIComponent(String(vn))}`
       : `/api/projects/${projectId}/estimate/pdf`;
+  const exportHrefInternal = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=internal`;
+  const exportHrefClient = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=client`;
   const availableImportOrders = React.useMemo(() => {
     if (!data?.projectOrders || !data.current) return [];
     const imported = new Set(
@@ -848,7 +995,7 @@ export function ProjectEstimatePanel({
     return map;
   }, [orderedProjectOrders]);
 
-  const renderedSections = React.useMemo(() => {
+  const renderedSections = React.useMemo((): Array<EstSection | LocalDraftSection> => {
     if (!data?.current) return [];
     const requisites = data.current.sections.filter(
       (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
@@ -923,6 +1070,7 @@ export function ProjectEstimatePanel({
 
   return (
     <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
+      <UnitPresetDatalist />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
@@ -935,14 +1083,24 @@ export function ProjectEstimatePanel({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {vn != null ? (
-            <a
-              href={exportHref}
-              className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Скачать XLSX
-            </a>
+            <>
+              <a
+                href={exportHrefInternal}
+                className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+                target="_blank"
+                rel="noreferrer"
+              >
+                XLSX внутр.
+              </a>
+              <a
+                href={exportHrefClient}
+                className="rounded-lg border border-sky-500/40 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                target="_blank"
+                rel="noreferrer"
+              >
+                XLSX клиент
+              </a>
+            </>
           ) : null}
         </div>
       </div>
@@ -1206,12 +1364,21 @@ export function ProjectEstimatePanel({
                   ) : null}
                   <form
                     onSubmit={addSection}
-                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid gap-2 sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto]"
                   >
+                    <select
+                      value={newSectionKind}
+                      onChange={(e) => setNewSectionKind(e.target.value as "LOCAL" | "CONTRACTOR")}
+                      className={`min-w-[8rem] ${inputField}`}
+                      disabled={busy}
+                    >
+                      <option value="LOCAL">Универсальный</option>
+                      <option value="CONTRACTOR">Подрядчики</option>
+                    </select>
                     <input
                       value={newSectionTitle}
                       onChange={(e) => setNewSectionTitle(e.target.value)}
-                      placeholder="Новый локальный раздел"
+                      placeholder="Название раздела в смете"
                       className={`min-w-[12rem] flex-1 ${inputField}`}
                       maxLength={200}
                     />
@@ -1224,7 +1391,7 @@ export function ProjectEstimatePanel({
 
               <div className="space-y-4">
                 {renderedSections.map((sec) =>
-                  sec.kind === "REQUISITE" && sec.linkedOrderId ? (
+                  isRequisiteSectionWithOrder(sec) ? (
                     <RequisiteSectionEditor
                       key={sec.id}
                       sec={sec}
@@ -1266,6 +1433,7 @@ export function ProjectEstimatePanel({
                             <LineEditor
                               key={ln.id}
                               sectionId={sec.id}
+                              sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
                               line={ln}
                               isDirty={dirtyLocalLineIds.has(ln.id)}
                               readOnly={readOnly}
@@ -1278,6 +1446,7 @@ export function ProjectEstimatePanel({
                           {!readOnly ? (
                             <AddLineForm
                               sectionId={sec.id}
+                              sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
                               busy={busy}
                               onAdd={addLine}
                             />
@@ -1357,7 +1526,7 @@ function EstimateSectionBlock({
   summaryTitleAddon,
   summaryTrailing,
 }: {
-  sec: EstSection;
+  sec: EstSection | LocalDraftSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
   readOnly: boolean;
   busy: boolean;
@@ -1390,7 +1559,9 @@ function EstimateSectionBlock({
           ? sectionTone.requisite
           : sec.kind === "DRAFT_REQUISITE"
             ? sectionTone.draftRequisite
-            : sectionTone.local
+            : sec.kind === "CONTRACTOR"
+              ? sectionTone.contractor
+              : sectionTone.local
       }`}
       open
     >
@@ -1404,6 +1575,8 @@ function EstimateSectionBlock({
                     ? "border border-violet-200 bg-violet-100 text-violet-900"
                     : sec.kind === "DRAFT_REQUISITE"
                       ? "border border-fuchsia-200 bg-fuchsia-100 text-fuchsia-900"
+                      : sec.kind === "CONTRACTOR"
+                        ? "border border-amber-200 bg-amber-50 text-amber-950"
                     : "border border-sky-200 bg-sky-50 text-sky-900"
                 }`}
               >
@@ -1411,7 +1584,9 @@ function EstimateSectionBlock({
                   ? "Реквизит"
                   : sec.kind === "DRAFT_REQUISITE"
                     ? "Demo-реквизит"
-                    : "Локальный раздел"}
+                    : sec.kind === "CONTRACTOR"
+                      ? "Подрядчики"
+                    : "Универсальный"}
               </span>
               {orderMeta ? (
                 <span className="rounded-full border border-white/80 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-700">
@@ -1450,8 +1625,10 @@ function EstimateSectionBlock({
                 </>
               ) : sec.kind === "DRAFT_REQUISITE" ? (
                 <span>Черновик проекта без дат. В очередь склада не попадает, пока не подтверждены периоды.</span>
+              ) : sec.kind === "CONTRACTOR" ? (
+                <span>Раздел подрядчиков: внутренние поля не попадают в клиентский XLSX.</span>
               ) : (
-                <span>Раздел проекта без связи с заявкой</span>
+                <span>Универсальный раздел без связи с заявкой</span>
               )}
             </div>
           </div>
@@ -1475,7 +1652,7 @@ function EstimateSectionBlock({
       </summary>
       <div className="mt-3 space-y-3">
         {!readOnly ? (
-          sec.kind === "LOCAL" && editingTitle ? (
+          (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && editingTitle ? (
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
               <input
                 value={titleDraft}
@@ -1506,7 +1683,7 @@ function EstimateSectionBlock({
                 Отмена
               </button>
             </div>
-          ) : sec.kind === "LOCAL" ? (
+          ) : sec.kind === "LOCAL" || sec.kind === "CONTRACTOR" ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
@@ -1521,7 +1698,7 @@ function EstimateSectionBlock({
                 </svg>
                 <span>Название</span>
               </button>
-              {sec.kind === "LOCAL" ? (
+              {sec.kind === "LOCAL" || sec.kind === "CONTRACTOR" ? (
                 <button
                   type="button"
                   className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
@@ -1541,8 +1718,11 @@ function EstimateSectionBlock({
   );
 }
 
+const cellXs = "rounded border border-zinc-200 bg-white px-2 py-1 text-xs shadow-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-200/50";
+
 function LineEditor({
   sectionId,
+  sectionKind,
   line,
   isDirty,
   readOnly,
@@ -1551,70 +1731,109 @@ function LineEditor({
   onDelete,
 }: {
   sectionId: string;
-  line: EstLine;
+  sectionKind: "LOCAL" | "CONTRACTOR";
+  line: LocalDraftLine | (EstLine & { unit?: string | null; paymentMethod?: string | null });
   isDirty: boolean;
   readOnly: boolean;
   busy: boolean;
   onSave: (sectionId: string, id: string, p: Record<string, unknown>) => void;
   onDelete: (sectionId: string, id: string) => void;
 }) {
+  const isContractor = sectionKind === "CONTRACTOR";
+  const unitVal = line.unit?.trim() ? line.unit : "";
+  const qtyStr =
+    "qty" in line && line.qty != null && line.qty !== ""
+      ? String(line.qty)
+      : "";
+  const upStr =
+    "unitPriceClient" in line && line.unitPriceClient != null && line.unitPriceClient !== ""
+      ? String(line.unitPriceClient)
+      : "";
   return (
     <div
-      className={`rounded-lg border p-2.5 text-sm shadow-sm ${
+      className={`rounded-lg border p-2 text-xs shadow-sm ${
         isDirty
           ? "border-amber-300 bg-[linear-gradient(135deg,rgba(254,243,199,0.8),rgba(255,255,255,1))]"
           : "border-zinc-100 bg-zinc-50/60"
       }`}
     >
-      <div className="mb-2 text-[11px] font-medium text-zinc-500">
+      <div className="mb-1 text-[10px] font-medium text-zinc-500">
         №{line.lineNumber}
         {line.orderLineId ? " · из заявки" : ""}
       </div>
       {readOnly ? (
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-0.5 space-y-0.5">
           <div className="font-medium">{line.name}</div>
-          {line.description ? <div className="text-xs text-zinc-600">{line.description}</div> : null}
-          <div className="text-xs">
-            Клиент: {line.costClient ?? "—"} · Внутр.: {line.costInternal ?? "—"}
+          {line.description ? <div className="text-[11px] text-zinc-600">{line.description}</div> : null}
+          <div className="text-[11px]">
+            {qtyStr || "—"} × {upStr || "—"} → {line.costClient ?? "—"} · внутр. {line.costInternal ?? "—"}
           </div>
         </div>
       ) : (
-        <div className="grid gap-2 xl:grid-cols-[minmax(0,2.1fr)_minmax(0,1.7fr)_132px_132px_auto]">
-          <label className="block text-[11px] font-semibold text-zinc-500">
-            Название
+        <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_4rem_4.5rem_4.5rem_4.5rem_4.5rem]">
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Позиция
             <input
               value={line.name}
               onChange={(e) => onSave(sectionId, line.id, { name: e.target.value })}
-              className={`mt-1 w-full ${inputFieldCompact}`}
+              className={`mt-0.5 w-full ${cellXs}`}
             />
           </label>
-          <label className="block text-[11px] font-semibold text-zinc-500">
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
             Описание
             <input
               value={line.description ?? ""}
               onChange={(e) => onSave(sectionId, line.id, { description: e.target.value })}
-              className={`mt-1 w-full ${inputFieldCompact}`}
+              className={`mt-0.5 w-full ${cellXs}`}
             />
           </label>
-          <label className="block text-[11px] font-semibold text-zinc-500">
-            Клиент
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Ед.
             <input
-              value={line.costClient ?? ""}
-              onChange={(e) => onSave(sectionId, line.id, { costClient: e.target.value })}
-              className={`mt-1 w-full ${inputFieldCompact}`}
+              value={unitVal}
+              onChange={(e) => onSave(sectionId, line.id, { unit: e.target.value })}
+              className={`mt-0.5 w-full ${cellXs}`}
+              list={UNIT_DATALIST_ID}
+              placeholder="шт"
+            />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Кол-во
+            <input
+              value={qtyStr}
+              onChange={(e) => onSave(sectionId, line.id, { qty: e.target.value })}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
               inputMode="decimal"
             />
           </label>
-          <label className="block text-[11px] font-semibold text-zinc-500">
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Цена/ед
+            <input
+              value={upStr}
+              onChange={(e) => onSave(sectionId, line.id, { unitPriceClient: e.target.value })}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+              inputMode="decimal"
+            />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Сумма
+            <input
+              value={line.costClient ?? ""}
+              onChange={(e) => onSave(sectionId, line.id, { costClient: e.target.value })}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+              inputMode="decimal"
+            />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
             Внутр.
             <input
               value={line.costInternal ?? ""}
               onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
-              className={`mt-1 w-full ${inputFieldCompact}`}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
               inputMode="decimal"
             />
           </label>
-          <div className="flex flex-wrap items-end gap-2 xl:justify-end">
+          <div className="flex items-end justify-end">
             {!line.orderLineId ? (
               <button
                 type="button"
@@ -1622,10 +1841,58 @@ function LineEditor({
                 className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
                 onClick={() => void onDelete(sectionId, line.id)}
               >
-                Удалить
+                Уд.
               </button>
             ) : null}
           </div>
+          {isContractor ? (
+            <>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-2">
+                Оплата
+                <input
+                  value={"paymentMethod" in line ? (line.paymentMethod ?? "") : ""}
+                  onChange={(e) => onSave(sectionId, line.id, { paymentMethod: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                  list={`${UNIT_DATALIST_ID}-pay-${line.id}`}
+                  placeholder="Нал / безнал"
+                />
+              </label>
+              <datalist id={`${UNIT_DATALIST_ID}-pay-${line.id}`}>
+                <option value="Наличные" />
+                <option value="Безнал" />
+              </datalist>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-2">
+                Статус оплаты
+                <input
+                  value={"paymentStatus" in line ? (line.paymentStatus ?? "") : ""}
+                  onChange={(e) => onSave(sectionId, line.id, { paymentStatus: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                  list={`${UNIT_DATALIST_ID}-st-${line.id}`}
+                  placeholder="Статус"
+                />
+              </label>
+              <datalist id={`${UNIT_DATALIST_ID}-st-${line.id}`}>
+                <option value="Оплачено" />
+                <option value="Не оплачено" />
+              </datalist>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-3">
+                Коммент. подрядчику
+                <input
+                  value={"contractorNote" in line ? (line.contractorNote ?? "") : ""}
+                  onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-3">
+                Реквизиты / счёт
+                <input
+                  value={"contractorRequisites" in line ? (line.contractorRequisites ?? "") : ""}
+                  onChange={(e) => onSave(sectionId, line.id, { contractorRequisites: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                />
+              </label>
+            </>
+          ) : null}
         </div>
       )}
     </div>
@@ -1634,25 +1901,42 @@ function LineEditor({
 
 function AddLineForm({
   sectionId,
+  sectionKind,
   busy,
   onAdd,
 }: {
   sectionId: string;
+  sectionKind: "LOCAL" | "CONTRACTOR";
   busy: boolean;
   onAdd: (
     sectionId: string,
     payload: {
       name: string;
       description: string | null;
+      unit: string | null;
+      qty: string | null;
+      unitPriceClient: string | null;
       costClient: number | null;
       costInternal: number | null;
+      paymentMethod: string | null;
+      paymentStatus: string | null;
+      contractorNote: string | null;
+      contractorRequisites: string | null;
     },
   ) => void;
 }) {
+  const isContractor = sectionKind === "CONTRACTOR";
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [unit, setUnit] = React.useState("шт");
+  const [qty, setQty] = React.useState("");
+  const [up, setUp] = React.useState("");
   const [cc, setCc] = React.useState("");
   const [ci, setCi] = React.useState("");
+  const [pm, setPm] = React.useState("");
+  const [pst, setPst] = React.useState("");
+  const [cn, setCn] = React.useState("");
+  const [cr, setCr] = React.useState("");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1660,48 +1944,115 @@ function AddLineForm({
     onAdd(sectionId, {
       name: name.trim(),
       description: description.trim() || null,
+      unit: unit.trim() || null,
+      qty: qty.trim() || null,
+      unitPriceClient: up.trim() || null,
       costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
       costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
+      paymentMethod: pm.trim() || null,
+      paymentStatus: pst.trim() || null,
+      contractorNote: cn.trim() || null,
+      contractorRequisites: cr.trim() || null,
     });
     setName("");
     setDescription("");
+    setUnit("шт");
+    setQty("");
+    setUp("");
     setCc("");
     setCi("");
+    setPm("");
+    setPst("");
+    setCn("");
+    setCr("");
   }
 
   return (
     <form
       onSubmit={submit}
-      className="grid gap-2 border-t border-dashed border-zinc-200 pt-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_116px_116px_auto]"
+      className="space-y-2 border-t border-dashed border-zinc-200 pt-2 text-xs"
     >
-      <input
-        placeholder="Новая строка"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className={`min-w-[8rem] ${inputFieldCompact}`}
-      />
-      <input
-        placeholder="Описание"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        className={inputFieldCompact}
-      />
-      <input
-        placeholder="Клиент"
-        value={cc}
-        onChange={(e) => setCc(e.target.value)}
-        className={inputFieldCompact}
-      />
-      <input
-        placeholder="Внутр."
-        value={ci}
-        onChange={(e) => setCi(e.target.value)}
-        className={inputFieldCompact}
-      />
+      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        <input
+          placeholder="Позиция"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className={`min-w-[6rem] ${cellXs}`}
+        />
+        <input
+          placeholder="Описание"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={cellXs}
+        />
+        <input
+          placeholder="Ед."
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          className={cellXs}
+          list={UNIT_DATALIST_ID}
+        />
+        <input
+          placeholder="Кол-во"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          className={`${cellXs} tabular-nums`}
+          inputMode="decimal"
+        />
+        <input
+          placeholder="Цена/ед"
+          value={up}
+          onChange={(e) => setUp(e.target.value)}
+          className={`${cellXs} tabular-nums`}
+          inputMode="decimal"
+        />
+        <input
+          placeholder="Сумма (ручн.)"
+          value={cc}
+          onChange={(e) => setCc(e.target.value)}
+          className={`${cellXs} tabular-nums`}
+          inputMode="decimal"
+        />
+        <input
+          placeholder="Внутр."
+          value={ci}
+          onChange={(e) => setCi(e.target.value)}
+          className={`${cellXs} tabular-nums`}
+          inputMode="decimal"
+        />
+        {isContractor ? (
+          <>
+            <input
+              placeholder="Оплата"
+              value={pm}
+              onChange={(e) => setPm(e.target.value)}
+              className={cellXs}
+            />
+            <input
+              placeholder="Статус оплаты"
+              value={pst}
+              onChange={(e) => setPst(e.target.value)}
+              className={cellXs}
+            />
+            <input
+              placeholder="Коммент. подрядчику"
+              value={cn}
+              onChange={(e) => setCn(e.target.value)}
+              className={`sm:col-span-2 ${cellXs}`}
+            />
+            <input
+              placeholder="Счёт / реквизиты"
+              value={cr}
+              onChange={(e) => setCr(e.target.value)}
+              className={`sm:col-span-2 ${cellXs}`}
+            />
+          </>
+        ) : null}
+      </div>
       <button
         type="submit"
         disabled={busy || !name.trim()}
-        className="min-h-10 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+        className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
       >
         + строка
       </button>
@@ -1774,6 +2125,41 @@ function RequisiteSectionEditor({
     demontagePrice: "",
     demontageInternalCost: "",
   });
+
+  const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    const ex = sec.lineLocalExtras ?? {};
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(ex)) {
+      const u = v?.unit;
+      if (typeof u === "string" && u.trim()) next[k] = u;
+    }
+    setRequisiteUnitDraft(next);
+  }, [sec.id, sec.lineLocalExtras]);
+
+  async function persistRequisiteLineLocalExtras(next: Record<string, { unit?: string | null }>) {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/estimate/sections/${sec.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineLocalExtras: next }),
+      });
+      const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!res.ok) {
+        setError(j?.error?.message ?? "Не удалось сохранить ед. изм. в смете");
+      }
+    } catch {
+      setError("Не удалось сохранить ед. изм. в смете");
+    }
+  }
+
+  function mergeRequisiteExtra(lineKey: string, unit: string) {
+    const base = { ...(sec.lineLocalExtras ?? {}) } as Record<string, { unit?: string | null }>;
+    const t = unit.trim();
+    base[lineKey] = { unit: t.length > 0 ? t : null };
+    return base;
+  }
 
   const editable = !readOnly && !!order && isEditableOrderStatus(order.status);
 
@@ -2085,24 +2471,47 @@ function RequisiteSectionEditor({
             <div className="space-y-2">
               {lines.map((line, index) => {
                 const maxQty = maxQtyAllowedForRequisiteLine(lines, index, availableForDatesByItemId);
+                const dayC = daysBetween(order.startDate, order.endDate);
+                const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+                const lineTotal = Math.round(
+                  (line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayC * mult,
+                );
+                const ppu = line.requestedQty > 0 ? Math.round(lineTotal / line.requestedQty) : 0;
+                const lk = line.id as string;
                 return (
-              <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.3fr)_120px_132px_auto]">
-                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
+                <div className="grid gap-2 text-xs xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_5rem_auto]">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Позиция
-                    <input value={line.name} readOnly className={`mt-1 w-full ${inputField} bg-zinc-50`} />
+                    <input value={line.name} readOnly className={`mt-0.5 w-full ${cellXs} bg-zinc-50`} />
                   </label>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Описание
                     <input
                       value={line.description}
                       onChange={(e) => updateLine(index, { description: e.target.value })}
-                      className={`mt-1 w-full ${inputField}`}
+                      className={`mt-0.5 w-full ${cellXs}`}
                       disabled={!editable}
-                      placeholder="Описание / примечание"
+                      placeholder="Примечание"
                     />
                   </label>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Ед.
+                    <input
+                      value={requisiteUnitDraft[lk] ?? ""}
+                      onChange={(e) =>
+                        setRequisiteUnitDraft((prev) => ({ ...prev, [lk]: e.target.value }))
+                      }
+                      onBlur={(e) => {
+                        void persistRequisiteLineLocalExtras(mergeRequisiteExtra(lk, e.target.value));
+                      }}
+                      className={`mt-0.5 w-full ${cellXs}`}
+                      disabled={readOnly}
+                      list={UNIT_DATALIST_ID}
+                      placeholder="шт"
+                    />
+                  </label>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Кол-во
                     <input
                       type="number"
@@ -2114,14 +2523,18 @@ function RequisiteSectionEditor({
                         const next = maxQty > 0 ? Math.min(raw, maxQty) : raw;
                         updateLine(index, { requestedQty: next });
                       }}
-                      className={`mt-1 w-full ${inputField}`}
+                      className={`mt-0.5 w-full ${cellXs} tabular-nums`}
                       disabled={!editable}
                     />
                   </label>
-                  <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Сумма</div>
-                    <div className="mt-1 text-sm font-bold text-violet-950">
-                      {formatOrderMoney((line.pricePerDaySnapshot ?? 0) * line.requestedQty * daysBetween(order.startDate, order.endDate) * (order.payMultiplier != null ? Number(order.payMultiplier) : 1))} ₽
+                  <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
+                    <div className="text-[9px] font-semibold uppercase text-zinc-500">Цена/ед</div>
+                    <div className="mt-0.5 text-xs font-bold tabular-nums text-zinc-900">{formatOrderMoney(ppu)} ₽</div>
+                  </div>
+                  <div className="rounded border border-violet-100 bg-violet-50 px-2 py-1.5">
+                    <div className="text-[9px] font-semibold uppercase text-violet-700">Сумма</div>
+                    <div className="mt-0.5 text-xs font-bold tabular-nums text-violet-950">
+                      {formatOrderMoney(lineTotal)} ₽
                     </div>
                   </div>
                   <div className="flex items-end justify-end gap-2">
@@ -2195,6 +2608,79 @@ function RequisiteSectionEditor({
                 onClientPriceChange={(value) => setServiceField("demontagePrice", value)}
                 onInternalCostChange={(value) => setServiceField("demontageInternalCost", value)}
               />
+              {services.deliveryEnabled || services.montageEnabled || services.demontageEnabled ? (
+                <div className="mt-2 grid gap-2 border-t border-zinc-200 pt-2 sm:grid-cols-3">
+                  {services.deliveryEnabled ? (
+                    <label className="block text-[10px] font-semibold text-zinc-500">
+                      Доставка — ед. (смета)
+                      <input
+                        value={requisiteUnitDraft[`${order.id}:delivery`] ?? ""}
+                        onChange={(e) =>
+                          setRequisiteUnitDraft((p) => ({
+                            ...p,
+                            [`${order.id}:delivery`]: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          void persistRequisiteLineLocalExtras(
+                            mergeRequisiteExtra(`${order.id}:delivery`, e.target.value),
+                          )
+                        }
+                        className={`mt-0.5 w-full ${cellXs}`}
+                        list={UNIT_DATALIST_ID}
+                        disabled={readOnly}
+                        placeholder="усл."
+                      />
+                    </label>
+                  ) : null}
+                  {services.montageEnabled ? (
+                    <label className="block text-[10px] font-semibold text-zinc-500">
+                      Монтаж — ед. (смета)
+                      <input
+                        value={requisiteUnitDraft[`${order.id}:montage`] ?? ""}
+                        onChange={(e) =>
+                          setRequisiteUnitDraft((p) => ({
+                            ...p,
+                            [`${order.id}:montage`]: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          void persistRequisiteLineLocalExtras(
+                            mergeRequisiteExtra(`${order.id}:montage`, e.target.value),
+                          )
+                        }
+                        className={`mt-0.5 w-full ${cellXs}`}
+                        list={UNIT_DATALIST_ID}
+                        disabled={readOnly}
+                        placeholder="усл."
+                      />
+                    </label>
+                  ) : null}
+                  {services.demontageEnabled ? (
+                    <label className="block text-[10px] font-semibold text-zinc-500">
+                      Демонтаж — ед. (смета)
+                      <input
+                        value={requisiteUnitDraft[`${order.id}:demontage`] ?? ""}
+                        onChange={(e) =>
+                          setRequisiteUnitDraft((p) => ({
+                            ...p,
+                            [`${order.id}:demontage`]: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          void persistRequisiteLineLocalExtras(
+                            mergeRequisiteExtra(`${order.id}:demontage`, e.target.value),
+                          )
+                        }
+                        className={`mt-0.5 w-full ${cellXs}`}
+                        list={UNIT_DATALIST_ID}
+                        disabled={readOnly}
+                        placeholder="усл."
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
 

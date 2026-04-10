@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 
-import type { ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
+import type { ProjectEstimateReadLine, ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
 
 const COLORS = {
   titleBg: "FF6D28D9",
@@ -9,10 +9,15 @@ const COLORS = {
   headerText: "FF312E81",
   sectionReqBg: "FFEEE7FF",
   sectionLocalBg: "FFF8FAFC",
+  sectionContractorBg: "FFFFF7ED",
   totalBg: "FFEDE9FE",
   totalText: "FF4C1D95",
+  sectionFooterBg: "FFF1F5F9",
   border: "FFE4E4E7",
 };
+
+const TAX_RATE = 0.06;
+const COMMISSION_RATE = 0.15;
 
 function styleCell(cell: ExcelJS.Cell) {
   cell.border = {
@@ -22,46 +27,115 @@ function styleCell(cell: ExcelJS.Cell) {
     right: { style: "thin", color: { argb: COLORS.border } },
   };
   cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-  cell.font = { name: "Calibri", size: 11 };
+  cell.font = { name: "Calibri", size: 10 };
 }
+
+function money(n: number): number {
+  return Math.round(Number.isFinite(n) ? n : 0);
+}
+
+function lineClient(line: ProjectEstimateReadLine): number {
+  const v = line.costClient != null ? Number(line.costClient) : 0;
+  return Number.isFinite(v) ? v : 0;
+}
+
+function lineInternal(line: ProjectEstimateReadLine): number {
+  const v = line.costInternal != null ? Number(line.costInternal) : 0;
+  return Number.isFinite(v) ? v : 0;
+}
+
+function unitLabel(line: ProjectEstimateReadLine): string {
+  const u = line.unit?.trim();
+  return u && u.length > 0 ? u : "шт";
+}
+
+function qtyLabel(line: ProjectEstimateReadLine): string | number {
+  if (line.qty != null && Number.isFinite(Number(line.qty))) return Number(line.qty);
+  return "";
+}
+
+function unitPriceLabel(line: ProjectEstimateReadLine): number | string {
+  if (line.unitPriceClient != null && Number.isFinite(line.unitPriceClient)) return line.unitPriceClient;
+  const c = lineClient(line);
+  const q = line.qty != null ? Number(line.qty) : 0;
+  if (c > 0 && q > 0) return money(c / q);
+  return "";
+}
+
+function sectionTitle(section: ProjectEstimateReadSection): string {
+  if (section.kind === "REQUISITE") {
+    return `${section.title}${section.linkedOrderStatus ? ` · ${section.linkedOrderStatus}` : ""}`;
+  }
+  return section.title;
+}
+
+function sectionBg(section: ProjectEstimateReadSection): string {
+  if (section.kind === "REQUISITE") return COLORS.sectionReqBg;
+  if (section.kind === "CONTRACTOR") return COLORS.sectionContractorBg;
+  return COLORS.sectionLocalBg;
+}
+
+export type ProjectEstimateXlsxVariant = "internal" | "client";
 
 export async function buildProjectEstimateXlsx(args: {
   projectTitle: string;
   versionNumber: number;
   sections: ProjectEstimateReadSection[];
+  /** internal — все колонки и подытоги; client — только клиентские поля и итоги для клиента. */
+  variant?: ProjectEstimateXlsxVariant;
 }) {
+  const variant = args.variant ?? "internal";
+  const isClient = variant === "client";
+
+  const colCount = isClient ? 7 : 12;
+  const widths = isClient
+    ? [6, 28, 32, 10, 10, 14, 14]
+    : [6, 26, 28, 10, 10, 12, 14, 12, 12, 14, 22, 18];
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "Wowstorg";
   wb.created = new Date();
 
-  const ws = wb.addWorksheet("Смета проекта");
-  ws.columns = [
-    { width: 8 },
-    { width: 38 },
-    { width: 42 },
-    { width: 16 },
-    { width: 16 },
-  ];
+  const ws = wb.addWorksheet(isClient ? "Смета (клиент)" : "Смета (внутр.)");
+  ws.columns = widths.map((w) => ({ width: w }));
 
-  ws.addRow([`Смета проекта · v${args.versionNumber}`]);
-  ws.mergeCells(1, 1, 1, 5);
+  ws.addRow([
+    isClient ? `Смета для клиента · v${args.versionNumber}` : `Смета проекта (внутр.) · v${args.versionNumber}`,
+  ]);
+  ws.mergeCells(1, 1, 1, colCount);
   const title = ws.getCell(1, 1);
   styleCell(title);
-  title.font = { name: "Calibri", size: 16, bold: true, color: { argb: COLORS.titleText } };
+  title.font = { name: "Calibri", size: 15, bold: true, color: { argb: COLORS.titleText } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.titleBg } };
 
   ws.addRow(["Проект", args.projectTitle]);
-  ws.mergeCells(2, 2, 2, 5);
-  for (let col = 1; col <= 5; col++) styleCell(ws.getCell(2, col));
+  ws.mergeCells(2, 2, 2, colCount);
+  for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(2, col));
 
   ws.addRow([]);
 
-  ws.addRow(["№", "Позиция", "Описание", "Клиент, ₽", "Внутр., ₽"]);
+  const headerCells = isClient
+    ? ["№", "Позиция", "Описание", "Ед. изм.", "Кол-во", "Цена за ед., ₽", "Сумма, ₽"]
+    : [
+        "№",
+        "Позиция",
+        "Описание",
+        "Ед. изм.",
+        "Кол-во",
+        "Цена за ед., ₽",
+        "Сумма, ₽",
+        "Внутр., ₽",
+        "Оплата",
+        "Статус оплаты",
+        "Коммент. подрядчику",
+        "Реквизиты",
+      ];
+  ws.addRow(headerCells);
   const headerRow = ws.lastRow!.number;
-  for (let col = 1; col <= 5; col++) {
+  for (let col = 1; col <= colCount; col++) {
     const cell = ws.getCell(headerRow, col);
     styleCell(cell);
-    cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.headerText } };
+    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: COLORS.headerText } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.headerBg } };
   }
 
@@ -69,70 +143,158 @@ export async function buildProjectEstimateXlsx(args: {
   let internalSubtotal = 0;
 
   for (const section of args.sections) {
-    ws.addRow([
-      "",
-      section.kind === "REQUISITE"
-        ? `${section.title}${section.linkedOrderStatus ? ` · ${section.linkedOrderStatus}` : ""}`
-        : section.title,
-      "",
-      "",
-      "",
-    ]);
+    const rowVals: (string | number)[] = ["", sectionTitle(section)];
+    while (rowVals.length < colCount) rowVals.push("");
+    ws.addRow(rowVals);
     const sectionRow = ws.lastRow!.number;
-    ws.mergeCells(sectionRow, 2, sectionRow, 5);
-    for (let col = 1; col <= 5; col++) {
+    ws.mergeCells(sectionRow, 2, sectionRow, colCount);
+    for (let col = 1; col <= colCount; col++) {
       const cell = ws.getCell(sectionRow, col);
       styleCell(cell);
-      cell.font = { name: "Calibri", size: 11, bold: true };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: section.kind === "REQUISITE" ? COLORS.sectionReqBg : COLORS.sectionLocalBg },
-      };
+      cell.font = { name: "Calibri", size: 10, bold: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: sectionBg(section) } };
     }
 
-    for (const line of section.lines) {
-      const client = line.costClient != null ? Number(line.costClient) : 0;
-      const internal = line.costInternal != null ? Number(line.costInternal) : 0;
-      clientSubtotal += Number.isFinite(client) ? client : 0;
-      internalSubtotal += Number.isFinite(internal) ? internal : 0;
+    let sectionClient = 0;
+    let sectionInternal = 0;
 
-      ws.addRow([
-        line.lineNumber || "",
-        line.name,
-        line.description ?? "",
-        client || "",
-        internal || "",
-      ]);
+    for (const line of section.lines) {
+      const client = lineClient(line);
+      const internal = lineInternal(line);
+      sectionClient += client;
+      sectionInternal += internal;
+      clientSubtotal += client;
+      internalSubtotal += internal;
+
+      if (isClient) {
+        ws.addRow([
+          line.lineNumber || "",
+          line.name,
+          line.description ?? "",
+          unitLabel(line),
+          qtyLabel(line),
+          unitPriceLabel(line),
+          client || "",
+        ]);
+      } else {
+        const isContractor = section.kind === "CONTRACTOR";
+        ws.addRow([
+          line.lineNumber || "",
+          line.name,
+          line.description ?? "",
+          unitLabel(line),
+          qtyLabel(line),
+          unitPriceLabel(line),
+          client || "",
+          internal || "",
+          isContractor ? (line.paymentMethod ?? "") : "",
+          isContractor ? (line.paymentStatus ?? "") : "",
+          isContractor ? (line.contractorNote ?? "") : "",
+          isContractor ? (line.contractorRequisites ?? "") : "",
+        ]);
+      }
       const row = ws.lastRow!.number;
-      for (let col = 1; col <= 5; col++) styleCell(ws.getCell(row, col));
-      ws.getCell(row, 4).numFmt = "#,##0.00";
-      ws.getCell(row, 5).numFmt = "#,##0.00";
+      for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(row, col));
+      if (isClient) {
+        ws.getCell(row, 6).numFmt = "#,##0.00";
+        ws.getCell(row, 7).numFmt = "#,##0.00";
+      } else {
+        ws.getCell(row, 6).numFmt = "#,##0.00";
+        ws.getCell(row, 7).numFmt = "#,##0.00";
+        ws.getCell(row, 8).numFmt = "#,##0.00";
+      }
+    }
+
+    if (isClient) {
+      ws.addRow(["", "", "", "", "", "Итого по разделу", sectionClient]);
+      const sr = ws.lastRow!.number;
+      ws.mergeCells(sr, 1, sr, 5);
+      for (let col = 1; col <= colCount; col++) {
+        const cell = ws.getCell(sr, col);
+        styleCell(cell);
+        cell.font = { name: "Calibri", size: 10, bold: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
+      }
+      ws.getCell(sr, 7).numFmt = "#,##0.00";
+    } else {
+      const tax = money(sectionClient * TAX_RATE);
+      const grossMargin = money(sectionClient - sectionInternal);
+      const marginAfterTax = money(grossMargin - tax);
+      const footerRows: [string, number][] = [
+        ["Выручка (клиент), раздел", sectionClient],
+        ["Внутр., раздел", sectionInternal],
+        ["Валовая маржа, раздел", grossMargin],
+        ["Условный налог 6% (от выручки раздела)", tax],
+        ["Маржа после условного налога, раздел", marginAfterTax],
+      ];
+      for (const [label, value] of footerRows) {
+        const cells: (string | number)[] = [label, "", "", "", "", "", value];
+        while (cells.length < colCount) cells.push("");
+        ws.addRow(cells);
+        const fr = ws.lastRow!.number;
+        ws.mergeCells(fr, 1, fr, 6);
+        for (let col = 1; col <= colCount; col++) {
+          const cell = ws.getCell(fr, col);
+          styleCell(cell);
+          cell.font = { name: "Calibri", size: 9, bold: true, color: { argb: COLORS.totalText } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
+        }
+        ws.getCell(fr, 7).numFmt = "#,##0.00";
+      }
     }
 
     ws.addRow([]);
   }
 
-  const commission = Math.round(clientSubtotal * 0.15);
-  const total = clientSubtotal + commission;
-  const rows = [
-    ["Сумма клиентских строк", clientSubtotal],
-    ["Комиссия 15%", commission],
-    ["Итого клиент", total],
-    ["Себестоимость", internalSubtotal],
-  ] as const;
+  const commission = money(clientSubtotal * COMMISSION_RATE);
+  const totalWithCommission = clientSubtotal + commission;
+  const projectGrossMargin = money(clientSubtotal - internalSubtotal);
+  const projectTax = money(clientSubtotal * TAX_RATE);
+  const projectMarginAfterTax = money(projectGrossMargin - projectTax);
 
-  for (const [label, value] of rows) {
-    ws.addRow([label, "", "", "", value]);
-    const row = ws.lastRow!.number;
-    ws.mergeCells(row, 1, row, 4);
-    for (let col = 1; col <= 5; col++) {
-      const cell = ws.getCell(row, col);
-      styleCell(cell);
-      cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.totalText } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
+  if (isClient) {
+    const tail: [string, number][] = [
+      ["Сумма по смете (клиент)", clientSubtotal],
+      ["Комиссия 15%", commission],
+      ["Итого с комиссией", totalWithCommission],
+    ];
+    for (const [label, value] of tail) {
+      const cells: (string | number)[] = [label, "", "", "", "", "", value];
+      ws.addRow(cells);
+      const row = ws.lastRow!.number;
+      ws.mergeCells(row, 1, row, 6);
+      for (let col = 1; col <= colCount; col++) {
+        const cell = ws.getCell(row, col);
+        styleCell(cell);
+        cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.totalText } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
+      }
+      ws.getCell(row, 7).numFmt = "#,##0.00";
     }
-    ws.getCell(row, 5).numFmt = "#,##0.00";
+  } else {
+    const tail: [string, number][] = [
+      ["Сумма клиентских строк (проект)", clientSubtotal],
+      ["Комиссия 15%", commission],
+      ["Итого клиент (с комиссией)", totalWithCommission],
+      ["Себестоимость (проект)", internalSubtotal],
+      ["Валовая маржа (проект)", projectGrossMargin],
+      ["Условный налог 6% (от выручки проекта)", projectTax],
+      ["Маржа после условного налога (проект)", projectMarginAfterTax],
+    ];
+    for (const [label, value] of tail) {
+      const cells: (string | number)[] = [label, "", "", "", "", "", value];
+      while (cells.length < colCount) cells.push("");
+      ws.addRow(cells);
+      const row = ws.lastRow!.number;
+      ws.mergeCells(row, 1, row, 6);
+      for (let col = 1; col <= colCount; col++) {
+        const cell = ws.getCell(row, col);
+        styleCell(cell);
+        cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: COLORS.totalText } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
+      }
+      ws.getCell(row, 7).numFmt = "#,##0.00";
+    }
   }
 
   ws.views = [{ state: "frozen", ySplit: 4 }];

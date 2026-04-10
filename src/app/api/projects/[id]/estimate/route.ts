@@ -18,6 +18,13 @@ const DraftLineSchema = z
     lineType: z.string().trim().max(80).optional(),
     costClient: z.number().finite().nullable().optional(),
     costInternal: z.number().finite().nullable().optional(),
+    unit: z.string().trim().max(40).nullable().optional(),
+    qty: z.number().finite().nullable().optional(),
+    unitPriceClient: z.number().finite().nullable().optional(),
+    paymentMethod: z.string().trim().max(40).nullable().optional(),
+    paymentStatus: z.string().trim().max(120).nullable().optional(),
+    contractorNote: z.string().trim().max(5000).nullable().optional(),
+    contractorRequisites: z.string().trim().max(500).nullable().optional(),
   })
   .strict();
 
@@ -31,6 +38,7 @@ const PatchDraftSchema = z
             id: z.string().trim().min(1).optional(),
             title: z.string().trim().min(1).max(200),
             sortOrder: z.number().int().min(0).max(10000),
+            kind: z.enum(["LOCAL", "CONTRACTOR"]).optional(),
             lines: z.array(DraftLineSchema).max(1000),
           })
           .strict(),
@@ -96,7 +104,7 @@ export async function PATCH(
     const existingSections = await tx.projectEstimateSection.findMany({
       where: {
         versionId: version.id,
-        kind: ProjectEstimateSectionKind.LOCAL,
+        kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
       },
       include: {
         lines: {
@@ -126,12 +134,18 @@ export async function PATCH(
           ? existingSectionMap.get(sectionDraft.id)!
           : null;
 
+      const sectionKind =
+        sectionDraft.kind === "CONTRACTOR"
+          ? ProjectEstimateSectionKind.CONTRACTOR
+          : ProjectEstimateSectionKind.LOCAL;
+
       const savedSection = existingSection
         ? await tx.projectEstimateSection.update({
             where: { id: existingSection.id },
             data: {
               title: sectionDraft.title.trim(),
               sortOrder: sectionDraft.sortOrder,
+              kind: sectionKind,
             },
           })
         : await tx.projectEstimateSection.create({
@@ -139,7 +153,7 @@ export async function PATCH(
               versionId: version.id,
               title: sectionDraft.title.trim(),
               sortOrder: sectionDraft.sortOrder,
-              kind: ProjectEstimateSectionKind.LOCAL,
+              kind: sectionKind,
             },
           });
 
@@ -169,6 +183,26 @@ export async function PATCH(
             lineDraft.costClient == null ? null : new Prisma.Decimal(lineDraft.costClient),
           costInternal:
             lineDraft.costInternal == null ? null : new Prisma.Decimal(lineDraft.costInternal),
+          unit: lineDraft.unit === undefined ? undefined : lineDraft.unit?.trim() || null,
+          qty: lineDraft.qty == null ? null : new Prisma.Decimal(lineDraft.qty),
+          unitPriceClient:
+            lineDraft.unitPriceClient == null ? null : new Prisma.Decimal(lineDraft.unitPriceClient),
+          paymentMethod:
+            lineDraft.paymentMethod === undefined
+              ? undefined
+              : lineDraft.paymentMethod?.trim() || null,
+          paymentStatus:
+            lineDraft.paymentStatus === undefined
+              ? undefined
+              : lineDraft.paymentStatus?.trim() || null,
+          contractorNote:
+            lineDraft.contractorNote === undefined
+              ? undefined
+              : lineDraft.contractorNote?.trim() || null,
+          contractorRequisites:
+            lineDraft.contractorRequisites === undefined
+              ? undefined
+              : lineDraft.contractorRequisites?.trim() || null,
         };
 
         if (lineDraft.id && existingLineMap.has(lineDraft.id)) {

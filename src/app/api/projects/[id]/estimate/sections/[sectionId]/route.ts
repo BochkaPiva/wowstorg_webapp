@@ -1,4 +1,4 @@
-import { ProjectEstimateSectionKind } from "@prisma/client";
+import { Prisma, ProjectEstimateSectionKind } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -7,10 +7,15 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
+const LineExtrasEntrySchema = z.object({
+  unit: z.string().trim().max(40).nullable().optional(),
+});
+
 const PatchSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
     sortOrder: z.number().int().min(0).max(10000).optional(),
+    lineLocalExtras: z.record(z.string().trim().min(1), LineExtrasEntrySchema).nullable().optional(),
   })
   .strict();
 
@@ -50,6 +55,14 @@ export async function PATCH(
     data: {
       ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
       ...(parsed.data.sortOrder !== undefined ? { sortOrder: parsed.data.sortOrder } : {}),
+      ...(parsed.data.lineLocalExtras !== undefined
+        ? {
+            lineLocalExtras:
+              parsed.data.lineLocalExtras === null
+                ? Prisma.JsonNull
+                : (parsed.data.lineLocalExtras as Prisma.InputJsonValue),
+          }
+        : {}),
     },
   });
 
@@ -84,8 +97,11 @@ export async function DELETE(
     select: { id: true, kind: true },
   });
   if (!section) return jsonError(404, "Раздел не найден");
-  if (section.kind !== ProjectEstimateSectionKind.LOCAL) {
-    return jsonError(400, "Удалять можно только локальные разделы (не блок реквизита)");
+  if (
+    section.kind !== ProjectEstimateSectionKind.LOCAL &&
+    section.kind !== ProjectEstimateSectionKind.CONTRACTOR
+  ) {
+    return jsonError(400, "Удалять можно только универсальные разделы и подрядчиков (не реквизит)");
   }
 
   await prisma.projectEstimateSection.delete({ where: { id: sectionId } });

@@ -9,6 +9,23 @@ function dec(v: { toString(): string } | null | undefined): string | null {
   return v.toString();
 }
 
+function parseLineLocalExtras(raw: unknown): Record<string, { unit?: string | null }> {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, { unit?: string | null }>;
+}
+
+function unitLabelFromExtras(extras: Record<string, { unit?: string | null }>, lineId: string): string | null {
+  const u = extras[lineId]?.unit;
+  const t = typeof u === "string" ? u.trim() : "";
+  return t.length > 0 ? t : null;
+}
+
+/** Клиентская цена за единицу (для сметы): итог / кол-во. */
+function clientUnitPrice(totalRounded: number, qty: number): number | null {
+  if (!Number.isFinite(totalRounded) || !(qty > 0)) return null;
+  return Math.round(totalRounded / qty);
+}
+
 const EDITABLE_ORDER_STATUSES = new Set([
   "SUBMITTED",
   "ESTIMATE_SENT",
@@ -27,22 +44,31 @@ export type ProjectEstimateReadLine = {
   costInternal: string | null;
   orderLineId: string | null;
   itemId: string | null;
+  /** Ед. изм. для сметы; null/пусто — в UI показываем «шт». */
+  unit: string | null;
+  unitPriceClient: number | null;
   qty?: number | null;
   plannedDays?: number | null;
   pricePerDaySnapshot?: number | null;
   /** Годные единицы на складе (ведра), без резерва по датам; для строк без позиции каталога — null */
   maxQtyPhysical?: number | null;
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  contractorNote?: string | null;
+  contractorRequisites?: string | null;
 };
 
 export type ProjectEstimateReadSection = {
   id: string;
   sortOrder: number;
   title: string;
-  kind: "LOCAL" | "REQUISITE" | "DRAFT_REQUISITE";
+  kind: "LOCAL" | "REQUISITE" | "CONTRACTOR" | "DRAFT_REQUISITE";
   linkedOrderId: string | null;
   linkedDraftOrderId: string | null;
   linkedOrderStatus: string | null;
   linkedOrderEditable: boolean;
+  /** Только REQUISITE: локальные поля строк (ед. изм.), ключ = id строки read-model. */
+  lineLocalExtras: Record<string, { unit?: string | null }> | null;
   lines: ProjectEstimateReadLine[];
 };
 
@@ -190,88 +216,120 @@ export async function buildProjectEstimateReadModel(args: {
                   : null;
 
               if (linkedOrder) {
+                const extras = parseLineLocalExtras(section.lineLocalExtras);
                 const dayCount = daysBetween(linkedOrder.startDate, linkedOrder.endDate);
                 const payMultiplier =
                   linkedOrder.payMultiplier != null ? Number(linkedOrder.payMultiplier) : 1;
-                const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => ({
-                  id: line.id,
-                  position: line.position,
-                  lineNumber: index + 1,
-                  name: line.item.name,
-                  description: [line.greenwichComment, line.warehouseComment].filter(Boolean).join("\n") || null,
-                  lineType: "RENTAL",
-                  costClient: String(
-                    Math.round(
-                      Number(line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayCount * payMultiplier,
-                    ),
-                  ),
-                  // Собственный реквизит на складе не задаётся отдельной «себестоимостью» в строке — в марже участвуют только реальные затраты (доп. услуги с полем «внутр.»).
-                  costInternal: "0",
-                  orderLineId: line.id,
-                  itemId: line.itemId,
-                  qty: line.requestedQty,
-                  plannedDays: dayCount,
-                  pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
-                  maxQtyPhysical: usableStockUnits(line.item),
-                }));
+                const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => {
+                  const clientTotal = Math.round(
+                    Number(line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayCount * payMultiplier,
+                  );
+                  const qty = line.requestedQty;
+                  return {
+                    id: line.id,
+                    position: line.position,
+                    lineNumber: index + 1,
+                    name: line.item.name,
+                    description: [line.greenwichComment, line.warehouseComment].filter(Boolean).join("\n") || null,
+                    lineType: "RENTAL",
+                    costClient: String(clientTotal),
+                    // Собственный реквизит на складе не задаётся отдельной «себестоимостью» в строке — в марже участвуют только реальные затраты (доп. услуги с полем «внутр.»).
+                    costInternal: "0",
+                    orderLineId: line.id,
+                    itemId: line.itemId,
+                    unit: unitLabelFromExtras(extras, line.id),
+                    unitPriceClient: clientUnitPrice(clientTotal, qty),
+                    qty,
+                    plannedDays: dayCount,
+                    pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
+                    maxQtyPhysical: usableStockUnits(line.item),
+                  };
+                });
 
                 const serviceRows = [
                   linkedOrder.deliveryEnabled
-                    ? {
-                        id: `${linkedOrder.id}:delivery`,
-                        position: orderLines.length,
-                        lineNumber: orderLines.length + 1,
-                        name: "Доставка",
-                        description: linkedOrder.deliveryComment ?? null,
-                        lineType: "SERVICE",
-                        costClient:
-                          linkedOrder.deliveryPrice != null ? String(Number(linkedOrder.deliveryPrice)) : null,
-                        costInternal:
-                          linkedOrder.deliveryInternalCost != null
-                            ? String(Math.round(Number(linkedOrder.deliveryInternalCost)))
-                            : "0",
-                        orderLineId: null,
-                        itemId: null,
-                        maxQtyPhysical: null,
-                      }
+                    ? (() => {
+                        const sid = `${linkedOrder.id}:delivery`;
+                        const clientTotal = Math.round(
+                          linkedOrder.deliveryPrice != null ? Number(linkedOrder.deliveryPrice) : 0,
+                        );
+                        return {
+                          id: sid,
+                          position: orderLines.length,
+                          lineNumber: orderLines.length + 1,
+                          name: "Доставка",
+                          description: linkedOrder.deliveryComment ?? null,
+                          lineType: "SERVICE",
+                          costClient:
+                            linkedOrder.deliveryPrice != null ? String(Number(linkedOrder.deliveryPrice)) : null,
+                          costInternal:
+                            linkedOrder.deliveryInternalCost != null
+                              ? String(Math.round(Number(linkedOrder.deliveryInternalCost)))
+                              : "0",
+                          orderLineId: null,
+                          itemId: null,
+                          unit: unitLabelFromExtras(extras, sid) ?? "усл.",
+                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          qty: 1,
+                          maxQtyPhysical: null,
+                        };
+                      })()
                     : null,
                   linkedOrder.montageEnabled
-                    ? {
-                        id: `${linkedOrder.id}:montage`,
-                        position: orderLines.length + 1,
-                        lineNumber: orderLines.length + 2,
-                        name: "Монтаж",
-                        description: linkedOrder.montageComment ?? null,
-                        lineType: "SERVICE",
-                        costClient:
-                          linkedOrder.montagePrice != null ? String(Number(linkedOrder.montagePrice)) : null,
-                        costInternal:
-                          linkedOrder.montageInternalCost != null
-                            ? String(Math.round(Number(linkedOrder.montageInternalCost)))
-                            : "0",
-                        orderLineId: null,
-                        itemId: null,
-                        maxQtyPhysical: null,
-                      }
+                    ? (() => {
+                        const sid = `${linkedOrder.id}:montage`;
+                        const clientTotal = Math.round(
+                          linkedOrder.montagePrice != null ? Number(linkedOrder.montagePrice) : 0,
+                        );
+                        return {
+                          id: sid,
+                          position: orderLines.length + 1,
+                          lineNumber: orderLines.length + 2,
+                          name: "Монтаж",
+                          description: linkedOrder.montageComment ?? null,
+                          lineType: "SERVICE",
+                          costClient:
+                            linkedOrder.montagePrice != null ? String(Number(linkedOrder.montagePrice)) : null,
+                          costInternal:
+                            linkedOrder.montageInternalCost != null
+                              ? String(Math.round(Number(linkedOrder.montageInternalCost)))
+                              : "0",
+                          orderLineId: null,
+                          itemId: null,
+                          unit: unitLabelFromExtras(extras, sid) ?? "усл.",
+                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          qty: 1,
+                          maxQtyPhysical: null,
+                        };
+                      })()
                     : null,
                   linkedOrder.demontageEnabled
-                    ? {
-                        id: `${linkedOrder.id}:demontage`,
-                        position: orderLines.length + 2,
-                        lineNumber: orderLines.length + 3,
-                        name: "Демонтаж",
-                        description: linkedOrder.demontageComment ?? null,
-                        lineType: "SERVICE",
-                        costClient:
-                          linkedOrder.demontagePrice != null ? String(Number(linkedOrder.demontagePrice)) : null,
-                        costInternal:
-                          linkedOrder.demontageInternalCost != null
-                            ? String(Math.round(Number(linkedOrder.demontageInternalCost)))
-                            : "0",
-                        orderLineId: null,
-                        itemId: null,
-                        maxQtyPhysical: null,
-                      }
+                    ? (() => {
+                        const sid = `${linkedOrder.id}:demontage`;
+                        const clientTotal = Math.round(
+                          linkedOrder.demontagePrice != null ? Number(linkedOrder.demontagePrice) : 0,
+                        );
+                        return {
+                          id: sid,
+                          position: orderLines.length + 2,
+                          lineNumber: orderLines.length + 3,
+                          name: "Демонтаж",
+                          description: linkedOrder.demontageComment ?? null,
+                          lineType: "SERVICE",
+                          costClient:
+                            linkedOrder.demontagePrice != null ? String(Number(linkedOrder.demontagePrice)) : null,
+                          costInternal:
+                            linkedOrder.demontageInternalCost != null
+                              ? String(Math.round(Number(linkedOrder.demontageInternalCost)))
+                              : "0",
+                          orderLineId: null,
+                          itemId: null,
+                          unit: unitLabelFromExtras(extras, sid) ?? "усл.",
+                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          qty: 1,
+                          maxQtyPhysical: null,
+                        };
+                      })()
                     : null,
                 ].filter((line): line is NonNullable<typeof line> => line !== null);
 
@@ -284,32 +342,59 @@ export async function buildProjectEstimateReadModel(args: {
                   linkedDraftOrderId: null,
                   linkedOrderStatus: linkedOrder.status,
                   linkedOrderEditable: EDITABLE_ORDER_STATUSES.has(linkedOrder.status),
+                  lineLocalExtras: extras,
                   lines: [...orderLines, ...serviceRows],
                 };
               }
+
+              const sectionKindOut: "LOCAL" | "CONTRACTOR" =
+                section.kind === ProjectEstimateSectionKind.CONTRACTOR ? "CONTRACTOR" : "LOCAL";
 
               return {
                 id: section.id,
                 sortOrder: section.sortOrder,
                 title: section.title,
-                kind: section.kind,
+                kind: sectionKindOut,
                 linkedOrderId: section.linkedOrderId,
                 linkedDraftOrderId: null,
                 linkedOrderStatus: null,
                 linkedOrderEditable: false,
-                lines: section.lines.map((line) => ({
-                  id: line.id,
-                  position: line.position,
-                  lineNumber: line.lineNumber,
-                  name: line.name,
-                  description: line.description,
-                  lineType: line.lineType,
-                  costClient: dec(line.costClient),
-                  costInternal: dec(line.costInternal),
-                  orderLineId: line.orderLineId,
-                  itemId: line.itemId,
-                  maxQtyPhysical: null,
-                })),
+                lineLocalExtras: null,
+                lines: section.lines.map((line) => {
+                  const costC = dec(line.costClient);
+                  const costNum = costC != null ? Number(costC) : null;
+                  const qtyNum = line.qty != null ? Number(line.qty) : null;
+                  let unitP = line.unitPriceClient != null ? Number(line.unitPriceClient) : null;
+                  if (
+                    unitP == null &&
+                    costNum != null &&
+                    Number.isFinite(costNum) &&
+                    qtyNum != null &&
+                    qtyNum > 0
+                  ) {
+                    unitP = clientUnitPrice(Math.round(costNum), qtyNum);
+                  }
+                  return {
+                    id: line.id,
+                    position: line.position,
+                    lineNumber: line.lineNumber,
+                    name: line.name,
+                    description: line.description,
+                    lineType: line.lineType,
+                    costClient: costC,
+                    costInternal: dec(line.costInternal),
+                    orderLineId: line.orderLineId,
+                    itemId: line.itemId,
+                    unit: line.unit?.trim() || null,
+                    unitPriceClient: unitP,
+                    qty: qtyNum,
+                    maxQtyPhysical: null,
+                    paymentMethod: line.paymentMethod ?? null,
+                    paymentStatus: line.paymentStatus ?? null,
+                    contractorNote: line.contractorNote ?? null,
+                    contractorRequisites: line.contractorRequisites ?? null,
+                  };
+                }),
               };
             }),
               ...(draftOrder && draftOrder.lines.length > 0
@@ -326,38 +411,43 @@ export async function buildProjectEstimateReadModel(args: {
                       linkedDraftOrderId: draftOrder.id,
                       linkedOrderStatus: null,
                       linkedOrderEditable: false,
-                      lines: draftOrder.lines.map((line, index) => ({
-                        id: line.id,
-                        position: line.sortOrder,
-                        lineNumber: index + 1,
-                        name: line.itemNameSnapshot || line.item.name,
-                        description:
-                          [
-                            `Кол-во: ${line.qty}`,
-                            `Дней: ${Math.max(1, line.plannedDays ?? 1)}`,
-                            line.comment,
-                            line.periodGroup ? `Группа периода: ${line.periodGroup}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join("\n") || null,
-                        lineType: "DRAFT_RENTAL",
-                        costClient:
+                      lineLocalExtras: null,
+                      lines: draftOrder.lines.map((line, index) => {
+                        const qty = line.qty;
+                        const days = Math.max(1, line.plannedDays ?? 1);
+                        const clientTotal =
                           line.pricePerDaySnapshot != null
-                            ? String(
-                                Math.round(
-                                  Number(line.pricePerDaySnapshot) * line.qty * Math.max(1, line.plannedDays ?? 1),
-                                ),
-                              )
-                            : null,
-                        costInternal: "0",
-                        orderLineId: null,
-                        itemId: line.itemId,
-                        qty: line.qty,
-                        plannedDays: Math.max(1, line.plannedDays ?? 1),
-                        pricePerDaySnapshot:
-                          line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
-                        maxQtyPhysical: usableStockUnits(line.item),
-                      })),
+                            ? Math.round(Number(line.pricePerDaySnapshot) * qty * days)
+                            : null;
+                        return {
+                          id: line.id,
+                          position: line.sortOrder,
+                          lineNumber: index + 1,
+                          name: line.itemNameSnapshot || line.item.name,
+                          description:
+                            [
+                              `Кол-во: ${line.qty}`,
+                              `Дней: ${days}`,
+                              line.comment,
+                              line.periodGroup ? `Группа периода: ${line.periodGroup}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join("\n") || null,
+                          lineType: "DRAFT_RENTAL",
+                          costClient: clientTotal != null ? String(clientTotal) : null,
+                          costInternal: "0",
+                          orderLineId: null,
+                          itemId: line.itemId,
+                          unit: "шт",
+                          unitPriceClient:
+                            clientTotal != null && qty > 0 ? clientUnitPrice(clientTotal, qty) : null,
+                          qty,
+                          plannedDays: days,
+                          pricePerDaySnapshot:
+                            line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : null,
+                          maxQtyPhysical: usableStockUnits(line.item),
+                        };
+                      }),
                     },
                   ]
                 : []),

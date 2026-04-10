@@ -1,6 +1,8 @@
 import { ProjectEstimateSectionKind } from "@prisma/client";
 import { z } from "zod";
 
+const SectionKindCreateSchema = z.enum(["LOCAL", "CONTRACTOR"]);
+
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
@@ -11,6 +13,7 @@ const PostSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
     versionNumber: z.number().int().positive().optional(),
+    kind: SectionKindCreateSchema.optional(),
   })
   .strict();
 
@@ -57,12 +60,17 @@ export async function POST(
   });
   const sortOrder = (maxSo._max.sortOrder ?? -1) + 1;
 
+  const kind =
+    parsed.data.kind === "CONTRACTOR"
+      ? ProjectEstimateSectionKind.CONTRACTOR
+      : ProjectEstimateSectionKind.LOCAL;
+
   const section = await prisma.projectEstimateSection.create({
     data: {
       versionId: v.id,
       sortOrder,
       title: parsed.data.title.trim(),
-      kind: ProjectEstimateSectionKind.LOCAL,
+      kind,
     },
   });
 
@@ -76,5 +84,7 @@ export async function POST(
     });
   });
 
-  return jsonOk({ section: { id: section.id, sortOrder: section.sortOrder, title: section.title, kind: section.kind } });
+  return jsonOk({
+    section: { id: section.id, sortOrder: section.sortOrder, title: section.title, kind: section.kind },
+  });
 }

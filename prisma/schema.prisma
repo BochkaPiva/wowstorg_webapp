@@ -132,10 +132,11 @@ enum ProjectActivityKind {
   PROJECT_ESTIMATE_VERSION_CREATED
 }
 
-/// Раздел сметы проекта: локальный (субы, техника) или блок реквизита, привязанный к заявке.
+/// Раздел сметы проекта: универсальный (LOCAL), подрядчики (CONTRACTOR) или реквизит по заявке (REQUISITE).
 enum ProjectEstimateSectionKind {
   LOCAL
   REQUISITE
+  CONTRACTOR
 }
 
 enum InventoryAuditRunKind {
@@ -492,6 +493,9 @@ model ProjectEstimateSection {
   linkedOrderId String?
   linkedOrder   Order? @relation(fields: [linkedOrderId], references: [id], onDelete: SetNull)
 
+  /// Локальные поля строк реквизита (ед. изм. и т.п.), ключ = id строки read-model (orderLineId или service key).
+  lineLocalExtras Json?
+
   lines ProjectEstimateLine[]
 
   @@index([versionId])
@@ -512,6 +516,17 @@ model ProjectEstimateLine {
   lineType      String  @default("OTHER")
   costClient    Decimal? @db.Decimal(14, 2)
   costInternal  Decimal? @db.Decimal(14, 2)
+
+  /// Ед. измерения (пусто/null — в UI подставляется «шт»).
+  unit             String?
+  qty              Decimal? @db.Decimal(14, 4)
+  /// Клиентская цена за единицу (для LOCAL/CONTRACTOR).
+  unitPriceClient  Decimal? @db.Decimal(14, 2)
+
+  paymentMethod        String? @db.VarChar(40)
+  paymentStatus        String? @db.VarChar(120)
+  contractorNote       String? @db.Text
+  contractorRequisites String? @db.VarChar(500)
 
   orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)

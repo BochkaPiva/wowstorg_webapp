@@ -95,6 +95,7 @@ export async function POST(
             title: sec.title,
             kind: sec.kind,
             linkedOrderId: sec.linkedOrderId,
+            lineLocalExtras: sec.lineLocalExtras ?? undefined,
           },
         });
         for (const ln of sec.lines) {
@@ -108,6 +109,14 @@ export async function POST(
               lineType: ln.lineType,
               costClient: ln.costClient ?? undefined,
               costInternal: ln.costInternal ?? undefined,
+              unit: ln.unit ?? undefined,
+              qty: ln.qty ?? undefined,
+              unitPriceClient: ln.unitPriceClient ?? undefined,
+              paymentMethod: ln.paymentMethod ?? undefined,
+              paymentStatus: ln.paymentStatus ?? undefined,
+              contractorNote: ln.contractorNote ?? undefined,
+              contractorRequisites: ln.contractorRequisites ?? undefined,
+              orderLineId: ln.orderLineId ?? undefined,
               itemId: ln.itemId ?? undefined,
             },
           });

@@ -467,6 +467,8 @@ export function ProjectEstimatePanel({
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
+  /** Форма «новая строка» в LOCAL/CONTRACTOR свёрнута по умолчанию, чтобы не отвлекать при просмотре. */
+  const [addLineFormOpenBySection, setAddLineFormOpenBySection] = React.useState<Record<string, boolean>>({});
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -809,8 +811,13 @@ export function ProjectEstimatePanel({
                 const q = next.qty != null ? Number(next.qty.replace(",", ".")) : NaN;
                 const up =
                   next.unitPriceClient != null ? Number(next.unitPriceClient.replace(",", ".")) : NaN;
+                const touchedPricing =
+                  Object.prototype.hasOwnProperty.call(patch, "qty") ||
+                  Object.prototype.hasOwnProperty.call(patch, "unitPriceClient");
                 if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
                   next = { ...next, costClient: String(Math.round(q * up)) };
+                } else if (touchedPricing) {
+                  next = { ...next, costClient: null };
                 }
                 return next;
               }),
@@ -1037,7 +1044,6 @@ export function ProjectEstimatePanel({
   }, [data?.current, localSectionsDraft]);
 
   const totals = React.useMemo(() => {
-    const COMMISSION_RATE = 0.15;
     const sections = renderedSections;
     let clientSubtotal = 0;
     let internalSubtotal = 0;
@@ -1049,17 +1055,21 @@ export function ProjectEstimatePanel({
         if (Number.isFinite(i)) internalSubtotal += i;
       }
     }
-    const commission = clientSubtotal * COMMISSION_RATE;
+    const commission = Math.round(clientSubtotal * COMMISSION_RATE_UI);
     const clientTotal = clientSubtotal + commission;
-    const profit = clientSubtotal - internalSubtotal + commission;
-    const profitPct = clientTotal > 0 ? (profit / clientTotal) * 100 : 0;
+    const tax6 = Math.round(clientSubtotal * TAX_RATE_UI);
+    const grossMargin = Math.round(clientSubtotal - internalSubtotal);
+    const marginAfterTax = Math.round(grossMargin - tax6);
+    const marginAfterTaxPct = clientTotal > 0 ? (marginAfterTax / clientTotal) * 100 : 0;
     return {
       clientSubtotal,
+      tax6,
       commission,
       clientTotal,
       internalSubtotal,
-      profit,
-      profitPct,
+      grossMargin,
+      marginAfterTax,
+      marginAfterTaxPct,
     };
   }, [renderedSections]);
 
@@ -1075,10 +1085,10 @@ export function ProjectEstimatePanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
-            Блоки реквизита читаются из живых заявок проекта, а локальные разделы теперь можно спокойно собирать как черновик и
-            сохранить в БД одним действием. Комиссия 15% считается от суммы клиентских строк и попадает в XLSX-выгрузку. В итогах
-            снизу «себестоимость» для аренды своего реквизита не дублирует цену клиенту (остаётся 0, пока не заложены реальные
-            затраты); для доп. услуг укажите при необходимости поле «Внутр. ₽».
+            Блоки реквизита читаются из живых заявок проекта, а локальные разделы можно собирать черновиком и сохранить в БД одним
+            действием. В универсальных разделах и у подрядчиков сумма клиенту считается как количество × цена за ед.; комиссия 15% и
+            условный налог 6% (от суммы клиентских строк) совпадают с внутренним XLSX. Маржа после налога = валовая маржа (сумма
+            клиентских строк − себестоимость) − налог 6%.
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1444,12 +1454,41 @@ export function ProjectEstimatePanel({
                           ))}
 
                           {!readOnly ? (
-                            <AddLineForm
-                              sectionId={sec.id}
-                              sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
-                              busy={busy}
-                              onAdd={addLine}
-                            />
+                            <div className="border-t border-dashed border-zinc-200 pt-2">
+                              {addLineFormOpenBySection[sec.id] ? (
+                                <>
+                                  <AddLineForm
+                                    sectionId={sec.id}
+                                    sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
+                                    busy={busy}
+                                    onAdd={(sid, payload) => {
+                                      addLine(sid, payload);
+                                      setAddLineFormOpenBySection((p) => ({ ...p, [sid]: false }));
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={`mt-2 ${btnSecondaryXs} text-zinc-600`}
+                                    onClick={() =>
+                                      setAddLineFormOpenBySection((p) => ({ ...p, [sec.id]: false }))
+                                    }
+                                  >
+                                    Свернуть
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  className={`${btnSecondaryXs} border-violet-200 bg-violet-50/80 font-semibold text-violet-900 hover:bg-violet-100`}
+                                  onClick={() =>
+                                    setAddLineFormOpenBySection((p) => ({ ...p, [sec.id]: true }))
+                                  }
+                                >
+                                  + Добавить строку
+                                </button>
+                              )}
+                            </div>
                           ) : null}
                         </>
                       )}
@@ -1458,10 +1497,15 @@ export function ProjectEstimatePanel({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-6">
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-zinc-600">Сумма (клиент)</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.clientSubtotal)} ₽</div>
+              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+                <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-sky-900">Сумма (клиент)</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-sky-950">{money(totals.clientSubtotal)} ₽</div>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-amber-900">Условный налог 6%</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.tax6)} ₽</div>
+                  <div className="mt-0.5 text-[10px] text-amber-800/90">от суммы клиентских строк</div>
                 </div>
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
                   <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
@@ -1475,15 +1519,20 @@ export function ProjectEstimatePanel({
                   <div className="text-[11px] font-semibold text-amber-900">Себестоимость</div>
                   <div className="mt-1 text-base font-bold tabular-nums text-amber-950">{money(totals.internalSubtotal)} ₽</div>
                 </div>
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-zinc-700">Валовая маржа</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.grossMargin)} ₽</div>
+                </div>
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-emerald-900">Прибыль</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">{money(totals.profit)} ₽</div>
+                  <div className="text-[11px] font-semibold text-emerald-900">Маржа после налога</div>
+                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">{money(totals.marginAfterTax)} ₽</div>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2">
-                  <div className="text-[11px] font-semibold text-emerald-900">Маржа</div>
+                  <div className="text-[11px] font-semibold text-emerald-900">Маржа после налога, %</div>
                   <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">
-                    {Number.isFinite(totals.profitPct) ? `${totals.profitPct.toFixed(0)}%` : "—"}
+                    {Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}
                   </div>
+                  <div className="mt-0.5 text-[10px] text-zinc-500">к итого клиент</div>
                 </div>
               </div>
 
@@ -1720,6 +1769,56 @@ function EstimateSectionBlock({
 
 const cellXs = "rounded border border-zinc-200 bg-white px-2 py-1 text-xs shadow-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-200/50";
 
+/** Сетка строки «клиентские» колонки — совпадает в редакторе и в форме добавления. */
+const ESTIMATE_CLIENT_ROW_GRID =
+  "grid gap-1.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_4rem_4.5rem_4.5rem]";
+
+const TAX_RATE_UI = 0.06;
+const COMMISSION_RATE_UI = 0.15;
+
+const PAYMENT_METHOD_OPTIONS = ["Наличные", "Безнал"] as const;
+const PAYMENT_STATUS_PAID = "Оплачено";
+const PAYMENT_STATUS_UNPAID = "Не оплачено";
+
+function parseEstimateQtyUp(line: {
+  qty?: string | number | null;
+  unitPriceClient?: string | number | null;
+}): { q: number; up: number } | null {
+  const qRaw = typeof line.qty === "number" && Number.isFinite(line.qty) ? String(line.qty) : (line.qty ?? "");
+  const upRaw =
+    typeof line.unitPriceClient === "number" && Number.isFinite(line.unitPriceClient)
+      ? String(line.unitPriceClient)
+      : (line.unitPriceClient ?? "");
+  const q = Number(String(qRaw).replace(",", "."));
+  const up = Number(String(upRaw).replace(",", "."));
+  if (!Number.isFinite(q) || q <= 0 || !Number.isFinite(up) || up < 0) return null;
+  return { q, up };
+}
+
+/** Сумма клиенту: только qty×цена; иначе наследованный costClient (старые строки). */
+function displayLocalLineClientSum(line: {
+  costClient?: string | null;
+  qty?: string | number | null;
+  unitPriceClient?: string | number | null;
+}): string {
+  const parsed = parseEstimateQtyUp(line);
+  if (parsed) return String(Math.round(parsed.q * parsed.up));
+  const cc = line.costClient;
+  if (cc != null && cc !== "" && Number.isFinite(Number(cc))) return String(Math.round(Number(cc)));
+  return "—";
+}
+
+function paymentStatusHighlightClass(raw: string | null | undefined): string {
+  const t = raw?.trim() ?? "";
+  if (t === PAYMENT_STATUS_PAID) {
+    return "border-emerald-300 bg-emerald-50/95 text-emerald-950 estimate-pay-pulse";
+  }
+  if (t === PAYMENT_STATUS_UNPAID) {
+    return "border-red-300 bg-red-50/95 text-red-950 estimate-pay-pulse";
+  }
+  return "border-zinc-200 bg-zinc-50/90 text-zinc-800 estimate-pay-pulse";
+}
+
 function LineEditor({
   sectionId,
   sectionKind,
@@ -1740,6 +1839,27 @@ function LineEditor({
   onDelete: (sectionId: string, id: string) => void;
 }) {
   const isContractor = sectionKind === "CONTRACTOR";
+  const paymentStatusRaw = "paymentStatus" in line ? line.paymentStatus : null;
+  const paymentStatusIsCustomText =
+    paymentStatusRaw != null &&
+    paymentStatusRaw !== "" &&
+    paymentStatusRaw !== PAYMENT_STATUS_PAID &&
+    paymentStatusRaw !== PAYMENT_STATUS_UNPAID;
+  const [pickCustomPaymentStatus, setPickCustomPaymentStatus] = React.useState(false);
+  React.useEffect(() => {
+    if (paymentStatusIsCustomText) setPickCustomPaymentStatus(false);
+  }, [paymentStatusIsCustomText, paymentStatusRaw]);
+
+  const paymentStatusSelectVal: "" | "PAID" | "UNPAID" | "CUSTOM" = pickCustomPaymentStatus
+    ? "CUSTOM"
+    : paymentStatusRaw === PAYMENT_STATUS_PAID
+      ? "PAID"
+      : paymentStatusRaw === PAYMENT_STATUS_UNPAID
+        ? "UNPAID"
+        : paymentStatusRaw == null || paymentStatusRaw === "" || paymentStatusRaw.trim() === ""
+          ? ""
+          : "CUSTOM";
+
   const unitVal = line.unit?.trim() ? line.unit : "";
   const qtyStr =
     "qty" in line && line.qty != null && line.qty !== ""
@@ -1766,133 +1886,205 @@ function LineEditor({
           <div className="font-medium">{line.name}</div>
           {line.description ? <div className="text-[11px] text-zinc-600">{line.description}</div> : null}
           <div className="text-[11px]">
-            {qtyStr || "—"} × {upStr || "—"} → {line.costClient ?? "—"} · внутр. {line.costInternal ?? "—"}
+            {qtyStr || "—"} × {upStr || "—"} → {displayLocalLineClientSum(line)} ₽ · внутр. {line.costInternal ?? "—"}
           </div>
         </div>
       ) : (
-        <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_4rem_4.5rem_4.5rem_4.5rem_4.5rem]">
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Позиция
-            <input
-              value={line.name}
-              onChange={(e) => onSave(sectionId, line.id, { name: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs}`}
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Описание
-            <input
-              value={line.description ?? ""}
-              onChange={(e) => onSave(sectionId, line.id, { description: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs}`}
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Ед.
-            <input
-              value={unitVal}
-              onChange={(e) => onSave(sectionId, line.id, { unit: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs}`}
-              list={UNIT_DATALIST_ID}
-              placeholder="шт"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Кол-во
-            <input
-              value={qtyStr}
-              onChange={(e) => onSave(sectionId, line.id, { qty: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Цена/ед
-            <input
-              value={upStr}
-              onChange={(e) => onSave(sectionId, line.id, { unitPriceClient: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Сумма
-            <input
-              value={line.costClient ?? ""}
-              onChange={(e) => onSave(sectionId, line.id, { costClient: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Внутр.
-            <input
-              value={line.costInternal ?? ""}
-              onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <div className="flex items-end justify-end">
-            {!line.orderLineId ? (
-              <button
-                type="button"
-                disabled={busy}
-                className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
-                onClick={() => void onDelete(sectionId, line.id)}
-              >
-                Уд.
-              </button>
-            ) : null}
+        <div className="space-y-2">
+          <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 p-2">
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-sky-900/80">Клиенту</div>
+            <div className={ESTIMATE_CLIENT_ROW_GRID}>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Позиция
+                <input
+                  value={line.name}
+                  onChange={(e) => onSave(sectionId, line.id, { name: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Описание
+                <input
+                  value={line.description ?? ""}
+                  onChange={(e) => onSave(sectionId, line.id, { description: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Ед.
+                <input
+                  value={unitVal}
+                  onChange={(e) => onSave(sectionId, line.id, { unit: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs}`}
+                  list={UNIT_DATALIST_ID}
+                  placeholder="шт"
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Кол-во
+                <input
+                  value={qtyStr}
+                  onChange={(e) => onSave(sectionId, line.id, { qty: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Цена/ед
+                <input
+                  value={upStr}
+                  onChange={(e) => onSave(sectionId, line.id, { unitPriceClient: e.target.value })}
+                  className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+                  inputMode="decimal"
+                />
+              </label>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Сумма
+                <div
+                  className={`mt-0.5 flex min-h-[1.75rem] w-full items-center tabular-nums ${cellXs} bg-zinc-100/90 text-zinc-800`}
+                  title="Считается как количество × цена за ед."
+                >
+                  {displayLocalLineClientSum(line)}
+                  {displayLocalLineClientSum(line) !== "—" ? <span className="ml-0.5 text-zinc-500">₽</span> : null}
+                </div>
+              </label>
+            </div>
           </div>
-          {isContractor ? (
-            <>
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-2">
-                Оплата
-                <input
-                  value={"paymentMethod" in line ? (line.paymentMethod ?? "") : ""}
-                  onChange={(e) => onSave(sectionId, line.id, { paymentMethod: e.target.value })}
-                  className={`mt-0.5 w-full ${cellXs}`}
-                  list={`${UNIT_DATALIST_ID}-pay-${line.id}`}
-                  placeholder="Нал / безнал"
-                />
-              </label>
-              <datalist id={`${UNIT_DATALIST_ID}-pay-${line.id}`}>
-                <option value="Наличные" />
-                <option value="Безнал" />
-              </datalist>
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-2">
-                Статус оплаты
-                <input
-                  value={"paymentStatus" in line ? (line.paymentStatus ?? "") : ""}
-                  onChange={(e) => onSave(sectionId, line.id, { paymentStatus: e.target.value })}
-                  className={`mt-0.5 w-full ${cellXs}`}
-                  list={`${UNIT_DATALIST_ID}-st-${line.id}`}
-                  placeholder="Статус"
-                />
-              </label>
-              <datalist id={`${UNIT_DATALIST_ID}-st-${line.id}`}>
-                <option value="Оплачено" />
-                <option value="Не оплачено" />
-              </datalist>
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-3">
-                Коммент. подрядчику
-                <input
-                  value={"contractorNote" in line ? (line.contractorNote ?? "") : ""}
-                  onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}
-                  className={`mt-0.5 w-full ${cellXs}`}
-                />
-              </label>
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-3">
-                Реквизиты / счёт
-                <input
-                  value={"contractorRequisites" in line ? (line.contractorRequisites ?? "") : ""}
-                  onChange={(e) => onSave(sectionId, line.id, { contractorRequisites: e.target.value })}
-                  className={`mt-0.5 w-full ${cellXs}`}
-                />
-              </label>
-            </>
-          ) : null}
+
+          <div className="rounded-lg border border-amber-200/85 bg-amber-50/40 p-2">
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-amber-950/85">Наши поля</div>
+            {isContractor ? (
+              <div className="grid gap-1.5 xl:grid-cols-[4.5rem_7rem_1fr_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Внутр.
+                  <input
+                    value={line.costInternal ?? ""}
+                    onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
+                    className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+                    inputMode="decimal"
+                  />
+                </label>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Оплата
+                  <select
+                    value={("paymentMethod" in line ? line.paymentMethod : null)?.trim() || ""}
+                    onChange={(e) =>
+                      onSave(sectionId, line.id, {
+                        paymentMethod: e.target.value === "" ? null : e.target.value,
+                      })
+                    }
+                    className={`mt-0.5 w-full ${cellXs} bg-white`}
+                  >
+                    <option value="">—</option>
+                    {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
+                  Статус оплаты
+                  <div className="mt-0.5 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
+                    <select
+                      value={paymentStatusSelectVal}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "") {
+                          setPickCustomPaymentStatus(false);
+                          onSave(sectionId, line.id, { paymentStatus: null });
+                        } else if (v === "PAID") {
+                          setPickCustomPaymentStatus(false);
+                          onSave(sectionId, line.id, { paymentStatus: PAYMENT_STATUS_PAID });
+                        } else if (v === "UNPAID") {
+                          setPickCustomPaymentStatus(false);
+                          onSave(sectionId, line.id, { paymentStatus: PAYMENT_STATUS_UNPAID });
+                        } else {
+                          setPickCustomPaymentStatus(true);
+                          onSave(sectionId, line.id, { paymentStatus: null });
+                        }
+                      }}
+                      className={`w-full min-w-0 shrink-0 sm:max-w-[9.5rem] ${cellXs} bg-white ${paymentStatusHighlightClass(
+                        pickCustomPaymentStatus ? null : paymentStatusRaw,
+                      )}`}
+                    >
+                      <option value="">Не задано</option>
+                      <option value="PAID">{PAYMENT_STATUS_PAID}</option>
+                      <option value="UNPAID">{PAYMENT_STATUS_UNPAID}</option>
+                      <option value="CUSTOM">Свой вариант…</option>
+                    </select>
+                    {paymentStatusSelectVal === "CUSTOM" ? (
+                      <input
+                        value={
+                          pickCustomPaymentStatus && (paymentStatusRaw == null || paymentStatusRaw === "")
+                            ? ""
+                            : (paymentStatusRaw ?? "")
+                        }
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          onSave(sectionId, line.id, {
+                            paymentStatus: t.trim() === "" ? null : t,
+                          });
+                        }}
+                        placeholder="Текст статуса"
+                        className={`min-w-0 flex-1 ${cellXs}`}
+                      />
+                    ) : null}
+                  </div>
+                </label>
+                <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
+                  Коммент. подрядчику
+                  <input
+                    value={"contractorNote" in line ? (line.contractorNote ?? "") : ""}
+                    onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}
+                    className={`mt-0.5 w-full ${cellXs}`}
+                  />
+                </label>
+                <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
+                  Реквизиты / счёт
+                  <input
+                    value={"contractorRequisites" in line ? (line.contractorRequisites ?? "") : ""}
+                    onChange={(e) => onSave(sectionId, line.id, { contractorRequisites: e.target.value })}
+                    className={`mt-0.5 w-full ${cellXs}`}
+                  />
+                </label>
+                <div className="flex items-end justify-end">
+                  {!line.orderLineId ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
+                      onClick={() => void onDelete(sectionId, line.id)}
+                    >
+                      Уд.
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  Внутр.
+                  <input
+                    value={line.costInternal ?? ""}
+                    onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
+                    className={`mt-0.5 w-full min-w-[4.5rem] ${cellXs} tabular-nums`}
+                    inputMode="decimal"
+                  />
+                </label>
+                {!line.orderLineId ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
+                    onClick={() => void onDelete(sectionId, line.id)}
+                  >
+                    Уд.
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1931,26 +2123,37 @@ function AddLineForm({
   const [unit, setUnit] = React.useState("шт");
   const [qty, setQty] = React.useState("");
   const [up, setUp] = React.useState("");
-  const [cc, setCc] = React.useState("");
   const [ci, setCi] = React.useState("");
   const [pm, setPm] = React.useState("");
-  const [pst, setPst] = React.useState("");
+  const [statusSel, setStatusSel] = React.useState<"" | "PAID" | "UNPAID" | "CUSTOM">("");
+  const [statusCustom, setStatusCustom] = React.useState("");
   const [cn, setCn] = React.useState("");
   const [cr, setCr] = React.useState("");
+
+  const sumPreview = displayLocalLineClientSum({
+    qty: qty || null,
+    unitPriceClient: up || null,
+    costClient: null,
+  });
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    let paymentStatus: string | null = null;
+    if (statusSel === "PAID") paymentStatus = PAYMENT_STATUS_PAID;
+    else if (statusSel === "UNPAID") paymentStatus = PAYMENT_STATUS_UNPAID;
+    else if (statusSel === "CUSTOM") paymentStatus = statusCustom.trim() || null;
+
     onAdd(sectionId, {
       name: name.trim(),
       description: description.trim() || null,
       unit: unit.trim() || null,
       qty: qty.trim() || null,
       unitPriceClient: up.trim() || null,
-      costClient: cc === "" ? null : parseFloat(cc.replace(",", ".")),
+      costClient: null,
       costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
       paymentMethod: pm.trim() || null,
-      paymentStatus: pst.trim() || null,
+      paymentStatus,
       contractorNote: cn.trim() || null,
       contractorRequisites: cr.trim() || null,
     });
@@ -1959,96 +2162,173 @@ function AddLineForm({
     setUnit("шт");
     setQty("");
     setUp("");
-    setCc("");
     setCi("");
     setPm("");
-    setPst("");
+    setStatusSel("");
+    setStatusCustom("");
     setCn("");
     setCr("");
   }
 
   return (
-    <form
-      onSubmit={submit}
-      className="space-y-2 border-t border-dashed border-zinc-200 pt-2 text-xs"
-    >
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <input
-          placeholder="Позиция"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className={`min-w-[6rem] ${cellXs}`}
-        />
-        <input
-          placeholder="Описание"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className={cellXs}
-        />
-        <input
-          placeholder="Ед."
-          value={unit}
-          onChange={(e) => setUnit(e.target.value)}
-          className={cellXs}
-          list={UNIT_DATALIST_ID}
-        />
-        <input
-          placeholder="Кол-во"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          className={`${cellXs} tabular-nums`}
-          inputMode="decimal"
-        />
-        <input
-          placeholder="Цена/ед"
-          value={up}
-          onChange={(e) => setUp(e.target.value)}
-          className={`${cellXs} tabular-nums`}
-          inputMode="decimal"
-        />
-        <input
-          placeholder="Сумма (ручн.)"
-          value={cc}
-          onChange={(e) => setCc(e.target.value)}
-          className={`${cellXs} tabular-nums`}
-          inputMode="decimal"
-        />
-        <input
-          placeholder="Внутр."
-          value={ci}
-          onChange={(e) => setCi(e.target.value)}
-          className={`${cellXs} tabular-nums`}
-          inputMode="decimal"
-        />
-        {isContractor ? (
-          <>
+    <form onSubmit={submit} className="space-y-2 text-xs">
+      <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 p-2">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-sky-900/80">Новая строка · клиенту</div>
+        <div className={ESTIMATE_CLIENT_ROW_GRID}>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Позиция
             <input
-              placeholder="Оплата"
-              value={pm}
-              onChange={(e) => setPm(e.target.value)}
-              className={cellXs}
+              placeholder="Название"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs}`}
             />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Описание
             <input
-              placeholder="Статус оплаты"
-              value={pst}
-              onChange={(e) => setPst(e.target.value)}
-              className={cellXs}
+              placeholder="Описание"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs}`}
             />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Ед.
             <input
-              placeholder="Коммент. подрядчику"
-              value={cn}
-              onChange={(e) => setCn(e.target.value)}
-              className={`sm:col-span-2 ${cellXs}`}
+              placeholder="шт"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs}`}
+              list={UNIT_DATALIST_ID}
             />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Кол-во
             <input
-              placeholder="Счёт / реквизиты"
-              value={cr}
-              onChange={(e) => setCr(e.target.value)}
-              className={`sm:col-span-2 ${cellXs}`}
+              placeholder="Кол-во"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+              inputMode="decimal"
             />
-          </>
-        ) : null}
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Цена/ед
+            <input
+              placeholder="Цена"
+              value={up}
+              onChange={(e) => setUp(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+              inputMode="decimal"
+            />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Сумма
+            <div
+              className={`mt-0.5 flex min-h-[1.75rem] w-full items-center tabular-nums ${cellXs} bg-zinc-100/90 text-zinc-800`}
+              title="Кол-во × цена за ед."
+            >
+              {sumPreview}
+              {sumPreview !== "—" ? <span className="ml-0.5 text-zinc-500">₽</span> : null}
+            </div>
+          </label>
+        </div>
       </div>
+
+      <div className="rounded-lg border border-amber-200/85 bg-amber-50/40 p-2">
+        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-amber-950/85">Новая строка · наши поля</div>
+        {isContractor ? (
+          <div className="grid gap-1.5 xl:grid-cols-[4.5rem_7rem_1fr_minmax(0,1fr)_minmax(0,1fr)]">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Внутр.
+              <input
+                placeholder="₽"
+                value={ci}
+                onChange={(e) => setCi(e.target.value)}
+                className={`mt-0.5 w-full ${cellXs} tabular-nums`}
+                inputMode="decimal"
+              />
+            </label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Оплата
+              <select
+                value={pm}
+                onChange={(e) => setPm(e.target.value)}
+                className={`mt-0.5 w-full ${cellXs} bg-white`}
+              >
+                <option value="">—</option>
+                {PAYMENT_METHOD_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Статус оплаты
+              <div className="mt-0.5 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
+                <select
+                  value={statusSel}
+                  onChange={(e) => setStatusSel(e.target.value as typeof statusSel)}
+                  className={`w-full min-w-0 shrink-0 sm:max-w-[9.5rem] ${cellXs} bg-white ${paymentStatusHighlightClass(
+                    statusSel === "PAID"
+                      ? PAYMENT_STATUS_PAID
+                      : statusSel === "UNPAID"
+                        ? PAYMENT_STATUS_UNPAID
+                        : statusSel === "CUSTOM" && statusCustom.trim()
+                          ? statusCustom
+                          : null,
+                  )}`}
+                >
+                  <option value="">Не задано</option>
+                  <option value="PAID">{PAYMENT_STATUS_PAID}</option>
+                  <option value="UNPAID">{PAYMENT_STATUS_UNPAID}</option>
+                  <option value="CUSTOM">Свой вариант…</option>
+                </select>
+                {statusSel === "CUSTOM" ? (
+                  <input
+                    value={statusCustom}
+                    onChange={(e) => setStatusCustom(e.target.value)}
+                    placeholder="Текст статуса"
+                    className={`min-w-0 flex-1 ${cellXs}`}
+                  />
+                ) : null}
+              </div>
+            </label>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Коммент. подрядчику
+              <input
+                placeholder="Комментарий"
+                value={cn}
+                onChange={(e) => setCn(e.target.value)}
+                className={`mt-0.5 w-full ${cellXs}`}
+              />
+            </label>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
+              Реквизиты / счёт
+              <input
+                placeholder="Счёт / реквизиты"
+                value={cr}
+                onChange={(e) => setCr(e.target.value)}
+                className={`mt-0.5 w-full ${cellXs}`}
+              />
+            </label>
+          </div>
+        ) : (
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Внутр.
+            <input
+              placeholder="₽"
+              value={ci}
+              onChange={(e) => setCi(e.target.value)}
+              className={`mt-0.5 w-full max-w-[6rem] ${cellXs} tabular-nums`}
+              inputMode="decimal"
+            />
+          </label>
+        )}
+      </div>
+
       <button
         type="submit"
         disabled={busy || !name.trim()}
@@ -3101,7 +3381,6 @@ function OrderServiceCard({
   onClientPriceChange: (value: string) => void;
   onInternalCostChange: (value: string) => void;
 }) {
-  const priceInputClass = `${inputField} py-1.5 text-sm tabular-nums`;
   return (
     <div className={`rounded-xl border bg-white/90 px-3 py-2 transition-all ${enabled ? "border-violet-200 shadow-sm" : "border-zinc-200"}`}>
       <div className="flex items-center justify-between gap-3">
@@ -3128,40 +3407,49 @@ function OrderServiceCard({
         </button>
       </div>
       {enabled ? (
-        <div className="mt-2 space-y-2">
-          <input
-            value={comment}
-            onChange={(e) => onCommentChange(e.target.value)}
-            className={`${inputField} py-1.5 text-sm`}
-            disabled={!editable}
-            placeholder="Комментарий"
-          />
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-            {showClientPrice ? (
-              <label className="min-w-[6.5rem] flex-1">
-                <span className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Клиент ₽</span>
-                <input
-                  value={clientPrice}
-                  onChange={(e) => onClientPriceChange(e.target.value)}
-                  className={`mt-0.5 w-full ${priceInputClass}`}
-                  disabled={!editable}
-                  placeholder="0"
-                  inputMode="decimal"
-                />
-              </label>
-            ) : null}
-            <label className="min-w-[6.5rem] flex-1">
-              <span className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Внутр. ₽</span>
+        <div
+          className={`mt-2 grid items-end gap-1.5 ${
+            showClientPrice
+              ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem_4.75rem]"
+              : "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem]"
+          }`}
+        >
+          <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Коммент.
+            <input
+              value={comment}
+              onChange={(e) => onCommentChange(e.target.value)}
+              className={`mt-0.5 w-full ${cellXs}`}
+              disabled={!editable}
+              placeholder="Комментарий"
+            />
+          </label>
+          {showClientPrice ? (
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Клиент ₽
               <input
-                value={internalCost}
-                onChange={(e) => onInternalCostChange(e.target.value)}
-                className={`mt-0.5 w-full ${priceInputClass}`}
+                value={clientPrice}
+                onChange={(e) => onClientPriceChange(e.target.value)}
+                className={`mt-0.5 w-full max-w-[5.5rem] sm:max-w-none ${cellXs} tabular-nums`}
                 disabled={!editable}
                 placeholder="0"
                 inputMode="decimal"
+                maxLength={12}
               />
             </label>
-          </div>
+          ) : null}
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Внутр. ₽
+            <input
+              value={internalCost}
+              onChange={(e) => onInternalCostChange(e.target.value)}
+              className={`mt-0.5 w-full max-w-[5.5rem] sm:max-w-none ${cellXs} tabular-nums`}
+              disabled={!editable}
+              placeholder="0"
+              inputMode="decimal"
+              maxLength={12}
+            />
+          </label>
         </div>
       ) : null}
     </div>

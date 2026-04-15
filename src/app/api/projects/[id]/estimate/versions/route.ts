@@ -1,4 +1,4 @@
-import { type Prisma, ProjectActivityKind, ProjectEstimateSectionKind } from "@prisma/client";
+import { type Prisma, ProjectActivityKind } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -122,15 +122,6 @@ export async function POST(
           });
         }
       }
-    } else {
-      await tx.projectEstimateSection.create({
-        data: {
-          versionId: v.id,
-          sortOrder: 0,
-          title: "Новый раздел",
-          kind: ProjectEstimateSectionKind.LOCAL,
-        },
-      });
     }
 
     await appendProjectActivityLog(tx, {

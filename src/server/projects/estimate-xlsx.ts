@@ -52,6 +52,11 @@ function qtyLabel(line: ProjectEstimateReadLine): string | number {
   return "";
 }
 
+function plannedDaysLabel(line: ProjectEstimateReadLine): string | number {
+  if (line.plannedDays != null && Number.isFinite(Number(line.plannedDays))) return Number(line.plannedDays);
+  return "";
+}
+
 function unitPriceLabel(line: ProjectEstimateReadLine): number | string {
   if (line.unitPriceClient != null && Number.isFinite(line.unitPriceClient)) return line.unitPriceClient;
   const c = lineClient(line);
@@ -73,6 +78,41 @@ function sectionBg(section: ProjectEstimateReadSection): string {
   return COLORS.sectionLocalBg;
 }
 
+function buildExportSections(sections: ProjectEstimateReadSection[]): ProjectEstimateReadSection[] {
+  const sorted = [...sections].sort((a, b) => a.sortOrder - b.sortOrder);
+  const unifiedRequisiteLines = sorted
+    .filter((section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE")
+    .flatMap((section) => section.lines)
+    .map((line, index) => ({
+      ...line,
+      lineNumber: index + 1,
+    }));
+  const firstRequisiteSortOrder = sorted
+    .filter((section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE")
+    .reduce<number | null>((min, section) => (min == null ? section.sortOrder : Math.min(min, section.sortOrder)), null);
+
+  const exportSections = sorted.filter(
+    (section) => section.kind !== "REQUISITE" && section.kind !== "DRAFT_REQUISITE",
+  );
+
+  if (unifiedRequisiteLines.length > 0) {
+    exportSections.push({
+      id: "xlsx:requisite",
+      sortOrder: firstRequisiteSortOrder ?? 0,
+      title: "Реквизит",
+      kind: "REQUISITE",
+      linkedOrderId: null,
+      linkedDraftOrderId: null,
+      linkedOrderStatus: null,
+      linkedOrderEditable: false,
+      lineLocalExtras: null,
+      lines: unifiedRequisiteLines,
+    });
+  }
+
+  return exportSections.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 export type ProjectEstimateXlsxVariant = "internal" | "client";
 
 export async function buildProjectEstimateXlsx(args: {
@@ -84,11 +124,12 @@ export async function buildProjectEstimateXlsx(args: {
 }) {
   const variant = args.variant ?? "internal";
   const isClient = variant === "client";
+  const exportSections = buildExportSections(args.sections);
 
-  const colCount = isClient ? 7 : 12;
+  const colCount = isClient ? 8 : 13;
   const widths = isClient
-    ? [6, 28, 32, 10, 10, 14, 14]
-    : [6, 26, 28, 10, 10, 12, 14, 12, 12, 14, 22, 18];
+    ? [6, 28, 32, 10, 10, 10, 14, 14]
+    : [6, 26, 28, 10, 10, 10, 12, 14, 12, 12, 14, 22, 18];
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Wowstorg";
@@ -113,13 +154,14 @@ export async function buildProjectEstimateXlsx(args: {
   ws.addRow([]);
 
   const headerCells = isClient
-    ? ["№", "Позиция", "Описание", "Ед. изм.", "Кол-во", "Цена за ед., ₽", "Сумма, ₽"]
+    ? ["№", "Позиция", "Описание", "Ед. изм.", "Кол-во", "Дней", "Цена за ед., ₽", "Сумма, ₽"]
     : [
         "№",
         "Позиция",
         "Описание",
         "Ед. изм.",
         "Кол-во",
+        "Дней",
         "Цена за ед., ₽",
         "Сумма, ₽",
         "Внутр., ₽",
@@ -140,7 +182,7 @@ export async function buildProjectEstimateXlsx(args: {
   let clientSubtotal = 0;
   let internalSubtotal = 0;
 
-  for (const section of args.sections) {
+  for (const section of exportSections) {
     const rowVals: (string | number)[] = ["", sectionTitle(section)];
     while (rowVals.length < colCount) rowVals.push("");
     ws.addRow(rowVals);
@@ -171,6 +213,7 @@ export async function buildProjectEstimateXlsx(args: {
           line.description ?? "",
           unitLabel(line),
           qtyLabel(line),
+          plannedDaysLabel(line),
           unitPriceLabel(line),
           client || "",
         ]);
@@ -182,6 +225,7 @@ export async function buildProjectEstimateXlsx(args: {
           line.description ?? "",
           unitLabel(line),
           qtyLabel(line),
+          plannedDaysLabel(line),
           unitPriceLabel(line),
           client || "",
           internal || "",
@@ -194,26 +238,26 @@ export async function buildProjectEstimateXlsx(args: {
       const row = ws.lastRow!.number;
       for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(row, col));
       if (isClient) {
-        ws.getCell(row, 6).numFmt = "#,##0.00";
-        ws.getCell(row, 7).numFmt = "#,##0.00";
-      } else {
-        ws.getCell(row, 6).numFmt = "#,##0.00";
         ws.getCell(row, 7).numFmt = "#,##0.00";
         ws.getCell(row, 8).numFmt = "#,##0.00";
+      } else {
+        ws.getCell(row, 7).numFmt = "#,##0.00";
+        ws.getCell(row, 8).numFmt = "#,##0.00";
+        ws.getCell(row, 9).numFmt = "#,##0.00";
       }
     }
 
     if (isClient) {
-      ws.addRow(["", "", "", "", "", "Итого по разделу", sectionClient]);
+      ws.addRow(["", "", "", "", "", "", "Итого по разделу", sectionClient]);
       const sr = ws.lastRow!.number;
-      ws.mergeCells(sr, 1, sr, 5);
+      ws.mergeCells(sr, 1, sr, 6);
       for (let col = 1; col <= colCount; col++) {
         const cell = ws.getCell(sr, col);
         styleCell(cell);
         cell.font = { name: "Calibri", size: 10, bold: true };
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
       }
-      ws.getCell(sr, 7).numFmt = "#,##0.00";
+      ws.getCell(sr, 8).numFmt = "#,##0.00";
     } else {
       const sectionTotals = calcProjectEstimateTotals({
         clientSubtotal: sectionClient,
@@ -229,18 +273,18 @@ export async function buildProjectEstimateXlsx(args: {
         ["Маржа после условного налога, раздел", sectionTotals.marginAfterTax],
       ];
       for (const [label, value] of footerRows) {
-        const cells: (string | number)[] = [label, "", "", "", "", "", value];
+        const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
         while (cells.length < colCount) cells.push("");
         ws.addRow(cells);
         const fr = ws.lastRow!.number;
-        ws.mergeCells(fr, 1, fr, 6);
+        ws.mergeCells(fr, 1, fr, 7);
         for (let col = 1; col <= colCount; col++) {
           const cell = ws.getCell(fr, col);
           styleCell(cell);
           cell.font = { name: "Calibri", size: 9, bold: true, color: { argb: COLORS.totalText } };
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
         }
-        ws.getCell(fr, 7).numFmt = "#,##0.00";
+        ws.getCell(fr, 8).numFmt = "#,##0.00";
       }
     }
 
@@ -256,17 +300,17 @@ export async function buildProjectEstimateXlsx(args: {
       ["Итого с комиссией", projectTotals.revenueTotal],
     ];
     for (const [label, value] of tail) {
-      const cells: (string | number)[] = [label, "", "", "", "", "", value];
+      const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
       ws.addRow(cells);
       const row = ws.lastRow!.number;
-      ws.mergeCells(row, 1, row, 6);
+      ws.mergeCells(row, 1, row, 7);
       for (let col = 1; col <= colCount; col++) {
         const cell = ws.getCell(row, col);
         styleCell(cell);
         cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.totalText } };
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
       }
-      ws.getCell(row, 7).numFmt = "#,##0.00";
+      ws.getCell(row, 8).numFmt = "#,##0.00";
     }
   } else {
     const tail: [string, number][] = [
@@ -279,18 +323,18 @@ export async function buildProjectEstimateXlsx(args: {
       ["Маржа после условного налога (проект)", projectTotals.marginAfterTax],
     ];
     for (const [label, value] of tail) {
-      const cells: (string | number)[] = [label, "", "", "", "", "", value];
+      const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
       while (cells.length < colCount) cells.push("");
       ws.addRow(cells);
       const row = ws.lastRow!.number;
-      ws.mergeCells(row, 1, row, 6);
+      ws.mergeCells(row, 1, row, 7);
       for (let col = 1; col <= colCount; col++) {
         const cell = ws.getCell(row, col);
         styleCell(cell);
         cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: COLORS.totalText } };
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
       }
-      ws.getCell(row, 7).numFmt = "#,##0.00";
+      ws.getCell(row, 8).numFmt = "#,##0.00";
     }
   }
 

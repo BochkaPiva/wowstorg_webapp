@@ -198,6 +198,8 @@
 | Unified project requisite flow | Для проекта всегда один primary entry point. `demo`-корзина и `real`-корзина разделены по storage scope (`project-demo:<projectId>` и `project:<projectId>`), а новые реальные блоки реквизита должны писаться в явно выбранную пользователем версию сметы, а не в серверный default. |
 | Project Telegram notifications | Уведомления по проекту идут best-effort через `scheduleAfterResponse`; для шумных блоков (`estimate`, `schedule`, `files`) cooldown хранится в БД (`ProjectNotificationCooldown`) на 15 минут. |
 | Доп. услуги и прибыль | Клиентские цены услуг (`deliveryPrice` / `montagePrice` / `demontagePrice`) и внутренние затраты (`deliveryInternalCost` / `montageInternalCost` / `demontageInternalCost`) должны расходиться только в местах, где UI явно показывает выручку vs себестоимость; прибыль по проектной смете считается через `costInternal`, а обязательность клиентской цены проверяется на переходах заказа. |
+| Пустые draft-версии сметы | Новая версия сметы не должна получать обязательный `LOCAL`-раздел по умолчанию; пользователь сам решает, создавать ли локальные блоки. |
+| Save local sections | `PATCH /api/projects/[id]/estimate` остаётся batch-сохранением только для `LOCAL` / `CONTRACTOR`, но клиент и сервер обязаны защищаться от случайного удаления всех локальных секций из-за stale `localStorage`: пустой destructive draft нельзя молча применять без явного подтверждения. |
 
 **Закрыто в спеке:** заявка из каталога проекта — только `WOWSTORG_EXTERNAL` и full price; смета проекта и смета/строки заявки — разные сущности; блоки реквизита 1:1 с заявкой ([`projects.md`](./projects.md) § Уточнения).
 

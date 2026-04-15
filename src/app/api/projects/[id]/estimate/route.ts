@@ -31,13 +31,14 @@ const DraftLineSchema = z
 const PatchDraftSchema = z
   .object({
     versionNumber: z.number().int().positive(),
+    allowDeleteAllLocalSections: z.boolean().optional(),
     localSections: z
       .array(
         z
           .object({
             id: z.string().trim().min(1).optional(),
             title: z.string().trim().min(1).max(200),
-            sortOrder: z.number().int().min(0).max(10000),
+            sortOrder: z.number().int().min(-10000).max(10000),
             kind: z.enum(["LOCAL", "CONTRACTOR"]).optional(),
             lines: z.array(DraftLineSchema).max(1000),
           })
@@ -92,7 +93,7 @@ export async function PATCH(
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  const { versionNumber, localSections } = parsed.data;
+  const { versionNumber, localSections, allowDeleteAllLocalSections } = parsed.data;
 
   const version = await prisma.projectEstimateVersion.findFirst({
     where: { projectId, versionNumber },
@@ -100,123 +101,132 @@ export async function PATCH(
   });
   if (!version) return jsonError(404, "Версия сметы не найдена");
 
-  await prisma.$transaction(async (tx) => {
-    const existingSections = await tx.projectEstimateSection.findMany({
-      where: {
-        versionId: version.id,
-        kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
-      },
-      include: {
-        lines: {
-          orderBy: { position: "asc" },
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existingSections = await tx.projectEstimateSection.findMany({
+        where: {
+          versionId: version.id,
+          kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
         },
-      },
-      orderBy: { sortOrder: "asc" },
-    });
+        include: {
+          lines: {
+            orderBy: { position: "asc" },
+          },
+        },
+        orderBy: { sortOrder: "asc" },
+      });
 
-    const existingSectionMap = new Map(existingSections.map((section) => [section.id, section]));
-    const keptSectionIds = new Set(
-      localSections
-        .map((section) => section.id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0)
-        .filter((id) => existingSectionMap.has(id)),
-    );
-
-    for (const section of existingSections) {
-      if (!keptSectionIds.has(section.id)) {
-        await tx.projectEstimateSection.delete({ where: { id: section.id } });
+      const existingSectionMap = new Map(existingSections.map((section) => [section.id, section]));
+      if (existingSections.length > 0 && localSections.length === 0 && !allowDeleteAllLocalSections) {
+        throw new Error("DELETE_ALL_LOCAL_SECTIONS_REQUIRES_CONFIRMATION");
       }
-    }
-
-    for (const sectionDraft of localSections.sort((a, b) => a.sortOrder - b.sortOrder)) {
-      const existingSection =
-        sectionDraft.id && existingSectionMap.has(sectionDraft.id)
-          ? existingSectionMap.get(sectionDraft.id)!
-          : null;
-
-      const sectionKind =
-        sectionDraft.kind === "CONTRACTOR"
-          ? ProjectEstimateSectionKind.CONTRACTOR
-          : ProjectEstimateSectionKind.LOCAL;
-
-      const savedSection = existingSection
-        ? await tx.projectEstimateSection.update({
-            where: { id: existingSection.id },
-            data: {
-              title: sectionDraft.title.trim(),
-              sortOrder: sectionDraft.sortOrder,
-              kind: sectionKind,
-            },
-          })
-        : await tx.projectEstimateSection.create({
-            data: {
-              versionId: version.id,
-              title: sectionDraft.title.trim(),
-              sortOrder: sectionDraft.sortOrder,
-              kind: sectionKind,
-            },
-          });
-
-      const existingLineMap = new Map((existingSection?.lines ?? []).map((line) => [line.id, line]));
-      const keptLineIds = new Set(
-        sectionDraft.lines
-          .map((line) => line.id)
+      const keptSectionIds = new Set(
+        localSections
+          .map((section) => section.id)
           .filter((id): id is string => typeof id === "string" && id.length > 0)
-          .filter((id) => existingLineMap.has(id)),
+          .filter((id) => existingSectionMap.has(id)),
       );
 
-      for (const line of existingSection?.lines ?? []) {
-        if (!keptLineIds.has(line.id)) {
-          await tx.projectEstimateLine.delete({ where: { id: line.id } });
+      for (const section of existingSections) {
+        if (!keptSectionIds.has(section.id)) {
+          await tx.projectEstimateSection.delete({ where: { id: section.id } });
         }
       }
 
-      for (const lineDraft of sectionDraft.lines.sort((a, b) => a.position - b.position)) {
-        const data = {
-          sectionId: savedSection.id,
-          position: lineDraft.position,
-          lineNumber: lineDraft.lineNumber,
-          name: lineDraft.name.trim(),
-          description: lineDraft.description?.trim() || null,
-          lineType: lineDraft.lineType?.trim() || "OTHER",
-          costClient:
-            lineDraft.costClient == null ? null : new Prisma.Decimal(lineDraft.costClient),
-          costInternal:
-            lineDraft.costInternal == null ? null : new Prisma.Decimal(lineDraft.costInternal),
-          unit: lineDraft.unit === undefined ? undefined : lineDraft.unit?.trim() || null,
-          qty: lineDraft.qty == null ? null : new Prisma.Decimal(lineDraft.qty),
-          unitPriceClient:
-            lineDraft.unitPriceClient == null ? null : new Prisma.Decimal(lineDraft.unitPriceClient),
-          paymentMethod:
-            lineDraft.paymentMethod === undefined
-              ? undefined
-              : lineDraft.paymentMethod?.trim() || null,
-          paymentStatus:
-            lineDraft.paymentStatus === undefined
-              ? undefined
-              : lineDraft.paymentStatus?.trim() || null,
-          contractorNote:
-            lineDraft.contractorNote === undefined
-              ? undefined
-              : lineDraft.contractorNote?.trim() || null,
-          contractorRequisites:
-            lineDraft.contractorRequisites === undefined
-              ? undefined
-              : lineDraft.contractorRequisites?.trim() || null,
-        };
+      for (const sectionDraft of localSections.sort((a, b) => a.sortOrder - b.sortOrder)) {
+        const existingSection =
+          sectionDraft.id && existingSectionMap.has(sectionDraft.id)
+            ? existingSectionMap.get(sectionDraft.id)!
+            : null;
 
-        if (lineDraft.id && existingLineMap.has(lineDraft.id)) {
-          await tx.projectEstimateLine.update({
-            where: { id: lineDraft.id },
-            data,
-          });
-        } else {
-          await tx.projectEstimateLine.create({ data });
+        const sectionKind =
+          sectionDraft.kind === "CONTRACTOR"
+            ? ProjectEstimateSectionKind.CONTRACTOR
+            : ProjectEstimateSectionKind.LOCAL;
+
+        const savedSection = existingSection
+          ? await tx.projectEstimateSection.update({
+              where: { id: existingSection.id },
+              data: {
+                title: sectionDraft.title.trim(),
+                sortOrder: sectionDraft.sortOrder,
+                kind: sectionKind,
+              },
+            })
+          : await tx.projectEstimateSection.create({
+              data: {
+                versionId: version.id,
+                title: sectionDraft.title.trim(),
+                sortOrder: sectionDraft.sortOrder,
+                kind: sectionKind,
+              },
+            });
+
+        const existingLineMap = new Map((existingSection?.lines ?? []).map((line) => [line.id, line]));
+        const keptLineIds = new Set(
+          sectionDraft.lines
+            .map((line) => line.id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+            .filter((id) => existingLineMap.has(id)),
+        );
+
+        for (const line of existingSection?.lines ?? []) {
+          if (!keptLineIds.has(line.id)) {
+            await tx.projectEstimateLine.delete({ where: { id: line.id } });
+          }
+        }
+
+        for (const lineDraft of sectionDraft.lines.sort((a, b) => a.position - b.position)) {
+          const data = {
+            sectionId: savedSection.id,
+            position: lineDraft.position,
+            lineNumber: lineDraft.lineNumber,
+            name: lineDraft.name.trim(),
+            description: lineDraft.description?.trim() || null,
+            lineType: lineDraft.lineType?.trim() || "OTHER",
+            costClient:
+              lineDraft.costClient == null ? null : new Prisma.Decimal(lineDraft.costClient),
+            costInternal:
+              lineDraft.costInternal == null ? null : new Prisma.Decimal(lineDraft.costInternal),
+            unit: lineDraft.unit === undefined ? undefined : lineDraft.unit?.trim() || null,
+            qty: lineDraft.qty == null ? null : new Prisma.Decimal(lineDraft.qty),
+            unitPriceClient:
+              lineDraft.unitPriceClient == null ? null : new Prisma.Decimal(lineDraft.unitPriceClient),
+            paymentMethod:
+              lineDraft.paymentMethod === undefined
+                ? undefined
+                : lineDraft.paymentMethod?.trim() || null,
+            paymentStatus:
+              lineDraft.paymentStatus === undefined
+                ? undefined
+                : lineDraft.paymentStatus?.trim() || null,
+            contractorNote:
+              lineDraft.contractorNote === undefined
+                ? undefined
+                : lineDraft.contractorNote?.trim() || null,
+            contractorRequisites:
+              lineDraft.contractorRequisites === undefined
+                ? undefined
+                : lineDraft.contractorRequisites?.trim() || null,
+          };
+
+          if (lineDraft.id && existingLineMap.has(lineDraft.id)) {
+            await tx.projectEstimateLine.update({
+              where: { id: lineDraft.id },
+              data,
+            });
+          } else {
+            await tx.projectEstimateLine.create({ data });
+          }
         }
       }
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "DELETE_ALL_LOCAL_SECTIONS_REQUIRES_CONFIRMATION") {
+      return jsonError(400, "Подтвердите удаление всех локальных разделов перед сохранением");
     }
-  });
-
+    throw e;
+  }
   scheduleAfterResponse("notifyProjectEstimateDraftSaved", async () => {
     const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
     await notifyProjectNoisyBlock({

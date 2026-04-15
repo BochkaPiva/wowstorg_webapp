@@ -1,6 +1,11 @@
 import { ProjectEstimateSectionKind } from "@prisma/client";
 
 import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
+import {
+  calcProjectEstimateRequisiteTotal,
+  calcProjectEstimateRequisiteUnitPricePerDay,
+  normalizeProjectEstimateDays,
+} from "@/lib/project-estimate-requisite";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { daysBetween } from "@/server/orders/order-total";
@@ -19,12 +24,6 @@ function unitLabelFromExtras(extras: Record<string, { unit?: string | null }>, l
   const u = extras[lineId]?.unit;
   const t = typeof u === "string" ? u.trim() : "";
   return t.length > 0 ? t : null;
-}
-
-/** Клиентская цена за единицу (для сметы): итог / кол-во. */
-function clientUnitPrice(totalRounded: number, qty: number): number | null {
-  if (!Number.isFinite(totalRounded) || !(qty > 0)) return null;
-  return Math.round(totalRounded / qty);
 }
 
 const EDITABLE_ORDER_STATUSES = new Set([
@@ -218,14 +217,20 @@ export async function buildProjectEstimateReadModel(args: {
 
               if (linkedOrder) {
                 const extras = parseLineLocalExtras(section.lineLocalExtras);
-                const dayCount = daysBetween(linkedOrder.startDate, linkedOrder.endDate);
+                const dayCount = normalizeProjectEstimateDays(
+                  daysBetween(linkedOrder.startDate, linkedOrder.endDate),
+                ) ?? 1;
                 const payMultiplier =
                   linkedOrder.payMultiplier != null ? Number(linkedOrder.payMultiplier) : 1;
                 const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => {
-                  const clientTotal = Math.round(
-                    Number(line.pricePerDaySnapshot ?? 0) * line.requestedQty * dayCount * payMultiplier,
-                  );
                   const qty = line.requestedQty;
+                  const clientTotal =
+                    calcProjectEstimateRequisiteTotal({
+                      pricePerDay: line.pricePerDaySnapshot ?? 0,
+                      qty,
+                      plannedDays: dayCount,
+                      payMultiplier,
+                    }) ?? 0;
                   return {
                     id: line.id,
                     position: line.position,
@@ -239,7 +244,11 @@ export async function buildProjectEstimateReadModel(args: {
                     orderLineId: line.id,
                     itemId: line.itemId,
                     unit: unitLabelFromExtras(extras, line.id),
-                    unitPriceClient: clientUnitPrice(clientTotal, qty),
+                    unitPriceClient: calcProjectEstimateRequisiteUnitPricePerDay({
+                      totalClient: clientTotal,
+                      qty,
+                      plannedDays: dayCount,
+                    }),
                     qty,
                     plannedDays: dayCount,
                     pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
@@ -270,8 +279,9 @@ export async function buildProjectEstimateReadModel(args: {
                           orderLineId: null,
                           itemId: null,
                           unit: unitLabelFromExtras(extras, sid) ?? "усл.",
-                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          unitPriceClient: clientTotal,
                           qty: 1,
+                          plannedDays: null,
                           maxQtyPhysical: null,
                         };
                       })()
@@ -298,8 +308,9 @@ export async function buildProjectEstimateReadModel(args: {
                           orderLineId: null,
                           itemId: null,
                           unit: unitLabelFromExtras(extras, sid) ?? "усл.",
-                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          unitPriceClient: clientTotal,
                           qty: 1,
+                          plannedDays: null,
                           maxQtyPhysical: null,
                         };
                       })()
@@ -326,8 +337,9 @@ export async function buildProjectEstimateReadModel(args: {
                           orderLineId: null,
                           itemId: null,
                           unit: unitLabelFromExtras(extras, sid) ?? "усл.",
-                          unitPriceClient: clientUnitPrice(clientTotal, 1),
+                          unitPriceClient: clientTotal,
                           qty: 1,
+                          plannedDays: null,
                           maxQtyPhysical: null,
                         };
                       })()
@@ -377,7 +389,7 @@ export async function buildProjectEstimateReadModel(args: {
                     qtyNum != null &&
                     qtyNum > 0
                   ) {
-                    unitP = clientUnitPrice(Math.round(costNum), qtyNum);
+                    unitP = Math.round(costNum / qtyNum);
                   }
                   return {
                     id: line.id,
@@ -419,10 +431,14 @@ export async function buildProjectEstimateReadModel(args: {
                       lineLocalExtras: null,
                       lines: draftOrder.lines.map((line, index) => {
                         const qty = line.qty;
-                        const days = Math.max(1, line.plannedDays ?? 1);
+                        const days = normalizeProjectEstimateDays(line.plannedDays ?? 1) ?? 1;
                         const clientTotal =
                           line.pricePerDaySnapshot != null
-                            ? Math.round(Number(line.pricePerDaySnapshot) * qty * days)
+                            ? calcProjectEstimateRequisiteTotal({
+                                pricePerDay: line.pricePerDaySnapshot,
+                                qty,
+                                plannedDays: days,
+                              })
                             : null;
                         return {
                           id: line.id,
@@ -445,7 +461,13 @@ export async function buildProjectEstimateReadModel(args: {
                           itemId: line.itemId,
                           unit: "шт",
                           unitPriceClient:
-                            clientTotal != null && qty > 0 ? clientUnitPrice(clientTotal, qty) : null,
+                            clientTotal != null
+                              ? calcProjectEstimateRequisiteUnitPricePerDay({
+                                  totalClient: clientTotal,
+                                  qty,
+                                  plannedDays: days,
+                                })
+                              : null,
                           qty,
                           plannedDays: days,
                           pricePerDaySnapshot:

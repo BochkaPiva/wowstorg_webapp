@@ -10,6 +10,11 @@ import {
   normalizedLocalLineCostClientString,
   parseEstimateQtyUp,
 } from "@/lib/project-estimate-local-line";
+import {
+  calcProjectEstimateRequisiteTotal,
+  calcProjectEstimateRequisiteUnitPricePerDay,
+  normalizeProjectEstimateDays,
+} from "@/lib/project-estimate-requisite";
 import { calcProjectEstimateTotals, getNumericAmount } from "@/lib/project-estimate-totals";
 
 type EstLine = {
@@ -255,7 +260,7 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
-const ESTIMATE_DRAFT_SCHEMA_VERSION = 2;
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 3;
 
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -372,11 +377,26 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
     }));
 }
 
+function sortSectionsBySortOrder<T extends { sortOrder: number }>(sections: T[]): T[] {
+  return [...sections].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function nextSectionSortOrderAtTop(
+  localSections: LocalDraftSection[],
+  persistedSections: EstSection[] | null | undefined,
+): number {
+  const allSortOrders = [
+    ...localSections.map((section) => section.sortOrder),
+    ...(persistedSections ?? []).map((section) => section.sortOrder),
+  ];
+  return (allSortOrders.length > 0 ? Math.min(...allSortOrders) : 0) - 1;
+}
+
 function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
-  return sections
+  return sortSectionsBySortOrder(sections)
     .map((section, sectionIndex) => ({
       title: section.title.trim(),
-      sortOrder: sectionIndex,
+      sortOrder: section.sortOrder,
       kind: section.kind,
       lines: section.lines.map((line, lineIndex) => ({
         name: line.name.trim(),
@@ -419,10 +439,10 @@ function parseDraftLineMeta(line: EstLine) {
         })();
   const plannedDays =
     typeof line.plannedDays === "number" && Number.isFinite(line.plannedDays)
-      ? Math.max(1, line.plannedDays)
+      ? normalizeProjectEstimateDays(line.plannedDays) ?? 1
       : (() => {
           const match = line.description?.match(/Дней:\s*(\d+)/);
-          return match ? Math.max(1, Number(match[1])) : 1;
+          return match ? normalizeProjectEstimateDays(Number(match[1])) ?? 1 : 1;
         })();
   const pricePerDay =
     typeof line.pricePerDaySnapshot === "number" && Number.isFinite(line.pricePerDaySnapshot)
@@ -431,7 +451,11 @@ function parseDraftLineMeta(line: EstLine) {
           if (line.costClient == null) return 0;
           const total = Number(line.costClient);
           if (!Number.isFinite(total) || qty <= 0 || plannedDays <= 0) return 0;
-          return total / qty / plannedDays;
+          return calcProjectEstimateRequisiteUnitPricePerDay({
+            totalClient: total,
+            qty,
+            plannedDays,
+          }) ?? 0;
         })();
   const extraDescription =
     line.description
@@ -589,7 +613,7 @@ export function ProjectEstimatePanel({
           } else {
             setData(j);
             const versionNumber = j.current?.versionNumber ?? null;
-            const baseSections = j.current?.sections ? cloneLocalSections(j.current.sections) : [];
+            const baseSections = j.current?.sections ? sortSectionsBySortOrder(cloneLocalSections(j.current.sections)) : [];
             if (versionNumber != null) {
               const storageKey = draftEstimateStorageKey(projectId, versionNumber);
               const raw = window.localStorage.getItem(storageKey);
@@ -601,8 +625,19 @@ export function ProjectEstimatePanel({
                     parsed.versionNumber === versionNumber &&
                     Array.isArray(parsed.sections)
                   ) {
-                    setLocalSectionsDraft(parsed.sections);
-                    setEstimateDraftDirty(true);
+                    const storedSections = sortSectionsBySortOrder(parsed.sections);
+                    const hasDestructiveEmptyDraft = storedSections.length === 0 && baseSections.length > 0;
+                    const isSameAsServer =
+                      JSON.stringify(normalizeLocalSectionsForCompare(storedSections)) ===
+                      JSON.stringify(normalizeLocalSectionsForCompare(baseSections));
+                    if (hasDestructiveEmptyDraft || isSameAsServer) {
+                      window.localStorage.removeItem(storageKey);
+                      setLocalSectionsDraft(baseSections);
+                      setEstimateDraftDirty(false);
+                    } else {
+                      setLocalSectionsDraft(storedSections);
+                      setEstimateDraftDirty(true);
+                    }
                   } else {
                     window.localStorage.removeItem(storageKey);
                     setLocalSectionsDraft(baseSections);
@@ -796,26 +831,22 @@ export function ProjectEstimatePanel({
     e.preventDefault();
     if (!newSectionTitle.trim() || readOnly) return;
     mutateLocalSections((prev) => [
-      ...prev,
       {
         id: makeTempId("section"),
-        sortOrder: prev.length,
+        sortOrder: nextSectionSortOrderAtTop(prev, data?.current?.sections),
         title: newSectionTitle.trim(),
         kind: newSectionKind,
         linkedOrderId: null,
         lines: [],
       },
+      ...prev,
     ]);
     setNewSectionTitle("");
   }
 
   function deleteSection(id: string) {
     if (!window.confirm("Удалить раздел и все его строки?")) return;
-    mutateLocalSections((prev) =>
-      prev
-        .filter((section) => section.id !== id)
-        .map((section, index) => ({ ...section, sortOrder: index })),
-    );
+    mutateLocalSections((prev) => prev.filter((section) => section.id !== id));
   }
 
   function patchSection(sectionId: string, patch: { title?: string }) {
@@ -1000,6 +1031,14 @@ export function ProjectEstimatePanel({
 
   async function saveEstimateDraft() {
     if (readOnly || currentVersionNumber == null) return;
+    const baseSections = data?.current?.sections ? cloneLocalSections(data.current.sections) : [];
+    const deletingAllLocalSections = localSectionsDraft.length === 0 && baseSections.length > 0;
+    if (
+      deletingAllLocalSections &&
+      !window.confirm("Удалить все локальные разделы сметы из этой версии?")
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/estimate`, {
@@ -1007,10 +1046,11 @@ export function ProjectEstimatePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           versionNumber: currentVersionNumber,
-          localSections: localSectionsDraft.map((section, sectionIndex) => ({
+          allowDeleteAllLocalSections: deletingAllLocalSections,
+          localSections: sortSectionsBySortOrder(localSectionsDraft).map((section) => ({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
-            sortOrder: sectionIndex,
+            sortOrder: section.sortOrder,
             kind: section.kind,
             lines: section.lines.map((line, lineIndex) => ({
               id: line.id.startsWith("draft-") ? undefined : line.id,
@@ -1107,30 +1147,26 @@ export function ProjectEstimatePanel({
     const requisites = data.current.sections.filter(
       (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
     );
-    return [...requisites, ...localSectionsDraft].sort((a, b) => a.sortOrder - b.sortOrder);
+    return sortSectionsBySortOrder([...requisites, ...localSectionsDraft]);
   }, [data?.current, localSectionsDraft]);
 
   const dirtyLocalLineIds = React.useMemo(() => {
     const dirtyIds = new Set<string>();
     if (!data?.current) return dirtyIds;
     const baseline = cloneLocalSections(data.current.sections);
-    const normalizedBase = normalizeLocalSectionsForCompare(baseline);
-    const normalizedDraft = normalizeLocalSectionsForCompare(localSectionsDraft);
-    const baseBySectionTitle = new Map(
-      baseline.map((section, sectionIndex) => [
-        `${normalizedBase[sectionIndex]?.title ?? section.title.trim()}::${sectionIndex}`,
-        section,
-      ]),
+    const normalizedBase = new Map(
+      sortSectionsBySortOrder(baseline).map((section) => [section.id, normalizeLocalSectionsForCompare([section])[0]]),
     );
-
-    localSectionsDraft.forEach((section, sectionIndex) => {
-      const normalizedSection = normalizedDraft[sectionIndex];
-      const baseSection = baseBySectionTitle.get(`${normalizedSection?.title ?? section.title.trim()}::${sectionIndex}`);
+    localSectionsDraft.forEach((section) => {
+      const normalizedSection = normalizeLocalSectionsForCompare([section])[0];
+      const baseSection = section.id.startsWith("draft-")
+        ? null
+        : baseline.find((candidate) => candidate.id === section.id) ?? null;
       if (!baseSection) {
         section.lines.forEach((line) => dirtyIds.add(line.id));
         return;
       }
-      const baseLines = normalizeLocalSectionsForCompare([baseSection])[0]?.lines ?? [];
+      const baseLines = normalizedBase.get(baseSection.id)?.lines ?? [];
       section.lines.forEach((line, lineIndex) => {
         const current = normalizedSection?.lines[lineIndex];
         const previous = baseLines[lineIndex];
@@ -1179,9 +1215,9 @@ export function ProjectEstimatePanel({
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
             Блоки реквизита читаются из живых заявок проекта, а локальные разделы можно собирать черновиком и сохранить в БД одним
-            действием. В универсальных разделах и у подрядчиков сумма клиенту считается как количество × цена за ед.; комиссия 15% и
-            условный налог 6% (от суммы клиентских строк) совпадают с внутренним XLSX. Маржа после налога = валовая маржа (сумма
-            клиентских строк − себестоимость) − налог 6%.
+            действием. В блоках реквизита цена за ед. показывается как ставка за 1 единицу в 1 день, а итог строки считается по
+            формуле количество × дней × ставка. В универсальных разделах и у подрядчиков сумма клиенту считается как количество × цена
+            за ед. Комиссия 15% входит в выручку, а условный налог 6% считается от выручки с комиссией, как и во внутреннем XLSX.
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -2770,7 +2806,7 @@ function RequisiteSectionEditor({
             <div className="space-y-2">
               {lines.map((line, index) => {
                 const maxQty = maxQtyAllowedForRequisiteLine(linesForCap, index, availableForDatesByItemId);
-                const dayC = daysBetween(order.startDate, order.endDate);
+                const dayC = normalizeProjectEstimateDays(daysBetween(order.startDate, order.endDate)) ?? 1;
                 const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
                 const lk = String(line.id ?? `${line.itemId}-${index}`);
                 const qtyDraftRaw = requisiteQtyDraft[lk];
@@ -2780,11 +2816,22 @@ function RequisiteSectionEditor({
                       ? 0
                       : Math.max(1, Number.parseInt(qtyDraftRaw, 10) || 0)
                     : line.requestedQty;
-                const lineTotal = Math.round((line.pricePerDaySnapshot ?? 0) * qtyDisplay * dayC * mult);
-                const ppu = qtyDisplay > 0 ? Math.round(lineTotal / qtyDisplay) : 0;
+                const lineTotal =
+                  calcProjectEstimateRequisiteTotal({
+                    pricePerDay: line.pricePerDaySnapshot ?? 0,
+                    qty: qtyDisplay,
+                    plannedDays: dayC,
+                    payMultiplier: mult,
+                  }) ?? 0;
+                const ppu =
+                  calcProjectEstimateRequisiteUnitPricePerDay({
+                    totalClient: lineTotal,
+                    qty: qtyDisplay,
+                    plannedDays: dayC,
+                  }) ?? 0;
                 return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
-                <div className="grid gap-2 text-xs xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_5rem_auto]">
+                <div className="grid gap-2 text-xs xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_4.5rem_5rem_auto]">
                   <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Позиция
                     <input value={line.name} readOnly className={`mt-0.5 w-full ${cellXs} bg-zinc-50`} />
@@ -2841,6 +2888,10 @@ function RequisiteSectionEditor({
                       aria-valuemax={maxQty > 0 ? maxQty : undefined}
                     />
                   </label>
+                  <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
+                    <div className="text-[9px] font-semibold uppercase text-zinc-500">Дней</div>
+                    <div className="mt-0.5 text-xs font-bold tabular-nums text-zinc-900">{dayC}</div>
+                  </div>
                   <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
                     <div className="text-[9px] font-semibold uppercase text-zinc-500">Цена/ед</div>
                     <div className="mt-0.5 text-xs font-bold tabular-nums text-zinc-900">{formatOrderMoney(ppu)} ₽</div>

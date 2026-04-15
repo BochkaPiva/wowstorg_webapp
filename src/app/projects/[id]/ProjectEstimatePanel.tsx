@@ -5,6 +5,12 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
+import {
+  normalizedLocalLineCostClientNumber,
+  normalizedLocalLineCostClientString,
+  parseEstimateQtyUp,
+} from "@/lib/project-estimate-local-line";
+import { calcProjectEstimateTotals, getNumericAmount } from "@/lib/project-estimate-totals";
 
 type EstLine = {
   id: string;
@@ -114,6 +120,7 @@ type LocalDraftSection = {
 };
 
 type StoredEstimateDraft = {
+  schemaVersion: number;
   versionNumber: number;
   sections: LocalDraftSection[];
 };
@@ -248,6 +255,8 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 2;
+
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -262,6 +271,55 @@ function formatRuDateFromISO(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
   if (!y || !m || !d) return dateOnly;
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
+}
+
+type DraftMaterializeAssignment = {
+  lineId: string;
+  startDate: string;
+  endDate: string;
+};
+
+function buildDraftMaterializeAssignments(args: {
+  lineIds: string[];
+  startDate: string;
+  endDate: string;
+}): DraftMaterializeAssignment[] {
+  return args.lineIds.map((lineId) => ({
+    lineId,
+    startDate: args.startDate,
+    endDate: args.endDate,
+  }));
+}
+
+function groupDraftMaterializeAssignments(
+  assignments: DraftMaterializeAssignment[],
+): Array<{ key: string; title: string; readyByDate: string; startDate: string; endDate: string; lineIds: string[] }> {
+  const grouped = new Map<string, { startDate: string; endDate: string; lineIds: string[] }>();
+  for (const assignment of assignments) {
+    const key = `${assignment.startDate}__${assignment.endDate}`;
+    const current = grouped.get(key);
+    if (current) {
+      current.lineIds.push(assignment.lineId);
+      continue;
+    }
+    grouped.set(key, {
+      startDate: assignment.startDate,
+      endDate: assignment.endDate,
+      lineIds: [assignment.lineId],
+    });
+  }
+
+  return [...grouped.entries()].map(([key, value]) => ({
+    key,
+    title:
+      value.startDate === value.endDate
+        ? formatRuDateFromISO(value.startDate)
+        : `${formatRuDateFromISO(value.startDate)} — ${formatRuDateFromISO(value.endDate)}`,
+    readyByDate: value.startDate,
+    startDate: value.startDate,
+    endDate: value.endDate,
+    lineIds: value.lineIds,
+  }));
 }
 
 const UNIT_DATALIST_ID = "project-estimate-unit-presets";
@@ -323,7 +381,7 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
       lines: section.lines.map((line, lineIndex) => ({
         name: line.name.trim(),
         description: line.description?.trim() || null,
-        costClient: line.costClient == null || line.costClient === "" ? null : String(Number(line.costClient)),
+        costClient: normalizedLocalLineCostClientString(line),
         costInternal: line.costInternal == null || line.costInternal === "" ? null : String(Number(line.costInternal)),
         unit: line.unit?.trim() || null,
         qty: line.qty?.trim() || null,
@@ -538,14 +596,20 @@ export function ProjectEstimatePanel({
               if (raw) {
                 try {
                   const parsed = JSON.parse(raw) as StoredEstimateDraft;
-                  if (parsed.versionNumber === versionNumber && Array.isArray(parsed.sections)) {
+                  if (
+                    parsed.schemaVersion === ESTIMATE_DRAFT_SCHEMA_VERSION &&
+                    parsed.versionNumber === versionNumber &&
+                    Array.isArray(parsed.sections)
+                  ) {
                     setLocalSectionsDraft(parsed.sections);
                     setEstimateDraftDirty(true);
                   } else {
+                    window.localStorage.removeItem(storageKey);
                     setLocalSectionsDraft(baseSections);
                     setEstimateDraftDirty(false);
                   }
                 } catch {
+                  window.localStorage.removeItem(storageKey);
                   setLocalSectionsDraft(baseSections);
                   setEstimateDraftDirty(false);
                 }
@@ -623,6 +687,7 @@ export function ProjectEstimatePanel({
       return;
     }
     const payload: StoredEstimateDraft = {
+      schemaVersion: ESTIMATE_DRAFT_SCHEMA_VERSION,
       versionNumber: currentVersionNumber!,
       sections: localSectionsDraft,
     };
@@ -954,7 +1019,7 @@ export function ProjectEstimatePanel({
               name: line.name.trim(),
               description: line.description?.trim() || null,
               lineType: line.lineType || "OTHER",
-              costClient: line.costClient == null || line.costClient === "" ? null : Number(line.costClient),
+              costClient: normalizedLocalLineCostClientNumber(line),
               costInternal: line.costInternal == null || line.costInternal === "" ? null : Number(line.costInternal),
               unit: line.unit?.trim() || null,
               qty:
@@ -1084,27 +1149,20 @@ export function ProjectEstimatePanel({
     let internalSubtotal = 0;
     for (const s of sections) {
       for (const l of s.lines) {
-        const c = l.costClient != null ? Number(l.costClient) : 0;
-        const i = l.costInternal != null ? Number(l.costInternal) : 0;
-        if (Number.isFinite(c)) clientSubtotal += c;
-        if (Number.isFinite(i)) internalSubtotal += i;
+        clientSubtotal += getNumericAmount(l.costClient);
+        internalSubtotal += getNumericAmount(l.costInternal);
       }
     }
-    const commission = Math.round(clientSubtotal * COMMISSION_RATE_UI);
-    const clientTotal = clientSubtotal + commission;
-    const tax6 = Math.round(clientSubtotal * TAX_RATE_UI);
-    const grossMargin = Math.round(clientSubtotal - internalSubtotal);
-    const marginAfterTax = Math.round(grossMargin - tax6);
-    const marginAfterTaxPct = clientTotal > 0 ? (marginAfterTax / clientTotal) * 100 : 0;
+    const computed = calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
     return {
-      clientSubtotal,
-      tax6,
-      commission,
-      clientTotal,
-      internalSubtotal,
-      grossMargin,
-      marginAfterTax,
-      marginAfterTaxPct,
+      clientSubtotal: computed.clientSubtotal,
+      tax6: computed.tax,
+      commission: computed.commission,
+      clientTotal: computed.revenueTotal,
+      internalSubtotal: computed.internalSubtotal,
+      grossMargin: computed.grossMargin,
+      marginAfterTax: computed.marginAfterTax,
+      marginAfterTaxPct: computed.marginAfterTaxPct,
     };
   }, [renderedSections]);
 
@@ -1807,29 +1865,11 @@ const cellXs = "rounded border border-zinc-200 bg-white px-2 py-1 text-xs shadow
 const ESTIMATE_CLIENT_ROW_GRID =
   "grid gap-1.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_4rem_4.5rem_4.5rem]";
 
-const TAX_RATE_UI = 0.06;
-const COMMISSION_RATE_UI = 0.15;
-
 const PAYMENT_METHOD_OPTIONS = ["Наличные", "Безнал"] as const;
 const PAYMENT_STATUS_PAID = "Оплачено";
 const PAYMENT_STATUS_UNPAID = "Не оплачено";
 /** Уникальный id datalist для комбобокса статуса (input list=… + datalist). */
 const paymentStatusDatalistId = (suffix: string) => `project-estimate-pst-${suffix}`;
-
-function parseEstimateQtyUp(line: {
-  qty?: string | number | null;
-  unitPriceClient?: string | number | null;
-}): { q: number; up: number } | null {
-  const qRaw = typeof line.qty === "number" && Number.isFinite(line.qty) ? String(line.qty) : (line.qty ?? "");
-  const upRaw =
-    typeof line.unitPriceClient === "number" && Number.isFinite(line.unitPriceClient)
-      ? String(line.unitPriceClient)
-      : (line.unitPriceClient ?? "");
-  const q = Number(String(qRaw).replace(",", "."));
-  const up = Number(String(upRaw).replace(",", "."));
-  if (!Number.isFinite(q) || q <= 0 || !Number.isFinite(up) || up < 0) return null;
-  return { q, up };
-}
 
 /** Сумма клиенту: только qty×цена; иначе наследованный costClient (старые строки). */
 function displayLocalLineClientSum(line: {
@@ -1837,11 +1877,7 @@ function displayLocalLineClientSum(line: {
   qty?: string | number | null;
   unitPriceClient?: string | number | null;
 }): string {
-  const parsed = parseEstimateQtyUp(line);
-  if (parsed) return String(Math.round(parsed.q * parsed.up));
-  const cc = line.costClient;
-  if (cc != null && cc !== "" && Number.isFinite(Number(cc))) return String(Math.round(Number(cc)));
-  return "—";
+  return normalizedLocalLineCostClientString(line) ?? "—";
 }
 
 /** Цвет текста значения статуса (без фона и анимации). */
@@ -3016,8 +3052,11 @@ function DraftRequisiteEditor({
   >([]);
   const [catalogLoading, setCatalogLoading] = React.useState(true);
   const [materializeOpen, setMaterializeOpen] = React.useState(false);
-  const [matStart, setMatStart] = React.useState(draftMaterializeTodayISO);
-  const [matEnd, setMatEnd] = React.useState(draftMaterializeTodayISO);
+  const [projectMaterializeDefaults, setProjectMaterializeDefaults] = React.useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
+  const [materializeAssignments, setMaterializeAssignments] = React.useState<DraftMaterializeAssignment[]>([]);
   const [matBusy, setMatBusy] = React.useState(false);
   const [matError, setMatError] = React.useState<string | null>(null);
   const [lines, setLines] = React.useState(() =>
@@ -3108,6 +3147,28 @@ function DraftRequisiteEditor({
     };
   }, [projectId]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}`, { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then((j: null | { project?: { eventStartDate?: string | null; eventEndDate?: string | null; eventDateConfirmed?: boolean } }) => {
+        if (cancelled) return;
+        const startDate = j?.project?.eventStartDate ?? null;
+        const endDate = j?.project?.eventEndDate ?? null;
+        if (j?.project?.eventDateConfirmed && startDate && endDate) {
+          setProjectMaterializeDefaults({ startDate, endDate });
+        } else {
+          setProjectMaterializeDefaults(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProjectMaterializeDefaults(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
   const total = React.useMemo(
     () =>
       lines.reduce((sum, line) => {
@@ -3117,6 +3178,11 @@ function DraftRequisiteEditor({
         return sum + Math.round((line.pricePerDaySnapshot ?? 0) * q * d);
       }, 0),
     [lines],
+  );
+
+  const groupedMaterializePeriods = React.useMemo(
+    () => groupDraftMaterializeAssignments(materializeAssignments),
+    [materializeAssignments],
   );
 
   function updateLine(
@@ -3200,6 +3266,30 @@ function DraftRequisiteEditor({
     }
   }
 
+  function openMaterializeModal() {
+    const today = draftMaterializeTodayISO();
+    const startDate = projectMaterializeDefaults?.startDate ?? today;
+    const endDate = projectMaterializeDefaults?.endDate ?? startDate;
+    setMatError(null);
+    setMaterializeAssignments(buildDraftMaterializeAssignments({
+      lineIds: lines.map((line) => line.id),
+      startDate,
+      endDate,
+    }));
+    setMaterializeOpen(true);
+  }
+
+  function updateMaterializeAssignment(
+    lineId: string,
+    patch: Partial<Pick<DraftMaterializeAssignment, "startDate" | "endDate">>,
+  ) {
+    setMaterializeAssignments((prev) =>
+      prev.map((assignment) =>
+        assignment.lineId === lineId ? { ...assignment, ...patch } : assignment,
+      ),
+    );
+  }
+
   async function materializeDraft() {
     setMatError(null);
     if (draftDirty) {
@@ -3214,22 +3304,26 @@ function DraftRequisiteEditor({
       setMatError("Сохраните demo-заявку: у новых строк ещё нет идентификаторов на сервере.");
       return;
     }
+    if (materializeAssignments.length !== lines.length) {
+      setMatError("Не удалось подготовить интервалы для всех позиций. Закройте окно и откройте снова.");
+      return;
+    }
+    if (materializeAssignments.some((assignment) => !assignment.startDate || !assignment.endDate)) {
+      setMatError("Укажите даты использования для каждой позиции.");
+      return;
+    }
+    if (materializeAssignments.some((assignment) => assignment.startDate > assignment.endDate)) {
+      setMatError("Дата окончания не может быть раньше даты начала.");
+      return;
+    }
+    const periods = groupDraftMaterializeAssignments(materializeAssignments);
     setMatBusy(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/draft-order/materialize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          periods: [
-            {
-              key: "single",
-              title: "Период из сметы",
-              readyByDate: matStart,
-              startDate: matStart,
-              endDate: matEnd,
-              lineIds: lines.map((l) => l.id),
-            },
-          ],
+          periods,
         }),
       });
       const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -3283,13 +3377,7 @@ function DraftRequisiteEditor({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                setMatError(null);
-                const today = draftMaterializeTodayISO();
-                setMatStart(today);
-                setMatEnd(today);
-                setMaterializeOpen(true);
-              }}
+              onClick={openMaterializeModal}
               disabled={busy || lines.length === 0 || draftDirty}
               title={draftDirty ? "Сначала сохраните изменения кнопкой «Сохранить demo»" : undefined}
               className={btnSecondary}
@@ -3428,8 +3516,9 @@ function DraftRequisiteEditor({
                       Реальная заявка из demo
                     </div>
                     <p className="mt-1 text-sm text-zinc-600">
-                      Укажи даты периода аренды: будет создана одна складская заявка выдачи для третьих лиц (проектная),
-                      со всеми строками demo-блока. Доступность остатков проверяется на эти даты.
+                      Укажи даты использования для каждой позиции. По умолчанию используются подтверждённые даты
+                      мероприятия, если они есть. Система автоматически соберёт строки с одинаковым интервалом в одну
+                      реальную заявку: 1 интервал = 1 заявка.
                     </p>
                   </div>
                   <button
@@ -3448,29 +3537,50 @@ function DraftRequisiteEditor({
                     {matError}
                   </div>
                 ) : null}
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                    Начало
-                    <input
-                      type="date"
-                      value={matStart}
-                      onChange={(e) => setMatStart(e.target.value)}
-                      className={`mt-1 w-full ${inputField}`}
-                    />
-                  </label>
-                  <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                    Конец
-                    <input
-                      type="date"
-                      value={matEnd}
-                      onChange={(e) => setMatEnd(e.target.value)}
-                      className={`mt-1 w-full ${inputField}`}
-                    />
-                  </label>
+                <div className="mt-4 space-y-3">
+                  {lines.map((line) => {
+                    const assignment = materializeAssignments.find((item) => item.lineId === line.id);
+                    return (
+                      <div key={line.id} className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                          <div>
+                            <div className="text-sm font-semibold text-zinc-950">{line.name}</div>
+                            <div className="mt-1 text-xs text-zinc-600">
+                              {parseQtyDisplayInt(line.qty)} шт. · {parseQtyDisplayInt(line.plannedDays)} дн. в demo
+                            </div>
+                          </div>
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            Начало использования
+                            <input
+                              type="date"
+                              value={assignment?.startDate ?? ""}
+                              onChange={(e) => updateMaterializeAssignment(line.id, { startDate: e.target.value })}
+                              className={`mt-1 w-full ${inputField}`}
+                            />
+                          </label>
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            Конец использования
+                            <input
+                              type="date"
+                              value={assignment?.endDate ?? ""}
+                              onChange={(e) => updateMaterializeAssignment(line.id, { endDate: e.target.value })}
+                              className={`mt-1 w-full ${inputField}`}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="mt-4 rounded-xl border border-fuchsia-100 bg-fuchsia-50/70 px-3 py-2 text-sm text-zinc-700">
-                  Будет создана одна заявка на период {formatRuDateFromISO(matStart)} — {formatRuDateFromISO(matEnd)} (
-                  {lines.length} поз.).
+                  Будет создано {groupedMaterializePeriods.length} заявок по уникальным интервалам.
+                  <div className="mt-2 space-y-1 text-xs text-zinc-600">
+                    {groupedMaterializePeriods.map((period) => (
+                      <div key={period.key}>
+                        {period.title}: {period.lineIds.length} поз.
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
                   <button

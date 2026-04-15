@@ -541,11 +541,11 @@ export default function OrderDetailsPage() {
   const canEditOrder =
     Boolean(
       order &&
-        !order.parentOrderId &&
         ((isWarehouse &&
           ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status)) ||
           (isGreenwich &&
             user &&
+            !order.parentOrderId &&
             order.greenwichUserId === user.id &&
             ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status))),
     );
@@ -920,10 +920,20 @@ export default function OrderDetailsPage() {
     (!order.deliveryEnabled || (order.deliveryPrice != null && Number(order.deliveryPrice) > 0)) &&
     (!order.montageEnabled || (order.montagePrice != null && Number(order.montagePrice) > 0)) &&
     (!order.demontageEnabled || (order.demontagePrice != null && Number(order.demontagePrice) > 0));
+  const canStartPicking =
+    order?.status === "APPROVED_BY_GREENWICH" &&
+    (!order.deliveryEnabled || (order.deliveryPrice != null && Number(order.deliveryPrice) > 0)) &&
+    (!order.montageEnabled || (order.montagePrice != null && Number(order.montagePrice) > 0)) &&
+    (!order.demontageEnabled || (order.demontagePrice != null && Number(order.demontagePrice) > 0));
   const sendEstimateBlocked =
     (order?.status === "SUBMITTED" || order?.status === "CHANGES_REQUESTED") &&
     isWarehouse &&
     !canSendEstimate &&
+    (order.deliveryEnabled || order.montageEnabled || order.demontageEnabled);
+  const startPickingBlocked =
+    order?.status === "APPROVED_BY_GREENWICH" &&
+    isWarehouse &&
+    !canStartPicking &&
     (order.deliveryEnabled || order.montageEnabled || order.demontageEnabled);
   const isOrderGreenwichUser = order && user && order.greenwichUserId === user.id;
 
@@ -1736,9 +1746,10 @@ export default function OrderDetailsPage() {
           {isWarehouse && order.status === "APPROVED_BY_GREENWICH" && (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !canStartPicking}
               onClick={() => doAction("POST", `/api/orders/${orderId}/start-picking`)}
               className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              title={startPickingBlocked ? "Сначала укажите цены для включённых доп. услуг" : undefined}
             >
               {busy ? "…" : "Начать сборку"}
             </button>

@@ -1,5 +1,6 @@
 import { ProjectEstimateSectionKind } from "@prisma/client";
 
+import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { daysBetween } from "@/server/orders/order-total";
@@ -361,10 +362,14 @@ export async function buildProjectEstimateReadModel(args: {
                 linkedOrderEditable: false,
                 lineLocalExtras: null,
                 lines: section.lines.map((line) => {
-                  const costC = dec(line.costClient);
-                  const costNum = costC != null ? Number(costC) : null;
                   const qtyNum = line.qty != null ? Number(line.qty) : null;
                   let unitP = line.unitPriceClient != null ? Number(line.unitPriceClient) : null;
+                  const costNum = normalizedLocalLineCostClientNumber({
+                    costClient: dec(line.costClient),
+                    qty: qtyNum,
+                    unitPriceClient: unitP,
+                  });
+                  const costC = costNum != null ? String(costNum) : null;
                   if (
                     unitP == null &&
                     costNum != null &&

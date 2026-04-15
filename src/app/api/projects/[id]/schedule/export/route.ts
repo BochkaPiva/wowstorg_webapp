@@ -1,6 +1,10 @@
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError } from "@/server/http";
+import {
+  buildProjectDocumentBaseName,
+  buildUtf8AttachmentDisposition,
+} from "@/lib/project-export-filename";
 import { buildScheduleDocxBuffer } from "@/server/projects/schedule-docx";
 
 export async function GET(
@@ -15,7 +19,14 @@ export async function GET(
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      customer: { select: { name: true } },
+      eventDateConfirmed: true,
+      eventStartDate: true,
+      eventEndDate: true,
+    },
   });
   if (!project) return jsonError(404, "Проект не найден");
 
@@ -36,13 +47,21 @@ export async function GET(
     })),
   });
 
-  const safe = project.title.replace(/[^\w.\-]+/g, "_").slice(0, 80) || "timing";
+  const dateOnly = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);
+  const baseName = buildProjectDocumentBaseName({
+    eventTitle: project.title,
+    customerName: project.customer.name,
+    eventDateConfirmed: project.eventDateConfirmed,
+    eventStartDate: dateOnly(project.eventStartDate),
+    eventEndDate: dateOnly(project.eventEndDate),
+  });
+  const filename = `Тайминг ${baseName}.docx`;
   return new Response(new Uint8Array(buf), {
     status: 200,
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "Content-Disposition": `attachment; filename="timing_${safe}.docx"`,
+      "Content-Disposition": buildUtf8AttachmentDisposition(filename),
       "Cache-Control": "private, no-store",
     },
   });

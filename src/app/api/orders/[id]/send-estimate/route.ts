@@ -5,6 +5,7 @@ import { putEstimateFile } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
 import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { listMissingEnabledServicePrices } from "@/server/orders/service-pricing";
 
 /** Снимок заявки без цен доп. услуг — для сравнения «склад ничего не менял после запроса изменений». */
 function buildOrderSnapshotForCompare(order: {
@@ -70,13 +71,7 @@ export async function POST(
     return jsonError(400, "Смету можно отправить только для заявки в статусе «Новая» или «Запрошены изменения»");
   }
 
-  const missing: string[] = [];
-  if (fullOrder.deliveryEnabled && (fullOrder.deliveryPrice == null || Number(fullOrder.deliveryPrice) <= 0))
-    missing.push("Доставка");
-  if (fullOrder.montageEnabled && (fullOrder.montagePrice == null || Number(fullOrder.montagePrice) <= 0))
-    missing.push("Монтаж");
-  if (fullOrder.demontageEnabled && (fullOrder.demontagePrice == null || Number(fullOrder.demontagePrice) <= 0))
-    missing.push("Демонтаж");
+  const missing = listMissingEnabledServicePrices(fullOrder);
   if (missing.length > 0) {
     return jsonError(
       400,

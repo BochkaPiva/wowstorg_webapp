@@ -208,7 +208,7 @@ export default function CartPage() {
         setEventName(data.eventName ?? "");
         setComment(data.comment ?? "");
 
-        // Quick supplement всегда без доп. услуг.
+        // При смене родительской заявки сбрасываем локальный блок услуг и цен.
         setDeliveryEnabled(false);
         setMontageEnabled(false);
         setDemontageEnabled(false);
@@ -693,6 +693,46 @@ export default function CartPage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            ...(isWarehouse
+              ? {
+                  deliveryPrice:
+                    deliveryEnabled && deliveryPrice.trim()
+                      ? Number(deliveryPrice.replace(",", "."))
+                      : undefined,
+                  deliveryInternalCost:
+                    deliveryEnabled && deliveryInternalCost.trim()
+                      ? Number(deliveryInternalCost.replace(",", "."))
+                      : deliveryEnabled
+                        ? null
+                        : undefined,
+                  montagePrice:
+                    montageEnabled && montagePrice.trim()
+                      ? Number(montagePrice.replace(",", "."))
+                      : undefined,
+                  montageInternalCost:
+                    montageEnabled && montageInternalCost.trim()
+                      ? Number(montageInternalCost.replace(",", "."))
+                      : montageEnabled
+                        ? null
+                        : undefined,
+                  demontagePrice:
+                    demontageEnabled && demontagePrice.trim()
+                      ? Number(demontagePrice.replace(",", "."))
+                      : undefined,
+                  demontageInternalCost:
+                    demontageEnabled && demontageInternalCost.trim()
+                      ? Number(demontageInternalCost.replace(",", "."))
+                      : demontageEnabled
+                        ? null
+                        : undefined,
+                }
+              : {}),
           }),
         });
 
@@ -937,7 +977,7 @@ export default function CartPage() {
                   <div className="co-title">Оформление заявки</div>
                   <div className="co-subtitle">
                     {isQuickSupplement
-                      ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки."
+                      ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки, при необходимости можно добавить доп. услуги."
                       : isProjectDemoCart
                         ? "Demo-черновик проекта: сохраняет корзину без дат и без создания реальной заявки."
                       : isProjectCart
@@ -1168,7 +1208,7 @@ export default function CartPage() {
                   </label>
                 ) : null}
 
-                {!isQuickSupplement && !isProjectDemoCart ? (
+                {!isProjectDemoCart ? (
                   <div className="co-services">
                   <div className="co-servicesTitle">Доп. услуги</div>
                   <div className="co-serviceRow">

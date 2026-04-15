@@ -1,5 +1,12 @@
 import ExcelJS from "exceljs";
 
+import {
+  calcProjectEstimateTotals,
+  getNumericAmount,
+  PROJECT_ESTIMATE_COMMISSION_RATE,
+  PROJECT_ESTIMATE_TAX_RATE,
+  roundMoney,
+} from "@/lib/project-estimate-totals";
 import type { ProjectEstimateReadLine, ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
 
 const COLORS = {
@@ -16,9 +23,6 @@ const COLORS = {
   border: "FFE4E4E7",
 };
 
-const TAX_RATE = 0.06;
-const COMMISSION_RATE = 0.15;
-
 function styleCell(cell: ExcelJS.Cell) {
   cell.border = {
     top: { style: "thin", color: { argb: COLORS.border } },
@@ -30,18 +34,12 @@ function styleCell(cell: ExcelJS.Cell) {
   cell.font = { name: "Calibri", size: 10 };
 }
 
-function money(n: number): number {
-  return Math.round(Number.isFinite(n) ? n : 0);
-}
-
 function lineClient(line: ProjectEstimateReadLine): number {
-  const v = line.costClient != null ? Number(line.costClient) : 0;
-  return Number.isFinite(v) ? v : 0;
+  return getNumericAmount(line.costClient);
 }
 
 function lineInternal(line: ProjectEstimateReadLine): number {
-  const v = line.costInternal != null ? Number(line.costInternal) : 0;
-  return Number.isFinite(v) ? v : 0;
+  return getNumericAmount(line.costInternal);
 }
 
 function unitLabel(line: ProjectEstimateReadLine): string {
@@ -58,7 +56,7 @@ function unitPriceLabel(line: ProjectEstimateReadLine): number | string {
   if (line.unitPriceClient != null && Number.isFinite(line.unitPriceClient)) return line.unitPriceClient;
   const c = lineClient(line);
   const q = line.qty != null ? Number(line.qty) : 0;
-  if (c > 0 && q > 0) return money(c / q);
+  if (c > 0 && q > 0) return roundMoney(c / q);
   return "";
 }
 
@@ -217,15 +215,18 @@ export async function buildProjectEstimateXlsx(args: {
       }
       ws.getCell(sr, 7).numFmt = "#,##0.00";
     } else {
-      const tax = money(sectionClient * TAX_RATE);
-      const grossMargin = money(sectionClient - sectionInternal);
-      const marginAfterTax = money(grossMargin - tax);
+      const sectionTotals = calcProjectEstimateTotals({
+        clientSubtotal: sectionClient,
+        internalSubtotal: sectionInternal,
+      });
       const footerRows: [string, number][] = [
         ["Выручка (клиент), раздел", sectionClient],
+        [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, раздел`, sectionTotals.commission],
+        ["Выручка с комиссией, раздел", sectionTotals.revenueTotal],
         ["Внутр., раздел", sectionInternal],
-        ["Валовая маржа, раздел", grossMargin],
-        ["Условный налог 6% (от выручки раздела)", tax],
-        ["Маржа после условного налога, раздел", marginAfterTax],
+        ["Валовая маржа, раздел", sectionTotals.grossMargin],
+        [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}% (от выручки раздела с комиссией)`, sectionTotals.tax],
+        ["Маржа после условного налога, раздел", sectionTotals.marginAfterTax],
       ];
       for (const [label, value] of footerRows) {
         const cells: (string | number)[] = [label, "", "", "", "", "", value];
@@ -246,17 +247,13 @@ export async function buildProjectEstimateXlsx(args: {
     ws.addRow([]);
   }
 
-  const commission = money(clientSubtotal * COMMISSION_RATE);
-  const totalWithCommission = clientSubtotal + commission;
-  const projectGrossMargin = money(clientSubtotal - internalSubtotal);
-  const projectTax = money(clientSubtotal * TAX_RATE);
-  const projectMarginAfterTax = money(projectGrossMargin - projectTax);
+  const projectTotals = calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
 
   if (isClient) {
     const tail: [string, number][] = [
       ["Сумма по смете (клиент)", clientSubtotal],
-      ["Комиссия 15%", commission],
-      ["Итого с комиссией", totalWithCommission],
+      [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`, projectTotals.commission],
+      ["Итого с комиссией", projectTotals.revenueTotal],
     ];
     for (const [label, value] of tail) {
       const cells: (string | number)[] = [label, "", "", "", "", "", value];
@@ -274,12 +271,12 @@ export async function buildProjectEstimateXlsx(args: {
   } else {
     const tail: [string, number][] = [
       ["Сумма клиентских строк (проект)", clientSubtotal],
-      ["Комиссия 15%", commission],
-      ["Итого клиент (с комиссией)", totalWithCommission],
+      [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`, projectTotals.commission],
+      ["Итого клиент (с комиссией)", projectTotals.revenueTotal],
       ["Себестоимость (проект)", internalSubtotal],
-      ["Валовая маржа (проект)", projectGrossMargin],
-      ["Условный налог 6% (от выручки проекта)", projectTax],
-      ["Маржа после условного налога (проект)", projectMarginAfterTax],
+      ["Валовая маржа (проект)", projectTotals.grossMargin],
+      [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}% (от выручки проекта с комиссией)`, projectTotals.tax],
+      ["Маржа после условного налога (проект)", projectTotals.marginAfterTax],
     ];
     for (const [label, value] of tail) {
       const cells: (string | number)[] = [label, "", "", "", "", "", value];

@@ -82,9 +82,7 @@ export async function PATCH(
           WHERE "id" = ${id}
           LIMIT 1
         `;
-        if (quickRow?.[0]?.parentOrderId) {
-          throw new Error("FORBIDDEN_QUICK");
-        }
+        const isQuickSupplement = Boolean(quickRow?.[0]?.parentOrderId);
 
         if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
           throw new Error("BAD_STATUS");
@@ -185,7 +183,7 @@ export async function PATCH(
             ...(wasCycleStatus
               ? {
                   status:
-                    order.source === "WOWSTORG_EXTERNAL"
+                    order.source === "WOWSTORG_EXTERNAL" || isQuickSupplement
                       ? "APPROVED_BY_GREENWICH"
                       : "SUBMITTED",
                 }
@@ -221,7 +219,6 @@ export async function PATCH(
     }
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
-      if (e.message === "FORBIDDEN_QUICK") return jsonError(400, "Быстрая доп.-заявка не редактируется");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
       if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
       const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);

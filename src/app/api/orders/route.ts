@@ -5,14 +5,12 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { DateOnlySchema, parseDateOnlyToUtcMidnight, utcTodayDateOnlyString } from "@/server/dates";
-import { getReservedQtyByItemId } from "@/server/orders/reserve";
-import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { createOrderInTransaction, CreateOrderError } from "@/server/orders/create-order";
 import {
   makeQueuedOrderCreatedResult,
   type OrderCreatedNotifyResult,
 } from "@/server/notifications/order-notifications";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
-import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -41,9 +39,16 @@ const BodySchema = z.object({
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).optional(),
   demontagePrice: z.number().min(0).optional(),
+  deliveryInternalCost: z.number().min(0).nullable().optional(),
+  montageInternalCost: z.number().min(0).nullable().optional(),
+  demontageInternalCost: z.number().min(0).nullable().optional(),
 
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
+
+  /// Заявка реквизита в рамках проекта (только WOWSTORG): заказчик и источник берутся из проекта.
+  projectId: z.string().trim().min(1).optional(),
+  targetEstimateVersionId: z.string().trim().min(1).optional(),
 
   lines: z.array(LineSchema).min(1).max(500),
 });
@@ -68,9 +73,15 @@ export async function POST(req: Request) {
   }
 
   const data = parsed.data;
+  const isWarehouse = auth.user.role === "WOWSTORG";
+  const hasProjectId = Boolean(data.projectId?.trim());
+  if (hasProjectId && !isWarehouse) {
+    return jsonError(403, "Привязка к проекту доступна только со склада (Wowstorg)");
+  }
+
   const hasCustomerId = Boolean(data.customerId?.trim());
   const hasCustomerName = Boolean(data.customerName?.trim());
-  if (!hasCustomerId && !hasCustomerName) {
+  if (!hasProjectId && !hasCustomerId && !hasCustomerName) {
     return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");
   }
   const readyByDate = parseDateOnlyToUtcMidnight(data.readyByDate);
@@ -93,161 +104,44 @@ export async function POST(req: Request) {
     return jsonError(400, "Дата окончания не может быть раньше даты начала");
   }
 
-  // Нормализуем строки: группируем по (itemId, sourceKitId) чтобы не плодить дубли.
-  const grouped = new Map<string, (typeof data.lines)[number] & { qty: number }>();
-  for (const l of data.lines) {
-    const key = `${l.itemId}::${l.sourceKitId ?? ""}`;
-    const prev = grouped.get(key);
-    if (prev) {
-      prev.qty += l.qty;
-      if (l.comment) prev.comment = prev.comment ? `${prev.comment}\n${l.comment}` : l.comment;
-    } else {
-      grouped.set(key, { ...l });
-    }
-  }
-  const lines = [...grouped.values()];
-
-  const isWarehouse = auth.user.role === "WOWSTORG";
-  let source: "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL";
-  let greenwichUserId: string | null;
-  let payMultiplier: string;
-
-  if (isWarehouse) {
-    source = data.source ?? "WOWSTORG_EXTERNAL";
-    if (source === "GREENWICH_INTERNAL") {
-      if (!data.greenwichUserId?.trim()) {
-        return jsonError(400, "Укажите сотрудника Grinvich для заявки");
-      }
-      greenwichUserId = data.greenwichUserId.trim();
-      payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
-    } else {
-      greenwichUserId = null;
-      payMultiplier = "1";
-    }
-  } else {
-    source = "GREENWICH_INTERNAL";
-    greenwichUserId = auth.user.id;
-    payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
-  }
-
   // Serializable: снижает риск overbooking при параллельных POST с пересекающимися датами/позициями
   // (два запроса не «прочитают» одинаковый reserved до коммита другого).
-  let result: { id: string };
+  let result: { id: string; projectId: string | null };
   try {
     result = await prisma.$transaction(
       async (tx) => {
-    let customerIdToUse: string;
-    if (hasCustomerName) {
-      const name = data.customerName!.trim();
-      const existing = await tx.customer.findFirst({
-        where: { name: { equals: name, mode: "insensitive" } },
-        select: { id: true },
-      });
-      if (existing) {
-        customerIdToUse = existing.id;
-      } else {
-        const created = await tx.customer.create({
-          data: { name },
-          select: { id: true },
+        return createOrderInTransaction(tx, {
+          actorUserId: auth.user.id,
+          actorRole: auth.user.role,
+          customerId: data.customerId,
+          customerName: data.customerName,
+          readyByDate: data.readyByDate,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          eventName: data.eventName,
+          comment: data.comment,
+          deliveryEnabled: data.deliveryEnabled,
+          deliveryComment: data.deliveryComment,
+          deliveryPrice: data.deliveryPrice,
+          montageEnabled: data.montageEnabled,
+          montageComment: data.montageComment,
+          montagePrice: data.montagePrice,
+          demontageEnabled: data.demontageEnabled,
+          demontageComment: data.demontageComment,
+          demontagePrice: data.demontagePrice,
+          ...(isWarehouse
+            ? {
+                deliveryInternalCost: data.deliveryInternalCost,
+                montageInternalCost: data.montageInternalCost,
+                demontageInternalCost: data.demontageInternalCost,
+              }
+            : {}),
+          source: data.source,
+          greenwichUserId: data.greenwichUserId,
+          projectId: data.projectId,
+          targetEstimateVersionId: data.targetEstimateVersionId,
+          lines: data.lines,
         });
-        customerIdToUse = created.id;
-      }
-    } else {
-      const customer = await tx.customer.findFirst({
-        where: { id: data.customerId!, isActive: true },
-        select: { id: true },
-      });
-      if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
-      customerIdToUse = customer.id;
-    }
-
-    const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    const items = await tx.item.findMany({
-      where: { id: { in: itemIds }, isActive: true, internalOnly: isWarehouse ? undefined : false },
-      select: {
-        id: true,
-        pricePerDay: true,
-        total: true,
-        inRepair: true,
-        broken: true,
-        missing: true,
-        internalOnly: true,
-      },
-    });
-    if (items.length !== itemIds.length) {
-      throw new Error("ITEM_NOT_FOUND");
-    }
-    if (!isWarehouse && items.some((i) => i.internalOnly)) {
-      throw new Error("ITEM_NOT_FOUND");
-    }
-    const itemById = new Map(items.map((i) => [i.id, i]));
-
-    const reserved = await getReservedQtyByItemId({ db: tx, startDate, endDate });
-    for (const l of lines) {
-      const item = itemById.get(l.itemId)!;
-      const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);
-      const reservedQty = reserved.get(l.itemId) ?? 0;
-      const availableForDates = Math.max(0, availableTotal - reservedQty);
-      if (l.qty > availableForDates) {
-        throw new Error(`EXCEEDS_AVAILABILITY:${l.itemId}:${availableForDates}`);
-      }
-    }
-
-    const order = await tx.order.create({
-      data: {
-        source,
-        status: "SUBMITTED",
-        createdById: auth.user.id,
-        greenwichUserId,
-        customerId: customerIdToUse,
-        eventName: data.eventName,
-        comment: data.comment,
-        readyByDate,
-        startDate,
-        endDate,
-        deliveryEnabled: data.deliveryEnabled ?? false,
-        deliveryComment: data.deliveryComment,
-        deliveryPrice: data.deliveryPrice != null ? data.deliveryPrice : undefined,
-        montageEnabled: data.montageEnabled ?? false,
-        montageComment: data.montageComment,
-        montagePrice: data.montagePrice != null ? data.montagePrice : undefined,
-        demontageEnabled: data.demontageEnabled ?? false,
-        demontageComment: data.demontageComment,
-        demontagePrice: data.demontagePrice != null ? data.demontagePrice : undefined,
-        payMultiplier,
-        lines: {
-          create: lines.map((l, idx) => ({
-            itemId: l.itemId,
-            sourceKitId: l.sourceKitId,
-            requestedQty: l.qty,
-            pricePerDaySnapshot: itemById.get(l.itemId)!.pricePerDay,
-            greenwichComment: l.comment,
-            position: idx,
-          })),
-        },
-      },
-      select: { id: true },
-    });
-
-    // Внешняя заявка склада не ждёт шага Greenwich:
-    // сразу формируем смету и переводим в «Согласована».
-    if (source === "WOWSTORG_EXTERNAL") {
-      const artifacts = await makeEstimateArtifactsForOrder(tx, order.id);
-      const now = new Date();
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: "APPROVED_BY_GREENWICH",
-          estimateSentAt: now,
-          estimateSentSnapshot: artifacts.estimateSentSnapshot as unknown as object,
-          estimateFileKey: artifacts.estimateFileKey,
-          greenwichConfirmedAt: now,
-          greenwichConfirmedSnapshot: artifacts.estimateSentSnapshot as unknown as object,
-        },
-      });
-    }
-
-    return order;
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -259,21 +153,45 @@ export async function POST(req: Request) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
       return jsonError(409, "Конфликт при резервировании. Повторите попытку.");
     }
-    if (e instanceof Error) {
-      if (e.message === "CUSTOMER_NOT_FOUND") {
+    if (e instanceof CreateOrderError) {
+      if (e.code === "CUSTOMER_NOT_FOUND") {
         return jsonError(400, "Заказчик не найден или неактивен");
       }
-      if (e.message === "ITEM_NOT_FOUND") {
+      if (e.code === "PROJECT_NOT_FOUND") {
+        return jsonError(400, "Проект не найден или в архиве");
+      }
+      if (e.code === "PROJECT_CUSTOMER_CONFLICT") {
+        return jsonError(400, "С проектом нельзя создавать нового заказчика по имени — используйте заказчика проекта");
+      }
+      if (e.code === "PROJECT_CUSTOMER_MISMATCH") {
+        return jsonError(400, "Заказчик заявки должен совпадать с заказчиком проекта");
+      }
+      if (e.code === "ITEM_NOT_FOUND") {
         return jsonError(400, "Одна или несколько позиций недоступны");
       }
-      const m = /^EXCEEDS_AVAILABILITY:[^:]+:(\d+)$/.exec(e.message);
-      if (m) {
-        return jsonError(400, `Недостаточно свободных единиц на выбранные даты (доступно ${m[1]})`);
+      if (e.code === "EXCEEDS_AVAILABILITY") {
+        return jsonError(
+          400,
+          `Недостаточно свободных единиц на выбранные даты (доступно ${String(e.details?.availableForDates ?? 0)})`,
+        );
       }
-      const s = /^MISSING_SERVICE_PRICES:(.+)$/.exec(e.message);
-      if (s) {
-        const parts = s[1].split(",").filter(Boolean);
-        return jsonError(400, `Укажите цену для включённых доп. услуг: ${parts.join(", ")}`);
+      if (e.code === "GREENWICH_USER_REQUIRED") {
+        return jsonError(400, "Укажите сотрудника Grinvich для заявки");
+      }
+      if (e.code === "CUSTOMER_REQUIRED") {
+        return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");
+      }
+      if (e.code === "PROJECT_FORBIDDEN") {
+        return jsonError(403, "Привязка к проекту доступна только со склада (Wowstorg)");
+      }
+      if (e.code === "DATE_IN_PAST") {
+        return jsonError(400, "Даты не могут быть в прошлом");
+      }
+      if (e.code === "READY_AFTER_START") {
+        return jsonError(400, "readyByDate must be <= startDate");
+      }
+      if (e.code === "END_BEFORE_START") {
+        return jsonError(400, "Дата окончания не может быть раньше даты начала");
       }
     }
     throw e;

@@ -3,6 +3,7 @@ import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { listMissingEnabledServicePrices } from "@/server/orders/service-pricing";
 
 export async function POST(
   _req: Request,
@@ -15,7 +16,16 @@ export async function POST(
 
   const order = await prisma.order.findUnique({
     where: { id },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      deliveryEnabled: true,
+      deliveryPrice: true,
+      montageEnabled: true,
+      montagePrice: true,
+      demontageEnabled: true,
+      demontagePrice: true,
+    },
   });
 
   if (!order) return jsonError(404, "Not found");
@@ -24,6 +34,11 @@ export async function POST(
       400,
       "Начать сборку можно только после согласования (статус «Согласована»)",
     );
+  }
+
+  const missing = listMissingEnabledServicePrices(order);
+  if (missing.length > 0) {
+    return jsonError(400, `Укажите цену для включённых доп. услуг: ${missing.join(", ")}`);
   }
 
   await prisma.order.update({

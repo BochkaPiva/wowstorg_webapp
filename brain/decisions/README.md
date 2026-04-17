@@ -9,5 +9,6 @@
 | 003 | [003-session-cookie-db.md](./003-session-cookie-db.md) | Сессии cookie + БД |
 | 004 | [004-deferred-notifications.md](./004-deferred-notifications.md) | Уведомления через `after()` |
 | 005 | [005-order-status-enums.md](./005-order-status-enums.md) | Enum статусов в Prisma |
+| 006 | [006-project-demo-draft-requisition.md](./006-project-demo-draft-requisition.md) | Demo-заявка проекта как отдельный draft-слой |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

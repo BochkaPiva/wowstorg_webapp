@@ -28,7 +28,8 @@
 
 | Переменная | Назначение |
 |------------|------------|
-| `DATABASE_URL` | Строка подключения **PostgreSQL** (Supabase: **Connection string** в режиме *Transaction* или *Session*, с `?sslmode=require` при необходимости) |
+| `DATABASE_URL` | **Pooled** PostgreSQL (Supabase: *Transaction* / порт **6543**, в URI обычно `?pgbouncer=true`) — рантайм и Vercel serverless |
+| `DIRECT_URL` | **Direct / session** строка для **миграций** Prisma (Supabase Connect: отдельный URI, часто тот же pooler на порту **5432** или хост `db.<ref>.supabase.co:5432`) |
 | `NEXT_PUBLIC_APP_URL` | Публичный URL сайта **без завершающего слэша** — ссылки в Telegram и напоминания (`order-notifications.ts`, `reminder-runner.ts`, quick-supplement). В проде **обязателен**, иначе подставится заглушка `https://wowstorg.example.com` |
 
 ### Supabase Storage (фото и сметы)
@@ -39,6 +40,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Service Role key (только сервер, не на клиент) |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` | bucket для фото позиций (по умолчанию `item-photos`) |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` | bucket для смет XLSX (по умолчанию `estimates`) |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` | bucket файлов модуля «Проекты» (по умолчанию `project-files`) |
 
 ### Сессии
 
@@ -66,7 +68,7 @@ Cookie с флагом `secure` в **production** (`NODE_ENV === "production"`).
 
 ### Prisma / Node
 
-- Отдельного `DIRECT_URL` для Prisma в проекте **нет** — если Supabase потребует раздельно *pooled* и *direct* URL для миграций, это добавляют в `schema.prisma` и env (сейчас не настроено).
+- В `schema.prisma` заданы **`url`** (`DATABASE_URL`, пул) и **`directUrl`** (`DIRECT_URL`) — миграции идут через `DIRECT_URL`, запросы приложения через пул.
 
 ---
 
@@ -130,12 +132,13 @@ Serverless-функции **не имеют постоянного диска**.
 2. **Storage buckets**  
    - Создать buckets:
      - `item-photos` (или задать свой в `SUPABASE_STORAGE_PHOTOS_BUCKET`);
-     - `estimates` (или задать свой в `SUPABASE_STORAGE_ESTIMATES_BUCKET`).
+     - `estimates` (или задать свой в `SUPABASE_STORAGE_ESTIMATES_BUCKET`);
+     - `project-files` для модуля «Проекты» (или задать в `SUPABASE_STORAGE_PROJECTS_BUCKET`).
 
 3. **Vercel**  
    - Подключить репозиторий GitHub.  
    - Framework Preset: Next.js.  
-   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
+   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, `SUPABASE_STORAGE_PROJECTS_BUCKET` (при использовании проектов), секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
    - Build: убедиться в `prisma generate` + `next build`.  
    - Настроить **Cron**:
      - `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,

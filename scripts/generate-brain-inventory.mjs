@@ -120,7 +120,7 @@ function main() {
     `> **Сгенерировано:** ${generatedAt}  
 > Уникальных имён \`process.env.*\`: ${envNames.length}  
 > Скан: \`src/**/*.ts(x)\` и \`prisma/seed.cjs\`  
-> Перегенерировать: \`npm run brain:inventory\`",
+> Перегенерировать: \`npm run brain:inventory\``,
     "",
     "| Переменная |",
     "|------------|",

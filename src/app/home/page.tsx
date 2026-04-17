@@ -64,19 +64,33 @@ function CardLink({
   href,
   title,
   description,
+  variant = "default",
 }: {
   href: string;
   title: string;
   description: string;
+  variant?: "default" | "highlight";
 }) {
   return (
     <Link
       href={href}
-      className="group rounded-2xl border border-zinc-200/90 bg-white/95 p-4 shadow-sm backdrop-blur-[2px] transition hover:-translate-y-0.5 hover:shadow-md"
+      className={[
+        "group rounded-2xl p-4 shadow-sm backdrop-blur-[2px] transition hover:-translate-y-0.5 hover:shadow-md",
+        variant === "highlight"
+          ? "border border-violet-300/80 bg-[linear-gradient(135deg,rgba(124,58,237,0.92),rgba(139,92,246,0.84),rgba(167,139,250,0.8))] text-white shadow-[0_14px_32px_rgba(124,58,237,0.18)]"
+          : "border border-zinc-200/90 bg-white/95",
+      ].join(" ")}
     >
       <div className="text-base font-semibold tracking-tight">{title}</div>
-      <div className="mt-1 text-sm text-zinc-600">{description}</div>
-      <div className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-violet-700">
+      <div className={["mt-1 text-sm", variant === "highlight" ? "text-violet-50/95" : "text-zinc-600"].join(" ")}>
+        {description}
+      </div>
+      <div
+        className={[
+          "mt-3 inline-flex items-center gap-2 text-sm font-medium",
+          variant === "highlight" ? "text-white" : "text-violet-700",
+        ].join(" ")}
+      >
         Открыть <span className="transition group-hover:translate-x-0.5">→</span>
       </div>
     </Link>
@@ -548,7 +562,7 @@ function auditDotTone(status: InventoryAuditStatus["severity"]) {
   return "bg-zinc-500 shadow-zinc-300/80";
 }
 
-function WowstorgAuditStatusCard() {
+function useInventoryAuditStatus() {
   const [row, setRow] = React.useState<InventoryAuditStatus | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -572,6 +586,74 @@ function WowstorgAuditStatusCard() {
       cancelled = true;
     };
   }, []);
+
+  return { row, loading, error };
+}
+
+function InventoryAuditBadge() {
+  const { row, loading, error } = useInventoryAuditStatus();
+
+  if (loading) {
+    return (
+      <div className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-500">
+        Аудит: загрузка…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Link
+        href="/admin/inventory-audit"
+        className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800"
+      >
+        <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+        Аудит: ошибка
+      </Link>
+    );
+  }
+
+  if (!row) {
+    return (
+      <Link
+        href="/admin/inventory-audit"
+        className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-semibold text-zinc-700"
+      >
+        <span className="h-2.5 w-2.5 rounded-full bg-zinc-400" />
+        Аудит не запускался
+      </Link>
+    );
+  }
+
+  const label =
+    row.severity === "OK"
+      ? "Все в норме"
+      : row.severity === "WARNING"
+        ? "Есть предупреждения"
+        : row.severity === "CRITICAL"
+          ? "Есть расхождения"
+          : "Проверка с ошибкой";
+
+  return (
+    <Link
+      href="/admin/inventory-audit"
+      className={[
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition hover:brightness-[0.98]",
+        auditTone(row.severity),
+      ].join(" ")}
+      title={`Последняя проверка ${fmtDateRu(row.startedAt)}`}
+    >
+      <span className={["block h-2.5 w-2.5 rounded-full shadow-sm", auditDotTone(row.severity)].join(" ")} />
+      <span>{label}</span>
+      <span className="hidden text-[11px] font-medium opacity-80 sm:inline">
+        {fmtDateRu(row.startedAt)} · {row.kind === "AUTO" ? "AUTO" : "MANUAL"}
+      </span>
+    </Link>
+  );
+}
+
+function WowstorgAuditStatusCard() {
+  const { row, loading, error } = useInventoryAuditStatus();
 
   return (
     <div className={DASH_CARD}>
@@ -842,7 +924,10 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
       <div className={`${DASH_CARD} md:col-span-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
-          <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
+            <InventoryAuditBadge />
+          </div>
           {data?.equipment.endedPositions.length ? (
             <Link
               href="/inventory/warehouse-items"
@@ -1003,9 +1088,6 @@ export default function HomeDashboardPage() {
               </div>
             </div>
             <IssuanceCalendar className="mb-3 border-violet-100/90 shadow-[0_6px_24px_rgba(124,58,237,0.08)]" />
-            <div className="mb-3">
-              <WowstorgAuditStatusCard />
-            </div>
             <WowstorgDashboardBlock isWowstorg={isWowstorg} />
           </div>
         ) : null}
@@ -1015,19 +1097,20 @@ export default function HomeDashboardPage() {
             href="/catalog"
             title="Каталог"
             description="Маркет реквизита: карточки, поиск, корзина, оформление."
+            variant="highlight"
           />
 
           {isWowstorg ? (
             <>
               <CardLink
-                href="/warehouse/queue"
-                title="Очередь заявок"
-                description="Согласование, сборка, выдача, приёмка."
+                href="/projects"
+                title="Управление проектами"
+                description="Активные и архивные проекты, создание карточек, сметы, файлы и заявки."
               />
               <CardLink
-                href="/warehouse/archive"
-                title="Архив заявок"
-                description="Завершённые и отменённые заявки."
+                href="/warehouse/queue"
+                title="Очередь заявок"
+                description="Активные и архивные заявки, согласование, сборка, выдача и приёмка."
               />
               <CardLink
                 href="/inventory/items"

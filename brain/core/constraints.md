@@ -7,7 +7,7 @@
 
 ## База данных
 
-- Любое изменение схемы → **миграция Prisma** + при необходимости обновление сида и доков. На проде: **`prisma migrate deploy`** к той же БД, что и `DATABASE_URL` на Vercel.
+- Любое изменение схемы → **миграция Prisma** + при необходимости обновление сида и доков. На проде: **`prisma migrate deploy`** использует **`DIRECT_URL`** (в `schema.prisma`); на Vercel нужны оба: **`DATABASE_URL`** (пул) и **`DIRECT_URL`**.
 - Таблица **`ReminderSent`** используется через **raw SQL** в `reminder-runner.ts`; модели в `schema.prisma` может не быть — миграции должны применяться полностью.
 
 ## Заказы и конкурентность
@@ -30,13 +30,15 @@
 
 | Переменная | Где используется |
 |------------|------------------|
-| `DATABASE_URL` | Prisma |
+| `DATABASE_URL` | Prisma (пул, рантайм) |
+| `DIRECT_URL` | Prisma (миграции / прямое подключение) |
 | `NODE_ENV` | Next / prisma log / cookie secure / storage |
 | `NEXT_PUBLIC_APP_URL` | Ссылки в уведомлениях, напоминаниях, quick-supplement |
 | `SUPABASE_URL` | Storage |
 | `SUPABASE_SERVICE_ROLE_KEY` | Storage |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` | Имя bucket фото (default `item-photos`) |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` | Имя bucket смет (default `estimates`) |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` | Имя bucket файлов модуля «Проекты» (default `project-files`) |
 | `TELEGRAM_BOT_TOKEN` | `telegram.ts` |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` / `TELEGRAM_WAREHOUSE_CHAT_ID` | Чат склада |
 | `TELEGRAM_NOTIFICATION_TOPIC_ID` / `TELEGRAM_WAREHOUSE_TOPIC_ID` | Топик в форуме |

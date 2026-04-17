@@ -1,12 +1,14 @@
-# Переменные окружения (сверка с кодом)
+# Переменные окружения (сгенерировано из кода)
 
-> **Сгенерировано при аудите:** 2026-04-05  
-> Источники: `process.env.*` в `src/**/*.ts(x)`, `prisma/seed.cjs`, и `env("…")` в `prisma/schema.prisma`.  
-> **Автоперегенерация:** `npm run brain:inventory` (скрипт объединяет Prisma datasource и скан `src`).
+> **Сгенерировано:** 2026-04-10T08:42:55.152Z  
+> Уникальных имён `process.env.*`: 30  
+> Скан: `src/**/*.ts(x)` и `prisma/seed.cjs`  
+> Перегенерировать: `npm run brain:inventory`
 
 | Переменная |
 |------------|
 | `DATABASE_URL` |
+| `DIRECT_URL` |
 | `HTTPS_PROXY` |
 | `INVENTORY_AUDIT_CRON_TOKEN` |
 | `INVENTORY_AUDIT_RETENTION_DAYS` |
@@ -22,15 +24,16 @@
 | `SUPABASE_SERVICE_ROLE_KEY` |
 | `SUPABASE_STORAGE_ESTIMATES_BUCKET` |
 | `SUPABASE_STORAGE_PHOTOS_BUCKET` |
+| `SUPABASE_STORAGE_PROJECTS_BUCKET` |
 | `SUPABASE_URL` |
 | `TELEGRAM_BOT_TOKEN` |
 | `TELEGRAM_GREENWICH_CHAT_ID` |
 | `TELEGRAM_HTTPS_PROXY` |
 | `TELEGRAM_NOTIFICATION_CHAT_ID` |
 | `TELEGRAM_NOTIFICATION_TOPIC_ID` |
+| `TELEGRAM_PROJECTS_TOPIC_ID` |
+| `TELEGRAM_PROJECT_TOPIC_ID` |
 | `TELEGRAM_PROXY` |
 | `TELEGRAM_SEND_TIMEOUT_MS` |
 | `TELEGRAM_WAREHOUSE_CHAT_ID` |
 | `TELEGRAM_WAREHOUSE_TOPIC_ID` |
-
-Семантика и обязательность для Vercel — в [`brain/core/constraints.md`](../core/constraints.md) и [`.env.example`](../../.env.example).

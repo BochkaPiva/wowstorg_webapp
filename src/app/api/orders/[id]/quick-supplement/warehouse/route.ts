@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { assertEnabledServicePricesPresent } from "@/server/orders/service-pricing";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import {
@@ -21,6 +22,18 @@ const LineSchema = z.object({
 
 const BodySchema = z.object({
   lines: z.array(LineSchema).min(1).max(500),
+  deliveryEnabled: z.boolean().optional(),
+  deliveryComment: z.string().trim().max(2000).optional(),
+  deliveryPrice: z.number().min(0).optional(),
+  deliveryInternalCost: z.number().min(0).nullable().optional(),
+  montageEnabled: z.boolean().optional(),
+  montageComment: z.string().trim().max(2000).optional(),
+  montagePrice: z.number().min(0).optional(),
+  montageInternalCost: z.number().min(0).nullable().optional(),
+  demontageEnabled: z.boolean().optional(),
+  demontageComment: z.string().trim().max(2000).optional(),
+  demontagePrice: z.number().min(0).optional(),
+  demontageInternalCost: z.number().min(0).nullable().optional(),
 });
 
 function buildQuickWarehouseMessage(args: {
@@ -73,12 +86,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
-
-  const disabledServices = {
-    deliveryEnabled: false,
-    montageEnabled: false,
-    demontageEnabled: false,
-  } as const;
+  try {
+    assertEnabledServicePricesPresent(parsed.data);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "";
+    const match = /^MISSING_SERVICE_PRICES:(.+)$/.exec(message);
+    if (match) {
+      return jsonError(400, `Укажите цену для включённых доп. услуг: ${match[1].split(",").filter(Boolean).join(", ")}`);
+    }
+    return jsonError(400, "Invalid input");
+  }
 
   let created: { id: string };
   try {
@@ -166,9 +183,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             startDate: parent.startDate,
             endDate: parent.endDate,
             payMultiplier: parent.payMultiplier,
-            deliveryEnabled: disabledServices.deliveryEnabled,
-            montageEnabled: disabledServices.montageEnabled,
-            demontageEnabled: disabledServices.demontageEnabled,
+            deliveryEnabled: parsed.data.deliveryEnabled ?? false,
+            deliveryComment: parsed.data.deliveryEnabled ? parsed.data.deliveryComment?.trim() || null : null,
+            deliveryPrice: parsed.data.deliveryEnabled ? parsed.data.deliveryPrice : undefined,
+            deliveryInternalCost: parsed.data.deliveryEnabled ? parsed.data.deliveryInternalCost : null,
+            montageEnabled: parsed.data.montageEnabled ?? false,
+            montageComment: parsed.data.montageEnabled ? parsed.data.montageComment?.trim() || null : null,
+            montagePrice: parsed.data.montageEnabled ? parsed.data.montagePrice : undefined,
+            montageInternalCost: parsed.data.montageEnabled ? parsed.data.montageInternalCost : null,
+            demontageEnabled: parsed.data.demontageEnabled ?? false,
+            demontageComment: parsed.data.demontageEnabled ? parsed.data.demontageComment?.trim() || null : null,
+            demontagePrice: parsed.data.demontageEnabled ? parsed.data.demontagePrice : undefined,
+            demontageInternalCost: parsed.data.demontageEnabled ? parsed.data.demontageInternalCost : null,
             lines: {
               create: parsed.data.lines.map((l, idx) => {
                 const item = itemById.get(l.itemId)!;

@@ -11,6 +11,7 @@
 | `src/app/api/orders/[id]/warehouse-edit/route.ts` | Редактирование со стороны склада |
 | `src/app/api/orders/[id]/quick-supplement/greenwich/route.ts` | Быстрая доп.-выдача (Greenwich) |
 | `src/app/api/orders/[id]/quick-supplement/warehouse/route.ts` | Быстрая доп.-выдача (склад) |
+| `src/app/api/projects/[id]/draft-order/materialize/route.ts` | Materialize demo-черновика проекта в реальные заявки |
 
 Во всех перечисленных при **`P2034`** клиенту отдаётся **409** (повтор запроса), не сырой 500.
 

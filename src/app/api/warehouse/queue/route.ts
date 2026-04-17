@@ -134,6 +134,7 @@ export async function GET(req: Request) {
       deliveryPrice: true,
       montagePrice: true,
       demontagePrice: true,
+      project: { select: { id: true, title: true } },
       customer: { select: { id: true, name: true } },
       greenwichUser: {
         select: {
@@ -178,6 +179,7 @@ export async function GET(req: Request) {
       endDate: endStr,
       createdAt: o.createdAt.toISOString(),
       warehouseInternalNote: o.warehouseInternalNote ?? null,
+      project: o.project,
       customer: o.customer,
       greenwichUser: o.greenwichUser
         ? {

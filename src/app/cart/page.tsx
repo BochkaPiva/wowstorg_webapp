@@ -63,6 +63,25 @@ function Toggle({
 
 type Customer = { id: string; name: string };
 type GreenwichUser = { id: string; displayName: string };
+type DraftOrderResponse = {
+  draftOrder?: {
+    id: string;
+    estimateVersionId: string | null;
+    title: string | null;
+    comment: string | null;
+    lines: Array<{
+      id: string;
+      itemId: string;
+      itemName: string;
+      qty: number;
+      plannedDays: number;
+      comment: string | null;
+      periodGroup: string | null;
+      pricePerDaySnapshot: number | null;
+    }>;
+  } | null;
+  error?: { message?: string };
+};
 
 export default function CartPage() {
   const router = useRouter();
@@ -71,8 +90,56 @@ export default function CartPage() {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("quickParentId");
   });
+  const [projectId, setProjectId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("projectId");
+  });
+  const [projectMode, setProjectMode] = React.useState<"dated" | "demo">(() => {
+    if (typeof window === "undefined") return "dated";
+    return new URLSearchParams(window.location.search).get("projectMode") === "demo" ? "demo" : "dated";
+  });
+  const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("estimateVersionId");
+  });
   const isQuickSupplement = Boolean(quickParentId);
-  const cartScope = quickParentId ? `quick:${quickParentId}` : undefined;
+  const isProjectCart = Boolean(projectId) && !quickParentId;
+  const isProjectDemoCart = isProjectCart && projectMode === "demo";
+  const cartScope = quickParentId
+    ? `quick:${quickParentId}`
+    : projectId
+      ? isProjectDemoCart
+        ? `project-demo:${projectId}`
+        : `project:${projectId}`
+      : undefined;
+
+  const [projectContext, setProjectContext] = React.useState<{
+    id: string;
+    title: string;
+    customerId: string;
+    customerName: string;
+    eventStartDate?: string | null;
+    eventEndDate?: string | null;
+    eventDateConfirmed?: boolean;
+    draftOrder?: {
+      id: string;
+      title: string | null;
+      linesCount: number;
+      estimateVersionId: string | null;
+    } | null;
+  } | null>(null);
+  const [projectCartError, setProjectCartError] = React.useState<string | null>(null);
+  const [draftLineMetaByItemId, setDraftLineMetaByItemId] = React.useState<
+    Record<
+      string,
+      {
+        id?: string;
+        plannedDays: number;
+        comment: string | null;
+        periodGroup: string | null;
+      }
+    >
+  >({});
 
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
@@ -92,12 +159,15 @@ export default function CartPage() {
   const [deliveryEnabled, setDeliveryEnabled] = React.useState(false);
   const [deliveryComment, setDeliveryComment] = React.useState("");
   const [deliveryPrice, setDeliveryPrice] = React.useState("");
+  const [deliveryInternalCost, setDeliveryInternalCost] = React.useState("");
   const [montageEnabled, setMontageEnabled] = React.useState(false);
   const [montageComment, setMontageComment] = React.useState("");
   const [montagePrice, setMontagePrice] = React.useState("");
+  const [montageInternalCost, setMontageInternalCost] = React.useState("");
   const [demontageEnabled, setDemontageEnabled] = React.useState(false);
   const [demontageComment, setDemontageComment] = React.useState("");
   const [demontagePrice, setDemontagePrice] = React.useState("");
+  const [demontageInternalCost, setDemontageInternalCost] = React.useState("");
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -114,6 +184,9 @@ export default function CartPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setQuickParentId(params.get("quickParentId"));
+    setProjectId(params.get("projectId"));
+    setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
+    setEstimateVersionId(params.get("estimateVersionId"));
   }, []);
 
   React.useEffect(() => {
@@ -135,7 +208,7 @@ export default function CartPage() {
         setEventName(data.eventName ?? "");
         setComment(data.comment ?? "");
 
-        // Quick supplement всегда без доп. услуг.
+        // При смене родительской заявки сбрасываем локальный блок услуг и цен.
         setDeliveryEnabled(false);
         setMontageEnabled(false);
         setDemontageEnabled(false);
@@ -143,8 +216,11 @@ export default function CartPage() {
         setMontageComment("");
         setDemontageComment("");
         setDeliveryPrice("");
+        setDeliveryInternalCost("");
         setMontagePrice("");
+        setMontageInternalCost("");
         setDemontagePrice("");
+        setDemontageInternalCost("");
 
         // Для расчётов итоговой суммы в quick режиме используем Greenwich-коэффициент.
         setOrderType("greenwich");
@@ -163,6 +239,74 @@ export default function CartPage() {
       cancelled = true;
     };
   }, [quickParentId]);
+
+  React.useEffect(() => {
+    if (!projectId || quickParentId) {
+      setProjectContext(null);
+      setProjectCartError(null);
+      return;
+    }
+    const role = state.status === "authenticated" ? state.user.role : null;
+    if (role !== "WOWSTORG") {
+      setProjectContext(null);
+      setProjectCartError("Корзина проекта доступна только со склада (Wowstorg).");
+      return;
+    }
+    let cancelled = false;
+    setProjectCartError(null);
+    setProjectContext(null);
+    fetch(`/api/projects/${projectId}`, { cache: "no-store" })
+      .then((r) => r.json().catch(() => null))
+      .then(
+        (data: {
+          project?: {
+            id: string;
+            title: string;
+            customer: { id: string; name: string };
+            eventStartDate?: string | null;
+            eventEndDate?: string | null;
+            eventDateConfirmed?: boolean;
+            draftOrder?: {
+              id: string;
+              title: string | null;
+              linesCount: number;
+              estimateVersionId: string | null;
+            } | null;
+          };
+          error?: { message?: string };
+        } | null) => {
+          if (cancelled) return;
+          if (!data?.project) {
+            setProjectCartError(data?.error?.message ?? "Проект не найден");
+            return;
+          }
+          const p = data.project;
+          setProjectContext({
+            id: p.id,
+            title: p.title,
+            customerId: p.customer.id,
+            customerName: p.customer.name,
+            eventStartDate: p.eventStartDate ?? null,
+            eventEndDate: p.eventEndDate ?? null,
+            eventDateConfirmed: p.eventDateConfirmed ?? false,
+            draftOrder: p.draftOrder ?? null,
+          });
+          setCustomerInput(p.customer.name);
+          setCustomerId(p.customer.id);
+          setOrderType("external");
+          setEventName((prev) => (prev.trim() ? prev : p.title));
+        },
+      )
+      .catch(() => {
+        if (!cancelled) {
+          setProjectContext(null);
+          setProjectCartError("Не удалось загрузить проект");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, quickParentId, state.status]);
 
   React.useEffect(() => {
     setCart(loadCart(cartScope));
@@ -193,7 +337,7 @@ export default function CartPage() {
   }, [cart]);
 
   React.useEffect(() => {
-    if (isQuickSupplement) return;
+    if (isQuickSupplement || isProjectDemoCart) return;
     if (typeof window === "undefined") return;
     const n = catalogDatesFromStorage();
     setStartDate(n.startDate);
@@ -202,7 +346,7 @@ export default function CartPage() {
     localStorage.setItem("catalog_readyByDate", n.readyByDate);
     localStorage.setItem("catalog_startDate", n.startDate);
     localStorage.setItem("catalog_endDate", n.endDate);
-  }, [isQuickSupplement]);
+  }, [isProjectDemoCart, isQuickSupplement]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -253,6 +397,59 @@ export default function CartPage() {
   const cartItemIdsKey = React.useMemo(() => cart.map((l) => l.itemId).sort().join(","), [cart]);
 
   React.useEffect(() => {
+    if (!isProjectDemoCart || !projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as DraftOrderResponse | null;
+        if (!res.ok || !data || cancelled) return;
+        const metaByItemId = Object.fromEntries(
+          (data.draftOrder?.lines ?? []).map((line) => [
+            line.itemId,
+            {
+              id: line.id,
+              plannedDays: Math.max(1, line.plannedDays ?? 1),
+              comment: line.comment ?? null,
+              periodGroup: line.periodGroup ?? null,
+            },
+          ]),
+        );
+        setDraftLineMetaByItemId(metaByItemId);
+        const next = (data.draftOrder?.lines ?? []).map((line) => ({
+          itemId: line.itemId,
+          qty: line.qty,
+          pricePerDay: line.pricePerDaySnapshot ?? undefined,
+        }));
+        const localCart = loadCart(cartScope);
+        if (localCart.length === 0 && next.length > 0) {
+          saveCart(next, cartScope);
+          setCart(next);
+        }
+        if (data.draftOrder?.estimateVersionId) {
+          setEstimateVersionId(data.draftOrder.estimateVersionId);
+        }
+        setComment(data.draftOrder?.comment ?? "");
+        setEventName((prev) => prev.trim() || data.draftOrder?.title?.trim() || "");
+      } catch {
+        // ignore: empty draft is normal
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cartScope, isProjectDemoCart, projectId]);
+
+  React.useEffect(() => {
+    if (!isProjectCart || !projectContext || isProjectDemoCart) return;
+    if (!projectContext.eventDateConfirmed) return;
+    if (!projectContext.eventStartDate || !projectContext.eventEndDate) return;
+    setStartDate((prev) => prev ?? projectContext.eventStartDate ?? null);
+    setEndDate((prev) => prev ?? projectContext.eventEndDate ?? null);
+    setReadyByDate((prev) => prev ?? projectContext.eventStartDate ?? null);
+  }, [isProjectCart, isProjectDemoCart, projectContext]);
+
+  React.useEffect(() => {
     if (cart.length === 0) {
       setItems([]);
       setLoading(false);
@@ -263,7 +460,7 @@ export default function CartPage() {
 
     const params = new URLSearchParams();
     params.set("ids", ids);
-    if (startDate && endDate) {
+    if (!isProjectDemoCart && startDate && endDate) {
       params.set("startDate", startDate);
       params.set("endDate", endDate);
     }
@@ -289,11 +486,14 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [cartItemIdsKey, startDate, endDate, quickParentId]);
+  }, [cartItemIdsKey, startDate, endDate, quickParentId, isProjectDemoCart]);
 
   function maxQtyForItem(itemId: string): number | null {
     const inv = items.find((i) => i.id === itemId);
     if (!inv) return null;
+    if (isProjectDemoCart) {
+      return Math.max(0, inv.availability.availableNow);
+    }
     const max = inv.availability.availableForDates ?? inv.availability.availableNow;
     return Math.max(0, max);
   }
@@ -321,7 +521,9 @@ export default function CartPage() {
         .map((l) => {
           const inv = items.find((i) => i.id === l.itemId);
           if (!inv) return l;
-          const cap = inv.availability.availableForDates ?? inv.availability.availableNow;
+          const cap = isProjectDemoCart
+            ? inv.availability.availableNow
+            : inv.availability.availableForDates ?? inv.availability.availableNow;
           const max = Math.max(0, cap);
           const clamped = max <= 0 ? 0 : Math.min(l.qty, max);
           if (clamped !== l.qty) changed = true;
@@ -332,7 +534,7 @@ export default function CartPage() {
       saveCart(next, cartScope);
       return next;
     });
-  }, [items, cartScope]);
+  }, [items, cartScope, isProjectDemoCart]);
 
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));
@@ -367,7 +569,11 @@ export default function CartPage() {
   const matchedCustomer =
     customerInputTrim &&
     customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
-  const canSubmitCustomer = isQuickSupplement ? true : Boolean(customerInputTrim);
+  const canSubmitCustomer = isQuickSupplement
+    ? true
+    : isProjectCart
+      ? Boolean(projectContext?.customerId && !projectCartError)
+      : Boolean(customerInputTrim);
   const customerFiltered =
     !customerInputTrim
       ? customers
@@ -414,14 +620,64 @@ export default function CartPage() {
     isWarehouse &&
     cart.length > 0 &&
     canSubmitCustomer &&
-    (orderType !== "greenwich" || Boolean(greenwichUserId));
-  const canCheckout = isQuickSupplement
-    ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
-    : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
+    (isProjectCart || orderType !== "greenwich" || Boolean(greenwichUserId));
+  const canCheckout = isProjectDemoCart
+    ? cart.length > 0 && Boolean(projectContext)
+    : isQuickSupplement
+      ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
+      : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
 
   async function submit() {
+    if (isProjectDemoCart && projectContext) {
+      setError(null);
+      setSubmitting(true);
+      try {
+        const res = await fetch(`/api/projects/${projectContext.id}/draft-order`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            estimateVersionId: estimateVersionId ?? undefined,
+            title: eventName.trim() || projectContext.title,
+            comment: comment.trim() || null,
+            lines: cart.map((l, index) => {
+              const item = itemMap.get(l.itemId);
+              const meta = draftLineMetaByItemId[l.itemId];
+              return {
+                ...(meta?.id ? { id: meta.id } : {}),
+                itemId: l.itemId,
+                itemName: item?.name ?? l.itemId,
+                qty: l.qty,
+                plannedDays: Math.max(1, meta?.plannedDays ?? 1),
+                comment: meta?.comment ?? null,
+                periodGroup: meta?.periodGroup ?? null,
+                pricePerDaySnapshot:
+                  l.pricePerDay ?? (item ? Number(item.pricePerDay) : null),
+                sortOrder: index,
+              };
+            }),
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as DraftOrderResponse | null;
+        if (!res.ok) {
+          setError(data?.error?.message ?? "Не удалось сохранить demo-черновик");
+          return;
+        }
+        router.replace(`/projects/${projectContext.id}`);
+        return;
+      } catch (e) {
+        console.error("project demo save failed", e);
+        setError(e instanceof Error ? e.message : "Не удалось сохранить demo-черновик");
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
     if (!startDate || !endDate || !readyByDate) return;
-    if (!isQuickSupplement && !customerInputTrim) return;
+    if (isProjectCart && !projectContext) {
+      setError("Не загружены данные проекта");
+      return;
+    }
+    if (!isQuickSupplement && !isProjectCart && !customerInputTrim) return;
     const match = customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
     setError(null);
     setSubmitting(true);
@@ -437,6 +693,46 @@ export default function CartPage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            ...(isWarehouse
+              ? {
+                  deliveryPrice:
+                    deliveryEnabled && deliveryPrice.trim()
+                      ? Number(deliveryPrice.replace(",", "."))
+                      : undefined,
+                  deliveryInternalCost:
+                    deliveryEnabled && deliveryInternalCost.trim()
+                      ? Number(deliveryInternalCost.replace(",", "."))
+                      : deliveryEnabled
+                        ? null
+                        : undefined,
+                  montagePrice:
+                    montageEnabled && montagePrice.trim()
+                      ? Number(montagePrice.replace(",", "."))
+                      : undefined,
+                  montageInternalCost:
+                    montageEnabled && montageInternalCost.trim()
+                      ? Number(montageInternalCost.replace(",", "."))
+                      : montageEnabled
+                        ? null
+                        : undefined,
+                  demontagePrice:
+                    demontageEnabled && demontagePrice.trim()
+                      ? Number(demontagePrice.replace(",", "."))
+                      : undefined,
+                  demontageInternalCost:
+                    demontageEnabled && demontageInternalCost.trim()
+                      ? Number(demontageInternalCost.replace(",", "."))
+                      : demontageEnabled
+                        ? null
+                        : undefined,
+                }
+              : {}),
           }),
         });
 
@@ -454,31 +750,69 @@ export default function CartPage() {
         return;
       }
 
-      const payload: Record<string, unknown> = {
-        ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
-        readyByDate,
-        startDate,
-        endDate,
-        eventName: eventName.trim() || undefined,
-        comment: comment.trim() || undefined,
-        deliveryEnabled,
-        deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
-        montageEnabled,
-        montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
-        demontageEnabled,
-        demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
-        lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
-      };
-      if (isWarehouse) {
+      const payload: Record<string, unknown> = isProjectCart && projectContext
+        ? {
+            customerId: projectContext.customerId,
+            projectId: projectContext.id,
+            targetEstimateVersionId: estimateVersionId ?? undefined,
+            readyByDate,
+            startDate,
+            endDate,
+            eventName: eventName.trim() || undefined,
+            comment: comment.trim() || undefined,
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+          }
+        : {
+            ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
+            readyByDate,
+            startDate,
+            endDate,
+            eventName: eventName.trim() || undefined,
+            comment: comment.trim() || undefined,
+            deliveryEnabled,
+            deliveryComment: deliveryEnabled ? deliveryComment.trim() || undefined : undefined,
+            montageEnabled,
+            montageComment: montageEnabled ? montageComment.trim() || undefined : undefined,
+            demontageEnabled,
+            demontageComment: demontageEnabled ? demontageComment.trim() || undefined : undefined,
+            lines: cart.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+          };
+      if (isWarehouse && !isProjectCart) {
         const dp = deliveryPrice.trim() ? Number(deliveryPrice.replace(",", ".")) : undefined;
         const mp = montagePrice.trim() ? Number(montagePrice.replace(",", ".")) : undefined;
         const dmp = demontagePrice.trim() ? Number(demontagePrice.replace(",", ".")) : undefined;
         if (dp != null && !Number.isNaN(dp)) payload.deliveryPrice = dp;
         if (mp != null && !Number.isNaN(mp)) payload.montagePrice = mp;
         if (dmp != null && !Number.isNaN(dmp)) payload.demontagePrice = dmp;
+        const di = deliveryInternalCost.trim() ? Number(deliveryInternalCost.replace(",", ".")) : undefined;
+        const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
+        const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
+        if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
         payload.source = orderType === "greenwich" ? "GREENWICH_INTERNAL" : "WOWSTORG_EXTERNAL";
         if (orderType === "greenwich" && greenwichUserId)
           payload.greenwichUserId = greenwichUserId;
+      }
+      if (isWarehouse && isProjectCart) {
+        const dp = deliveryPrice.trim() ? Number(deliveryPrice.replace(",", ".")) : undefined;
+        const mp = montagePrice.trim() ? Number(montagePrice.replace(",", ".")) : undefined;
+        const dmp = demontagePrice.trim() ? Number(demontagePrice.replace(",", ".")) : undefined;
+        if (dp != null && !Number.isNaN(dp)) payload.deliveryPrice = dp;
+        if (mp != null && !Number.isNaN(mp)) payload.montagePrice = mp;
+        if (dmp != null && !Number.isNaN(dmp)) payload.demontagePrice = dmp;
+        const di = deliveryInternalCost.trim() ? Number(deliveryInternalCost.replace(",", ".")) : undefined;
+        const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
+        const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
+        if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
       }
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -643,14 +977,18 @@ export default function CartPage() {
                   <div className="co-title">Оформление заявки</div>
                   <div className="co-subtitle">
                     {isQuickSupplement
-                      ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки."
-                      : isWarehouse
-                        ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
-                        : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
+                      ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки, при необходимости можно добавить доп. услуги."
+                      : isProjectDemoCart
+                        ? "Demo-черновик проекта: сохраняет корзину без дат и без создания реальной заявки."
+                      : isProjectCart
+                        ? "Заявка реквизита в рамках проекта: полная цена, заказчик из карточки проекта."
+                        : isWarehouse
+                          ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
+                          : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
                   </div>
                 </div>
 
-                {readyByDate && startDate && endDate ? (
+                {readyByDate && startDate && endDate && !isProjectDemoCart ? (
                   <div className="co-dates">
                     <div className="co-datePill">
                       Готовность: <strong>{formatDateRu(readyByDate)}</strong>
@@ -660,14 +998,53 @@ export default function CartPage() {
                       <strong>{formatDateRu(endDate)}</strong>
                     </div>
                     {!isQuickSupplement ? (
-                      <Link href="/catalog" className="co-link">
+                      <Link
+                        href={
+                          isProjectCart && projectId
+                            ? `/catalog?projectId=${encodeURIComponent(projectId)}`
+                            : "/catalog"
+                        }
+                        className="co-link"
+                      >
                         Изменить даты →
                       </Link>
                     ) : null}
                   </div>
                 ) : null}
 
-                {!isQuickSupplement && isWarehouse ? (
+                {isProjectDemoCart ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950">
+                    <div className="font-semibold">Demo-заявка без дат</div>
+                    <div className="mt-1 text-red-900/80">
+                      Эта корзина не создаёт реальную складскую заявку и не резервирует остатки, пока ты не перейдёшь в
+                      режим с датами из карточки проекта.
+                    </div>
+                  </div>
+                ) : null}
+
+                {isProjectCart && projectCartError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                    {projectCartError}
+                  </div>
+                ) : null}
+
+                {isProjectCart && projectContext ? (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-zinc-800">
+                    <span className="font-semibold text-violet-900">Проект: </span>
+                    {projectContext.title}
+                    <div className="mt-1 text-zinc-600">
+                      Заказчик: <strong>{projectContext.customerName}</strong>
+                    </div>
+                    <Link
+                      href={`/projects/${projectContext.id}`}
+                      className="mt-2 inline-block font-medium text-violet-700 hover:text-violet-900"
+                    >
+                      ← К карточке проекта
+                    </Link>
+                  </div>
+                ) : null}
+
+                {!isQuickSupplement && isWarehouse && !isProjectCart ? (
                   <div className="co-field" style={{ marginBottom: "1rem" }}>
                     <div className="co-label">Тип заявки</div>
                     <div className="co-flipSwitchContainer">
@@ -713,7 +1090,7 @@ export default function CartPage() {
                 ) : null}
 
                 <div className="co-grid">
-                  {!isQuickSupplement && isWarehouse && orderType === "greenwich" ? (
+                  {!isQuickSupplement && isWarehouse && !isProjectCart && orderType === "greenwich" ? (
                     <label className="co-field">
                       <div className="co-label">Сотрудник Grinvich *</div>
                       <select
@@ -741,7 +1118,9 @@ export default function CartPage() {
                           <input
                             type="text"
                             value={customerInput}
+                            readOnly={isProjectCart}
                             onChange={(e) => {
+                              if (isProjectCart) return;
                               const v = e.target.value;
                               setCustomerInput(v);
                               const t = v.trim();
@@ -754,7 +1133,9 @@ export default function CartPage() {
                               setCustomerId(match ? match.id : "");
                               setCustomerDropdownOpen(true);
                             }}
-                            onFocus={() => setCustomerDropdownOpen(true)}
+                            onFocus={() => {
+                              if (!isProjectCart) setCustomerDropdownOpen(true);
+                            }}
                             onBlur={() => {
                               setTimeout(() => setCustomerDropdownOpen(false), 180);
                             }}
@@ -794,7 +1175,9 @@ export default function CartPage() {
                             </div>
                           ) : null}
                         </div>
-                        {customerInputTrim && !matchedCustomer ? (
+                        {isProjectCart ? (
+                          <div className="co-combobox-hint">Фиксировано из проекта.</div>
+                        ) : customerInputTrim && !matchedCustomer ? (
                           <div className="co-combobox-hint">
                             Будет создан новый заказчик «{customerInputTrim}»
                           </div>
@@ -825,7 +1208,7 @@ export default function CartPage() {
                   </label>
                 ) : null}
 
-                {!isQuickSupplement ? (
+                {!isProjectDemoCart ? (
                   <div className="co-services">
                   <div className="co-servicesTitle">Доп. услуги</div>
                   <div className="co-serviceRow">
@@ -840,17 +1223,30 @@ export default function CartPage() {
                             placeholder="Комментарий к доставке…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={deliveryPrice}
-                              onChange={(e) => setDeliveryPrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={deliveryPrice}
+                                onChange={(e) => setDeliveryPrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={deliveryInternalCost}
+                                onChange={(e) => setDeliveryInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}
@@ -867,17 +1263,30 @@ export default function CartPage() {
                             placeholder="Комментарий к монтажу…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={montagePrice}
-                              onChange={(e) => setMontagePrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={montagePrice}
+                                onChange={(e) => setMontagePrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={montageInternalCost}
+                                onChange={(e) => setMontageInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}
@@ -894,17 +1303,30 @@ export default function CartPage() {
                             placeholder="Комментарий к демонтажу…"
                           />
                         ) : (
-                          <label className="co-priceRow">
-                            <span className="co-priceLabel">Стоимость, р</span>
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={demontagePrice}
-                              onChange={(e) => setDemontagePrice(e.target.value)}
-                              className="co-input co-input--price"
-                              placeholder="0"
-                            />
-                          </label>
+                          <div className="co-priceRowGroup">
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Стоимость, р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={demontagePrice}
+                                onChange={(e) => setDemontagePrice(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="0"
+                              />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Внутр., р</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={demontageInternalCost}
+                                onChange={(e) => setDemontageInternalCost(e.target.value)}
+                                className="co-input co-input--price"
+                                placeholder="необяз."
+                              />
+                            </label>
+                          </div>
                         )}
                       </>
                     ) : null}
@@ -942,7 +1364,15 @@ export default function CartPage() {
                     onClick={submit}
                     className="co-btn co-btn--primary"
                   >
-                    {submitting ? "Создаём заявку…" : isQuickSupplement ? "Оформить доп.-заявку" : "Создать заявку"}
+                    {submitting
+                      ? isProjectDemoCart
+                        ? "Сохраняем demo…"
+                        : "Создаём заявку…"
+                      : isProjectDemoCart
+                        ? "Сохранить demo-черновик"
+                        : isQuickSupplement
+                          ? "Оформить доп.-заявку"
+                          : "Создать заявку"}
                   </button>
                 </div>
               </>
@@ -973,7 +1403,19 @@ export default function CartPage() {
           typeof document !== "undefined" &&
           createPortal(
             <Link
-              href={isQuickSupplement ? `/catalog?quickParentId=${quickParentId}` : "/catalog"}
+              href={
+                isQuickSupplement
+                  ? `/catalog?quickParentId=${quickParentId}`
+                  : isProjectCart && projectId
+                    ? (() => {
+                        const params = new URLSearchParams();
+                        params.set("projectId", projectId);
+                        if (projectMode === "demo") params.set("projectMode", "demo");
+                        if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
+                        return `/catalog?${params.toString()}`;
+                      })()
+                    : "/catalog"
+              }
               className="cart-floatCatalog"
               aria-label="В каталог"
             >

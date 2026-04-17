@@ -3,28 +3,32 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
 const LineSchema = z.object({
   id: z.string().optional(),
   itemId: z.string().min(1),
-  requestedQty: z.number().int().min(0).max(100000),
-  warehouseComment: z.string().trim().max(2000).optional(),
+  requestedQty: z.number().int().min(0),
+  warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
 
 const BodySchema = z.object({
-  eventName: z.string().trim().max(200).optional(),
-  comment: z.string().trim().max(5000).optional(),
+  eventName: z.string().trim().max(200).nullable().optional(),
+  comment: z.string().trim().max(5000).nullable().optional(),
   deliveryEnabled: z.boolean().optional(),
-  deliveryComment: z.string().trim().max(2000).optional(),
+  deliveryComment: z.string().trim().max(2000).nullable().optional(),
   deliveryPrice: z.number().min(0).optional(),
+  deliveryInternalCost: z.number().min(0).nullable().optional(),
   montageEnabled: z.boolean().optional(),
-  montageComment: z.string().trim().max(2000).optional(),
+  montageComment: z.string().trim().max(2000).nullable().optional(),
   montagePrice: z.number().min(0).optional(),
+  montageInternalCost: z.number().min(0).nullable().optional(),
   demontageEnabled: z.boolean().optional(),
-  demontageComment: z.string().trim().max(2000).optional(),
+  demontageComment: z.string().trim().max(2000).nullable().optional(),
   demontagePrice: z.number().min(0).optional(),
+  demontageInternalCost: z.number().min(0).nullable().optional(),
   lines: z.array(LineSchema).min(1).max(500),
 });
 
@@ -52,6 +56,7 @@ export async function PATCH(
   const data = parsed.data;
 
   let wasCycleStatus = false;
+  let projectIdForNotify: string | null = null;
 
   try {
     await prisma.$transaction(
@@ -69,6 +74,7 @@ export async function PATCH(
         });
 
         if (!order) throw new Error("NOT_FOUND");
+        projectIdForNotify = order.projectId;
 
         const quickRow = await tx.$queryRaw<Array<{ parentOrderId: string | null }>>`
           SELECT "parentOrderId"
@@ -76,9 +82,7 @@ export async function PATCH(
           WHERE "id" = ${id}
           LIMIT 1
         `;
-        if (quickRow?.[0]?.parentOrderId) {
-          throw new Error("FORBIDDEN_QUICK");
-        }
+        const isQuickSupplement = Boolean(quickRow?.[0]?.parentOrderId);
 
         if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
           throw new Error("BAD_STATUS");
@@ -162,21 +166,24 @@ export async function PATCH(
         await tx.order.update({
           where: { id },
           data: {
-            ...(data.eventName !== undefined ? { eventName: data.eventName.trim() || null } : {}),
-            ...(data.comment !== undefined ? { comment: data.comment.trim() || null } : {}),
+            ...(data.eventName !== undefined ? { eventName: data.eventName?.trim() || null } : {}),
+            ...(data.comment !== undefined ? { comment: data.comment?.trim() || null } : {}),
             ...(data.deliveryEnabled !== undefined ? { deliveryEnabled: data.deliveryEnabled } : {}),
-            ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment.trim() || null } : {}),
+            ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment?.trim() || null } : {}),
             ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
+            ...(data.deliveryInternalCost !== undefined ? { deliveryInternalCost: data.deliveryInternalCost } : {}),
             ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
-            ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
+            ...(data.montageComment !== undefined ? { montageComment: data.montageComment?.trim() || null } : {}),
             ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
+            ...(data.montageInternalCost !== undefined ? { montageInternalCost: data.montageInternalCost } : {}),
             ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
-            ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
+            ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment?.trim() || null } : {}),
             ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
+            ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
             ...(wasCycleStatus
               ? {
                   status:
-                    order.source === "WOWSTORG_EXTERNAL"
+                    order.source === "WOWSTORG_EXTERNAL" || isQuickSupplement
                       ? "APPROVED_BY_GREENWICH"
                       : "SUBMITTED",
                 }
@@ -212,7 +219,6 @@ export async function PATCH(
     }
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
-      if (e.message === "FORBIDDEN_QUICK") return jsonError(400, "Быстрая доп.-заявка не редактируется");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
       if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
       const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);
@@ -230,6 +236,18 @@ export async function PATCH(
     }
     console.error("[warehouse-edit] transaction error:", e);
     return jsonError(500, e instanceof Error ? e.message : "Ошибка при сохранении");
+  }
+
+  if (projectIdForNotify) {
+    scheduleAfterResponse("notifyProjectEstimateFromWarehouseEdit", async () => {
+      const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+      await notifyProjectNoisyBlock({
+        projectId: projectIdForNotify!,
+        actorUserId: auth.user.id,
+        block: "estimate",
+        action: "Связанная заявка проекта была обновлена со стороны склада.",
+      });
+    });
   }
 
   return jsonOk({ ok: true });

@@ -25,7 +25,19 @@ export async function GET(
       },
       lines: {
         orderBy: [{ position: "asc" }],
-        include: { item: { select: { id: true, name: true, type: true } } },
+        include: {
+          item: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              total: true,
+              inRepair: true,
+              broken: true,
+              missing: true,
+            },
+          },
+        },
       },
       returnSplits: {
         select: {
@@ -39,6 +51,7 @@ export async function GET(
         },
         orderBy: [{ createdAt: "asc" }],
       },
+      project: { select: { id: true, title: true } },
     },
   });
 
@@ -57,7 +70,7 @@ export async function GET(
     LIMIT 1
   `;
 
-  const { greenwichUser, lines, returnSplits, ...orderBase } = order;
+  const { greenwichUser, lines, returnSplits, project, ...orderBase } = order;
 
   const serialized: Record<string, unknown> = {
     ...orderBase,
@@ -69,8 +82,11 @@ export async function GET(
     estimateSentAt: order.estimateSentAt?.toISOString() ?? null,
     greenwichConfirmedAt: order.greenwichConfirmedAt?.toISOString() ?? null,
     deliveryPrice: order.deliveryPrice != null ? Number(order.deliveryPrice) : null,
+    deliveryInternalCost: order.deliveryInternalCost != null ? Number(order.deliveryInternalCost) : null,
     montagePrice: order.montagePrice != null ? Number(order.montagePrice) : null,
+    montageInternalCost: order.montageInternalCost != null ? Number(order.montageInternalCost) : null,
     demontagePrice: order.demontagePrice != null ? Number(order.demontagePrice) : null,
+    demontageInternalCost: order.demontageInternalCost != null ? Number(order.demontageInternalCost) : null,
     payMultiplier: order.payMultiplier != null ? Number(order.payMultiplier) : null,
     greenwichUser: greenwichUser
       ? {
@@ -96,6 +112,14 @@ export async function GET(
   } else {
     serialized.warehouseInternalNote = order.warehouseInternalNote ?? null;
   }
+
+  if (auth.user.role === "GREENWICH") {
+    delete serialized.projectId;
+  } else if (auth.user.role === "WOWSTORG") {
+    serialized.project =
+      order.projectId && project ? { id: project.id, title: project.title } : null;
+  }
+
   return jsonOk({ order: serialized });
 }
 

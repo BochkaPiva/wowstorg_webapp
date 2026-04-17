@@ -21,6 +21,12 @@ const LineSchema = z.object({
 
 const BodySchema = z.object({
   lines: z.array(LineSchema).min(1).max(500),
+  deliveryEnabled: z.boolean().optional(),
+  deliveryComment: z.string().trim().max(2000).optional(),
+  montageEnabled: z.boolean().optional(),
+  montageComment: z.string().trim().max(2000).optional(),
+  demontageEnabled: z.boolean().optional(),
+  demontageComment: z.string().trim().max(2000).optional(),
 });
 
 function buildQuickWarehouseMessage(args: {
@@ -73,18 +79,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
-
-  const disabledServices = {
-    deliveryEnabled: false,
-    montageEnabled: false,
-    demontageEnabled: false,
-    deliveryPrice: undefined,
-    montagePrice: undefined,
-    demontagePrice: undefined,
-    deliveryComment: null,
-    montageComment: null,
-    demontageComment: null,
-  } as const;
 
   let created: { id: string };
   try {
@@ -172,9 +166,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             startDate: parent.startDate,
             endDate: parent.endDate,
             payMultiplier: parent.payMultiplier,
-            deliveryEnabled: disabledServices.deliveryEnabled,
-            montageEnabled: disabledServices.montageEnabled,
-            demontageEnabled: disabledServices.demontageEnabled,
+            deliveryEnabled: parsed.data.deliveryEnabled ?? false,
+            deliveryComment: parsed.data.deliveryEnabled ? parsed.data.deliveryComment?.trim() || null : null,
+            montageEnabled: parsed.data.montageEnabled ?? false,
+            montageComment: parsed.data.montageEnabled ? parsed.data.montageComment?.trim() || null : null,
+            demontageEnabled: parsed.data.demontageEnabled ?? false,
+            demontageComment: parsed.data.demontageEnabled ? parsed.data.demontageComment?.trim() || null : null,
             lines: {
               create: parsed.data.lines.map((l, idx) => {
                 const item = itemById.get(l.itemId)!;

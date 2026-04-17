@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { buildEstimateXlsx } from "@/server/estimate-xlsx";
+import { assertEnabledServicePricesPresent } from "@/server/orders/service-pricing";
 import { putEstimateFile } from "@/server/file-storage";
 
 type Db = Prisma.TransactionClient | PrismaClient;
@@ -31,19 +32,7 @@ export async function makeEstimateArtifactsForOrder(db: Db, orderId: string): Pr
   });
   if (!order) throw new Error("NOT_FOUND");
 
-  const missing: string[] = [];
-  if (order.deliveryEnabled && (order.deliveryPrice == null || Number(order.deliveryPrice) <= 0)) {
-    missing.push("Доставка");
-  }
-  if (order.montageEnabled && (order.montagePrice == null || Number(order.montagePrice) <= 0)) {
-    missing.push("Монтаж");
-  }
-  if (order.demontageEnabled && (order.demontagePrice == null || Number(order.demontagePrice) <= 0)) {
-    missing.push("Демонтаж");
-  }
-  if (missing.length > 0) {
-    throw new Error(`MISSING_SERVICE_PRICES:${missing.join(",")}`);
-  }
+  assertEnabledServicePricesPresent(order);
 
   const estimateSentSnapshot = order.lines.map((l) => ({
     orderLineId: l.id,

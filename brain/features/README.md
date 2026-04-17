@@ -42,7 +42,7 @@
 
 | Тема | Документ |
 |------|----------|
-| Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) |
+| Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) (спека), [`projects-foundation.md`](./projects-foundation.md) (риски, зависимости, фазы), [`projects-predeploy-checklist.md`](./projects-predeploy-checklist.md) (бакет + env), [`projects-post-implementation-checklist.md`](./projects-post-implementation-checklist.md) (статус MVP + чеклист перед продом) |
 
 ## Индекс существующих крупных тем (в docs)
 

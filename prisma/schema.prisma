@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -78,6 +79,66 @@ enum InAppNotificationType {
   ACHIEVEMENT_UNLOCK
 }
 
+enum ProjectStatus {
+  LEAD
+  BRIEFING
+  INTERNAL_PREP
+  PROPOSAL_SENT
+  PROPOSAL_REVISION
+  CONTRACT_PREP
+  CONTRACT_SENT
+  CONTRACT_SIGNED
+  PREPRODUCTION
+  AWAITING_CLIENT_INPUT
+  AWAITING_VENDOR
+  READY_TO_RUN
+  LIVE
+  WRAP_UP
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum ProjectBall {
+  CLIENT
+  WOWSTORG
+  VENDOR
+  VENUE
+  NONE
+}
+
+enum ProjectContactCategory {
+  DECISION_MAKER
+  CONTRACTOR
+  VENUE
+  OTHER
+}
+
+enum ProjectActivityKind {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_ARCHIVED
+  ORDER_LINKED
+  ORDER_CANCELLED
+  PROJECT_DRAFT_ORDER_UPDATED
+  PROJECT_DRAFT_ORDER_MATERIALIZED
+  PROJECT_CONTACT_CREATED
+  PROJECT_CONTACT_UPDATED
+  PROJECT_FOLDER_CREATED
+  PROJECT_FOLDER_RENAMED
+  PROJECT_FOLDER_DELETED
+  PROJECT_FILE_UPLOADED
+  PROJECT_FILE_DELETED
+  PROJECT_ESTIMATE_VERSION_CREATED
+}
+
+/// Раздел сметы проекта: универсальный (LOCAL), подрядчики (CONTRACTOR) или реквизит по заявке (REQUISITE).
+enum ProjectEstimateSectionKind {
+  LOCAL
+  REQUISITE
+  CONTRACTOR
+}
+
 enum InventoryAuditRunKind {
   AUTO
   MANUAL
@@ -115,6 +176,13 @@ model User {
   towerStats          UserTowerStats?
   inAppNotifications  InAppNotification[]
   inventoryAuditRuns  InventoryAuditRun[]
+  projectsOwned                 Project[]                   @relation("project_owner")
+  projectActivityLogs           ProjectActivityLog[]
+  projectCommunicationEntries   ProjectCommunicationEntry[]
+  projectFilesUploaded          ProjectFile[]
+  projectEstimateVersionsCreated ProjectEstimateVersion[]
+  projectDraftOrdersCreated     ProjectDraftOrder[]         @relation("project_draft_order_created_by")
+  projectDraftOrdersUpdated     ProjectDraftOrder[]         @relation("project_draft_order_updated_by")
 
   @@index([role, isActive])
 }
@@ -145,6 +213,19 @@ model Session {
   @@index([expiresAt])
 }
 
+/// Idempotency для Telegram-напоминаний (`src/server/reminders/reminder-runner.ts`).
+model ReminderSent {
+  id             BigInt   @id @default(autoincrement())
+  type           String
+  orderId        String
+  ymd            String
+  receiverKey    String
+  receiverChatId String
+  createdAt      DateTime @default(now())
+
+  @@unique([type, orderId, ymd, receiverKey], map: "ReminderSent_unique")
+}
+
 model Customer {
   id       String  @id @default(cuid())
   name     String
@@ -154,9 +235,336 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders Order[]
+  orders   Order[]
+  projects Project[]
 
   @@index([isActive, name])
+}
+
+/// Проект мероприятия (WOWSTORG): заявки реквизита, смета, контакты — в следующих фазах.
+model Project {
+  id         String @id @default(cuid())
+  title      String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  ownerUserId String
+  owner       User   @relation("project_owner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  status ProjectStatus @default(LEAD)
+  ball   ProjectBall   @default(CLIENT)
+
+  /// Не null — проект в архиве (только просмотр в UI, без правок).
+  archivedAt DateTime?
+  /// Комментарий при переводе в архив (виден в списке архива).
+  archiveNote String?
+
+  eventStartDate     DateTime?
+  eventEndDate       DateTime?
+  eventDateNote      String?
+  eventDateConfirmed Boolean   @default(false)
+  openBlockers       String?
+  internalSummary    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders        Order[]
+  activityLogs  ProjectActivityLog[]
+  contacts      ProjectContact[]
+  draftOrders   ProjectDraftOrder[]
+  notificationCooldowns ProjectNotificationCooldown[]
+  folders       ProjectFolder[]
+  projectFiles  ProjectFile[]
+  estimateVersions ProjectEstimateVersion[]
+  scheduleDays  ProjectScheduleDay[]
+
+  @@index([customerId])
+  @@index([ownerUserId])
+  @@index([archivedAt])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+/// Append-only журнал событий по проекту (склад).
+model ProjectActivityLog {
+  id        String @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  actorUserId String
+  actor       User   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  kind    ProjectActivityKind
+  payload Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([actorUserId])
+}
+
+/// ЛПР / контакт по проекту (Wowstorg).
+model ProjectContact {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fullName  String
+  phone     String?
+  email     String?
+  category  ProjectContactCategory @default(DECISION_MAKER)
+  roleNote  String?
+  isActive  Boolean                @default(true)
+  sortOrder Int                    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries ProjectCommunicationEntry[]
+
+  @@index([projectId])
+  @@index([projectId, isActive])
+  @@index([projectId, sortOrder])
+}
+
+/// Запись переговоров с контактом (append-only в API).
+model ProjectCommunicationEntry {
+  id           String         @id @default(cuid())
+  contactId    String
+  contact      ProjectContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  authorUserId String
+  author       User   @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  body String @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([contactId, createdAt])
+}
+
+model ProjectNotificationCooldown {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  blockKey  String
+  muteUntil DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, blockKey])
+  @@index([projectId])
+  @@index([projectId, muteUntil])
+}
+
+/// Demo/draft-заявка проекта до materialize в реальные заявки склада.
+model ProjectDraftOrder {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  estimateVersionId String?
+  estimateVersion   ProjectEstimateVersion? @relation(fields: [estimateVersionId], references: [id], onDelete: SetNull)
+
+  title   String?
+  comment String?
+
+  createdById String
+  createdBy   User   @relation("project_draft_order_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  updatedById String?
+  updatedBy   User?  @relation("project_draft_order_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines ProjectDraftOrderLine[]
+
+  @@unique([projectId])
+  @@index([projectId])
+  @@index([estimateVersionId])
+}
+
+model ProjectDraftOrderLine {
+  id           String @id @default(cuid())
+  draftOrderId String
+  draftOrder   ProjectDraftOrder @relation(fields: [draftOrderId], references: [id], onDelete: Cascade)
+
+  sortOrder          Int     @default(0)
+  itemId             String
+  item               Item    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemNameSnapshot   String
+  qty                Int
+  plannedDays        Int     @default(1)
+  comment            String?
+  periodGroup        String?
+  pricePerDaySnapshot Decimal? @db.Decimal(14, 2)
+  lastAvailableQty   Int?
+  lastAvailabilityNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([draftOrderId, sortOrder])
+  @@index([itemId])
+}
+
+/// Папка в файловой зоне проекта (иерархия, корень = parentFolderId null).
+model ProjectFolder {
+  id             String  @id @default(cuid())
+  projectId      String
+  project        Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  parentFolderId String?
+  parent         ProjectFolder?  @relation("ProjectFolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
+  children       ProjectFolder[] @relation("ProjectFolderTree")
+
+  name      String
+  sortOrder Int     @default(0)
+  /// Стартовые «Сметы / Дизайн / Документация» — нельзя удалить (только переименовать).
+  isSystem  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  files ProjectFile[]
+
+  @@index([projectId])
+  @@index([projectId, parentFolderId])
+}
+
+/// Файл в Storage; ключ в бакете не совпадает с id (см. `storageKey`).
+model ProjectFile {
+  id           String @id @default(cuid())
+  projectId    String
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  folderId String
+  folder   ProjectFolder @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  storageKey   String @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([folderId])
+}
+
+/// Версия сметы проекта (конструктор); одна версия может быть явно назначена основной.
+model ProjectEstimateVersion {
+  id            String  @id @default(cuid())
+  projectId     String
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  versionNumber Int
+  note          String?
+  isPrimary     Boolean @default(false)
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  sections    ProjectEstimateSection[]
+  draftOrders ProjectDraftOrder[]
+
+  @@unique([projectId, versionNumber])
+  @@index([projectId])
+  @@index([projectId, isPrimary])
+}
+
+model ProjectEstimateSection {
+  id        String @id @default(cuid())
+  versionId String
+  version   ProjectEstimateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  sortOrder Int                     @default(0)
+  title     String
+  kind      ProjectEstimateSectionKind
+
+  /// Для kind = REQUISITE — одна заявка на раздел (блок реквизита).
+  linkedOrderId String?
+  linkedOrder   Order? @relation(fields: [linkedOrderId], references: [id], onDelete: SetNull)
+
+  /// Локальные поля строк реквизита (ед. изм. и т.п.), ключ = id строки read-model (orderLineId или service key).
+  lineLocalExtras Json?
+
+  lines ProjectEstimateLine[]
+
+  @@index([versionId])
+  @@index([linkedOrderId])
+}
+
+/// Строка сметы (позиция клиента / внутренняя; при копии из заявки — orderLineId).
+model ProjectEstimateLine {
+  id        String @id @default(cuid())
+  sectionId String
+  section   ProjectEstimateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  position   Int    @default(0)
+  lineNumber Int    @default(0)
+  name       String
+  description String?
+  /// Произвольная метка типа строки (напр. RENTAL, SERVICE).
+  lineType      String  @default("OTHER")
+  costClient    Decimal? @db.Decimal(14, 2)
+  costInternal  Decimal? @db.Decimal(14, 2)
+
+  /// Ед. измерения (пусто/null — в UI подставляется «шт»).
+  unit             String?
+  qty              Decimal? @db.Decimal(14, 4)
+  /// Клиентская цена за единицу (для LOCAL/CONTRACTOR).
+  unitPriceClient  Decimal? @db.Decimal(14, 2)
+
+  paymentMethod        String? @db.VarChar(40)
+  paymentStatus        String? @db.VarChar(120)
+  contractorNote       String? @db.Text
+  contractorRequisites String? @db.VarChar(500)
+
+  orderLineId String?
+  orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
+
+  itemId String?
+  item   Item? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId, position])
+  @@index([orderLineId])
+}
+
+/// День тайминга (дата текстом или «День 1»).
+model ProjectScheduleDay {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sortOrder Int    @default(0)
+  dateNote  String
+
+  slots ProjectScheduleSlot[]
+
+  @@index([projectId])
+}
+
+/// Слот тайминга: интервал + описание сценария.
+model ProjectScheduleSlot {
+  id          String @id @default(cuid())
+  dayId       String
+  day         ProjectScheduleDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+
+  sortOrder    Int    @default(0)
+  intervalText String
+  description  String @db.Text
+
+  @@index([dayId, sortOrder])
 }
 
 model Category {
@@ -204,6 +612,8 @@ model Item {
   orderLines  OrderLine[]
   lossRecords LossRecord[]
   inventoryAuditResults InventoryAuditItemResult[]
+  projectEstimateLines ProjectEstimateLine[]
+  projectDraftOrderLines ProjectDraftOrderLine[]
 
   @@index([isActive, internalOnly])
   @@index([name])
@@ -292,6 +702,9 @@ model Order {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   eventName String?
   comment   String?
 
@@ -309,6 +722,11 @@ model Order {
   demontageEnabled Boolean  @default(false)
   demontageComment String?
   demontagePrice   Decimal? @db.Decimal(12, 2)
+
+  /// Наша себестоимость доп. услуг (для маржи в смете проекта; клиентские суммы — deliveryPrice / montagePrice / demontagePrice).
+  deliveryInternalCost  Decimal? @db.Decimal(12, 2)
+  montageInternalCost   Decimal? @db.Decimal(12, 2)
+  demontageInternalCost Decimal? @db.Decimal(12, 2)
 
   /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
   /// чтобы изменения правил не ломали историю.
@@ -342,12 +760,14 @@ model Order {
   returnSplits ReturnSplit[]
   incidents    Incident[]
   lossRecords  LossRecord[]
+  projectEstimateSections ProjectEstimateSection[]
 
   @@index([status, readyByDate])
   @@index([source, status])
   @@index([customerId])
   @@index([greenwichUserId])
   @@index([parentOrderId])
+  @@index([projectId])
 }
 
 model OrderLine {
@@ -381,6 +801,7 @@ model OrderLine {
   returnSplits ReturnSplit[]
   incidents    Incident[]
   lossRecords  LossRecord[]
+  projectEstimateLines ProjectEstimateLine[]
 
   @@index([orderId, position])
   @@index([itemId])

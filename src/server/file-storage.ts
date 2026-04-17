@@ -3,13 +3,15 @@ import { join } from "path";
 
 const LOCAL_PHOTOS_DIR = join(process.cwd(), "data", "item-photos");
 const LOCAL_ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
+const LOCAL_PROJECT_FILES_DIR = join(process.cwd(), "data", "project-files");
 
 function supabaseConfig() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const photosBucket = (process.env.SUPABASE_STORAGE_PHOTOS_BUCKET?.trim() || "item-photos").toLowerCase();
   const estimatesBucket = (process.env.SUPABASE_STORAGE_ESTIMATES_BUCKET?.trim() || "estimates").toLowerCase();
-  return { url, key, photosBucket, estimatesBucket };
+  const projectsBucket = (process.env.SUPABASE_STORAGE_PROJECTS_BUCKET?.trim() || "project-files").toLowerCase();
+  return { url, key, photosBucket, estimatesBucket, projectsBucket };
 }
 
 function isSupabaseStorageEnabled() {
@@ -163,6 +165,51 @@ export async function getEstimateFile(key: string) {
     return readFileSync(join(LOCAL_ESTIMATES_DIR, key));
   } catch {
     return null;
+  }
+}
+
+export async function putProjectFile(key: string, body: Buffer, contentType: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { projectsBucket } = supabaseConfig();
+    await supabaseUpload({ bucket: projectsBucket, key, body, contentType, upsert: true });
+    return;
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  mkdirSync(LOCAL_PROJECT_FILES_DIR, { recursive: true });
+  writeFileSync(join(LOCAL_PROJECT_FILES_DIR, safeKey), body);
+}
+
+export async function getProjectFile(key: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { projectsBucket } = supabaseConfig();
+    return supabaseDownload({ bucket: projectsBucket, key });
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  try {
+    return readFileSync(join(LOCAL_PROJECT_FILES_DIR, safeKey));
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteProjectFile(key: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { projectsBucket } = supabaseConfig();
+    try {
+      await supabaseDelete({ bucket: projectsBucket, key });
+    } catch {
+      // best-effort cleanup
+    }
+    return;
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  try {
+    unlinkSync(join(LOCAL_PROJECT_FILES_DIR, safeKey));
+  } catch {
+    // best-effort cleanup
   }
 }
 

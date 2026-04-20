@@ -83,51 +83,59 @@ export function AppShell({
 
   const isWowstorg = state.user.role === "WOWSTORG";
   const showBack = pathname !== "/home";
+  const isCatalogRoute = pathname === "/catalog";
 
   return (
     <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
       <InAppNotifications enabled={state.status === "authenticated" && state.user.role === "GREENWICH"} />
-      <div className="wow-bg" aria-hidden="true">
-        <div
-          className="wow-orb wow-orb--violet"
-          style={{
-            width: 520,
-            height: 520,
-            top: -180,
-            left: -220,
-            ["--wow-x" as never]: "60px",
-            ["--wow-y" as never]: "90px",
-            ["--wow-duration" as never]: "16s",
-          }}
-        />
-        <div
-          className="wow-orb wow-orb--yellow"
-          style={{
-            width: 460,
-            height: 460,
-            bottom: -220,
-            right: -180,
-            ["--wow-x" as never]: "-70px",
-            ["--wow-y" as never]: "-60px",
-            ["--wow-duration" as never]: "18s",
-          }}
-        />
-        <div
-          className="wow-orb wow-orb--violet"
-          style={{
-            width: 320,
-            height: 320,
-            top: "38%",
-            right: "-140px",
-            opacity: 0.45,
-            ["--wow-x" as never]: "-60px",
-            ["--wow-y" as never]: "40px",
-            ["--wow-duration" as never]: "20s",
-          }}
-        />
-      </div>
+      {!isCatalogRoute ? (
+        <div className="wow-bg" aria-hidden="true">
+          <div
+            className="wow-orb wow-orb--violet"
+            style={{
+              width: 520,
+              height: 520,
+              top: -180,
+              left: -220,
+              ["--wow-x" as never]: "60px",
+              ["--wow-y" as never]: "90px",
+              ["--wow-duration" as never]: "16s",
+            }}
+          />
+          <div
+            className="wow-orb wow-orb--yellow"
+            style={{
+              width: 460,
+              height: 460,
+              bottom: -220,
+              right: -180,
+              ["--wow-x" as never]: "-70px",
+              ["--wow-y" as never]: "-60px",
+              ["--wow-duration" as never]: "18s",
+            }}
+          />
+          <div
+            className="wow-orb wow-orb--violet"
+            style={{
+              width: 320,
+              height: 320,
+              top: "38%",
+              right: "-140px",
+              opacity: 0.45,
+              ["--wow-x" as never]: "-60px",
+              ["--wow-y" as never]: "40px",
+              ["--wow-duration" as never]: "20s",
+            }}
+          />
+        </div>
+      ) : null}
       {/* top bar */}
-      <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white/70 backdrop-blur">
+      <div
+        className={[
+          "sticky top-0 z-10 border-b border-zinc-200",
+          isCatalogRoute ? "bg-white/95" : "bg-white/70 backdrop-blur",
+        ].join(" ")}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <button
@@ -292,7 +300,12 @@ export function AppShell({
 
       {/* content */}
       <div className="mx-auto max-w-7xl px-4 py-4">
-        <main className="rounded-2xl border border-violet-200/60 bg-white/90 p-4 text-zinc-900 shadow-sm backdrop-blur">
+        <main
+          className={[
+            "rounded-2xl border border-violet-200/60 p-4 text-zinc-900 shadow-sm",
+            isCatalogRoute ? "bg-white" : "bg-white/90 backdrop-blur",
+          ].join(" ")}
+        >
           {children}
         </main>
       </div>

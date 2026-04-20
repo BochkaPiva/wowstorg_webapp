@@ -73,7 +73,7 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
         <div className="mk-box">
           {item.photo1Key ? (
             <img
-              src={`/api/inventory/positions/${item.id}/photo`}
+              src={`/api/inventory/positions/${item.id}/photo?w=480`}
               alt=""
               className="mk-cardPhoto"
               loading="lazy"

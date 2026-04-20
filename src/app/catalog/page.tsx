@@ -25,6 +25,7 @@ type Category = { id: string; name: string; slug: string };
 
 type KitLine = { defaultQty: number; item: { id: string; name: string } };
 type Kit = { id: string; name: string; description: string | null; lines: KitLine[] };
+type CatalogPagination = { page: number; pageSize: number; total: number; totalPages: number };
 
 type CatalogItem = {
   id: string;
@@ -40,6 +41,8 @@ type CatalogItem = {
   missing: number;
   availability: { availableNow: number; availableForDates?: number };
 };
+
+const CATALOG_PAGE_SIZE = 32;
 
 function daysBetweenDateOnly(start: string, end: string) {
   // Treat end as exclusive like backend ([start, end))
@@ -95,12 +98,16 @@ export default function CatalogPage() {
   const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [kits, setKits] = React.useState<Kit[]>([]);
+  const [kitItemsById, setKitItemsById] = React.useState<Record<string, CatalogItem>>({});
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [categoryId, setCategoryId] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<CatalogTab>("positions");
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [pagination, setPagination] = React.useState<CatalogPagination | null>(null);
   // Одинаковые дефолты на SSR и первом кадре клиента — иначе гидратация и «ломаные» min/max у type=date
   const [startDate, setStartDate] = React.useState(() => getDefaultCatalogDates().startDate);
   const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
@@ -108,8 +115,16 @@ export default function CatalogPage() {
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
   const projectDatesPrefilledRef = React.useRef<string | null>(null);
 
-  const itemsRef = React.useRef(items);
-  itemsRef.current = items;
+  const itemLookup = React.useMemo(() => {
+    const map = new Map<string, CatalogItem>();
+    for (const item of items) map.set(item.id, item);
+    for (const item of Object.values(kitItemsById)) {
+      if (!map.has(item.id)) map.set(item.id, item);
+    }
+    return map;
+  }, [items, kitItemsById]);
+  const itemLookupRef = React.useRef(itemLookup);
+  itemLookupRef.current = itemLookup;
   const cartScopeRef = React.useRef(cartScope);
   cartScopeRef.current = cartScope;
   const isProjectDemoCatalogRef = React.useRef(isProjectDemoCatalog);
@@ -125,6 +140,7 @@ export default function CatalogPage() {
         setReadyByDate(n.readyByDate);
         setStartDate(n.startDate);
         setEndDate(n.endDate);
+        setCurrentPage(1);
       } catch (e) {
         console.error("[catalog] patchCatalogDates", e);
       }
@@ -135,6 +151,13 @@ export default function CatalogPage() {
   const dateMin = todayDateOnly();
   /** Конец периода не раньше начала; один и тот же день — допустим. */
   const endMin = startDate;
+
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -312,11 +335,11 @@ export default function CatalogPage() {
 
   const fetchCategoryId =
     activeTab === "positions" ? null : activeTab === "categories" ? categoryId : null;
+  const shouldFetchPagedItems = activeTab !== "kits" && !(activeTab === "categories" && !categoryId);
 
   React.useEffect(() => {
     let cancelled = false;
-    async function run() {
-      setLoading(true);
+    async function loadMeta() {
       try {
         const [catRes, kitRes] = await Promise.all([
           fetch("/api/catalog/categories", { cache: "no-store" }),
@@ -324,27 +347,58 @@ export default function CatalogPage() {
         ]);
         const catData = (await catRes.json().catch(() => null)) as { categories?: Category[] } | null;
         const kitData = (await kitRes.json().catch(() => null)) as { kits?: Kit[] } | null;
+        if (!cancelled) {
+          setCategories(catData?.categories ?? []);
+          setKits(kitData?.kits ?? []);
+        }
+      } catch (e) {
+        console.error("catalog meta load failed", e);
+        if (!cancelled) {
+          setCategories([]);
+          setKits([]);
+        }
+      }
+    }
+    void loadMeta().catch((e) => console.error("catalog meta fetch", e));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
+  React.useEffect(() => {
+    if (!shouldFetchPagedItems) {
+      setItems([]);
+      setPagination(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function run() {
+      setLoading(true);
+      try {
         const url = new URL("/api/catalog/items", window.location.origin);
-        if (query.trim()) url.searchParams.set("query", query.trim());
+        if (debouncedQuery) url.searchParams.set("query", debouncedQuery);
         if (fetchCategoryId) url.searchParams.set("category", fetchCategoryId);
         if (!isProjectDemoCatalog) {
           url.searchParams.set("startDate", startDate);
           url.searchParams.set("endDate", endDate);
         }
+        url.searchParams.set("page", String(currentPage));
+        url.searchParams.set("pageSize", String(CATALOG_PAGE_SIZE));
         const res = await fetch(url.toString(), { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+        const data = (await res.json().catch(() => null)) as {
+          items?: CatalogItem[];
+          pagination?: CatalogPagination | null;
+        } | null;
         if (!cancelled) {
-          setCategories(catData?.categories ?? []);
-          setKits(kitData?.kits ?? []);
           setItems(data?.items ?? []);
+          setPagination(data?.pagination ?? null);
         }
       } catch (e) {
         console.error("catalog load failed", e);
         if (!cancelled) {
-          setCategories([]);
-          setKits([]);
           setItems([]);
+          setPagination(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -354,12 +408,52 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [query, fetchCategoryId, startDate, endDate, isProjectDemoCatalog]);
+  }, [
+    currentPage,
+    debouncedQuery,
+    endDate,
+    fetchCategoryId,
+    isProjectDemoCatalog,
+    shouldFetchPagedItems,
+    startDate,
+  ]);
+
+  React.useEffect(() => {
+    const kitIds = Array.from(new Set(kits.flatMap((kit) => kit.lines.map((line) => line.item.id))));
+    if (kitIds.length === 0) {
+      setKitItemsById({});
+      return;
+    }
+    let cancelled = false;
+    async function loadKitItems() {
+      try {
+        const params = new URLSearchParams();
+        params.set("ids", kitIds.join(","));
+        if (!isProjectDemoCatalog) {
+          params.set("startDate", startDate);
+          params.set("endDate", endDate);
+        }
+        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+        if (!cancelled) {
+          setKitItemsById(
+            Object.fromEntries((data?.items ?? []).map((item) => [item.id, item])),
+          );
+        }
+      } catch (e) {
+        console.error("catalog kit items load failed", e);
+        if (!cancelled) setKitItemsById({});
+      }
+    }
+    void loadKitItems().catch((e) => console.error("catalog kit items fetch", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [endDate, isProjectDemoCatalog, kits, startDate]);
 
   const addToCart = React.useCallback((itemId: string, pricePerDay?: number) => {
     setCart((prev) => {
-      const catalog = itemsRef.current;
-      const item = catalog.find((i) => i.id === itemId);
+      const item = itemLookupRef.current.get(itemId);
       const demo = isProjectDemoCatalogRef.current;
       const max = item
         ? demo
@@ -387,8 +481,7 @@ export default function CatalogPage() {
 
   const setQty = React.useCallback((itemId: string, qty: number) => {
     setCart((prev) => {
-      const catalog = itemsRef.current;
-      const item = catalog.find((i) => i.id === itemId);
+      const item = itemLookupRef.current.get(itemId);
       const demo = isProjectDemoCatalogRef.current;
       const max = item
         ? demo
@@ -414,12 +507,11 @@ export default function CatalogPage() {
   function addKitToCart(kit: Kit) {
     // Обновляем корзину ОДНИМ апдейтом, чтобы не словить race condition и не выйти за лимит доступности
     setCart((prev) => {
-      const catalog = itemsRef.current;
       const demo = isProjectDemoCatalogRef.current;
       const next = [...prev];
       for (const l of kit.lines) {
         const itemId = l.item.id;
-        const inv = catalog.find((i) => i.id === itemId);
+        const inv = itemLookupRef.current.get(itemId);
         const max = inv
           ? demo
             ? inv.availability.availableNow
@@ -473,14 +565,12 @@ export default function CatalogPage() {
     [setQty],
   );
 
-  const selectedItem = selectedId
-    ? items.find((i) => i.id === selectedId) ?? null
-    : null;
+  const selectedItem = selectedId ? itemLookup.get(selectedId) ?? null : null;
 
   const cartTotalQty = cart.reduce((sum, l) => sum + l.qty, 0);
   const cartTotalPerDay = cart.reduce((sum, l) => {
-    const price =
-      l.pricePerDay ?? Number(items.find((i) => i.id === l.itemId)?.pricePerDay) ?? 0;
+    const item = itemLookup.get(l.itemId);
+    const price = l.pricePerDay ?? (item ? Number(item.pricePerDay) : 0);
     return sum + l.qty * price;
   }, 0);
   const rentalDays = isProjectDemoCatalog ? 1 : daysBetweenDateOnly(startDate, endDate);
@@ -492,6 +582,7 @@ export default function CatalogPage() {
     projectMode,
     estimateVersionId,
   });
+  const showPager = Boolean(pagination && pagination.totalPages > 1 && shouldFetchPagedItems);
 
   return (
     <AppShell title="Каталог">
@@ -591,7 +682,10 @@ export default function CatalogPage() {
           <div className="mk-toolbar">
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setCurrentPage(1);
+              }}
               className="mk-search"
               placeholder="Поиск по каталогу…"
             />
@@ -610,7 +704,10 @@ export default function CatalogPage() {
               role="tab"
               aria-selected={activeTab === "positions"}
               className={["mk-tab", activeTab === "positions" ? "mk-tabActive" : ""].join(" ")}
-              onClick={() => setActiveTab("positions")}
+              onClick={() => {
+                setActiveTab("positions");
+                setCurrentPage(1);
+              }}
             >
               Позиции
             </button>
@@ -618,7 +715,10 @@ export default function CatalogPage() {
               role="tab"
               aria-selected={activeTab === "categories"}
               className={["mk-tab", activeTab === "categories" ? "mk-tabActive" : ""].join(" ")}
-              onClick={() => setActiveTab("categories")}
+              onClick={() => {
+                setActiveTab("categories");
+                setCurrentPage(1);
+              }}
             >
               Категории
             </button>
@@ -626,7 +726,10 @@ export default function CatalogPage() {
               role="tab"
               aria-selected={activeTab === "kits"}
               className={["mk-tab", activeTab === "kits" ? "mk-tabActive" : ""].join(" ")}
-              onClick={() => setActiveTab("kits")}
+              onClick={() => {
+                setActiveTab("kits");
+                setCurrentPage(1);
+              }}
             >
               Пакеты
             </button>
@@ -636,7 +739,10 @@ export default function CatalogPage() {
             <div className="mk-chipRow" aria-label="Категории">
               <button
                 className={["mk-chip", !categoryId ? "mk-chipActive" : ""].join(" ")}
-                onClick={() => setCategoryId(null)}
+                onClick={() => {
+                  setCategoryId(null);
+                  setCurrentPage(1);
+                }}
               >
                 Все
               </button>
@@ -644,7 +750,10 @@ export default function CatalogPage() {
                 <button
                   key={c.id}
                   className={["mk-chip", categoryId === c.id ? "mk-chipActive" : ""].join(" ")}
-                  onClick={() => setCategoryId(c.id)}
+                  onClick={() => {
+                    setCategoryId(c.id);
+                    setCurrentPage(1);
+                  }}
                 >
                   {c.name}
                 </button>
@@ -656,21 +765,51 @@ export default function CatalogPage() {
         {activeTab === "positions" ? (
           loading ? (
             <div className="text-sm text-zinc-600">Загрузка каталога…</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-zinc-600">По выбранным параметрам ничего не найдено.</div>
           ) : (
-            <div className="mk-grid">
-              {items.map((it) => (
-                <CatalogItemCard
-                  key={it.id}
-                  item={it}
-                  qtyInCart={qtyByItemId[it.id] ?? 0}
-                  onDetail={openDetail}
-                  onAdd={handleCardAdd}
-                  onDec={handleCardDec}
-                  onInc={handleCardInc}
-                  onSetQty={handleCardSetQty}
-                />
-              ))}
-            </div>
+            <>
+              <div className="mk-grid">
+                {items.map((it) => (
+                  <CatalogItemCard
+                    key={it.id}
+                    item={it}
+                    qtyInCart={qtyByItemId[it.id] ?? 0}
+                    onDetail={openDetail}
+                    onAdd={handleCardAdd}
+                    onDec={handleCardDec}
+                    onInc={handleCardInc}
+                    onSetQty={handleCardSetQty}
+                  />
+                ))}
+              </div>
+              {showPager ? (
+                <div className="mk-pagination">
+                  <button
+                    type="button"
+                    className="mk-pageBtn"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    Назад
+                  </button>
+                  <div className="mk-pageInfo">
+                    Страница <strong>{pagination?.page}</strong> из <strong>{pagination?.totalPages}</strong>
+                    <span> · всего {pagination?.total} поз.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="mk-pageBtn"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(pagination?.totalPages ?? prev, prev + 1))
+                    }
+                    disabled={currentPage >= (pagination?.totalPages ?? 1)}
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              ) : null}
+            </>
           )
         ) : activeTab === "categories" ? (
           !categoryId ? (
@@ -679,21 +818,51 @@ export default function CatalogPage() {
             </div>
           ) : loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-zinc-600">В этой категории пока нет позиций по выбранным параметрам.</div>
           ) : (
-            <div className="mk-grid">
-              {items.map((it) => (
-                <CatalogItemCard
-                  key={it.id}
-                  item={it}
-                  qtyInCart={qtyByItemId[it.id] ?? 0}
-                  onDetail={openDetail}
-                  onAdd={handleCardAdd}
-                  onDec={handleCardDec}
-                  onInc={handleCardInc}
-                  onSetQty={handleCardSetQty}
-                />
-              ))}
-            </div>
+            <>
+              <div className="mk-grid">
+                {items.map((it) => (
+                  <CatalogItemCard
+                    key={it.id}
+                    item={it}
+                    qtyInCart={qtyByItemId[it.id] ?? 0}
+                    onDetail={openDetail}
+                    onAdd={handleCardAdd}
+                    onDec={handleCardDec}
+                    onInc={handleCardInc}
+                    onSetQty={handleCardSetQty}
+                  />
+                ))}
+              </div>
+              {showPager ? (
+                <div className="mk-pagination">
+                  <button
+                    type="button"
+                    className="mk-pageBtn"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    Назад
+                  </button>
+                  <div className="mk-pageInfo">
+                    Страница <strong>{pagination?.page}</strong> из <strong>{pagination?.totalPages}</strong>
+                    <span> · всего {pagination?.total} поз.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="mk-pageBtn"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(pagination?.totalPages ?? prev, prev + 1))
+                    }
+                    disabled={currentPage >= (pagination?.totalPages ?? 1)}
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              ) : null}
+            </>
           )
         ) : activeTab === "kits" ? (
           kits.length ? (

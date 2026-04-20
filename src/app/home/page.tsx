@@ -1017,6 +1017,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 export default function HomeDashboardPage() {
   const { state } = useAuth();
   const [hasActiveOrders, setHasActiveOrders] = React.useState<boolean | null>(null);
+  const [disableGreenwichStarsOnMobile, setDisableGreenwichStarsOnMobile] = React.useState(false);
 
   const isWowstorg =
     state.status === "authenticated" && state.user.role === "WOWSTORG";
@@ -1045,8 +1046,22 @@ export default function HomeDashboardPage() {
     };
   }, [isGreenwich, isWowstorg]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 767px), (hover: none) and (pointer: coarse)");
+    const apply = () => setDisableGreenwichStarsOnMobile(media.matches);
+    apply();
+    const onChange = () => apply();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
+
   const showBackgroundGame = isGreenwich && hasActiveOrders === false;
-  const showGlobalStars = isGreenwich;
+  const showGlobalStars = isGreenwich && !disableGreenwichStarsOnMobile;
 
   return (
     <AppShell title="Главная">

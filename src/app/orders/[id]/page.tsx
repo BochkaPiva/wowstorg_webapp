@@ -18,7 +18,7 @@ type OrderLine = {
   pricePerDaySnapshot: number | null;
   warehouseComment: string | null;
   greenwichComment?: string | null;
-  item: { id: string; name: string; type: string };
+  item: { id: string; name: string; type: string; photo1Key: string | null };
 };
 
 type ReturnSplit = {
@@ -66,6 +66,13 @@ type Order = {
   estimateFileKey?: string | null;
   lines: OrderLine[];
   returnSplits?: ReturnSplit[];
+};
+
+type CatalogItemOption = {
+  id: string;
+  name: string;
+  photo1Key?: string | null;
+  availableForDates?: number;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -230,17 +237,83 @@ function groupSplitsByLine(splits: ReturnSplit[] | undefined, phase: ReturnSplit
   return byLine;
 }
 
+function ProductThumb({
+  itemId,
+  photo1Key,
+  size = "sm",
+}: {
+  itemId: string;
+  photo1Key?: string | null;
+  size?: "sm" | "md";
+}) {
+  const boxClass =
+    size === "md"
+      ? "h-14 w-14 rounded-2xl"
+      : "h-11 w-11 rounded-xl";
+  const previewWidth = size === "md" ? 160 : 120;
+
+  if (photo1Key) {
+    return (
+      <img
+        src={`/api/inventory/positions/${itemId}/photo?w=${previewWidth}`}
+        alt=""
+        aria-hidden="true"
+        className={`${boxClass} shrink-0 border border-zinc-200 bg-zinc-100 object-cover shadow-sm`}
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      className={`${boxClass} shrink-0 border border-zinc-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.95),rgba(255,255,255,0.98))] text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-500 shadow-sm flex items-center justify-center`}
+    >
+      WOW
+    </div>
+  );
+}
+
+function ProductIdentity({
+  itemId,
+  photo1Key,
+  name,
+  subtitle,
+  size = "sm",
+  nameClassName = "font-medium text-zinc-900",
+}: {
+  itemId: string;
+  photo1Key?: string | null;
+  name: string;
+  subtitle?: React.ReactNode;
+  size?: "sm" | "md";
+  nameClassName?: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <ProductThumb itemId={itemId} photo1Key={photo1Key} size={size} />
+      <div className="min-w-0">
+        <div className={`truncate ${nameClassName}`} title={name}>
+          {name}
+        </div>
+        {subtitle ? <div className="mt-0.5 text-xs text-zinc-500">{subtitle}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 function AddLineRow({
   catalogItems,
   existingItemIds,
   onAdd,
 }: {
-  catalogItems: { id: string; name: string; availableForDates?: number }[];
+  catalogItems: CatalogItemOption[];
   existingItemIds: string[];
   onAdd: (itemId: string, itemName: string, qty: number, maxForDates?: number) => void;
 }) {
   const [search, setSearch] = React.useState("");
-  const [selected, setSelected] = React.useState<{ id: string; name: string; availableForDates?: number } | null>(null);
+  const [selected, setSelected] = React.useState<CatalogItemOption | null>(null);
   const [qty, setQty] = React.useState<number | "">(1);
   const [open, setOpen] = React.useState(false);
   const available = catalogItems.filter((i) => !existingItemIds.includes(i.id));
@@ -254,10 +327,22 @@ function AddLineRow({
     <div className="space-y-3">
       <div className="text-sm font-medium text-zinc-600">Добавить позицию</div>
       {selected ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-xl bg-violet-100 px-3 py-2 text-sm font-medium text-violet-900">
-            {selected.name}
-          </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[220px] flex-1 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2">
+            <ProductIdentity
+              itemId={selected.id}
+              photo1Key={selected.photo1Key}
+              name={selected.name}
+              subtitle={
+                selected.availableForDates != null ? (
+                  <>
+                    Доступно на даты:{" "}
+                    <span className="font-semibold text-zinc-700">{selected.availableForDates}</span>
+                  </>
+                ) : undefined
+              }
+            />
+          </div>
           <div className="flex items-center rounded-xl border border-zinc-200 bg-white overflow-hidden">
             <button
               type="button"
@@ -301,11 +386,6 @@ function AddLineRow({
               +
             </button>
           </div>
-          {selected.availableForDates != null ? (
-            <div className="text-xs text-zinc-500">
-              Доступно на даты: <span className="font-semibold text-zinc-700">{selected.availableForDates}</span>
-            </div>
-          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -365,7 +445,18 @@ function AddLineRow({
                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-violet-50 focus:bg-violet-50 focus:outline-none"
                         role="option"
                       >
-                        {i.name}
+                        <ProductIdentity
+                          itemId={i.id}
+                          photo1Key={i.photo1Key}
+                          name={i.name}
+                          subtitle={
+                            i.availableForDates != null ? (
+                              <>
+                                Доступно: <span className="font-semibold text-zinc-700">{i.availableForDates}</span>
+                              </>
+                            ) : undefined
+                          }
+                        />
                       </button>
                     </li>
                   ))
@@ -515,7 +606,7 @@ export default function OrderDetailsPage() {
   const [editDemontageComment, setEditDemontageComment] = React.useState("");
   const [editDemontagePrice, setEditDemontagePrice] = React.useState<number | "">("");
   const [editDemontageInternalCost, setEditDemontageInternalCost] = React.useState<number | "">("");
-  const [catalogItems, setCatalogItems] = React.useState<{ id: string; name: string; availableForDates?: number }[]>([]);
+  const [catalogItems, setCatalogItems] = React.useState<CatalogItemOption[]>([]);
 
   const user = state.status === "authenticated" ? state.user : null;
   const isGreenwich = user?.role === "GREENWICH";
@@ -529,6 +620,10 @@ export default function OrderDetailsPage() {
   const [internalNoteDraft, setInternalNoteDraft] = React.useState("");
   const [internalNoteOpen, setInternalNoteOpen] = React.useState(false);
   const [internalNoteBusy, setInternalNoteBusy] = React.useState(false);
+  const catalogItemsById = React.useMemo(
+    () => new Map(catalogItems.map((item) => [item.id, item])),
+    [catalogItems],
+  );
 
   function notifyProjectParent() {
     if (!embed || typeof window === "undefined") return;
@@ -748,11 +843,12 @@ export default function OrderDetailsPage() {
       { cache: "no-store" },
     )
       .then((r) => r.json().catch(() => null))
-      .then((data: { items?: { id: string; name: string; availability?: { availableForDates?: number } }[] } | null) => {
+      .then((data: { items?: { id: string; name: string; photo1Key?: string | null; availability?: { availableForDates?: number } }[] } | null) => {
         setCatalogItems(
           (data?.items ?? []).map((i) => ({
             id: i.id,
             name: i.name,
+            photo1Key: i.photo1Key ?? null,
             availableForDates: i.availability?.availableForDates,
           })),
         );
@@ -777,7 +873,7 @@ export default function OrderDetailsPage() {
 
     // Клиентская проверка доступности (для наглядной ошибки до запроса)
     for (const row of editLines) {
-      const max = catalogItems.find((i) => i.id === row.itemId)?.availableForDates;
+      const max = catalogItemsById.get(row.itemId)?.availableForDates;
       if (max != null && Number(row.requestedQty) > max) {
         setActionError(`«${row.itemName}»: доступно ${max} шт. на выбранные даты`);
         return;
@@ -899,7 +995,7 @@ export default function OrderDetailsPage() {
         const next = { ...row, [field]: value } as EditLine;
         if (field === "requestedQty") {
           if (next.requestedQty === "") return next;
-          const max = catalogItems.find((it) => it.id === row.itemId)?.availableForDates;
+          const max = catalogItemsById.get(row.itemId)?.availableForDates;
           const n = Number(next.requestedQty);
           if (max != null && Number.isFinite(n)) {
             next.requestedQty = Math.min(max, Math.max(1, Math.floor(n))) as never;
@@ -1187,15 +1283,21 @@ export default function OrderDetailsPage() {
                     {editLines.map((line, idx) => (
                       <tr key={line.id ?? `new-${idx}`} className="border-b border-zinc-100 hover:bg-zinc-50/50">
                         <td className="px-5 py-3">
-                          <div className="font-medium text-zinc-900">{line.itemName}</div>
-                          {(() => {
-                            const item = catalogItems.find((i) => i.id === line.itemId);
-                            return item?.availableForDates != null ? (
-                              <div className="mt-0.5 text-xs text-zinc-500">
-                                Доступно: <span className="font-semibold text-zinc-700">{item.availableForDates}</span>
-                              </div>
-                            ) : null;
-                          })()}
+                          <ProductIdentity
+                            itemId={line.itemId}
+                            photo1Key={catalogItemsById.get(line.itemId)?.photo1Key}
+                            name={line.itemName}
+                            subtitle={
+                              catalogItemsById.get(line.itemId)?.availableForDates != null ? (
+                                <>
+                                  Доступно:{" "}
+                                  <span className="font-semibold text-zinc-700">
+                                    {catalogItemsById.get(line.itemId)?.availableForDates}
+                                  </span>
+                                </>
+                              ) : undefined
+                            }
+                          />
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="inline-flex items-center rounded-xl border border-zinc-200 bg-white overflow-hidden">
@@ -1335,7 +1437,13 @@ export default function OrderDetailsPage() {
                   <tbody>
                     {order.lines.map((line) => (
                       <tr key={line.id} className="border-b border-zinc-100">
-                        <td className="p-3 font-medium text-zinc-900">{line.item.name}</td>
+                        <td className="p-3">
+                          <ProductIdentity
+                            itemId={line.item.id}
+                            photo1Key={line.item.photo1Key}
+                            name={line.item.name}
+                          />
+                        </td>
                         <td className="p-3 text-right text-zinc-600">{line.requestedQty}</td>
                         <td className="p-3 text-right text-zinc-600">{line.approvedQty ?? "—"}</td>
                         <td className="p-3 text-right text-zinc-600">{line.issuedQty ?? "—"}</td>
@@ -1414,7 +1522,13 @@ export default function OrderDetailsPage() {
                 return (
                   <div key={l.id} className="rounded-xl border border-zinc-200 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-zinc-900">{l.item.name}</div>
+                      <ProductIdentity
+                        itemId={l.item.id}
+                        photo1Key={l.item.photo1Key}
+                        name={l.item.name}
+                        size="md"
+                        nameClassName="text-sm font-semibold text-zinc-900"
+                      />
                       <div className="text-xs text-zinc-600">
                         Получено: <span className="font-semibold">{total}</span>
                       </div>
@@ -1528,7 +1642,13 @@ export default function OrderDetailsPage() {
                 return (
                   <div key={l.id} className="rounded-xl border border-zinc-200 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-zinc-900">{l.item.name}</div>
+                      <ProductIdentity
+                        itemId={l.item.id}
+                        photo1Key={l.item.photo1Key}
+                        name={l.item.name}
+                        size="md"
+                        nameClassName="text-sm font-semibold text-zinc-900"
+                      />
                       <div className="text-xs text-zinc-600">
                         Получено: <span className="font-semibold">{total}</span>
                       </div>
@@ -1588,7 +1708,13 @@ export default function OrderDetailsPage() {
                     return (
                       <div key={l.id} className="rounded-xl border border-zinc-200 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-zinc-900">{l.item.name}</div>
+                          <ProductIdentity
+                            itemId={l.item.id}
+                            photo1Key={l.item.photo1Key}
+                            name={l.item.name}
+                            size="md"
+                            nameClassName="text-sm font-semibold text-zinc-900"
+                          />
                           <div className="text-xs text-zinc-600">
                             Получено: <span className="font-semibold">{total}</span>
                           </div>

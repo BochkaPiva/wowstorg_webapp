@@ -30,6 +30,7 @@ export async function GET(
             select: {
               id: true,
               name: true,
+              photo1Key: true,
               type: true,
               total: true,
               inRepair: true,

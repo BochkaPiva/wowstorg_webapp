@@ -44,6 +44,25 @@ type CatalogItem = {
 
 const CATALOG_PAGE_SIZE = 32;
 
+function buildPaginationTokens(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, idx) => idx + 1);
+  }
+
+  const tokens: Array<number | "ellipsis"> = [1];
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+
+  if (start > 2) tokens.push("ellipsis");
+  for (let page = start; page <= end; page += 1) {
+    tokens.push(page);
+  }
+  if (end < totalPages - 1) tokens.push("ellipsis");
+  tokens.push(totalPages);
+
+  return tokens;
+}
+
 function daysBetweenDateOnly(start: string, end: string) {
   // Treat end as exclusive like backend ([start, end))
   const a = new Date(start + "T12:00:00");
@@ -583,6 +602,63 @@ export default function CatalogPage() {
     estimateVersionId,
   });
   const showPager = Boolean(pagination && pagination.totalPages > 1 && shouldFetchPagedItems);
+  const paginationTokens = React.useMemo(
+    () =>
+      pagination
+        ? buildPaginationTokens(pagination.page, pagination.totalPages)
+        : [],
+    [pagination],
+  );
+  const pager = showPager ? (
+    <div className="mk-pagination">
+      <div className="mk-pageSummary">
+        Страница <strong>{pagination?.page}</strong> из <strong>{pagination?.totalPages}</strong>
+        <span> · всего {pagination?.total} поз.</span>
+      </div>
+      <div className="mk-pageControls" aria-label="Навигация по страницам каталога">
+        <button
+          type="button"
+          className="mk-pageBtn"
+          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+          disabled={currentPage <= 1}
+        >
+          Назад
+        </button>
+        <div className="mk-pageNumbers">
+          {paginationTokens.map((token, idx) =>
+            token === "ellipsis" ? (
+              <span key={`ellipsis-${idx}`} className="mk-pageDots" aria-hidden="true">
+                ...
+              </span>
+            ) : (
+              <button
+                key={token}
+                type="button"
+                className={[
+                  "mk-pageNumber",
+                  token === currentPage ? "mk-pageNumberActive" : "",
+                ].join(" ")}
+                onClick={() => setCurrentPage(token)}
+                aria-current={token === currentPage ? "page" : undefined}
+              >
+                {token}
+              </button>
+            ),
+          )}
+        </div>
+        <button
+          type="button"
+          className="mk-pageBtn"
+          onClick={() =>
+            setCurrentPage((prev) => Math.min(pagination?.totalPages ?? prev, prev + 1))
+          }
+          disabled={currentPage >= (pagination?.totalPages ?? 1)}
+        >
+          Вперёд
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <AppShell title="Каталог">
@@ -783,32 +859,7 @@ export default function CatalogPage() {
                   />
                 ))}
               </div>
-              {showPager ? (
-                <div className="mk-pagination">
-                  <button
-                    type="button"
-                    className="mk-pageBtn"
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    disabled={currentPage <= 1}
-                  >
-                    Назад
-                  </button>
-                  <div className="mk-pageInfo">
-                    Страница <strong>{pagination?.page}</strong> из <strong>{pagination?.totalPages}</strong>
-                    <span> · всего {pagination?.total} поз.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="mk-pageBtn"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(pagination?.totalPages ?? prev, prev + 1))
-                    }
-                    disabled={currentPage >= (pagination?.totalPages ?? 1)}
-                  >
-                    Вперёд
-                  </button>
-                </div>
-              ) : null}
+              {pager}
             </>
           )
         ) : activeTab === "categories" ? (
@@ -836,32 +887,7 @@ export default function CatalogPage() {
                   />
                 ))}
               </div>
-              {showPager ? (
-                <div className="mk-pagination">
-                  <button
-                    type="button"
-                    className="mk-pageBtn"
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    disabled={currentPage <= 1}
-                  >
-                    Назад
-                  </button>
-                  <div className="mk-pageInfo">
-                    Страница <strong>{pagination?.page}</strong> из <strong>{pagination?.totalPages}</strong>
-                    <span> · всего {pagination?.total} поз.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="mk-pageBtn"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(pagination?.totalPages ?? prev, prev + 1))
-                    }
-                    disabled={currentPage >= (pagination?.totalPages ?? 1)}
-                  >
-                    Вперёд
-                  </button>
-                </div>
-              ) : null}
+              {pager}
             </>
           )
         ) : activeTab === "kits" ? (

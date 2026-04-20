@@ -133,13 +133,16 @@
 }
 
 .wow-brandIcon {
-  width: 56px;
-  height: 56px;
-  image-rendering: pixelated;
-  border-radius: 16px;
-  background: rgba(109, 40, 217, 0.06);
-  border: 1px solid rgba(109, 40, 217, 0.14);
-  padding: 6px;
+  width: auto;
+  height: auto;
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  image-rendering: auto;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .wow-brandText {

@@ -4,8 +4,32 @@ import { cleanupOldInventoryAuditRuns, getLatestInventoryAuditStatus, runInvento
 
 export const dynamic = "force-dynamic";
 
-function readCronToken(req: Request): string | null {
+function readLegacyCronToken(req: Request): string | null {
   return req.headers.get("x-cron-token")?.trim() ?? null;
+}
+
+function readBearerToken(req: Request): string | null {
+  const raw = req.headers.get("authorization")?.trim();
+  if (!raw) return null;
+  const prefix = "Bearer ";
+  if (!raw.startsWith(prefix)) return null;
+  return raw.slice(prefix.length).trim() || null;
+}
+
+function isCronAuthorized(req: Request): { ok: true } | { ok: false; message: string; status: number } {
+  const legacyExpected = process.env.INVENTORY_AUDIT_CRON_TOKEN?.trim() || null;
+  const vercelExpected = process.env.CRON_SECRET?.trim() || null;
+  const legacyGot = readLegacyCronToken(req);
+  const bearerGot = readBearerToken(req);
+
+  if (!legacyExpected && !vercelExpected) {
+    return { ok: false, status: 500, message: "INVENTORY_AUDIT_CRON_TOKEN or CRON_SECRET not set" };
+  }
+
+  if (vercelExpected && bearerGot === vercelExpected) return { ok: true };
+  if (legacyExpected && legacyGot === legacyExpected) return { ok: true };
+
+  return { ok: false, status: 403, message: "Forbidden" };
 }
 
 function omskDayKey(d: Date): string {
@@ -17,11 +41,9 @@ function omskDayKey(d: Date): string {
   }).format(d);
 }
 
-export async function POST(req: Request) {
-  const expected = process.env.INVENTORY_AUDIT_CRON_TOKEN?.trim();
-  const got = readCronToken(req);
-  if (!expected) return jsonError(500, "INVENTORY_AUDIT_CRON_TOKEN not set");
-  if (!got || got !== expected) return jsonError(403, "Forbidden");
+async function handleCron(req: Request) {
+  const auth = isCronAuthorized(req);
+  if (!auth.ok) return jsonError(auth.status, auth.message);
 
   const lockRows = await prisma.$queryRaw<Array<{ locked: boolean }>>`
     SELECT pg_try_advisory_lock(921480015331) AS locked
@@ -52,5 +74,13 @@ export async function POST(req: Request) {
   } finally {
     await prisma.$queryRaw`SELECT pg_advisory_unlock(921480015331)`;
   }
+}
+
+export async function GET(req: Request) {
+  return handleCron(req);
+}
+
+export async function POST(req: Request) {
+  return handleCron(req);
 }
 

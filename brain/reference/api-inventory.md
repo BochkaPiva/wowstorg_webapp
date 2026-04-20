@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-10T08:42:55.152Z  
+> **Сгенерировано:** 2026-04-20T06:40:56.873Z  
 > **Файлов route.ts:** 88  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
@@ -11,7 +11,7 @@
 | GET | `/api/admin/analytics/export` | `src/app/api/admin/analytics/export/route.ts` |
 | GET | `/api/admin/analytics/profitability` | `src/app/api/admin/analytics/profitability/route.ts` |
 | GET | `/api/admin/analytics` | `src/app/api/admin/analytics/route.ts` |
-| POST | `/api/admin/inventory-audit/cron` | `src/app/api/admin/inventory-audit/cron/route.ts` |
+| GET, POST | `/api/admin/inventory-audit/cron` | `src/app/api/admin/inventory-audit/cron/route.ts` |
 | POST | `/api/admin/inventory-audit/run` | `src/app/api/admin/inventory-audit/run/route.ts` |
 | GET | `/api/admin/inventory-audit/runs/[id]` | `src/app/api/admin/inventory-audit/runs/[id]/route.ts` |
 | GET | `/api/admin/inventory-audit/runs` | `src/app/api/admin/inventory-audit/runs/route.ts` |

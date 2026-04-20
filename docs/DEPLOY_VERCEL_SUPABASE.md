@@ -17,6 +17,7 @@
 | Telegram | `src/server/telegram.ts`: **undici** + опционально прокси (`TELEGRAM_HTTPS_PROXY` и др.), таймауты, `sendTelegramMessageDetailed` |
 | Уведомления по заявкам | `src/server/notifications/order-notifications.ts`; отложенная отправка — `src/server/notifications/schedule-after-response.ts` (**`after()`** из `next/server`) |
 | Напоминания по расписанию | `POST /api/reminders/run` с заголовком `x-cron-token`, токен `REMINDERS_CRON_TOKEN`; логика в `src/server/reminders/reminder-runner.ts`, таблица **`ReminderSent`** (есть в миграциях, не в `schema.prisma` — см. раздел 6) |
+| Аудит инвентаря по расписанию | `GET/POST /api/admin/inventory-audit/cron`; для Vercel Cron — `Authorization: Bearer ${CRON_SECRET}`, fallback для внешнего cron — `x-cron-token: INVENTORY_AUDIT_CRON_TOKEN` |
 
 ---
 
@@ -65,6 +66,16 @@ Cookie с флагом `secure` в **production** (`NODE_ENV === "production"`).
 | `REMINDERS_CRON_TOKEN` | Секрет для `POST /api/reminders/run`; **без него** эндпоинт отвечает **500** (`REMINDERS_CRON_TOKEN not set`) |
 
 На Vercel: **Cron Jobs** (или внешний ping) с `POST` и заголовком `x-cron-token: <тот же токен>`.
+
+### Cron аудита инвентаря
+
+| Переменная | Назначение |
+|------------|------------|
+| `CRON_SECRET` | Встроенный секрет Vercel Cron. Vercel сам отправляет `Authorization: Bearer <CRON_SECRET>` на `/api/admin/inventory-audit/cron`. |
+| `INVENTORY_AUDIT_CRON_TOKEN` | Опциональный fallback для ручных `POST`/внешнего cron через заголовок `x-cron-token`. |
+| `INVENTORY_AUDIT_RETENTION_DAYS` | Сколько дней хранить прогоны аудита (по умолчанию `21`). |
+
+Для Vercel cron расписание хранится в `vercel.json`. В текущей конфигурации аудит вызывается **ежедневно в `00:10 UTC`** (это **`06:10` по Омску**).
 
 ### Prisma / Node
 
@@ -138,11 +149,11 @@ Serverless-функции **не имеют постоянного диска**.
 3. **Vercel**  
    - Подключить репозиторий GitHub.  
    - Framework Preset: Next.js.  
-   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, `SUPABASE_STORAGE_PROJECTS_BUCKET` (при использовании проектов), секреты Telegram, `REMINDERS_CRON_TOKEN`, `INVENTORY_AUDIT_CRON_TOKEN` и т.д.  
+   - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, `SUPABASE_STORAGE_PROJECTS_BUCKET` (при использовании проектов), секреты Telegram, `REMINDERS_CRON_TOKEN`, `CRON_SECRET`, `INVENTORY_AUDIT_CRON_TOKEN` (опционально, для fallback) и т.д.  
    - Build: убедиться в `prisma generate` + `next build`.  
    - Настроить **Cron**:
-     - `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,
-     - `POST https://<ваш-домен>/api/admin/inventory-audit/cron` с `x-cron-token`.
+     - reminders — по прежнему через `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,
+     - inventory audit — через `vercel.json`; Vercel сам вызовет `GET https://<ваш-домен>/api/admin/inventory-audit/cron` и приложит `Authorization: Bearer <CRON_SECRET>`.
 
 4. **Домен**  
    - Привязать свой домен в Vercel, выставить `NEXT_PUBLIC_APP_URL` на **https://ваш-домен** (без слэша в конце, как принято в коде ссылок).

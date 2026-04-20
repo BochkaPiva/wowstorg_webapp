@@ -18,6 +18,7 @@ type CatalogItem = {
   name: string;
   type: string;
   pricePerDay: string;
+  photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
 
@@ -897,24 +898,41 @@ export default function CartPage() {
                 return (
                   <li key={item.id} className="cart-row">
                     <div className="cart-row-main">
-                      <span className="cart-name">{item.name}</span>
-                      <span className="cart-meta">
-                        <strong>{price.toFixed(0)}</strong>{" "}
-                        <span className="cart-unit">р/сут</span> × {line.qty}
-                        {rentalDays > 0 ? (
-                          <>
-                            {" "}× {rentalDays} дн. ={" "}
-                            <strong>{lineTotalForPeriod.toFixed(0)}</strong>{" "}
-                            <span className="cart-unit">р</span>
-                          </>
+                      <div className="cart-thumbWrap" aria-hidden="true">
+                        {item.photo1Key ? (
+                          <img
+                            src={`/api/inventory/positions/${item.id}/photo?w=120`}
+                            alt=""
+                            className="cart-thumb"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
-                          <>
-                            {" "}={" "}
-                            <strong>{lineTotalPerDay.toFixed(0)}</strong>{" "}
-                            <span className="cart-unit">р/сут</span>
-                          </>
+                          <div className="cart-thumbPlaceholder">
+                            <span>WOW</span>
+                          </div>
                         )}
-                      </span>
+                      </div>
+                      <div className="cart-rowText">
+                        <span className="cart-name">{item.name}</span>
+                        <span className="cart-meta">
+                          <strong>{price.toFixed(0)}</strong>{" "}
+                          <span className="cart-unit">р/сут</span> × {line.qty}
+                          {rentalDays > 0 ? (
+                            <>
+                              {" "}× {rentalDays} дн. ={" "}
+                              <strong>{lineTotalForPeriod.toFixed(0)}</strong>{" "}
+                              <span className="cart-unit">р</span>
+                            </>
+                          ) : (
+                            <>
+                              {" "}={" "}
+                              <strong>{lineTotalPerDay.toFixed(0)}</strong>{" "}
+                              <span className="cart-unit">р/сут</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
                     </div>
                     <div className="cart-row-actions">
                       <div className="cart-qty" aria-label="Количество">

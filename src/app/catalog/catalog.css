@@ -17,9 +17,34 @@
 }
 
 .mk-head {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 1.2rem 1.15rem 1rem;
+  border-radius: 28px;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  background:
+    radial-gradient(540px 220px at 0% 0%, rgba(124, 58, 237, 0.10), transparent 62%),
+    radial-gradient(420px 240px at 100% 18%, rgba(250, 204, 21, 0.12), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 247, 255, 0.96));
+  box-shadow: 0 22px 48px rgba(109, 40, 217, 0.07);
+  overflow: hidden;
+}
+
+.mk-head::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.18), transparent 38%),
+    radial-gradient(280px 160px at 12% 16%, rgba(255, 255, 255, 0.42), transparent 70%);
+  pointer-events: none;
+}
+
+.mk-head > * {
+  position: relative;
+  z-index: 1;
 }
 
 .mk-title {
@@ -195,10 +220,11 @@
   display: flex;
   gap: 0.25rem;
   margin-top: 1.25rem;
-  padding: 0.25rem;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 14px;
-  border: 1px solid var(--mk-border);
+  padding: 0.35rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(245, 243, 255, 0.86));
+  border-radius: 16px;
+  border: 1px solid rgba(124, 58, 237, 0.14);
+  box-shadow: 0 10px 24px rgba(109, 40, 217, 0.05);
   width: fit-content;
 }
 .mk-tab {
@@ -251,10 +277,11 @@
 .mk-search {
   width: 100%;
   border: 1px solid rgba(17, 24, 39, 0.12);
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(249, 245, 255, 0.92));
+  border-radius: 16px;
   padding: 0.8rem 1rem;
   outline: none;
+  box-shadow: 0 8px 22px rgba(109, 40, 217, 0.04);
 }
 .mk-search:focus {
   border-color: rgba(124, 58, 237, 0.45);
@@ -276,6 +303,7 @@
   color: var(--mk-text);
   text-decoration: none;
   transition: background 180ms ease, transform 180ms ease;
+  box-shadow: 0 10px 24px rgba(109, 40, 217, 0.08);
 }
 a.mk-cartPill:hover {
   background: linear-gradient(
@@ -325,6 +353,13 @@ a.mk-cartPill:hover {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  background:
+    radial-gradient(220px 120px at 100% 0%, rgba(250, 204, 21, 0.10), transparent 70%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(247, 243, 255, 0.92));
+  box-shadow: 0 14px 30px rgba(109, 40, 217, 0.06);
 }
 
 .mk-pageSummary {

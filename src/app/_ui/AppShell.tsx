@@ -88,6 +88,31 @@ export function AppShell({
   return (
     <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
       <InAppNotifications enabled={state.status === "authenticated" && state.user.role === "GREENWICH"} />
+      {isCatalogRoute ? (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+          <div
+            className="absolute -left-28 top-16 h-[360px] w-[360px] rounded-full opacity-80"
+            style={{
+              background:
+                "radial-gradient(circle at 35% 35%, rgba(124,58,237,0.22), rgba(124,58,237,0) 68%)",
+            }}
+          />
+          <div
+            className="absolute right-[-120px] top-28 h-[340px] w-[340px] rounded-full opacity-80"
+            style={{
+              background:
+                "radial-gradient(circle at 30% 30%, rgba(250,204,21,0.18), rgba(250,204,21,0) 70%)",
+            }}
+          />
+          <div
+            className="absolute bottom-24 left-1/3 h-[280px] w-[280px] rounded-full opacity-60"
+            style={{
+              background:
+                "radial-gradient(circle at 50% 50%, rgba(168,85,247,0.14), rgba(168,85,247,0) 72%)",
+            }}
+          />
+        </div>
+      ) : null}
       {!isCatalogRoute ? (
         <div className="wow-bg" aria-hidden="true">
           <div
@@ -133,7 +158,9 @@ export function AppShell({
       <div
         className={[
           "sticky top-0 z-10 border-b border-zinc-200",
-          isCatalogRoute ? "bg-white/95" : "bg-white/70 backdrop-blur",
+          isCatalogRoute
+            ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,245,255,0.94))]"
+            : "bg-white/70 backdrop-blur",
         ].join(" ")}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
@@ -303,7 +330,9 @@ export function AppShell({
         <main
           className={[
             "rounded-2xl border border-violet-200/60 p-4 text-zinc-900 shadow-sm",
-            isCatalogRoute ? "bg-white" : "bg-white/90 backdrop-blur",
+            isCatalogRoute
+              ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,255,0.98))] shadow-[0_18px_45px_rgba(109,40,217,0.08)]"
+              : "bg-white/90 backdrop-blur",
           ].join(" ")}
         >
           {children}

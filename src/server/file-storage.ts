@@ -168,6 +168,24 @@ export async function getEstimateFile(key: string) {
   }
 }
 
+export async function deleteEstimateFile(key: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { estimatesBucket } = supabaseConfig();
+    try {
+      await supabaseDelete({ bucket: estimatesBucket, key });
+    } catch {
+      // best-effort cleanup
+    }
+    return;
+  }
+  try {
+    unlinkSync(join(LOCAL_ESTIMATES_DIR, key));
+  } catch {
+    // best-effort cleanup
+  }
+}
+
 export async function putProjectFile(key: string, body: Buffer, contentType: string) {
   assertStorageConfiguredForProduction();
   if (isSupabaseStorageEnabled()) {

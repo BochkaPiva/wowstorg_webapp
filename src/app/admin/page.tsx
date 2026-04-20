@@ -66,6 +66,11 @@ export default function AdminIndexPage() {
             title="Аудит инвентаря"
             description="Проверка расхождений, история запусков, детализация по позициям."
           />
+          <AdminCard
+            href="/admin/order-cleanup"
+            title="Очистка заявок"
+            description="Полное удаление тестовых заявок и быстрых доп.-выдач."
+          />
         </div>
       )}
     </AppShell>

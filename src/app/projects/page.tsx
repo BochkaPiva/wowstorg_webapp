@@ -274,37 +274,44 @@ function ProjectsContent() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
-            <button
-              type="button"
-              onClick={() => {
-                setTab("active");
-                setSort("updated_desc");
-              }}
-              className={[
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                tab === "active"
-                  ? "bg-violet-700 text-white"
-                  : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-              ].join(" ")}
-            >
-              Активные
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTab("archive");
-                setSort("updated_desc");
-              }}
-              className={[
-                "rounded-lg px-3 py-1.5 text-sm font-medium",
-                tab === "archive"
-                  ? "bg-violet-700 text-white"
-                  : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-              ].join(" ")}
-            >
-              Архив
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-zinc-600">
+              {tab === "active"
+                ? "Активные проекты. До 500 записей с учётом фильтров."
+                : "Архив: только просмотр. До 500 записей с учётом фильтров."}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("active");
+                  setSort("updated_desc");
+                }}
+                className={[
+                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  tab === "active"
+                    ? "bg-violet-700 text-white"
+                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                ].join(" ")}
+              >
+                Активные
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("archive");
+                  setSort("updated_desc");
+                }}
+                className={[
+                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  tab === "archive"
+                    ? "bg-violet-700 text-white"
+                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                ].join(" ")}
+              >
+                Архив
+              </button>
+            </div>
           </div>
 
           {tab === "active" ? (
@@ -387,14 +394,6 @@ function ProjectsContent() {
               </button>
             </form>
           ) : null}
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-zinc-600">
-              {tab === "active"
-                ? "Активные проекты. До 500 записей с учётом фильтров."
-                : "Архив: только просмотр. До 500 записей с учётом фильтров."}
-            </div>
-          </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-end gap-3">

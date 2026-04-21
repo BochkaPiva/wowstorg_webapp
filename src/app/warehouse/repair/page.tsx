@@ -150,33 +150,6 @@ function RepairPageInner() {
     }
   }
 
-  async function deleteItemCompletely(itemId: string) {
-    if (!confirm("Удалить позицию полностью из базы? Это действие необратимо.")) return;
-    setBusyItemId(itemId);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/positions/${itemId}`, { method: "DELETE" });
-      if (!res.ok) {
-        const text = await res.text();
-        try {
-          const j = JSON.parse(text) as { error?: { message?: string } };
-          setError(j?.error?.message ?? "Ошибка");
-        } catch {
-          setError("Ошибка операции");
-        }
-        return;
-      }
-      setItemQtyById((p) => {
-        const next = { ...p };
-        delete next[itemId];
-        return next;
-      });
-      await load();
-    } finally {
-      setBusyItemId(null);
-    }
-  }
-
   if (forbidden) {
     return (
       <AppShell title="База ремонта">
@@ -229,7 +202,11 @@ function RepairPageInner() {
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-zinc-700 mb-2">По позициям (вне заявок)</h3>
             <p className="text-xs text-zinc-500 mb-2">
-              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Можно вернуть количество в каталог, списать часть из базы или удалить позицию полностью.
+              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Укажите количество:{" "}
+              <span className="text-zinc-600">«Вернуть в каталог»</span> — убирает штуки из этого статуса (они снова
+              доступны как обычный остаток).{" "}
+              <span className="text-zinc-600">«Списать навсегда»</span> — безвозвратно уменьшает общее количество по
+              позиции ровно на введённое число; карточка позиции остаётся.
             </p>
             <div className="space-y-2">
               {itemRows.map((r) => (
@@ -267,15 +244,7 @@ function RepairPageInner() {
                       onClick={() => actOnItem(r.id, "write-off")}
                       className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
                     >
-                      {busyItemId === r.id ? "…" : "Списать из базы"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyItemId === r.id}
-                      onClick={() => deleteItemCompletely(r.id)}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
-                    >
-                      {busyItemId === r.id ? "…" : "Удалить позицию"}
+                      {busyItemId === r.id ? "…" : "Списать навсегда"}
                     </button>
                   </div>
                 </div>

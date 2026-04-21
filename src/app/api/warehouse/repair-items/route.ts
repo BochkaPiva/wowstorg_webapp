@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const items = await prisma.item.findMany({
     where: { [field]: { gt: 0 }, isActive: true },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, inRepair: true, broken: true },
+    select: { id: true, name: true, total: true, inRepair: true, broken: true },
   });
 
   const list = items.map((it) => ({
@@ -26,6 +26,9 @@ export async function GET(req: Request) {
     name: it.name,
     qty: condition === "NEEDS_REPAIR" ? it.inRepair : it.broken,
     condition,
+    total: it.total,
+    inRepair: it.inRepair,
+    broken: it.broken,
   }));
 
   return jsonOk({ items: list });

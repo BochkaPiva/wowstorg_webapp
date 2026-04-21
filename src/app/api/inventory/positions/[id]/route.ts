@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
+import { deleteItemPhoto } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
 
 const UpdateSchema = z.object({
@@ -184,7 +185,30 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
-  await prisma.item.delete({ where: { id } }).catch(() => null);
+  const existing = await prisma.item.findUnique({
+    where: { id },
+    select: { id: true, photo1Key: true, photo2Key: true },
+  });
+  if (!existing) return jsonError(404, "Not found");
+
+  try {
+    await prisma.item.delete({ where: { id } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      return jsonError(
+        409,
+        "Нельзя удалить позицию: у нее есть связанные записи в заявках, наборах, утерях или другой истории.",
+      );
+    }
+    return jsonError(500, "Не удалось удалить позицию");
+  }
+
+  await Promise.all(
+    [existing.photo1Key, existing.photo2Key]
+      .filter((key): key is string => Boolean(key))
+      .map((key) => deleteItemPhoto(key)),
+  );
+
   return jsonOk({ ok: true });
 }
 

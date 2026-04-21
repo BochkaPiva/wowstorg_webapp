@@ -24,6 +24,9 @@ type RepairItemRow = {
   name: string;
   qty: number;
   condition: "NEEDS_REPAIR" | "BROKEN";
+  total: number;
+  inRepair: number;
+  broken: number;
 };
 
 function conditionRu(c: "NEEDS_REPAIR" | "BROKEN") {
@@ -50,6 +53,7 @@ function RepairPageInner() {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [busyItemId, setBusyItemId] = React.useState<string | null>(null);
   const [qtyById, setQtyById] = React.useState<Record<string, string>>({});
+  const [itemQtyById, setItemQtyById] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
@@ -111,15 +115,23 @@ function RepairPageInner() {
     }
   }
 
-  async function returnItemToCatalog(itemId: string) {
+  async function actOnItem(
+    itemId: string,
+    action: "restore" | "write-off",
+  ) {
+    const raw = (itemQtyById[itemId] ?? "").trim();
+    const n = raw === "" ? NaN : Number(raw);
+    if (!Number.isFinite(n) || n <= 0) {
+      setError("Укажите количество (целое число больше 0)");
+      return;
+    }
     setBusyItemId(itemId);
     setError(null);
     try {
-      const payload = tab === "NEEDS_REPAIR" ? { inRepair: 0 } : { broken: 0 };
-      const res = await fetch(`/api/inventory/positions/${itemId}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/warehouse/repair-items/${itemId}/${action}`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ qty: Math.floor(n), condition: tab }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -131,6 +143,34 @@ function RepairPageInner() {
         }
         return;
       }
+      setItemQtyById((p) => ({ ...p, [itemId]: "" }));
+      await load();
+    } finally {
+      setBusyItemId(null);
+    }
+  }
+
+  async function deleteItemCompletely(itemId: string) {
+    if (!confirm("Удалить позицию полностью из базы? Это действие необратимо.")) return;
+    setBusyItemId(itemId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/inventory/positions/${itemId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const j = JSON.parse(text) as { error?: { message?: string } };
+          setError(j?.error?.message ?? "Ошибка");
+        } catch {
+          setError("Ошибка операции");
+        }
+        return;
+      }
+      setItemQtyById((p) => {
+        const next = { ...p };
+        delete next[itemId];
+        return next;
+      });
       await load();
     } finally {
       setBusyItemId(null);
@@ -189,21 +229,55 @@ function RepairPageInner() {
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-zinc-700 mb-2">По позициям (вне заявок)</h3>
             <p className="text-xs text-zinc-500 mb-2">
-              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Вернуть в каталог — обнулить это количество.
+              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Можно вернуть количество в каталог, списать часть из базы или удалить позицию полностью.
             </p>
             <div className="space-y-2">
               {itemRows.map((r) => (
                 <div key={r.id} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-zinc-900">{r.name}</span>
-                  <span className="text-xs text-zinc-600">{r.qty} шт.</span>
-                  <button
-                    type="button"
-                    disabled={busyItemId === r.id}
-                    onClick={() => returnItemToCatalog(r.id)}
-                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                  >
-                    {busyItemId === r.id ? "…" : "Вернуть в каталог"}
-                  </button>
+                  <div>
+                    <div className="text-sm font-medium text-zinc-900">{r.name}</div>
+                    <div className="mt-1 text-xs text-zinc-600">
+                      В статусе: <span className="font-semibold">{r.qty}</span> шт. · Всего:{" "}
+                      <span className="font-semibold">{r.total}</span> шт.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={itemQtyById[r.id] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v !== "" && !/^\d*$/.test(v)) return;
+                        setItemQtyById((p) => ({ ...p, [r.id]: v }));
+                      }}
+                      className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                      placeholder="Кол-во"
+                      inputMode="numeric"
+                    />
+                    <button
+                      type="button"
+                      disabled={busyItemId === r.id}
+                      onClick={() => actOnItem(r.id, "restore")}
+                      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                    >
+                      {busyItemId === r.id ? "…" : "Вернуть в каталог"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyItemId === r.id}
+                      onClick={() => actOnItem(r.id, "write-off")}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      {busyItemId === r.id ? "…" : "Списать из базы"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyItemId === r.id}
+                      onClick={() => deleteItemCompletely(r.id)}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {busyItemId === r.id ? "…" : "Удалить позицию"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

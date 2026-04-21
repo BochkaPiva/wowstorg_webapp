@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-20T18:09:14.370Z  
-> **Файлов route.ts:** 90  
+> **Сгенерировано:** 2026-04-21T07:13:55.688Z  
+> **Файлов route.ts:** 92  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -97,4 +97,6 @@
 | POST | `/api/warehouse/losses/[id]/write-off` | `src/app/api/warehouse/losses/[id]/write-off/route.ts` |
 | GET | `/api/warehouse/losses` | `src/app/api/warehouse/losses/route.ts` |
 | GET | `/api/warehouse/queue` | `src/app/api/warehouse/queue/route.ts` |
+| POST | `/api/warehouse/repair-items/[id]/restore` | `src/app/api/warehouse/repair-items/[id]/restore/route.ts` |
+| POST | `/api/warehouse/repair-items/[id]/write-off` | `src/app/api/warehouse/repair-items/[id]/write-off/route.ts` |
 | GET | `/api/warehouse/repair-items` | `src/app/api/warehouse/repair-items/route.ts` |

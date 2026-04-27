@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { calcOrderPricing, validateOrderDiscount } from "@/server/orders/order-pricing";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 
@@ -13,6 +14,7 @@ const LineSchema = z.object({
   requestedQty: z.number().int().min(0),
   warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
+const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 
 const BodySchema = z.object({
   eventName: z.string().trim().max(200).nullable().optional(),
@@ -29,6 +31,9 @@ const BodySchema = z.object({
   demontageComment: z.string().trim().max(2000).nullable().optional(),
   demontagePrice: z.number().min(0).optional(),
   demontageInternalCost: z.number().min(0).nullable().optional(),
+  rentalDiscountType: DiscountTypeSchema.optional(),
+  rentalDiscountPercent: z.number().min(0).max(100).nullable().optional(),
+  rentalDiscountAmount: z.number().min(0).nullable().optional(),
   lines: z.array(LineSchema).min(1).max(500),
 });
 
@@ -54,6 +59,10 @@ export async function PATCH(
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
   const data = parsed.data;
+  const hasDiscountInput =
+    data.rentalDiscountType !== undefined ||
+    data.rentalDiscountPercent !== undefined ||
+    data.rentalDiscountAmount !== undefined;
 
   let wasCycleStatus = false;
   let projectIdForNotify: string | null = null;
@@ -86,6 +95,9 @@ export async function PATCH(
 
         if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
           throw new Error("BAD_STATUS");
+        }
+        if (hasDiscountInput && !["SUBMITTED", "CHANGES_REQUESTED"].includes(order.status)) {
+          throw new Error("DISCOUNT_STATUS");
         }
 
         const itemIds = [...new Set(data.lines.map((l) => l.itemId))];
@@ -131,6 +143,41 @@ export async function PATCH(
         const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
 
         wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
+
+        const linePriceById = new Map(order.lines.map((l) => [l.id, l.pricePerDaySnapshot]));
+        const nextDiscount = {
+          rentalDiscountType: data.rentalDiscountType ?? order.rentalDiscountType,
+          rentalDiscountPercent:
+            (data.rentalDiscountType ?? order.rentalDiscountType) === "PERCENT"
+              ? data.rentalDiscountPercent ?? Number(order.rentalDiscountPercent ?? 0)
+              : null,
+          rentalDiscountAmount:
+            (data.rentalDiscountType ?? order.rentalDiscountType) === "AMOUNT"
+              ? data.rentalDiscountAmount ?? Number(order.rentalDiscountAmount ?? 0)
+              : null,
+        };
+        const pricingPreview = calcOrderPricing({
+          startDate: order.startDate,
+          endDate: order.endDate,
+          payMultiplier: order.payMultiplier,
+          deliveryPrice: data.deliveryPrice ?? order.deliveryPrice,
+          montagePrice: data.montagePrice ?? order.montagePrice,
+          demontagePrice: data.demontagePrice ?? order.demontagePrice,
+          lines: data.lines.map((row) => ({
+            itemId: row.itemId,
+            requestedQty: row.requestedQty,
+            pricePerDaySnapshot:
+              row.id && linePriceById.has(row.id)
+                ? linePriceById.get(row.id)
+                : itemById.get(row.itemId)!.pricePerDay,
+          })),
+          discount: nextDiscount,
+        });
+        const discountValidation = validateOrderDiscount({
+          discount: nextDiscount,
+          rentalSubtotalBeforeDiscount: pricingPreview.rentalSubtotalBeforeDiscount,
+        });
+        if (!discountValidation.ok) throw new Error(`INVALID_DISCOUNT:${discountValidation.message}`);
 
         for (const line of toDelete) {
           await tx.orderLine.delete({ where: { id: line.id } });
@@ -180,6 +227,15 @@ export async function PATCH(
             ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment?.trim() || null } : {}),
             ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
             ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
+            ...(hasDiscountInput
+              ? {
+                  rentalDiscountType: nextDiscount.rentalDiscountType,
+                  rentalDiscountPercent:
+                    nextDiscount.rentalDiscountType === "PERCENT" ? nextDiscount.rentalDiscountPercent : null,
+                  rentalDiscountAmount:
+                    nextDiscount.rentalDiscountType === "AMOUNT" ? nextDiscount.rentalDiscountAmount : null,
+                }
+              : {}),
             ...(wasCycleStatus
               ? {
                   status:
@@ -220,7 +276,9 @@ export async function PATCH(
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
+      if (e.message === "DISCOUNT_STATUS") return jsonError(400, "Скидку можно менять только до отправки сметы");
       if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
+      if (e.message.startsWith("INVALID_DISCOUNT:")) return jsonError(400, e.message.replace("INVALID_DISCOUNT:", ""));
       const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);
       if (m) {
         return jsonError(

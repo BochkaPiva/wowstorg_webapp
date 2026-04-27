@@ -89,6 +89,15 @@ export async function GET(
     demontagePrice: order.demontagePrice != null ? Number(order.demontagePrice) : null,
     demontageInternalCost: order.demontageInternalCost != null ? Number(order.demontageInternalCost) : null,
     payMultiplier: order.payMultiplier != null ? Number(order.payMultiplier) : null,
+    rentalDiscountType: order.rentalDiscountType,
+    rentalDiscountPercent: order.rentalDiscountPercent != null ? Number(order.rentalDiscountPercent) : null,
+    rentalDiscountAmount: order.rentalDiscountAmount != null ? Number(order.rentalDiscountAmount) : null,
+    greenwichRequestedDiscountType: order.greenwichRequestedDiscountType,
+    greenwichRequestedDiscountPercent:
+      order.greenwichRequestedDiscountPercent != null ? Number(order.greenwichRequestedDiscountPercent) : null,
+    greenwichRequestedDiscountAmount:
+      order.greenwichRequestedDiscountAmount != null ? Number(order.greenwichRequestedDiscountAmount) : null,
+    greenwichDiscountRequestComment: order.greenwichDiscountRequestComment ?? null,
     greenwichUser: greenwichUser
       ? {
           id: greenwichUser.id,

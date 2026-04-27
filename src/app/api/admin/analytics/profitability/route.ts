@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const QuerySchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -16,12 +17,6 @@ function parseDateOnlyStart(value: string): Date {
 function parseDateOnlyEndExclusive(value: string): Date {
   const d = new Date(`${value}T00:00:00.000Z`);
   return new Date(d.getTime() + 24 * 60 * 60 * 1000);
-}
-
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const d = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return d === 0 ? 1 : d;
 }
 
 /**
@@ -63,6 +58,9 @@ export async function GET(req: Request) {
       startDate: true,
       endDate: true,
       payMultiplier: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       lines: {
         select: {
           itemId: true,
@@ -92,12 +90,16 @@ export async function GET(req: Request) {
 
   const revenueByItemId = new Map<string, number>();
   for (const o of closedOrders) {
-    const days = daysBetween(o.startDate, o.endDate);
-    const mult = o.payMultiplier != null ? Number(o.payMultiplier) : 1;
-    for (const l of o.lines) {
-      const price = l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0;
-      const qty = l.issuedQty ?? l.requestedQty;
-      const lineRevenue = price * qty * days * mult;
+    const pricing = calcOrderPricing({
+      startDate: o.startDate,
+      endDate: o.endDate,
+      payMultiplier: o.payMultiplier,
+      lines: o.lines,
+      discount: o,
+      quantityMode: "issued",
+    });
+    for (const [idx, l] of o.lines.entries()) {
+      const lineRevenue = pricing.lineAllocations[idx]?.rentalAfterDiscount ?? 0;
       revenueByItemId.set(l.itemId, (revenueByItemId.get(l.itemId) ?? 0) + lineRevenue);
     }
   }

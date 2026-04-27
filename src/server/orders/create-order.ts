@@ -3,6 +3,7 @@ import { Prisma, ProjectActivityKind, type OrderSource, type Role } from "@prism
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import { utcTodayDateOnlyString } from "@/server/dates";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
+import { calcOrderPricing, validateOrderDiscount, type OrderDiscountType } from "@/server/orders/order-pricing";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
@@ -41,6 +42,13 @@ export type CreateOrderInput = {
   greenwichUserId?: string | null;
   projectId?: string | null;
   targetEstimateVersionId?: string | null;
+  rentalDiscountType?: OrderDiscountType;
+  rentalDiscountPercent?: number | null;
+  rentalDiscountAmount?: number | null;
+  greenwichRequestedDiscountType?: OrderDiscountType;
+  greenwichRequestedDiscountPercent?: number | null;
+  greenwichRequestedDiscountAmount?: number | null;
+  greenwichDiscountRequestComment?: string | null;
   lines: InputLine[];
 };
 
@@ -248,6 +256,46 @@ export async function createOrderInTransaction(
     }
   }
 
+  const actualDiscount = {
+    rentalDiscountType: isWarehouse ? (input.rentalDiscountType ?? "NONE") : "NONE",
+    rentalDiscountPercent: isWarehouse ? input.rentalDiscountPercent ?? null : null,
+    rentalDiscountAmount: isWarehouse ? input.rentalDiscountAmount ?? null : null,
+  };
+  const pricingPreview = calcOrderPricing({
+    startDate,
+    endDate,
+    payMultiplier: Number(payMultiplier),
+    deliveryPrice: input.deliveryPrice ?? null,
+    montagePrice: input.montagePrice ?? null,
+    demontagePrice: input.demontagePrice ?? null,
+    lines: lines.map((line) => ({
+      itemId: line.itemId,
+      requestedQty: line.qty,
+      pricePerDaySnapshot: itemById.get(line.itemId)!.pricePerDay,
+    })),
+    discount: actualDiscount,
+  });
+  const discountValidation = validateOrderDiscount({
+    discount: actualDiscount,
+    rentalSubtotalBeforeDiscount: pricingPreview.rentalSubtotalBeforeDiscount,
+  });
+  if (!discountValidation.ok) {
+    throw new CreateOrderError("INVALID_DISCOUNT", discountValidation.message);
+  }
+  if (!isWarehouse) {
+    const requestedDiscountValidation = validateOrderDiscount({
+      discount: {
+        rentalDiscountType: input.greenwichRequestedDiscountType ?? "NONE",
+        rentalDiscountPercent: input.greenwichRequestedDiscountPercent ?? null,
+        rentalDiscountAmount: input.greenwichRequestedDiscountAmount ?? null,
+      },
+      rentalSubtotalBeforeDiscount: pricingPreview.rentalSubtotalBeforeDiscount,
+    });
+    if (!requestedDiscountValidation.ok) {
+      throw new CreateOrderError("INVALID_DISCOUNT_REQUEST", requestedDiscountValidation.message);
+    }
+  }
+
   const order = await tx.order.create({
     data: {
       source,
@@ -280,6 +328,23 @@ export async function createOrderInTransaction(
         ? { demontageInternalCost: input.demontageInternalCost }
         : {}),
       payMultiplier,
+      rentalDiscountType: actualDiscount.rentalDiscountType,
+      rentalDiscountPercent:
+        actualDiscount.rentalDiscountType === "PERCENT" ? actualDiscount.rentalDiscountPercent : null,
+      rentalDiscountAmount:
+        actualDiscount.rentalDiscountType === "AMOUNT" ? actualDiscount.rentalDiscountAmount : null,
+      greenwichRequestedDiscountType: !isWarehouse ? (input.greenwichRequestedDiscountType ?? "NONE") : "NONE",
+      greenwichRequestedDiscountPercent:
+        !isWarehouse && input.greenwichRequestedDiscountType === "PERCENT"
+          ? input.greenwichRequestedDiscountPercent ?? null
+          : null,
+      greenwichRequestedDiscountAmount:
+        !isWarehouse && input.greenwichRequestedDiscountType === "AMOUNT"
+          ? input.greenwichRequestedDiscountAmount ?? null
+          : null,
+      greenwichDiscountRequestComment: !isWarehouse
+        ? normalizeNullableComment(input.greenwichDiscountRequestComment ?? null)
+        : null,
       lines: {
         create: lines.map((line, index) => ({
           itemId: line.itemId,

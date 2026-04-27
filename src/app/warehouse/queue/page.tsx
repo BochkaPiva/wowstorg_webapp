@@ -22,6 +22,7 @@ type QueueOrder = {
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   warehouseInternalNote?: string | null;
   totalAmount?: number;
+  discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
   project?: { id: string; title: string } | null;
 };
 
@@ -291,6 +292,14 @@ function WarehouseQueueContent() {
             {o.totalAmount != null ? (
               <span className="ml-2 rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                 · {o.totalAmount.toLocaleString("ru-RU")} ₽
+              </span>
+            ) : null}
+            {o.discount ? (
+              <span className="ml-2 rounded-md bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-800">
+                Скидка{" "}
+                {o.discount.type === "PERCENT" && o.discount.percent != null
+                  ? `${o.discount.percent}%`
+                  : `${Math.round(o.discount.amount).toLocaleString("ru-RU")} ₽`}
               </span>
             ) : null}
           </div>

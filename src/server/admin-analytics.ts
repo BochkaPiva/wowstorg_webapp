@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db";
+import { calcOrderPricing, daysBetween } from "@/server/orders/order-pricing";
 
 export type AnalyticsScope = { from?: string; to?: string };
 
@@ -67,12 +68,6 @@ function parseDateOnlyEndExclusive(value: string): Date {
   return new Date(d.getTime() + 24 * 60 * 60 * 1000);
 }
 
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const d = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return d === 0 ? 1 : d;
-}
-
 function monthKey(date: Date): string {
   return date.toISOString().slice(0, 7);
 }
@@ -104,6 +99,9 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
         deliveryPrice: true,
         montagePrice: true,
         demontagePrice: true,
+        rentalDiscountType: true,
+        rentalDiscountPercent: true,
+        rentalDiscountAmount: true,
         customerId: true,
         customer: { select: { name: true } },
         lines: {
@@ -154,14 +152,22 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
   for (const order of closedOrders) {
     const days = daysBetween(order.startDate, order.endDate);
     totalRentalDays += days;
-    const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-    let orderItemsRevenue = 0;
+    const pricing = calcOrderPricing({
+      startDate: order.startDate,
+      endDate: order.endDate,
+      payMultiplier: order.payMultiplier,
+      deliveryPrice: order.deliveryPrice,
+      montagePrice: order.montagePrice,
+      demontagePrice: order.demontagePrice,
+      lines: order.lines,
+      discount: order,
+      quantityMode: "issued",
+    });
+    let orderItemsRevenue = pricing.rentalSubtotalAfterDiscount;
 
-    for (const line of order.lines) {
-      const price = line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : 0;
+    for (const [idx, line] of order.lines.entries()) {
       const qty = line.issuedQty ?? line.requestedQty;
-      const lineRevenue = price * qty * days * mult;
-      orderItemsRevenue += lineRevenue;
+      const lineRevenue = pricing.lineAllocations[idx]?.rentalAfterDiscount ?? 0;
 
       itemIssued.set(line.itemId, (itemIssued.get(line.itemId) ?? 0) + qty);
       itemRevenue.set(line.itemId, {
@@ -174,10 +180,7 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
       );
     }
 
-    const services =
-      (order.deliveryPrice != null ? Number(order.deliveryPrice) : 0) +
-      (order.montagePrice != null ? Number(order.montagePrice) : 0) +
-      (order.demontagePrice != null ? Number(order.demontagePrice) : 0);
+    const services = pricing.servicesTotal;
     totalServiceRevenue += services;
     totalItemsRevenue += orderItemsRevenue;
 

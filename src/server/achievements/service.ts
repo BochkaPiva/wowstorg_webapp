@@ -85,6 +85,9 @@ async function computeBiggestCheck(db: DbClient, userId: string): Promise<number
       deliveryPrice: true,
       montagePrice: true,
       demontagePrice: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
     },
   });
@@ -99,6 +102,7 @@ async function computeBiggestCheck(db: DbClient, userId: string): Promise<number
       montagePrice: order.montagePrice != null ? Number(order.montagePrice) : null,
       demontagePrice: order.demontagePrice != null ? Number(order.demontagePrice) : null,
       lines: order.lines,
+      discount: order,
     });
     maxTotal = Math.max(maxTotal, total);
   }

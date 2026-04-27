@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { calcOrderPricing, validateOrderDiscount } from "@/server/orders/order-pricing";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 
 const LineSchema = z.object({
@@ -13,6 +14,7 @@ const LineSchema = z.object({
   requestedQty: z.number().int().min(0).max(100000),
   greenwichComment: z.string().trim().max(2000).optional(),
 });
+const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 
 const BodySchema = z.object({
   eventName: z.string().trim().max(200).optional(),
@@ -23,6 +25,10 @@ const BodySchema = z.object({
   montageComment: z.string().trim().max(2000).optional(),
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).optional(),
+  greenwichRequestedDiscountType: DiscountTypeSchema.optional(),
+  greenwichRequestedDiscountPercent: z.number().min(0).max(100).nullable().optional(),
+  greenwichRequestedDiscountAmount: z.number().min(0).nullable().optional(),
+  greenwichDiscountRequestComment: z.string().trim().max(1000).nullable().optional(),
   lines: z.array(LineSchema).min(1).max(500),
 });
 
@@ -124,6 +130,36 @@ export async function PATCH(
           const existingIds = new Set(order.lines.map((l) => l.id));
           const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
           const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
+          const linePriceById = new Map(order.lines.map((l) => [l.id, l.pricePerDaySnapshot]));
+          const requestedDiscount = {
+            rentalDiscountType: data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType,
+            rentalDiscountPercent:
+              (data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType) === "PERCENT"
+                ? data.greenwichRequestedDiscountPercent ?? Number(order.greenwichRequestedDiscountPercent ?? 0)
+                : null,
+            rentalDiscountAmount:
+              (data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType) === "AMOUNT"
+                ? data.greenwichRequestedDiscountAmount ?? Number(order.greenwichRequestedDiscountAmount ?? 0)
+                : null,
+          };
+          const pricingPreview = calcOrderPricing({
+            startDate: order.startDate,
+            endDate: order.endDate,
+            payMultiplier: order.payMultiplier,
+            lines: data.lines.map((row) => ({
+              itemId: row.itemId,
+              requestedQty: row.requestedQty,
+              pricePerDaySnapshot:
+                row.id && linePriceById.has(row.id)
+                  ? linePriceById.get(row.id)
+                  : itemById.get(row.itemId)!.pricePerDay,
+            })),
+          });
+          const requestValidation = validateOrderDiscount({
+            discount: requestedDiscount,
+            rentalSubtotalBeforeDiscount: pricingPreview.rentalSubtotalBeforeDiscount,
+          });
+          if (!requestValidation.ok) throw new Error(`INVALID_DISCOUNT_REQUEST:${requestValidation.message}`);
 
           shouldRequestChanges = order.status === "ESTIMATE_SENT" || order.status === "APPROVED_BY_GREENWICH";
 
@@ -138,6 +174,23 @@ export async function PATCH(
                   montageComment: data.montageComment !== undefined ? (data.montageComment.trim() || null) : order.montageComment,
                   demontageEnabled: data.demontageEnabled ?? order.demontageEnabled,
                   demontageComment: data.demontageComment !== undefined ? (data.demontageComment.trim() || null) : order.demontageComment,
+                  greenwichRequestedDiscountType: data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType,
+                  greenwichRequestedDiscountPercent:
+                    data.greenwichRequestedDiscountType === "PERCENT"
+                      ? data.greenwichRequestedDiscountPercent ?? null
+                      : order.greenwichRequestedDiscountPercent != null
+                        ? Number(order.greenwichRequestedDiscountPercent)
+                        : null,
+                  greenwichRequestedDiscountAmount:
+                    data.greenwichRequestedDiscountType === "AMOUNT"
+                      ? data.greenwichRequestedDiscountAmount ?? null
+                      : order.greenwichRequestedDiscountAmount != null
+                        ? Number(order.greenwichRequestedDiscountAmount)
+                        : null,
+                  greenwichDiscountRequestComment:
+                    data.greenwichDiscountRequestComment !== undefined
+                      ? (data.greenwichDiscountRequestComment?.trim() || null)
+                      : order.greenwichDiscountRequestComment,
                   lines: [...data.lines]
                     .map((l) => ({
                       itemId: l.itemId,
@@ -196,6 +249,22 @@ export async function PATCH(
               ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
               ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
               ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
+              ...(data.greenwichRequestedDiscountType !== undefined
+                ? {
+                    greenwichRequestedDiscountType: data.greenwichRequestedDiscountType,
+                    greenwichRequestedDiscountPercent:
+                      data.greenwichRequestedDiscountType === "PERCENT"
+                        ? data.greenwichRequestedDiscountPercent ?? null
+                        : null,
+                    greenwichRequestedDiscountAmount:
+                      data.greenwichRequestedDiscountType === "AMOUNT"
+                        ? data.greenwichRequestedDiscountAmount ?? null
+                        : null,
+                  }
+                : {}),
+              ...(data.greenwichDiscountRequestComment !== undefined
+                ? { greenwichDiscountRequestComment: data.greenwichDiscountRequestComment?.trim() || null }
+                : {}),
               ...(shouldRequestChanges
                 ? { status: "CHANGES_REQUESTED", changesRequestedSnapshot: changesRequestedSnapshot as unknown as object }
                 : {}),
@@ -218,6 +287,7 @@ export async function PATCH(
         if (e.message === "FORBIDDEN_QUICK") return jsonError(400, "Быстрая доп.-заявка не редактируется");
         if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
         if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
+        if (e.message.startsWith("INVALID_DISCOUNT_REQUEST:")) return jsonError(400, e.message.replace("INVALID_DISCOUNT_REQUEST:", ""));
         const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);
         if (m) {
           return jsonError(

@@ -2,6 +2,7 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { getOrSetRuntimeCache } from "@/server/runtime-cache";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const ACTIVE_STATUSES = [
   "SUBMITTED",
@@ -12,32 +13,6 @@ const ACTIVE_STATUSES = [
   "ISSUED",
   "RETURN_DECLARED",
 ] as const;
-
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
-}
-
-function calcOrderTotalAmount(args: {
-  startDate: Date;
-  endDate: Date;
-  payMultiplier: number | null;
-  deliveryPrice: number | null;
-  montagePrice: number | null;
-  demontagePrice: number | null;
-  lines: Array<{ requestedQty: number; pricePerDaySnapshot: unknown }>;
-}): number {
-  const days = daysBetween(args.startDate, args.endDate);
-  const multiplier = args.payMultiplier ?? 1;
-  const rental = args.lines.reduce((sum, l) => {
-    const price = l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0;
-    return sum + price * l.requestedQty * days * multiplier;
-  }, 0);
-  const services =
-    (args.deliveryPrice ?? 0) + (args.montagePrice ?? 0) + (args.demontagePrice ?? 0);
-  return Math.round(rental + services);
-}
 
 export async function GET() {
   const auth = await requireUser();
@@ -79,6 +54,9 @@ export async function GET() {
         deliveryPrice: true,
         montagePrice: true,
         demontagePrice: true,
+        rentalDiscountType: true,
+        rentalDiscountPercent: true,
+        rentalDiscountAmount: true,
         lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
       },
     }),
@@ -101,15 +79,16 @@ export async function GET() {
           readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),
           startDate: nearestOrder.startDate.toISOString().slice(0, 10),
           endDate: nearestOrder.endDate.toISOString().slice(0, 10),
-          totalAmount: calcOrderTotalAmount({
+          totalAmount: calcOrderPricing({
             startDate: nearestOrder.startDate,
             endDate: nearestOrder.endDate,
-            payMultiplier: nearestOrder.payMultiplier != null ? Number(nearestOrder.payMultiplier) : null,
-            deliveryPrice: nearestOrder.deliveryPrice != null ? Number(nearestOrder.deliveryPrice) : null,
-            montagePrice: nearestOrder.montagePrice != null ? Number(nearestOrder.montagePrice) : null,
-            demontagePrice: nearestOrder.demontagePrice != null ? Number(nearestOrder.demontagePrice) : null,
+            payMultiplier: nearestOrder.payMultiplier,
+            deliveryPrice: nearestOrder.deliveryPrice,
+            montagePrice: nearestOrder.montagePrice,
+            demontagePrice: nearestOrder.demontagePrice,
             lines: nearestOrder.lines,
-          }),
+            discount: nearestOrder,
+          }).grandTotal,
         }
       : null;
 

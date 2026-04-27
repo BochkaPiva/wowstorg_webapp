@@ -62,6 +62,13 @@ type Order = {
   demontagePrice: number | null;
   demontageInternalCost?: number | null;
   payMultiplier?: number | null;
+  rentalDiscountType: "NONE" | "PERCENT" | "AMOUNT";
+  rentalDiscountPercent: number | null;
+  rentalDiscountAmount: number | null;
+  greenwichRequestedDiscountType: "NONE" | "PERCENT" | "AMOUNT";
+  greenwichRequestedDiscountPercent: number | null;
+  greenwichRequestedDiscountAmount: number | null;
+  greenwichDiscountRequestComment: string | null;
   warehouseInternalNote?: string | null;
   estimateFileKey?: string | null;
   lines: OrderLine[];
@@ -118,16 +125,56 @@ function orderTotal(order: {
   deliveryPrice: number | null;
   montagePrice: number | null;
   demontagePrice: number | null;
+  rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
+  rentalDiscountPercent?: number | null;
+  rentalDiscountAmount?: number | null;
 }): number {
+  return calcOrderPricingClient(order).grandTotal;
+}
+
+function calcOrderPricingClient(order: {
+  lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
+  startDate: string;
+  endDate: string;
+  payMultiplier?: number | null;
+  deliveryPrice: number | null;
+  montagePrice: number | null;
+  demontagePrice: number | null;
+  rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
+  rentalDiscountPercent?: number | null;
+  rentalDiscountAmount?: number | null;
+}) {
   const days = daysBetween(order.startDate, order.endDate);
   const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-  const rental = order.lines.reduce(
+  const rentalBeforeDiscount = order.lines.reduce(
     (sum, l) => sum + (l.pricePerDaySnapshot ?? 0) * l.requestedQty * days * multiplier,
     0,
   );
+  const rawDiscount =
+    order.rentalDiscountType === "PERCENT"
+      ? rentalBeforeDiscount * ((order.rentalDiscountPercent ?? 0) / 100)
+      : order.rentalDiscountType === "AMOUNT"
+        ? (order.rentalDiscountAmount ?? 0)
+        : 0;
+  const discountAmount = Math.min(Math.max(0, rawDiscount), rentalBeforeDiscount);
+  const rentalAfterDiscount = Math.max(0, rentalBeforeDiscount - discountAmount);
   const services =
     (order.deliveryPrice ?? 0) + (order.montagePrice ?? 0) + (order.demontagePrice ?? 0);
-  return Math.round(rental + services);
+  return {
+    days,
+    multiplier,
+    rentalBeforeDiscount,
+    discountAmount,
+    rentalAfterDiscount,
+    services,
+    grandTotal: Math.round(rentalAfterDiscount + services),
+  };
+}
+
+function formatDiscountLabel(type: string | null | undefined, percent?: number | null, amount?: number | null) {
+  if (type === "PERCENT" && percent != null) return `${percent}%`;
+  if (type === "AMOUNT" && amount != null) return `${amount.toLocaleString("ru-RU")} ₽`;
+  return "нет";
 }
 
 function orderServicesInternalTotal(order: {
@@ -606,6 +653,16 @@ export default function OrderDetailsPage() {
   const [editDemontageComment, setEditDemontageComment] = React.useState("");
   const [editDemontagePrice, setEditDemontagePrice] = React.useState<number | "">("");
   const [editDemontageInternalCost, setEditDemontageInternalCost] = React.useState<number | "">("");
+  const [editRentalDiscountType, setEditRentalDiscountType] = React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
+  const [editRentalDiscountPercent, setEditRentalDiscountPercent] = React.useState<number | "">("");
+  const [editRentalDiscountAmount, setEditRentalDiscountAmount] = React.useState<number | "">("");
+  const [editGreenwichRequestedDiscountType, setEditGreenwichRequestedDiscountType] =
+    React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
+  const [editGreenwichRequestedDiscountPercent, setEditGreenwichRequestedDiscountPercent] =
+    React.useState<number | "">("");
+  const [editGreenwichRequestedDiscountAmount, setEditGreenwichRequestedDiscountAmount] =
+    React.useState<number | "">("");
+  const [editGreenwichDiscountRequestComment, setEditGreenwichDiscountRequestComment] = React.useState("");
   const [catalogItems, setCatalogItems] = React.useState<CatalogItemOption[]>([]);
 
   const user = state.status === "authenticated" ? state.user : null;
@@ -834,6 +891,13 @@ export default function OrderDetailsPage() {
     setEditDemontageInternalCost(
       order.demontageInternalCost != null ? Number(order.demontageInternalCost) : "",
     );
+    setEditRentalDiscountType(order.rentalDiscountType ?? "NONE");
+    setEditRentalDiscountPercent(order.rentalDiscountPercent ?? "");
+    setEditRentalDiscountAmount(order.rentalDiscountAmount ?? "");
+    setEditGreenwichRequestedDiscountType(order.greenwichRequestedDiscountType ?? "NONE");
+    setEditGreenwichRequestedDiscountPercent(order.greenwichRequestedDiscountPercent ?? "");
+    setEditGreenwichRequestedDiscountAmount(order.greenwichRequestedDiscountAmount ?? "");
+    setEditGreenwichDiscountRequestComment(order.greenwichDiscountRequestComment ?? "");
     setIsEditing(true);
     setActionError(null);
     const start = order.startDate.slice(0, 10);
@@ -925,6 +989,32 @@ export default function OrderDetailsPage() {
                   : null,
               }
             : {}),
+          ...(isWarehouse
+            ? {
+                rentalDiscountType: editRentalDiscountType,
+                rentalDiscountPercent:
+                  editRentalDiscountType === "PERCENT" && editRentalDiscountPercent !== ""
+                    ? Number(editRentalDiscountPercent)
+                    : null,
+                rentalDiscountAmount:
+                  editRentalDiscountType === "AMOUNT" && editRentalDiscountAmount !== ""
+                    ? Number(editRentalDiscountAmount)
+                    : null,
+              }
+            : {
+                greenwichRequestedDiscountType: editGreenwichRequestedDiscountType,
+                greenwichRequestedDiscountPercent:
+                  editGreenwichRequestedDiscountType === "PERCENT" &&
+                  editGreenwichRequestedDiscountPercent !== ""
+                    ? Number(editGreenwichRequestedDiscountPercent)
+                    : null,
+                greenwichRequestedDiscountAmount:
+                  editGreenwichRequestedDiscountType === "AMOUNT" &&
+                  editGreenwichRequestedDiscountAmount !== ""
+                    ? Number(editGreenwichRequestedDiscountAmount)
+                    : null,
+                greenwichDiscountRequestComment: editGreenwichDiscountRequestComment.trim() || null,
+              }),
           lines: editLines.map((l) => ({
             id: l.id,
             itemId: l.itemId,
@@ -1139,6 +1229,11 @@ export default function OrderDetailsPage() {
                 <span className="rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                   {orderTotal(order).toLocaleString("ru-RU")} ₽
                 </span>
+                {calcOrderPricingClient(order).discountAmount > 0 ? (
+                  <span className="ml-2 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">
+                    скидка {formatDiscountLabel(order.rentalDiscountType, order.rentalDiscountPercent, order.rentalDiscountAmount)}
+                  </span>
+                ) : null}
               </p>
               {isWarehouse ? (
                 <p className="mt-1 text-xs text-zinc-600">
@@ -1227,6 +1322,29 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
+        {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              Запрос скидки от Grinvich
+            </div>
+            <div className="mt-1 text-lg font-bold text-amber-950">
+              {formatDiscountLabel(
+                order.greenwichRequestedDiscountType,
+                order.greenwichRequestedDiscountPercent,
+                order.greenwichRequestedDiscountAmount,
+              )}
+            </div>
+            {order.greenwichDiscountRequestComment ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900">
+                {order.greenwichDiscountRequestComment}
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-amber-800">
+              Это только запрос клиента. На сумму заявки влияет только подтвержденная скидка склада.
+            </p>
+          </div>
+        ) : null}
+
         {!isEditing && order.comment ? (
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Комментарий</div>
@@ -1261,6 +1379,76 @@ export default function OrderDetailsPage() {
                     placeholder="Комментарий к заявке для склада"
                   />
                 </div>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white shadow-sm overflow-hidden">
+              <div className="border-b border-emerald-100 px-5 py-3">
+                <span className="text-sm font-semibold text-emerald-900">
+                  {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
+                </span>
+              </div>
+              <div className="grid gap-3 p-5 md:grid-cols-[180px_1fr_1fr]">
+                <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Тип
+                  <select
+                    value={isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType}
+                    onChange={(e) => {
+                      const next = e.target.value as "NONE" | "PERCENT" | "AMOUNT";
+                      if (isWarehouse) setEditRentalDiscountType(next);
+                      else setEditGreenwichRequestedDiscountType(next);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800"
+                  >
+                    <option value="NONE">Без скидки</option>
+                    <option value="PERCENT">Процент</option>
+                    <option value="AMOUNT">Сумма</option>
+                  </select>
+                </label>
+                {(isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === "PERCENT" ? (
+                  <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Процент
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent}
+                      onChange={(e) => {
+                        const value = e.target.value === "" ? "" : Number(e.target.value);
+                        if (isWarehouse) setEditRentalDiscountPercent(value);
+                        else setEditGreenwichRequestedDiscountPercent(value);
+                      }}
+                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-800"
+                    />
+                  </label>
+                ) : null}
+                {(isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === "AMOUNT" ? (
+                  <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Сумма, ₽
+                    <input
+                      type="number"
+                      min={0}
+                      value={isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount}
+                      onChange={(e) => {
+                        const value = e.target.value === "" ? "" : Number(e.target.value);
+                        if (isWarehouse) setEditRentalDiscountAmount(value);
+                        else setEditGreenwichRequestedDiscountAmount(value);
+                      }}
+                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-800"
+                    />
+                  </label>
+                ) : null}
+                {!isWarehouse ? (
+                  <label className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Комментарий к запросу
+                    <textarea
+                      value={editGreenwichDiscountRequestComment}
+                      onChange={(e) => setEditGreenwichDiscountRequestComment(e.target.value)}
+                      rows={2}
+                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case text-zinc-800"
+                      placeholder="Например: нужна скидка из-за объема заявки"
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
@@ -1448,11 +1636,25 @@ export default function OrderDetailsPage() {
                         <td className="p-3 text-right text-zinc-600">{line.approvedQty ?? "—"}</td>
                         <td className="p-3 text-right text-zinc-600">{line.issuedQty ?? "—"}</td>
                         <td className="p-3 text-right text-zinc-600">
-                          {line.pricePerDaySnapshot != null
-                            ? (line.pricePerDaySnapshot *
-                                (isWarehouse ? 1 : (order.payMultiplier != null ? Number(order.payMultiplier) : 1))
-                              ).toFixed(0)
-                            : "—"} ₽
+                          {(() => {
+                            if (line.pricePerDaySnapshot == null) return "—";
+                            const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+                            const before = line.pricePerDaySnapshot * multiplier;
+                            const pricing = calcOrderPricingClient(order);
+                            const ratio =
+                              pricing.rentalBeforeDiscount > 0
+                                ? pricing.rentalAfterDiscount / pricing.rentalBeforeDiscount
+                                : 1;
+                            const after = before * ratio;
+                            return pricing.discountAmount > 0 ? (
+                              <span className="inline-flex flex-col items-end">
+                                <span className="text-xs text-zinc-400 line-through">{before.toFixed(0)} ₽</span>
+                                <span className="font-semibold text-emerald-700">{after.toFixed(0)} ₽</span>
+                              </span>
+                            ) : (
+                              `${before.toFixed(0)} ₽`
+                            );
+                          })()}
                         </td>
                         <td className="p-3 text-zinc-600 text-left max-w-[200px] truncate" title={line.greenwichComment ?? undefined}>
                           {line.greenwichComment ?? "—"}

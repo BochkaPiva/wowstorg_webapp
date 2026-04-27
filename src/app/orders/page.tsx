@@ -27,6 +27,7 @@ type OrderCard = {
   createdAt: string;
   customer: { id: string; name: string };
   totalAmount?: number;
+  discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
 };
 
 const CANCELLABLE: OrderCard["status"][] = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"];
@@ -297,6 +298,14 @@ export default function OrdersPage() {
             {o.totalAmount != null ? (
               <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
                 {o.totalAmount.toLocaleString("ru-RU")} ₽
+              </span>
+            ) : null}
+            {o.discount ? (
+              <span className="ml-2 rounded-md bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
+                скидка{" "}
+                {o.discount.type === "PERCENT" && o.discount.percent != null
+                  ? `${o.discount.percent}%`
+                  : `${Math.round(o.discount.amount).toLocaleString("ru-RU")} ₽`}
               </span>
             ) : null}
           </div>

@@ -17,6 +17,10 @@ function buildOrderSnapshotForCompare(order: {
   montageComment: string | null;
   demontageEnabled: boolean;
   demontageComment: string | null;
+  greenwichRequestedDiscountType?: string | null;
+  greenwichRequestedDiscountPercent?: number | null;
+  greenwichRequestedDiscountAmount?: number | null;
+  greenwichDiscountRequestComment?: string | null;
   lines: Array<{ itemId: string; requestedQty: number; greenwichComment: string | null }>;
 }): string {
   const lines = [...order.lines]
@@ -39,6 +43,10 @@ function buildOrderSnapshotForCompare(order: {
     montageComment: (order.montageComment ?? "").trim() || null,
     demontageEnabled: order.demontageEnabled,
     demontageComment: (order.demontageComment ?? "").trim() || null,
+    greenwichRequestedDiscountType: order.greenwichRequestedDiscountType ?? "NONE",
+    greenwichRequestedDiscountPercent: order.greenwichRequestedDiscountPercent ?? null,
+    greenwichRequestedDiscountAmount: order.greenwichRequestedDiscountAmount ?? null,
+    greenwichDiscountRequestComment: (order.greenwichDiscountRequestComment ?? "").trim() || null,
     lines,
   });
 }
@@ -79,12 +87,21 @@ export async function POST(
     );
   }
 
-  const estimateSentSnapshot = fullOrder.lines.map((l) => ({
-    orderLineId: l.id,
-    itemId: l.itemId,
-    requestedQty: l.requestedQty,
-    pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
-  }));
+  const estimateSentSnapshot = {
+    discount: {
+      rentalDiscountType: fullOrder.rentalDiscountType,
+      rentalDiscountPercent:
+        fullOrder.rentalDiscountPercent != null ? Number(fullOrder.rentalDiscountPercent) : null,
+      rentalDiscountAmount:
+        fullOrder.rentalDiscountAmount != null ? Number(fullOrder.rentalDiscountAmount) : null,
+    },
+    lines: fullOrder.lines.map((l) => ({
+      orderLineId: l.id,
+      itemId: l.itemId,
+      requestedQty: l.requestedQty,
+      pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+    })),
+  };
 
   const estimateFileKey = `${id}.xlsx`;
   let xlsxBuffer: Buffer;
@@ -107,6 +124,12 @@ export async function POST(
       montageComment: fullOrder.montageComment,
       demontageEnabled: fullOrder.demontageEnabled,
       demontageComment: fullOrder.demontageComment,
+      greenwichRequestedDiscountType: fullOrder.greenwichRequestedDiscountType,
+      greenwichRequestedDiscountPercent:
+        fullOrder.greenwichRequestedDiscountPercent != null ? Number(fullOrder.greenwichRequestedDiscountPercent) : null,
+      greenwichRequestedDiscountAmount:
+        fullOrder.greenwichRequestedDiscountAmount != null ? Number(fullOrder.greenwichRequestedDiscountAmount) : null,
+      greenwichDiscountRequestComment: fullOrder.greenwichDiscountRequestComment,
       lines: fullOrder.lines.map((l) => ({
         itemId: l.itemId,
         requestedQty: l.requestedQty,
@@ -124,6 +147,10 @@ export async function POST(
         montageComment: (r.montageComment as string) ?? null,
         demontageEnabled: Boolean(r.demontageEnabled),
         demontageComment: (r.demontageComment as string) ?? null,
+        greenwichRequestedDiscountType: (r.greenwichRequestedDiscountType as string) ?? "NONE",
+        greenwichRequestedDiscountPercent: (r.greenwichRequestedDiscountPercent as number) ?? null,
+        greenwichRequestedDiscountAmount: (r.greenwichRequestedDiscountAmount as number) ?? null,
+        greenwichDiscountRequestComment: (r.greenwichDiscountRequestComment as string) ?? null,
         lines: (r.lines as Array<{ itemId: string; requestedQty: number; greenwichComment?: string | null }>).map(
           (l) => ({
             itemId: l.itemId,

@@ -15,6 +15,7 @@ import {
 } from "@/server/telegram";
 import { isTelegramConfigured } from "@/server/telegram";
 import { prisma } from "@/server/db";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 /** Пишет строку в notification-debug.log в корне проекта (можно открыть файл и посмотреть после теста). */
 function notifyDebugLog(msg: string): void {
@@ -33,12 +34,6 @@ function link(path: string, label: string): string {
 
 function fmtNum(n: number): string {
   return n.toLocaleString("ru-RU");
-}
-
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
 }
 
 type OrderForNotify = {
@@ -60,6 +55,9 @@ type OrderForNotify = {
   demontageComment: string | null;
   demontagePrice: unknown;
   payMultiplier: unknown;
+  rentalDiscountType?: string | null;
+  rentalDiscountPercent?: unknown;
+  rentalDiscountAmount?: unknown;
   customer: { name: string };
   createdBy?: { displayName: string };
   greenwichUser?: { displayName: string } | null;
@@ -252,18 +250,29 @@ function buildCommentBlock(o: OrderForNotify): string {
 }
 
 function buildEstimateBody(o: OrderForNotify): string {
-  const days = daysBetween(o.startDate, o.endDate);
-  const mult = o.payMultiplier != null ? Number(o.payMultiplier) : 1;
-  let rental = 0;
+  const pricing = calcOrderPricing({
+    startDate: o.startDate,
+    endDate: o.endDate,
+    payMultiplier: o.payMultiplier,
+    deliveryPrice: o.deliveryEnabled ? o.deliveryPrice : 0,
+    montagePrice: o.montageEnabled ? o.montagePrice : 0,
+    demontagePrice: o.demontageEnabled ? o.demontagePrice : 0,
+    lines: o.lines,
+    discount: o,
+  });
+  const days = pricing.days;
+  const mult = pricing.payMultiplier;
   const lines: string[] = [];
-  for (const l of o.lines) {
+  for (const [idx, l] of o.lines.entries()) {
     const price = l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0;
-    const sum = price * l.requestedQty * days * mult;
-    rental += sum;
+    const sum = pricing.lineAllocations[idx]?.rentalAfterDiscount ?? price * l.requestedQty * days * mult;
     const name = l.item?.name ?? "Позиция";
     lines.push(`  • ${escapeTelegramHtml(name)} — ${l.requestedQty} × ${fmtNum(price)} ₽/сут × ${days} дн. = ${fmtNum(Math.round(sum))} ₽`);
   }
-  let block = `📦 Аренда:\n${lines.join("\n")}\n  Итого аренда: ${fmtNum(Math.round(rental))} ₽`;
+  let block = `📦 Аренда:\n${lines.join("\n")}\n  Итого аренда: ${fmtNum(Math.round(pricing.rentalSubtotalAfterDiscount))} ₽`;
+  if (pricing.discountAmount > 0) {
+    block += `\n  Скидка на реквизит: −${fmtNum(Math.round(pricing.discountAmount))} ₽`;
+  }
   let services = 0;
   const serv: string[] = [];
   if (o.deliveryEnabled) {
@@ -284,7 +293,7 @@ function buildEstimateBody(o: OrderForNotify): string {
   if (serv.length) {
     block += `\n\n🚚 Доп. услуги:\n${serv.join("\n")}\n  Итого услуги: ${fmtNum(services)} ₽`;
   }
-  block += `\n\n💰 Сумма заявки: ${fmtNum(Math.round(rental + services))} ₽`;
+  block += `\n\n💰 Сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`;
   return block;
 }
 

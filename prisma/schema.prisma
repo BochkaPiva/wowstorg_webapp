@@ -36,6 +36,12 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum OrderDiscountType {
+  NONE
+  PERCENT
+  AMOUNT
+}
+
 enum Condition {
   OK
   NEEDS_REPAIR
@@ -731,6 +737,17 @@ model Order {
   /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
   /// чтобы изменения правил не ломали историю.
   payMultiplier Decimal @db.Decimal(5, 4)
+
+  /// Ручная скидка склада на аренду реквизита (не применяется к доп. услугам).
+  rentalDiscountType    OrderDiscountType @default(NONE)
+  rentalDiscountPercent Decimal?          @db.Decimal(5, 2)
+  rentalDiscountAmount  Decimal?          @db.Decimal(12, 2)
+
+  /// Запрос скидки от Greenwich. Не влияет на расчёты до подтверждения складом.
+  greenwichRequestedDiscountType    OrderDiscountType @default(NONE)
+  greenwichRequestedDiscountPercent Decimal?          @db.Decimal(5, 2)
+  greenwichRequestedDiscountAmount  Decimal?          @db.Decimal(12, 2)
+  greenwichDiscountRequestComment   String?
 
   estimateSentAt       DateTime?
   estimateSentSnapshot Json?

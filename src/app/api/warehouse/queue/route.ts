@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const QUEUE_STATUSES = [
   "SUBMITTED",
@@ -134,6 +135,9 @@ export async function GET(req: Request) {
       deliveryPrice: true,
       montagePrice: true,
       demontagePrice: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       project: { select: { id: true, title: true } },
       customer: { select: { id: true, name: true } },
       greenwichUser: {
@@ -149,26 +153,20 @@ export async function GET(req: Request) {
     },
   });
 
-  function daysBetween(start: Date, end: Date): number {
-    const ms = end.getTime() - start.getTime();
-    const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-    return days === 0 ? 1 : days;
-  }
-
   const serialized = orders.map((o) => {
     const startStr = o.startDate.toISOString().slice(0, 10);
     const endStr = o.endDate.toISOString().slice(0, 10);
-    const days = daysBetween(o.startDate, o.endDate);
-    const multiplier = o.payMultiplier != null ? Number(o.payMultiplier) : 1;
-    const rental = o.lines.reduce(
-      (sum, l) => sum + (l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0) * l.requestedQty * days * multiplier,
-      0,
-    );
-    const services =
-      (o.deliveryPrice != null ? Number(o.deliveryPrice) : 0) +
-      (o.montagePrice != null ? Number(o.montagePrice) : 0) +
-      (o.demontagePrice != null ? Number(o.demontagePrice) : 0);
-    const totalAmount = Math.round(rental + services);
+    const pricing = calcOrderPricing({
+      startDate: o.startDate,
+      endDate: o.endDate,
+      payMultiplier: o.payMultiplier,
+      deliveryPrice: o.deliveryPrice,
+      montagePrice: o.montagePrice,
+      demontagePrice: o.demontagePrice,
+      lines: o.lines,
+      discount: o,
+    });
+    const totalAmount = pricing.grandTotal;
     return {
       id: o.id,
       parentOrderId: null as string | null,
@@ -189,6 +187,14 @@ export async function GET(req: Request) {
           }
         : null,
       totalAmount,
+      discount:
+        pricing.discountAmount > 0
+          ? {
+              type: o.rentalDiscountType,
+              percent: o.rentalDiscountPercent != null ? Number(o.rentalDiscountPercent) : null,
+              amount: pricing.discountAmount,
+            }
+          : null,
     };
   });
 

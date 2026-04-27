@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/server/db";
 import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 import { deleteEstimateFile } from "@/server/file-storage";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 import { recomputeGreenwichRatingScore } from "@/server/ratings/greenwich-rating";
 
 const ORDER_CLEANUP_STATUSES = [
@@ -150,12 +151,6 @@ function uniqueIds(ids: string[]): string[] {
   return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
 }
 
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
-}
-
 function calcOrderTotalAmount(args: {
   startDate: Date;
   endDate: Date;
@@ -163,19 +158,15 @@ function calcOrderTotalAmount(args: {
   deliveryPrice: Prisma.Decimal | number | null;
   montagePrice: Prisma.Decimal | number | null;
   demontagePrice: Prisma.Decimal | number | null;
+  rentalDiscountType?: string | null;
+  rentalDiscountPercent?: Prisma.Decimal | number | null;
+  rentalDiscountAmount?: Prisma.Decimal | number | null;
   lines: Array<{ requestedQty: number; pricePerDaySnapshot: Prisma.Decimal | number | null }>;
 }): number {
-  const multiplier = args.payMultiplier != null ? Number(args.payMultiplier) : 1;
-  const rental = args.lines.reduce(
-    (sum, line) =>
-      sum + (line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : 0) * line.requestedQty * daysBetween(args.startDate, args.endDate) * multiplier,
-    0,
-  );
-  const services =
-    (args.deliveryPrice != null ? Number(args.deliveryPrice) : 0) +
-    (args.montagePrice != null ? Number(args.montagePrice) : 0) +
-    (args.demontagePrice != null ? Number(args.demontagePrice) : 0);
-  return Math.round(rental + services);
+  return calcOrderPricing({
+    ...args,
+    discount: args,
+  }).grandTotal;
 }
 
 function orderByFromSort(sort: CleanupSort): Prisma.OrderOrderByWithRelationInput[] {
@@ -253,6 +244,9 @@ export async function listOrdersForCleanup(
       deliveryPrice: true,
       montagePrice: true,
       demontagePrice: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       customer: { select: { name: true } },
       greenwichUser: { select: { displayName: true } },
       lines: {
@@ -388,6 +382,9 @@ async function prepareOrderCleanup(
       deliveryPrice: true,
       montagePrice: true,
       demontagePrice: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       customer: { select: { name: true } },
       lines: {
         select: {

@@ -8,12 +8,19 @@ type Db = Prisma.TransactionClient | PrismaClient;
 
 export type EstimateArtifacts = {
   estimateFileKey: string;
-  estimateSentSnapshot: Array<{
-    orderLineId: string;
-    itemId: string;
-    requestedQty: number;
-    pricePerDaySnapshot: number | null;
-  }>;
+  estimateSentSnapshot: {
+    discount: {
+      rentalDiscountType: string;
+      rentalDiscountPercent: number | null;
+      rentalDiscountAmount: number | null;
+    };
+    lines: Array<{
+      orderLineId: string;
+      itemId: string;
+      requestedQty: number;
+      pricePerDaySnapshot: number | null;
+    }>;
+  };
   xlsxBuffer: Buffer;
 };
 
@@ -34,12 +41,21 @@ export async function makeEstimateArtifactsForOrder(db: Db, orderId: string): Pr
 
   assertEnabledServicePricesPresent(order);
 
-  const estimateSentSnapshot = order.lines.map((l) => ({
-    orderLineId: l.id,
-    itemId: l.itemId,
-    requestedQty: l.requestedQty,
-    pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
-  }));
+  const estimateSentSnapshot = {
+    discount: {
+      rentalDiscountType: order.rentalDiscountType,
+      rentalDiscountPercent:
+        order.rentalDiscountPercent != null ? Number(order.rentalDiscountPercent) : null,
+      rentalDiscountAmount:
+        order.rentalDiscountAmount != null ? Number(order.rentalDiscountAmount) : null,
+    },
+    lines: order.lines.map((l) => ({
+      orderLineId: l.id,
+      itemId: l.itemId,
+      requestedQty: l.requestedQty,
+      pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+    })),
+  };
 
   const estimateFileKey = `${orderId}.xlsx`;
   const xlsxBuffer = await buildEstimateXlsx(order as Parameters<typeof buildEstimateXlsx>[0]);

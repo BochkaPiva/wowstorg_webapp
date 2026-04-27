@@ -5,6 +5,7 @@ import { jsonOk } from "@/server/http";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getOrSetRuntimeCache } from "@/server/runtime-cache";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const ACTIVE_STATUSES = [
   "SUBMITTED",
@@ -17,32 +18,6 @@ const ACTIVE_STATUSES = [
 ] as const;
 
 const OMSK_TZ = "Asia/Omsk";
-
-function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
-}
-
-function calcOrderTotalAmount(args: {
-  startDate: Date;
-  endDate: Date;
-  payMultiplier: number | null;
-  deliveryPrice: number | null;
-  montagePrice: number | null;
-  demontagePrice: number | null;
-  lines: Array<{ requestedQty: number; pricePerDaySnapshot: unknown }>;
-}): number {
-  const days = daysBetween(args.startDate, args.endDate);
-  const multiplier = args.payMultiplier ?? 1;
-  const rental = args.lines.reduce((sum, l) => {
-    const price = l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0;
-    return sum + price * l.requestedQty * days * multiplier;
-  }, 0);
-  const services =
-    (args.deliveryPrice ?? 0) + (args.montagePrice ?? 0) + (args.demontagePrice ?? 0);
-  return Math.round(rental + services);
-}
 
 function getOmskTodayYmd(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -82,6 +57,9 @@ export async function GET() {
         deliveryPrice: true,
         montagePrice: true,
         demontagePrice: true,
+        rentalDiscountType: true,
+        rentalDiscountPercent: true,
+        rentalDiscountAmount: true,
         greenwichUser: {
           select: {
             displayName: true,
@@ -106,6 +84,9 @@ export async function GET() {
         deliveryPrice: true,
         montagePrice: true,
         demontagePrice: true,
+        rentalDiscountType: true,
+        rentalDiscountPercent: true,
+        rentalDiscountAmount: true,
         greenwichUser: {
           select: {
             displayName: true,
@@ -212,15 +193,16 @@ export async function GET() {
     readyByDate: o.readyByDate.toISOString().slice(0, 10),
     startDate: o.startDate.toISOString().slice(0, 10),
     endDate: o.endDate.toISOString().slice(0, 10),
-    totalAmount: calcOrderTotalAmount({
+    totalAmount: calcOrderPricing({
       startDate: o.startDate,
       endDate: o.endDate,
-      payMultiplier: o.payMultiplier != null ? Number(o.payMultiplier) : null,
-      deliveryPrice: o.deliveryPrice != null ? Number(o.deliveryPrice) : null,
-      montagePrice: o.montagePrice != null ? Number(o.montagePrice) : null,
-      demontagePrice: o.demontagePrice != null ? Number(o.demontagePrice) : null,
+      payMultiplier: o.payMultiplier,
+      deliveryPrice: o.deliveryPrice,
+      montagePrice: o.montagePrice,
+      demontagePrice: o.demontagePrice,
       lines: o.lines,
-    }),
+      discount: o,
+    }).grandTotal,
     }));
 
     const nearest = nearestOrder
@@ -239,15 +221,16 @@ export async function GET() {
         readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),
         startDate: nearestOrder.startDate.toISOString().slice(0, 10),
         endDate: nearestOrder.endDate.toISOString().slice(0, 10),
-        totalAmount: calcOrderTotalAmount({
+          totalAmount: calcOrderPricing({
           startDate: nearestOrder.startDate,
           endDate: nearestOrder.endDate,
-          payMultiplier: nearestOrder.payMultiplier != null ? Number(nearestOrder.payMultiplier) : null,
-          deliveryPrice: nearestOrder.deliveryPrice != null ? Number(nearestOrder.deliveryPrice) : null,
-          montagePrice: nearestOrder.montagePrice != null ? Number(nearestOrder.montagePrice) : null,
-          demontagePrice: nearestOrder.demontagePrice != null ? Number(nearestOrder.demontagePrice) : null,
+            payMultiplier: nearestOrder.payMultiplier,
+            deliveryPrice: nearestOrder.deliveryPrice,
+            montagePrice: nearestOrder.montagePrice,
+            demontagePrice: nearestOrder.demontagePrice,
           lines: nearestOrder.lines,
-        }),
+            discount: nearestOrder,
+          }).grandTotal,
         }
       : null;
 

@@ -8,6 +8,7 @@ import {
 } from "@/lib/project-estimate-requisite";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 import { daysBetween } from "@/server/orders/order-total";
 
 function dec(v: { toString(): string } | null | undefined): string | null {
@@ -103,6 +104,9 @@ export async function buildProjectEstimateReadModel(args: {
           demontageComment: true,
           demontagePrice: true,
           demontageInternalCost: true,
+          rentalDiscountType: true,
+          rentalDiscountPercent: true,
+          rentalDiscountAmount: true,
           lines: {
             orderBy: { position: "asc" },
             select: {
@@ -220,17 +224,16 @@ export async function buildProjectEstimateReadModel(args: {
                 const dayCount = normalizeProjectEstimateDays(
                   daysBetween(linkedOrder.startDate, linkedOrder.endDate),
                 ) ?? 1;
-                const payMultiplier =
-                  linkedOrder.payMultiplier != null ? Number(linkedOrder.payMultiplier) : 1;
+                const pricing = calcOrderPricing({
+                  startDate: linkedOrder.startDate,
+                  endDate: linkedOrder.endDate,
+                  payMultiplier: linkedOrder.payMultiplier,
+                  lines: linkedOrder.lines,
+                  discount: linkedOrder,
+                });
                 const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => {
                   const qty = line.requestedQty;
-                  const clientTotal =
-                    calcProjectEstimateRequisiteTotal({
-                      pricePerDay: line.pricePerDaySnapshot ?? 0,
-                      qty,
-                      plannedDays: dayCount,
-                      payMultiplier,
-                    }) ?? 0;
+                  const clientTotal = Math.round(pricing.lineAllocations[index]?.rentalAfterDiscount ?? 0);
                   return {
                     id: line.id,
                     position: line.position,

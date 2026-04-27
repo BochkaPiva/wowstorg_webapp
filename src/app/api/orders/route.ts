@@ -20,6 +20,7 @@ const LineSchema = z.object({
 });
 
 const OrderSourceSchema = z.enum(["GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"]);
+const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 
 const BodySchema = z.object({
   customerId: z.string().trim().min(1).optional(),
@@ -49,6 +50,14 @@ const BodySchema = z.object({
   /// Заявка реквизита в рамках проекта (только WOWSTORG): заказчик и источник берутся из проекта.
   projectId: z.string().trim().min(1).optional(),
   targetEstimateVersionId: z.string().trim().min(1).optional(),
+
+  rentalDiscountType: DiscountTypeSchema.optional(),
+  rentalDiscountPercent: z.number().min(0).max(100).nullable().optional(),
+  rentalDiscountAmount: z.number().min(0).nullable().optional(),
+  greenwichRequestedDiscountType: DiscountTypeSchema.optional(),
+  greenwichRequestedDiscountPercent: z.number().min(0).max(100).nullable().optional(),
+  greenwichRequestedDiscountAmount: z.number().min(0).nullable().optional(),
+  greenwichDiscountRequestComment: z.string().trim().max(1000).nullable().optional(),
 
   lines: z.array(LineSchema).min(1).max(500),
 });
@@ -140,6 +149,13 @@ export async function POST(req: Request) {
           greenwichUserId: data.greenwichUserId,
           projectId: data.projectId,
           targetEstimateVersionId: data.targetEstimateVersionId,
+          rentalDiscountType: isWarehouse ? data.rentalDiscountType : "NONE",
+          rentalDiscountPercent: isWarehouse ? data.rentalDiscountPercent : null,
+          rentalDiscountAmount: isWarehouse ? data.rentalDiscountAmount : null,
+          greenwichRequestedDiscountType: !isWarehouse ? data.greenwichRequestedDiscountType : "NONE",
+          greenwichRequestedDiscountPercent: !isWarehouse ? data.greenwichRequestedDiscountPercent : null,
+          greenwichRequestedDiscountAmount: !isWarehouse ? data.greenwichRequestedDiscountAmount : null,
+          greenwichDiscountRequestComment: !isWarehouse ? data.greenwichDiscountRequestComment : null,
           lines: data.lines,
         });
       },
@@ -192,6 +208,12 @@ export async function POST(req: Request) {
       }
       if (e.code === "END_BEFORE_START") {
         return jsonError(400, "Дата окончания не может быть раньше даты начала");
+      }
+      if (e.code === "INVALID_DISCOUNT") {
+        return jsonError(400, e.message || "Некорректная скидка");
+      }
+      if (e.code === "INVALID_DISCOUNT_REQUEST") {
+        return jsonError(400, e.message || "Некорректный запрос скидки");
       }
     }
     throw e;

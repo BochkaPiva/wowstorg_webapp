@@ -1418,11 +1418,10 @@ export default function OrderDetailsPage() {
                             else setEditGreenwichRequestedDiscountType(option.value);
                           }}
                           className={[
-                            "min-h-[72px] rounded-2xl border px-3 py-3 text-left transition-all duration-200 shadow-sm",
+                            "min-h-[72px] overflow-hidden rounded-2xl border px-3 py-3 text-left transition-all duration-300 ease-out shadow-sm",
                             active
                               ? "border-emerald-400 bg-gradient-to-br from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-100 ring-2 ring-emerald-100"
                               : "border-emerald-100 bg-white/90 text-zinc-800 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md",
-                            showValueInput ? "sm:col-span-2" : "",
                           ].join(" ")}
                           role="radio"
                           aria-checked={active}
@@ -1434,40 +1433,48 @@ export default function OrderDetailsPage() {
                             else setEditGreenwichRequestedDiscountType(option.value);
                           }}
                         >
-                          <div className={["flex gap-3", showValueInput ? "items-end justify-between" : "flex-col"].join(" ")}>
+                          <div className="flex flex-col gap-3">
                             <div>
                               <span className="block text-sm font-semibold">{option.label}</span>
                               <span className={["mt-1 block text-xs", active ? "text-emerald-50" : "text-zinc-500"].join(" ")}>
                                 {option.hint}
                               </span>
                             </div>
-                            {showValueInput ? (
-                              <label
-                                className="w-full max-w-[220px] text-xs font-semibold uppercase tracking-wide text-emerald-50"
+                            {option.value !== "NONE" ? (
+                              <div
+                                className={[
+                                  "transition-all duration-300 ease-out",
+                                  showValueInput
+                                    ? "max-h-24 translate-y-0 opacity-100"
+                                    : "pointer-events-none max-h-0 -translate-y-1 opacity-0",
+                                ].join(" ")}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                {option.value === "PERCENT" ? "Процент" : "Сумма, ₽"}
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={option.value === "PERCENT" ? 100 : undefined}
-                                  value={inputValue}
-                                  onChange={(e) => {
-                                    const value = e.target.value === "" ? "" : Number(e.target.value);
-                                    if (option.value === "PERCENT") {
-                                      if (isWarehouse) setEditRentalDiscountPercent(value);
-                                      else setEditGreenwichRequestedDiscountPercent(value);
-                                    } else if (isWarehouse) {
-                                      setEditRentalDiscountAmount(value);
-                                    } else {
-                                      setEditGreenwichRequestedDiscountAmount(value);
-                                    }
-                                  }}
-                                  className="mt-1 w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-2 focus:ring-white/40"
-                                  placeholder={option.value === "PERCENT" ? "10" : "5000"}
-                                  autoFocus
-                                />
-                              </label>
+                                <label className="block text-xs font-semibold uppercase tracking-wide text-emerald-50">
+                                  {option.value === "PERCENT" ? "Процент" : "Сумма, ₽"}
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={option.value === "PERCENT" ? 100 : undefined}
+                                    value={inputValue}
+                                    onChange={(e) => {
+                                      const value = e.target.value === "" ? "" : Number(e.target.value);
+                                      if (option.value === "PERCENT") {
+                                        if (isWarehouse) setEditRentalDiscountPercent(value);
+                                        else setEditGreenwichRequestedDiscountPercent(value);
+                                      } else if (isWarehouse) {
+                                        setEditRentalDiscountAmount(value);
+                                      } else {
+                                        setEditGreenwichRequestedDiscountAmount(value);
+                                      }
+                                    }}
+                                    className="mt-1 w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-2 focus:ring-white/40"
+                                    placeholder={option.value === "PERCENT" ? "10" : "5000"}
+                                    autoFocus={showValueInput}
+                                    tabIndex={showValueInput ? 0 : -1}
+                                  />
+                                </label>
+                              </div>
                             ) : null}
                           </div>
                         </div>

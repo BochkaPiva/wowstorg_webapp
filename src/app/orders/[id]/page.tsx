@@ -102,6 +102,11 @@ const CONDITION_LABEL: Record<ReturnSplit["condition"], string> = {
 };
 
 const CONDITIONS: ReturnSplit["condition"][] = ["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"];
+const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label: string; hint: string }> = [
+  { value: "NONE", label: "Без скидки", hint: "Итог без ручной скидки" },
+  { value: "PERCENT", label: "Процент", hint: "Например, 10%" },
+  { value: "AMOUNT", label: "Сумма", hint: "Фиксированная сумма" },
+];
 
 function fmtDate(s: string) {
   const d = new Date(s);
@@ -1387,23 +1392,39 @@ export default function OrderDetailsPage() {
                   {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
                 </span>
               </div>
-              <div className="grid gap-3 p-5 md:grid-cols-[180px_1fr_1fr]">
-                <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                  Тип
-                  <select
-                    value={isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType}
-                    onChange={(e) => {
-                      const next = e.target.value as "NONE" | "PERCENT" | "AMOUNT";
-                      if (isWarehouse) setEditRentalDiscountType(next);
-                      else setEditGreenwichRequestedDiscountType(next);
-                    }}
-                    className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800"
-                  >
-                    <option value="NONE">Без скидки</option>
-                    <option value="PERCENT">Процент</option>
-                    <option value="AMOUNT">Сумма</option>
-                  </select>
-                </label>
+              <div className="grid gap-4 p-5 md:grid-cols-[minmax(320px,1.6fr)_1fr_1fr]">
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                    Тип
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {DISCOUNT_TYPE_OPTIONS.map((option) => {
+                      const active = (isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            if (isWarehouse) setEditRentalDiscountType(option.value);
+                            else setEditGreenwichRequestedDiscountType(option.value);
+                          }}
+                          className={[
+                            "rounded-2xl border px-3 py-3 text-left transition shadow-sm",
+                            active
+                              ? "border-emerald-400 bg-emerald-600 text-white shadow-emerald-100"
+                              : "border-emerald-100 bg-white/90 text-zinc-800 hover:border-emerald-300 hover:bg-emerald-50",
+                          ].join(" ")}
+                          aria-pressed={active}
+                        >
+                          <span className="block text-sm font-semibold">{option.label}</span>
+                          <span className={["mt-1 block text-xs", active ? "text-emerald-50" : "text-zinc-500"].join(" ")}>
+                            {option.hint}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {(isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === "PERCENT" ? (
                   <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                     Процент

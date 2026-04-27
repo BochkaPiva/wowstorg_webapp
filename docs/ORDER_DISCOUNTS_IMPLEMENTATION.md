@@ -32,7 +32,7 @@ grandTotal = round(rentalAfterDiscount + servicesTotal)
 - `AMOUNT`: фиксированная сумма в рублях.
 
 ## Права
-- `WOWSTORG`: может задавать фактическую скидку при создании и редактировании заявки до отправки сметы/согласования.
+- `WOWSTORG`: может задавать фактическую скидку при создании и редактировании заявки до начала сборки (`SUBMITTED`, `ESTIMATE_SENT`, `CHANGES_REQUESTED`, `APPROVED_BY_GREENWICH`).
 - `GREENWICH`: может заполнить только запрос скидки и комментарий к запросу.
 
 ## Сметы и snapshots

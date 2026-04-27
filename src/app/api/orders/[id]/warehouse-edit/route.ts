@@ -38,7 +38,7 @@ const BodySchema = z.object({
 });
 
 const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
-const CYCLE_RESET_STATUSES = ["APPROVED_BY_GREENWICH"] as const;
+const CYCLE_RESET_STATUSES = ["ESTIMATE_SENT", "APPROVED_BY_GREENWICH"] as const;
 
 export async function PATCH(
   req: Request,
@@ -96,7 +96,7 @@ export async function PATCH(
         if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
           throw new Error("BAD_STATUS");
         }
-        if (hasDiscountInput && !["SUBMITTED", "CHANGES_REQUESTED"].includes(order.status)) {
+        if (hasDiscountInput && !EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
           throw new Error("DISCOUNT_STATUS");
         }
 
@@ -276,7 +276,7 @@ export async function PATCH(
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
-      if (e.message === "DISCOUNT_STATUS") return jsonError(400, "Скидку можно менять только до отправки сметы");
+      if (e.message === "DISCOUNT_STATUS") return jsonError(400, "Скидку можно менять только до начала сборки");
       if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");
       if (e.message.startsWith("INVALID_DISCOUNT:")) return jsonError(400, e.message.replace("INVALID_DISCOUNT:", ""));
       const m = /^AVAILABILITY:(.+):(\d+):(\d+)$/.exec(e.message);

@@ -1392,74 +1392,91 @@ export default function OrderDetailsPage() {
                   {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
                 </span>
               </div>
-              <div className="grid gap-4 p-5 md:grid-cols-[minmax(320px,1.6fr)_1fr_1fr]">
+              <div className="p-5">
                 <div>
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
                     Тип
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="grid items-start gap-3 sm:grid-cols-3">
                     {DISCOUNT_TYPE_OPTIONS.map((option) => {
-                      const active = (isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === option.value;
+                      const selectedType = isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType;
+                      const active = selectedType === option.value;
+                      const showValueInput = active && option.value !== "NONE";
+                      const inputValue =
+                        option.value === "PERCENT"
+                          ? isWarehouse
+                            ? editRentalDiscountPercent
+                            : editGreenwichRequestedDiscountPercent
+                          : isWarehouse
+                            ? editRentalDiscountAmount
+                            : editGreenwichRequestedDiscountAmount;
                       return (
-                        <button
+                        <div
                           key={option.value}
-                          type="button"
                           onClick={() => {
                             if (isWarehouse) setEditRentalDiscountType(option.value);
                             else setEditGreenwichRequestedDiscountType(option.value);
                           }}
                           className={[
-                            "rounded-2xl border px-3 py-3 text-left transition shadow-sm",
+                            "min-h-[72px] rounded-2xl border px-3 py-3 text-left transition-all duration-200 shadow-sm",
                             active
-                              ? "border-emerald-400 bg-emerald-600 text-white shadow-emerald-100"
-                              : "border-emerald-100 bg-white/90 text-zinc-800 hover:border-emerald-300 hover:bg-emerald-50",
+                              ? "border-emerald-400 bg-gradient-to-br from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-100 ring-2 ring-emerald-100"
+                              : "border-emerald-100 bg-white/90 text-zinc-800 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md",
+                            showValueInput ? "sm:col-span-2" : "",
                           ].join(" ")}
-                          aria-pressed={active}
+                          role="radio"
+                          aria-checked={active}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter" && e.key !== " ") return;
+                            e.preventDefault();
+                            if (isWarehouse) setEditRentalDiscountType(option.value);
+                            else setEditGreenwichRequestedDiscountType(option.value);
+                          }}
                         >
-                          <span className="block text-sm font-semibold">{option.label}</span>
-                          <span className={["mt-1 block text-xs", active ? "text-emerald-50" : "text-zinc-500"].join(" ")}>
-                            {option.hint}
-                          </span>
-                        </button>
+                          <div className={["flex gap-3", showValueInput ? "items-end justify-between" : "flex-col"].join(" ")}>
+                            <div>
+                              <span className="block text-sm font-semibold">{option.label}</span>
+                              <span className={["mt-1 block text-xs", active ? "text-emerald-50" : "text-zinc-500"].join(" ")}>
+                                {option.hint}
+                              </span>
+                            </div>
+                            {showValueInput ? (
+                              <label
+                                className="w-full max-w-[220px] text-xs font-semibold uppercase tracking-wide text-emerald-50"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {option.value === "PERCENT" ? "Процент" : "Сумма, ₽"}
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={option.value === "PERCENT" ? 100 : undefined}
+                                  value={inputValue}
+                                  onChange={(e) => {
+                                    const value = e.target.value === "" ? "" : Number(e.target.value);
+                                    if (option.value === "PERCENT") {
+                                      if (isWarehouse) setEditRentalDiscountPercent(value);
+                                      else setEditGreenwichRequestedDiscountPercent(value);
+                                    } else if (isWarehouse) {
+                                      setEditRentalDiscountAmount(value);
+                                    } else {
+                                      setEditGreenwichRequestedDiscountAmount(value);
+                                    }
+                                  }}
+                                  className="mt-1 w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-2 focus:ring-white/40"
+                                  placeholder={option.value === "PERCENT" ? "10" : "5000"}
+                                  autoFocus
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
-                {(isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === "PERCENT" ? (
-                  <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Процент
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent}
-                      onChange={(e) => {
-                        const value = e.target.value === "" ? "" : Number(e.target.value);
-                        if (isWarehouse) setEditRentalDiscountPercent(value);
-                        else setEditGreenwichRequestedDiscountPercent(value);
-                      }}
-                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-800"
-                    />
-                  </label>
-                ) : null}
-                {(isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType) === "AMOUNT" ? (
-                  <label className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Сумма, ₽
-                    <input
-                      type="number"
-                      min={0}
-                      value={isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount}
-                      onChange={(e) => {
-                        const value = e.target.value === "" ? "" : Number(e.target.value);
-                        if (isWarehouse) setEditRentalDiscountAmount(value);
-                        else setEditGreenwichRequestedDiscountAmount(value);
-                      }}
-                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-800"
-                    />
-                  </label>
-                ) : null}
                 {!isWarehouse ? (
-                  <label className="md:col-span-3 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-emerald-700">
                     Комментарий к запросу
                     <textarea
                       value={editGreenwichDiscountRequestComment}

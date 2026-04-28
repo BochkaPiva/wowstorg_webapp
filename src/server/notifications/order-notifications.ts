@@ -58,6 +58,10 @@ type OrderForNotify = {
   rentalDiscountType?: string | null;
   rentalDiscountPercent?: unknown;
   rentalDiscountAmount?: unknown;
+  greenwichRequestedDiscountType?: string | null;
+  greenwichRequestedDiscountPercent?: unknown;
+  greenwichRequestedDiscountAmount?: unknown;
+  greenwichDiscountRequestComment?: string | null;
   customer: { name: string };
   createdBy?: { displayName: string };
   greenwichUser?: { displayName: string } | null;
@@ -72,6 +76,42 @@ type OrderForNotify = {
 
 function shouldNotifyGreenwich(order: OrderForNotify): boolean {
   return order.source === "GREENWICH_INTERNAL" && Boolean(order.greenwichUser);
+}
+
+function numericOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeDiscountFields(prefix: "rental" | "greenwichRequested", order: OrderForNotify) {
+  if (prefix === "rental") {
+    const type = order.rentalDiscountType === "PERCENT" || order.rentalDiscountType === "AMOUNT" ? order.rentalDiscountType : "NONE";
+    return {
+      type,
+      percent: type === "PERCENT" ? numericOrNull(order.rentalDiscountPercent) : null,
+      amount: type === "AMOUNT" ? numericOrNull(order.rentalDiscountAmount) : null,
+    };
+  }
+  const type =
+    order.greenwichRequestedDiscountType === "PERCENT" || order.greenwichRequestedDiscountType === "AMOUNT"
+      ? order.greenwichRequestedDiscountType
+      : "NONE";
+  return {
+    type,
+    percent: type === "PERCENT" ? numericOrNull(order.greenwichRequestedDiscountPercent) : null,
+    amount: type === "AMOUNT" ? numericOrNull(order.greenwichRequestedDiscountAmount) : null,
+  };
+}
+
+function discountFieldsEqual(a: ReturnType<typeof normalizeDiscountFields>, b: ReturnType<typeof normalizeDiscountFields>): boolean {
+  return a.type === b.type && a.percent === b.percent && a.amount === b.amount;
+}
+
+function formatDiscountFields(discount: ReturnType<typeof normalizeDiscountFields>): string {
+  if (discount.type === "PERCENT" && discount.percent != null) return `${discount.percent}%`;
+  if (discount.type === "AMOUNT" && discount.amount != null) return `${fmtNum(Math.round(discount.amount))} ₽`;
+  return "без скидки";
 }
 
 function orderHeader(o: OrderForNotify): string {
@@ -153,6 +193,14 @@ function buildGreenwichDiff(before: OrderForNotify, after: OrderForNotify): { li
   if ((before.montageComment ?? "").trim() !== (after.montageComment ?? "").trim() && after.montageEnabled) notes.push("Комментарий к монтажу обновлён");
   if (before.demontageEnabled !== after.demontageEnabled) notes.push(`Демонтаж: ${after.demontageEnabled ? "включен" : "выключен"}`);
   if ((before.demontageComment ?? "").trim() !== (after.demontageComment ?? "").trim() && after.demontageEnabled) notes.push("Комментарий к демонтажу обновлён");
+  const beforeRequest = normalizeDiscountFields("greenwichRequested", before);
+  const afterRequest = normalizeDiscountFields("greenwichRequested", after);
+  if (!discountFieldsEqual(beforeRequest, afterRequest)) {
+    notes.push(`Запрос скидки: ${formatDiscountFields(afterRequest)}`);
+  }
+  if ((before.greenwichDiscountRequestComment ?? "").trim() !== (after.greenwichDiscountRequestComment ?? "").trim()) {
+    notes.push("Комментарий к запросу скидки обновлён");
+  }
 
   return { lines: out, orderNote: notes.length ? notes.join(" · ") : undefined };
 }
@@ -184,6 +232,22 @@ export async function notifyGreenwichEdited(args: {
     const topicId = getWarehouseTopicId();
 
     const diff = buildGreenwichDiff(before, after);
+    const discountRequest = normalizeDiscountFields("greenwichRequested", after);
+    const discountRequestChanged =
+      !discountFieldsEqual(normalizeDiscountFields("greenwichRequested", before), discountRequest) ||
+      (before.greenwichDiscountRequestComment ?? "").trim() !== (after.greenwichDiscountRequestComment ?? "").trim();
+    const discountRequestBlock =
+      discountRequestChanged && discountRequest.type !== "NONE"
+        ? [
+            `💸 <b>Запрос скидки от Grinvich</b>`,
+            `Размер: ${escapeTelegramHtml(formatDiscountFields(discountRequest))}`,
+            after.greenwichDiscountRequestComment?.trim()
+              ? `Комментарий: ${escapeTelegramHtml(after.greenwichDiscountRequestComment.trim())}`
+              : "",
+          ].filter(Boolean).join("\n")
+        : discountRequestChanged
+          ? "💸 <b>Запрос скидки от Grinvich</b>\nКлиент убрал запрос скидки."
+          : "";
 
     const diffLines =
       diff.lines.length
@@ -202,6 +266,7 @@ export async function notifyGreenwichEdited(args: {
     const blocks = [
       orderHeader(after),
       requiresResendEstimate ? "⚠️ После правок нужно проверить и отправить смету заново." : "",
+      discountRequestBlock,
       diff.orderNote ? `📝 По заявке: ${escapeTelegramHtml(diff.orderNote)}` : "",
       diffLines,
       `📌 Было:\n${buildLinesWithCommentsBlock(before.lines, "greenwichComment")}`,
@@ -226,6 +291,51 @@ export async function notifyGreenwichEdited(args: {
     notifyDebugLog(`[notifyGreenwichEdited] error: ${e instanceof Error ? e.message : String(e)}`);
     console.error("[notifyGreenwichEdited] unexpected error:", e);
     return false;
+  }
+}
+
+export async function notifyRentalDiscountApplied(order: OrderForNotify): Promise<void> {
+  try {
+    notifyDebugLog(`[notifyRentalDiscountApplied] called for order ${order?.id}`);
+    if (!shouldNotifyGreenwich(order)) return;
+    if (!isTelegramConfigured()) {
+      notifyDebugLog("[notifyRentalDiscountApplied] skip: Telegram not configured");
+      return;
+    }
+    const row = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: {
+        greenwichUser: { select: { telegramChatId: true } },
+      },
+    });
+    const chatId = row?.greenwichUser?.telegramChatId?.trim();
+    if (!chatId) {
+      notifyDebugLog(`[notifyRentalDiscountApplied] skip: no Greenwich telegramChatId order=${order.id}`);
+      return;
+    }
+    const pricing = calcOrderPricing({
+      startDate: order.startDate,
+      endDate: order.endDate,
+      payMultiplier: order.payMultiplier,
+      deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
+      montagePrice: order.montageEnabled ? order.montagePrice : 0,
+      demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
+      lines: order.lines,
+      discount: order,
+    });
+    const discount = normalizeDiscountFields("rental", order);
+    const blocks = [
+      orderHeader(order),
+      `Склад применил скидку на реквизит: <b>${escapeTelegramHtml(formatDiscountFields(discount))}</b>.`,
+      pricing.discountAmount > 0
+        ? `Сумма скидки: −${fmtNum(Math.round(pricing.discountAmount))} ₽\nНовая сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`
+        : `Скидка снята. Сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`,
+      link(`/orders/${order.id}`, "Открыть заявку"),
+    ].filter(Boolean);
+    await sendTelegramMessage(chatId, `💸 <b>Скидка по заявке обновлена</b>\n\n${blocks.join("\n\n")}`);
+  } catch (e) {
+    notifyDebugLog(`[notifyRentalDiscountApplied] error: ${e instanceof Error ? e.message : String(e)}`);
+    console.error("[notifyRentalDiscountApplied] unexpected error:", e);
   }
 }
 

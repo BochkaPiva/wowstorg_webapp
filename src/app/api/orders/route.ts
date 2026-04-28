@@ -240,6 +240,18 @@ export async function POST(req: Request) {
       const { notifyOrderCreated } = await import("@/server/notifications/order-notifications");
       await notifyOrderCreated(orderPayload);
     });
+    if (
+      isWarehouse &&
+      createdOrder.source === "GREENWICH_INTERNAL" &&
+      createdOrder.rentalDiscountType !== "NONE"
+    ) {
+      type NotifyDiscount = typeof import("@/server/notifications/order-notifications").notifyRentalDiscountApplied;
+      const discountPayload = createdOrder as Parameters<NotifyDiscount>[0];
+      scheduleAfterResponse("notifyRentalDiscountApplied", async () => {
+        const { notifyRentalDiscountApplied } = await import("@/server/notifications/order-notifications");
+        await notifyRentalDiscountApplied(discountPayload);
+      });
+    }
   }
 
   return jsonOk({ orderId: result.id, notification });

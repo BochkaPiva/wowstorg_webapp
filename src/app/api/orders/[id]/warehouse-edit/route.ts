@@ -40,6 +40,23 @@ const BodySchema = z.object({
 const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 const CYCLE_RESET_STATUSES = ["ESTIMATE_SENT", "APPROVED_BY_GREENWICH"] as const;
 
+function discountValueForCompare(discount: {
+  rentalDiscountType: string;
+  rentalDiscountPercent: unknown;
+  rentalDiscountAmount: unknown;
+}): string {
+  const type = discount.rentalDiscountType === "PERCENT" || discount.rentalDiscountType === "AMOUNT"
+    ? discount.rentalDiscountType
+    : "NONE";
+  const percent = type === "PERCENT" && discount.rentalDiscountPercent != null
+    ? Number(discount.rentalDiscountPercent)
+    : null;
+  const amount = type === "AMOUNT" && discount.rentalDiscountAmount != null
+    ? Number(discount.rentalDiscountAmount)
+    : null;
+  return JSON.stringify({ type, percent, amount });
+}
+
 export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -66,6 +83,7 @@ export async function PATCH(
 
   let wasCycleStatus = false;
   let projectIdForNotify: string | null = null;
+  let rentalDiscountChanged = false;
 
   try {
     await prisma.$transaction(
@@ -156,6 +174,15 @@ export async function PATCH(
               ? data.rentalDiscountAmount ?? Number(order.rentalDiscountAmount ?? 0)
               : null,
         };
+        if (hasDiscountInput) {
+          rentalDiscountChanged =
+            discountValueForCompare(order) !==
+            discountValueForCompare({
+              rentalDiscountType: nextDiscount.rentalDiscountType,
+              rentalDiscountPercent: nextDiscount.rentalDiscountPercent,
+              rentalDiscountAmount: nextDiscount.rentalDiscountAmount,
+            });
+        }
         const pricingPreview = calcOrderPricing({
           startDate: order.startDate,
           endDate: order.endDate,
@@ -306,6 +333,29 @@ export async function PATCH(
         action: "Связанная заявка проекта была обновлена со стороны склада.",
       });
     });
+  }
+
+  if (rentalDiscountChanged) {
+    const orderForNotify = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { name: true } },
+        greenwichUser: { select: { displayName: true } },
+        createdBy: { select: { displayName: true } },
+        lines: {
+          orderBy: [{ position: "asc" }],
+          include: { item: { select: { name: true } } },
+        },
+      },
+    });
+    if (orderForNotify) {
+      type NotifyDiscount = typeof import("@/server/notifications/order-notifications").notifyRentalDiscountApplied;
+      const payload = orderForNotify as Parameters<NotifyDiscount>[0];
+      scheduleAfterResponse("notifyRentalDiscountApplied", async () => {
+        const { notifyRentalDiscountApplied } = await import("@/server/notifications/order-notifications");
+        await notifyRentalDiscountApplied(payload);
+      });
+    }
   }
 
   return jsonOk({ ok: true });

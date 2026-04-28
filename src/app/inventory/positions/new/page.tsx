@@ -24,6 +24,17 @@ export default function NewPositionPage() {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [photo, setPhoto] = React.useState<File | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement | null>(null);
+  const photoPreviewUrl = React.useMemo(() => {
+    if (!photo) return null;
+    return URL.createObjectURL(photo);
+  }, [photo]);
+
+  React.useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
 
   async function create() {
     setBusy(true);
@@ -99,13 +110,60 @@ export default function NewPositionPage() {
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-zinc-500 mb-1">Фото (опционально)</label>
                 <input
+                  ref={photoInputRef}
                   type="file"
                   accept="image/*"
                   disabled={busy}
                   onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-                  className="block w-full text-sm"
+                  className="hidden"
                 />
-                <div className="mt-1 text-xs text-zinc-500">JPG/PNG/WebP/GIF, до 5MB.</div>
+                <div className="rounded-2xl border border-dashed border-violet-200 bg-gradient-to-br from-violet-50/80 to-white p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-violet-100 bg-white text-2xl shadow-sm">
+                        {photoPreviewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={photoPreviewUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span aria-hidden="true">📷</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-zinc-900">
+                          {photo ? photo.name : "Фото позиции"}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          {photo
+                            ? `${(photo.size / 1024 / 1024).toFixed(2)} MB · будет загружено после создания`
+                            : "JPG/PNG/WebP/GIF, до 5MB."}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => photoInputRef.current?.click()}
+                        className="rounded-xl border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {photo ? "Заменить фото" : "Добавить фото"}
+                      </button>
+                      {photo ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setPhoto(null);
+                            if (photoInputRef.current) photoInputRef.current.value = "";
+                          }}
+                          className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                        >
+                          Убрать
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-zinc-500 mb-1">Название</label>

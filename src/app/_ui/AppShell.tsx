@@ -87,7 +87,6 @@ export function AppShell({
 
   return (
     <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
-      <InAppNotifications enabled={state.status === "authenticated" && state.user.role === "GREENWICH"} />
       {isCatalogRoute ? (
         <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
           <div
@@ -215,12 +214,15 @@ export function AppShell({
               </div>
             </div>
           </div>
-          <button
-            onClick={logout}
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-violet-50"
-          >
-            Выйти
-          </button>
+          <div className="flex items-center gap-2">
+            <InAppNotifications enabled={state.status === "authenticated"} />
+            <button
+              onClick={logout}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-violet-50"
+            >
+              Выйти
+            </button>
+          </div>
         </div>
       </div>
 

@@ -353,7 +353,14 @@ export async function PATCH(
       const payload = orderForNotify as Parameters<NotifyDiscount>[0];
       scheduleAfterResponse("notifyRentalDiscountApplied", async () => {
         const { notifyRentalDiscountApplied } = await import("@/server/notifications/order-notifications");
+        const { notifyOrderDiscountInApp } = await import("@/server/notifications/in-app");
         await notifyRentalDiscountApplied(payload);
+        await notifyOrderDiscountInApp({
+          userId: orderForNotify.greenwichUserId,
+          orderId: orderForNotify.id,
+          title: "Скидка по заявке применена",
+          body: `Заказчик: ${orderForNotify.customer?.name ?? "—"}`,
+        });
       });
     }
   }

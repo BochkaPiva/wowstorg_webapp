@@ -238,7 +238,13 @@ export async function POST(req: Request) {
     notification = makeQueuedOrderCreatedResult();
     scheduleAfterResponse("notifyOrderCreated", async () => {
       const { notifyOrderCreated } = await import("@/server/notifications/order-notifications");
+      const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
       await notifyOrderCreated(orderPayload);
+      await notifyWarehouseOrderInApp({
+        orderId: createdOrder.id,
+        title: "Новая заявка",
+        body: `Заказчик: ${createdOrder.customer?.name ?? "—"}`,
+      });
     });
     if (
       isWarehouse &&
@@ -249,7 +255,14 @@ export async function POST(req: Request) {
       const discountPayload = createdOrder as Parameters<NotifyDiscount>[0];
       scheduleAfterResponse("notifyRentalDiscountApplied", async () => {
         const { notifyRentalDiscountApplied } = await import("@/server/notifications/order-notifications");
+        const { notifyOrderDiscountInApp } = await import("@/server/notifications/in-app");
         await notifyRentalDiscountApplied(discountPayload);
+        await notifyOrderDiscountInApp({
+          userId: createdOrder.greenwichUserId,
+          orderId: createdOrder.id,
+          title: "Скидка по заявке применена",
+          body: `Заказчик: ${createdOrder.customer?.name ?? "—"}`,
+        });
       });
     }
   }

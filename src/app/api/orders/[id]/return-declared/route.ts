@@ -150,7 +150,13 @@ export async function POST(
     const payload = fullOrder as Parameters<Fn>[0];
     scheduleAfterResponse("notifyReturnDeclared", async () => {
       const { notifyReturnDeclared } = await import("@/server/notifications/order-notifications");
+      const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
       await notifyReturnDeclared(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Заявка ожидает приёмки",
+        body: `Заказчик: ${fullOrder.customer?.name ?? "—"}`,
+      });
     });
   }
 

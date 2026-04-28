@@ -18,6 +18,7 @@ const ACTIVE_STATUSES = [
 ] as const;
 
 const OMSK_TZ = "Asia/Omsk";
+const PROJECT_ATTENTION_BLOCK_KEY = "dashboard-attention";
 
 function getOmskTodayYmd(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -30,6 +31,81 @@ function getOmskTodayYmd(): string {
 
 function computeBaseAvailableNow(p: { total: number; inRepair: number; broken: number; missing: number }): number {
   return Math.max(0, p.total - p.inRepair - p.broken - p.missing);
+}
+
+function daysSince(date: Date, now: Date): number {
+  return Math.max(0, Math.floor((now.getTime() - date.getTime()) / 86_400_000));
+}
+
+async function getProjectAttention() {
+  const now = new Date();
+  const projects = await prisma.project.findMany({
+    where: {
+      archivedAt: null,
+      status: { notIn: ["COMPLETED", "CANCELLED"] },
+    },
+    orderBy: { updatedAt: "asc" },
+    take: 80,
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      eventStartDate: true,
+      eventDateConfirmed: true,
+      updatedAt: true,
+      orders: { select: { id: true }, take: 1 },
+      estimateVersions: { where: { isPrimary: true }, select: { id: true }, take: 1 },
+      notificationCooldowns: {
+        where: { blockKey: PROJECT_ATTENTION_BLOCK_KEY, muteUntil: { gt: now } },
+        select: { muteUntil: true },
+        take: 1,
+      },
+    },
+  });
+
+  return projects
+    .flatMap((project) => {
+      if (project.notificationCooldowns.length > 0) return [];
+      const hasPrimaryEstimate = project.estimateVersions.length > 0;
+      const hasLinkedOrder = project.orders.length > 0;
+      const hasFutureDate =
+        project.eventStartDate != null && project.eventStartDate.getTime() >= new Date(now.toISOString().slice(0, 10)).getTime();
+      const readyToWait =
+        project.status === "READY_TO_RUN" &&
+        project.eventDateConfirmed &&
+        hasFutureDate &&
+        hasPrimaryEstimate &&
+        hasLinkedOrder;
+
+      const inactivityDays = daysSince(project.updatedAt, now);
+      const reasons: string[] = [];
+      let severity: "warning" | "critical" = "warning";
+
+      if (!hasPrimaryEstimate) reasons.push("Нет основной сметы");
+      if (!hasLinkedOrder) reasons.push("Нет связанной заявки");
+      if (!project.eventDateConfirmed) reasons.push("Дата не подтверждена");
+      if (!readyToWait && inactivityDays >= 14) {
+        reasons.push("Нет активности 14+ дней");
+        severity = "critical";
+      } else if (!readyToWait && inactivityDays >= 7) {
+        reasons.push("Нет активности 7+ дней");
+      }
+
+      if (reasons.length === 0) return [];
+      return [
+        {
+          projectId: project.id,
+          title: project.title,
+          status: project.status,
+          severity,
+          reasons,
+          primaryReason: reasons[0],
+          daysSinceActivity: inactivityDays,
+        },
+      ];
+    })
+    .sort((a, b) => (a.severity === b.severity ? b.daysSinceActivity - a.daysSinceActivity : a.severity === "critical" ? -1 : 1))
+    .slice(0, 6);
 }
 
 export async function GET() {
@@ -254,6 +330,7 @@ export async function GET() {
       },
     };
   });
-  return jsonOk(data);
+  const projectAttention = await getProjectAttention();
+  return jsonOk({ ...data, projectAttention });
 }
 

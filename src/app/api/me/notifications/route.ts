@@ -19,6 +19,11 @@ const MarkReadSchema = z.object({
   markAll: z.boolean().optional(),
 });
 
+const DeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100).optional(),
+  deleteAll: z.boolean().optional(),
+});
+
 export async function GET(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
@@ -85,4 +90,30 @@ export async function PATCH(req: Request) {
   });
 
   return jsonOk({ ok: true, updated: result.count });
+}
+
+export async function DELETE(req: Request) {
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+
+  let body: unknown = null;
+  try {
+    body = await req.json();
+  } catch {
+    body = { deleteAll: true };
+  }
+
+  const parsed = DeleteSchema.safeParse(body);
+  if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
+
+  if (!parsed.data.deleteAll && (!parsed.data.ids || parsed.data.ids.length === 0)) {
+    return jsonError(400, "Provide ids or deleteAll=true");
+  }
+
+  const where = parsed.data.deleteAll
+    ? { userId: auth.user.id }
+    : { userId: auth.user.id, id: { in: parsed.data.ids! } };
+
+  const result = await prisma.inAppNotification.deleteMany({ where });
+  return jsonOk({ ok: true, deleted: result.count });
 }

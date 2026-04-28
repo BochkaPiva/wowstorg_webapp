@@ -194,6 +194,7 @@ function addRequisites(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
 
 function addProjects(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const projects = data.projects;
+  const financialRows = projects.rows.filter((p) => p.status !== "CANCELLED");
   const kpi = wb.addWorksheet("Проекты KPI");
   setCols(kpi, [48, 22]);
   appendTitle(kpi, "Проекты KPI", 2);
@@ -224,7 +225,7 @@ function addProjects(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   addDataTable(
     finances,
     ["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Комиссия", "Налог", "Маржа", "Маржа %", "Здоровье"],
-    projects.rows.map((p) => [
+    financialRows.map((p) => [
       p.title,
       p.customerName,
       p.status,

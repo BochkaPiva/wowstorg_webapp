@@ -73,7 +73,13 @@ export async function POST(
     notification = makeQueuedOrderCancelledResult();
     scheduleAfterResponse("notifyOrderCancelled", async () => {
       const { notifyOrderCancelled } = await import("@/server/notifications/order-notifications");
+      const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
       await notifyOrderCancelled(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Заявка отменена",
+        body: `Заказчик: ${fullOrder.customer?.name ?? "—"}`,
+      });
       if (isWarehouse) {
         await notifyOrderStatusChangedInApp({
           userId: fullOrder.greenwichUserId,

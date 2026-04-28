@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-21T07:13:55.688Z  
-> **Файлов route.ts:** 92  
+> **Сгенерировано:** 2026-04-28T07:12:39.273Z  
+> **Файлов route.ts:** 93  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -32,6 +32,7 @@
 | GET, POST | `/api/customers` | `src/app/api/customers/route.ts` |
 | GET | `/api/dashboard/greenwich` | `src/app/api/dashboard/greenwich/route.ts` |
 | GET | `/api/dashboard/issuance-calendar` | `src/app/api/dashboard/issuance-calendar/route.ts` |
+| POST | `/api/dashboard/wowstorg/project-attention` | `src/app/api/dashboard/wowstorg/project-attention/route.ts` |
 | GET | `/api/dashboard/wowstorg` | `src/app/api/dashboard/wowstorg/route.ts` |
 | GET | `/api/greenwich/achievements` | `src/app/api/greenwich/achievements/route.ts` |
 | GET | `/api/greenwich/rating` | `src/app/api/greenwich/rating/route.ts` |
@@ -44,7 +45,7 @@
 | GET, POST, DELETE | `/api/inventory/positions/[id]/photo` | `src/app/api/inventory/positions/[id]/photo/route.ts` |
 | GET, PATCH, DELETE | `/api/inventory/positions/[id]` | `src/app/api/inventory/positions/[id]/route.ts` |
 | GET, POST | `/api/inventory/positions` | `src/app/api/inventory/positions/route.ts` |
-| GET, PATCH | `/api/me/notifications` | `src/app/api/me/notifications/route.ts` |
+| GET, PATCH, DELETE | `/api/me/notifications` | `src/app/api/me/notifications/route.ts` |
 | POST | `/api/orders/[id]/approve` | `src/app/api/orders/[id]/approve/route.ts` |
 | POST | `/api/orders/[id]/cancel` | `src/app/api/orders/[id]/cancel/route.ts` |
 | POST | `/api/orders/[id]/check-in` | `src/app/api/orders/[id]/check-in/route.ts` |

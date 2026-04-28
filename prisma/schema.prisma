@@ -83,6 +83,11 @@ enum AchievementLevel {
 
 enum InAppNotificationType {
   ACHIEVEMENT_UNLOCK
+  ORDER_STATUS_CHANGED
+  ORDER_UPDATED
+  ORDER_DISCOUNT
+  PROJECT_UPDATED
+  SYSTEM
 }
 
 enum ProjectStatus {

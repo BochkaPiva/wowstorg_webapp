@@ -703,13 +703,14 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   const activeProjects = rows.filter((p) => !p.archived && p.status !== "COMPLETED" && p.status !== "CANCELLED").length;
   const completedProjects = rows.filter((p) => p.status === "COMPLETED").length;
   const cancelledProjects = rows.filter((p) => p.status === "CANCELLED").length;
+  const financialRows = rows.filter((p) => p.status !== "CANCELLED");
   const archivedProjects = rows.filter((p) => p.archived).length;
   const withPrimaryEstimate = rows.filter((p) => p.hasPrimaryEstimate).length;
   const withLinkedOrder = rows.filter((p) => p.hasLinkedOrder).length;
   const confirmedDates = rows.filter((p) => p.eventDateConfirmed).length;
-  const forecastRevenueTotal = Math.round(rows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
-  const forecastMarginAfterTax = Math.round(rows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
-  const marginRows = rows.filter((p) => p.financials.revenueTotal > 0);
+  const forecastRevenueTotal = Math.round(financialRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
+  const forecastMarginAfterTax = Math.round(financialRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
+  const marginRows = financialRows.filter((p) => p.financials.revenueTotal > 0);
   const averageMarginAfterTaxPercent =
     marginRows.length > 0 ? round2(marginRows.reduce((sum, p) => sum + p.financials.marginAfterTaxPct, 0) / marginRows.length) : 0;
 
@@ -734,7 +735,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     }))
     .sort((a, b) => b.averageCurrentAgeDays - a.averageCurrentAgeDays);
 
-  const lowMargin = rows
+  const lowMargin = financialRows
     .filter((p) => p.financials.revenueTotal > 0 && p.financials.marginAfterTaxPct < 15)
     .sort((a, b) => a.financials.marginAfterTaxPct - b.financials.marginAfterTaxPct);
 
@@ -754,7 +755,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       cancelRatePercent: total > 0 ? round2((cancelledProjects / total) * 100) : 0,
       forecastRevenueTotal,
       forecastMarginAfterTax,
-      averageForecastRevenue: total > 0 ? Math.round(forecastRevenueTotal / total) : 0,
+      averageForecastRevenue: financialRows.length > 0 ? Math.round(forecastRevenueTotal / financialRows.length) : 0,
       averageMarginAfterTaxPercent,
       averageOrdersPerProject: total > 0 ? round2(rows.reduce((sum, p) => sum + p.ordersCount, 0) / total) : 0,
       averageEstimateVersions: total > 0 ? round2(rows.reduce((sum, p) => sum + p.estimateVersionsCount, 0) / total) : 0,
@@ -773,8 +774,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       .map((row) => ({ status: row.status, count: row.projects }))
       .sort((a, b) => b.count - a.count),
     statusAging,
-    topByRevenue: [...rows].sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal).slice(0, 20),
-    topByMargin: [...rows].sort((a, b) => b.financials.marginAfterTax - a.financials.marginAfterTax).slice(0, 20),
+    topByRevenue: [...financialRows].sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal).slice(0, 20),
+    topByMargin: [...financialRows].sort((a, b) => b.financials.marginAfterTax - a.financials.marginAfterTax).slice(0, 20),
     lowMargin: lowMargin.slice(0, 20),
     risks: [...rows].filter((p) => p.risks.length > 0).sort((a, b) => a.healthScore - b.healthScore).slice(0, 30),
     rows,
@@ -816,8 +817,10 @@ function getCustomerAnalytics(
     if (!project.archived && project.status !== "COMPLETED" && project.status !== "CANCELLED") prev.activeProjects += 1;
     if (project.status === "COMPLETED") prev.completedProjects += 1;
     if (project.status === "CANCELLED") prev.cancelledProjects += 1;
-    prev.forecastRevenue += project.financials.revenueTotal;
-    prev.forecastMarginAfterTax += project.financials.marginAfterTax;
+    if (project.status !== "CANCELLED") {
+      prev.forecastRevenue += project.financials.revenueTotal;
+      prev.forecastMarginAfterTax += project.financials.marginAfterTax;
+    }
     byCustomer.set(project.customerId, prev);
   }
 
@@ -845,12 +848,13 @@ function getCustomerAnalytics(
 
   const rows = [...byCustomer.values()]
     .map((row) => {
+      const financialProjectCount = row.projectsCount - row.cancelledProjects;
       const marginPercent = row.forecastRevenue > 0 ? (row.forecastMarginAfterTax / row.forecastRevenue) * 100 : 0;
       return {
         ...row,
         forecastRevenue: Math.round(row.forecastRevenue),
         forecastMarginAfterTax: Math.round(row.forecastMarginAfterTax),
-        averageProjectRevenue: row.projectsCount > 0 ? Math.round(row.forecastRevenue / row.projectsCount) : 0,
+        averageProjectRevenue: financialProjectCount > 0 ? Math.round(row.forecastRevenue / financialProjectCount) : 0,
         averageMarginAfterTaxPercent: round2(marginPercent),
         closedOrdersFactRevenue: Math.round(row.closedOrdersFactRevenue),
         ltvMixed: Math.round(row.forecastRevenue + row.closedOrdersFactRevenue),
@@ -941,7 +945,7 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
     customers,
     methodology: [
       { section: "Реквизит", rule: "Факт по закрытым заявкам, период по Order.endDate, скидки учитываются через calcOrderPricing." },
-      { section: "Проекты", rule: `Прогноз по основной версии сметы. Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, условный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
+      { section: "Проекты", rule: `Финансовый прогноз считает неотмененные проекты по основной версии сметы. CANCELLED остается в операционных метриках отмен, но не входит в выручку/маржу. Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, условный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
       { section: "Заказчики", rule: "Проектные метрики считаются по Project.createdAt, факт заявок отдельно по закрытым заявкам." },
       { section: "Статусы", rule: "Возраст статусов и зависания считаются по ProjectActivityLog; это управленческий сигнал, а не бухгалтерская метрика." },
     ],

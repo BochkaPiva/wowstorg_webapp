@@ -478,7 +478,7 @@ function RequisitesTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }
         </ExportButton>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Все заявки" value={r.kpi.ordersTotal} />
+        <KpiCard label="Заявки по дате завершения" value={r.kpi.ordersTotal} note="Order.endDate внутри периода" />
         <KpiCard label="Закрытые заявки" value={r.kpi.ordersClosed} tone="emerald" />
         <KpiCard label="Выручка реквизита" value={formatMoney(r.kpi.itemsRevenue)} tone="violet" />
         <KpiCard label="Выручка услуг" value={formatMoney(r.kpi.servicesRevenue)} />
@@ -554,6 +554,7 @@ function CustomersTab({ data, scope }: { data: AnalyticsPayload; scope: Scope })
 
 function ProjectsTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
   const p = data.projects;
+  const financialRows = p.rows.filter((row) => row.status !== "CANCELLED");
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
@@ -590,9 +591,12 @@ function ProjectsTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) 
       </div>
 
       <SectionCard title="Финансы проектов">
+        <p className="mb-3 text-xs text-zinc-500">
+          Отмененные проекты не входят в финансовый прогноз и эту таблицу. Они остаются в метриках отмен и воронке.
+        </p>
         <DataTable
           headers={["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Налог", "Маржа", "Маржа %", "Здоровье"]}
-          rows={p.rows.map((row) => [
+          rows={financialRows.map((row) => [
             row.title,
             row.customerName,
             row.status,

@@ -89,7 +89,13 @@ export async function POST(
     const payload = fullOrder as Parameters<Fn>[0];
     scheduleAfterResponse("notifyEstimateApproved", async () => {
       const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
+      const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
       await notifyEstimateApproved(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Смета согласована",
+        body: `Заказчик: ${fullOrder.customer?.name ?? "—"}`,
+      });
     });
   }
 

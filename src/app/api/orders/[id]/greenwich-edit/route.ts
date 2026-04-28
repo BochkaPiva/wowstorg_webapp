@@ -324,7 +324,14 @@ export async function PATCH(
       };
       scheduleAfterResponse("notifyGreenwichEdited", async () => {
         const { notifyGreenwichEdited } = await import("@/server/notifications/order-notifications");
+        const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
         await notifyGreenwichEdited(payload);
+        await notifyWarehouseOrderInApp({
+          orderId: afterOrder.id,
+          title: afterOrder.greenwichRequestedDiscountType !== "NONE" ? "Greenwich запросил скидку" : "Greenwich обновил заявку",
+          body: `Заказчик: ${afterOrder.customer?.name ?? "—"}`,
+          type: afterOrder.greenwichRequestedDiscountType !== "NONE" ? "ORDER_DISCOUNT" : "ORDER_UPDATED",
+        });
       });
     }
 

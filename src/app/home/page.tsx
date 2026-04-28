@@ -776,7 +776,116 @@ type WowstorgDashboardData = {
     nearestReleaseDate: string | null;
     endedPositions: WowstorgDashboardEndedPosition[];
   };
+  projectAttention: Array<{
+    projectId: string;
+    title: string;
+    status: string;
+    severity: "warning" | "critical";
+    reasons: string[];
+    primaryReason: string;
+    daysSinceActivity: number;
+  }>;
 };
+
+function ProjectAttentionBlock({
+  items,
+  onSnoozed,
+}: {
+  items: WowstorgDashboardData["projectAttention"];
+  onSnoozed: (projectId: string) => void;
+}) {
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  const snooze = React.useCallback(
+    async (projectId: string) => {
+      setBusyId(projectId);
+      try {
+        const r = await fetch("/api/dashboard/wowstorg/project-attention", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, days: 7 }),
+        });
+        if (!r.ok) throw new Error("Не удалось отложить сигнал");
+        onSnoozed(projectId);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [onSnoozed],
+  );
+
+  return (
+    <div className={DASH_CARD}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 pb-3">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">Что требует внимания</div>
+          <div className="mt-1 text-xs text-zinc-600">
+            Проектные сигналы склада. Если всё под контролем и вы просто ждёте дату, отложите сигнал на 7 дней.
+          </div>
+        </div>
+        <Link href="/projects" className={LINK_SUBTLE}>
+          Все проекты
+        </Link>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          По активным проектам нет срочных сигналов.
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {items.map((item) => (
+            <div
+              key={item.projectId}
+              className={[
+                "rounded-2xl border p-3 shadow-sm",
+                item.severity === "critical"
+                  ? "border-rose-200 bg-rose-50"
+                  : "border-amber-200 bg-[linear-gradient(135deg,rgba(254,252,232,1),rgba(255,251,235,0.78))]",
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-zinc-950">{item.title}</div>
+                  <div className="mt-1 text-xs font-semibold text-zinc-700">{item.primaryReason}</div>
+                  {item.reasons.length > 1 ? (
+                    <div className="mt-1 text-xs text-zinc-600">{item.reasons.slice(1).join(" · ")}</div>
+                  ) : null}
+                  <div className="mt-2 text-[11px] text-zinc-500">
+                    Статус: {item.status} · без активности {item.daysSinceActivity} дн.
+                  </div>
+                </div>
+                <span
+                  className={[
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold",
+                    item.severity === "critical"
+                      ? "border-rose-200 bg-white/70 text-rose-800"
+                      : "border-amber-200 bg-white/70 text-amber-900",
+                  ].join(" ")}
+                >
+                  {item.severity === "critical" ? "важно" : "сигнал"}
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href={`/projects/${item.projectId}`} className={BTN_PRIMARY}>
+                  Открыть проект
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void snooze(item.projectId)}
+                  disabled={busyId === item.projectId}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {busyId === item.projectId ? "Откладываю..." : "Отложить на 7 дней"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   const [data, setData] = React.useState<WowstorgDashboardData | null>(null);
@@ -806,8 +915,24 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
     };
   }, [isWowstorg]);
 
+  const dismissProjectAttention = React.useCallback((projectId: string) => {
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            projectAttention: current.projectAttention.filter((item) => item.projectId !== projectId),
+          }
+        : current,
+    );
+  }, []);
+
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+    <div className="space-y-3">
+      <ProjectAttentionBlock
+        items={data?.projectAttention ?? []}
+        onSnoozed={dismissProjectAttention}
+      />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
       <div className={`${DASH_CARD} md:col-span-8`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
           <div className="text-sm font-semibold text-zinc-900">Заявки</div>
@@ -1009,6 +1134,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
             )}
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );

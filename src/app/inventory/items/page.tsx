@@ -8,11 +8,17 @@ function CardLink({
   href,
   title,
   description,
+  accent = "violet",
 }: {
   href: string;
   title: string;
   description: string;
+  accent?: "violet" | "emerald";
 }) {
+  const accentClass =
+    accent === "emerald"
+      ? "text-emerald-700 group-hover:text-emerald-800"
+      : "text-violet-700 group-hover:text-violet-800";
   return (
     <Link
       href={href}
@@ -20,10 +26,41 @@ function CardLink({
     >
       <div className="text-base font-semibold tracking-tight">{title}</div>
       <div className="mt-1 text-sm text-zinc-600">{description}</div>
-      <div className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-violet-700">
+      <div className={["mt-3 inline-flex items-center gap-2 text-sm font-medium", accentClass].join(" ")}>
         Открыть <span className="transition group-hover:translate-x-0.5">→</span>
       </div>
     </Link>
+  );
+}
+
+function InventorySection({
+  title,
+  description,
+  tone,
+  children,
+}: {
+  title: string;
+  description: string;
+  tone: "catalog" | "stock";
+  children: React.ReactNode;
+}) {
+  const toneClass =
+    tone === "catalog"
+      ? "border-violet-200 bg-[linear-gradient(135deg,rgba(124,58,237,0.10),rgba(255,255,255,0.92))]"
+      : "border-emerald-200 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(255,255,255,0.92))]";
+  const markerClass = tone === "catalog" ? "bg-violet-500" : "bg-emerald-500";
+
+  return (
+    <section className={["rounded-3xl border p-4 shadow-sm", toneClass].join(" ")}>
+      <div className="flex items-start gap-3">
+        <div className={["mt-1 h-3 w-3 rounded-full shadow-sm", markerClass].join(" ")} />
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-zinc-950">{title}</h2>
+          <p className="mt-1 text-sm text-zinc-600">{description}</p>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>
+    </section>
   );
 }
 
@@ -46,16 +83,15 @@ export default function InventoryItemsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <InventorySection
+            title="Управление каталогом"
+            description="То, что видит клиент в каталоге: карточки позиций, категории и готовые наборы."
+            tone="catalog"
+          >
             <CardLink
               href="/inventory/positions"
               title="Позиции"
-              description="CRUD позиций: фото (опционально), название, описание, цена, количества и принадлежность к категориям."
-            />
-            <CardLink
-              href="/inventory/in-rent"
-              title="В аренде"
-              description="Текущий список реквизита в аренде: сколько единиц занято и когда ожидается освобождение."
+              description="CRUD позиций: фото, название, описание, цена, количество и принадлежность к категориям."
             />
             <CardLink
               href="/inventory/collections"
@@ -65,24 +101,40 @@ export default function InventoryItemsPage() {
             <CardLink
               href="/inventory/packages"
               title="Пакеты"
-              description="Пакеты (наборы реквизита): при добавлении в корзину раскладываются на позиции."
+              description="Пакеты и наборы реквизита: при добавлении в корзину раскладываются на позиции."
             />
+          </InventorySection>
+
+          <InventorySection
+            title="Управление реквизитом"
+            description="Операционная часть склада: что сейчас в аренде, что требует ремонта, что потеряно и внутренние складские позиции."
+            tone="stock"
+          >
             <CardLink
-              href="/inventory/warehouse-items"
-              title="Складской реквизит"
-              description="Внутренний реквизит склада (скотч/инструмент и т.п.). Отдельная база, не показывается в каталоге."
+              href="/inventory/in-rent"
+              title="В аренде"
+              description="Текущий список реквизита в аренде: сколько единиц занято и когда ожидается освобождение."
+              accent="emerald"
             />
             <CardLink
               href="/inventory/repair"
               title="Ремонт / сломано"
               description="Базы «Требует ремонта» и «Сломано»: починить/утилизировать с вводом количества."
+              accent="emerald"
             />
             <CardLink
               href="/inventory/losses"
               title="Утерянное"
               description="База утерянного реквизита: найдено/списать с вводом количества."
+              accent="emerald"
             />
-          </div>
+            <CardLink
+              href="/inventory/warehouse-items"
+              title="Складской реквизит"
+              description="Внутренний реквизит склада (скотч/инструмент и т.п.). Отдельная база, не показывается в каталоге."
+              accent="emerald"
+            />
+          </InventorySection>
         </div>
       )}
     </AppShell>

@@ -186,6 +186,7 @@ model User {
   achievementUnlocks  AchievementUnlock[]
   towerStats          UserTowerStats?
   inAppNotifications  InAppNotification[]
+  browserPushSubscriptions BrowserPushSubscription[]
   inventoryAuditRuns  InventoryAuditRun[]
   projectsOwned                 Project[]                   @relation("project_owner")
   projectActivityLogs           ProjectActivityLog[]
@@ -953,6 +954,26 @@ model InAppNotification {
   createdAt DateTime @default(now())
 
   @@index([userId, isRead, createdAt])
+}
+
+model BrowserPushSubscription {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  userAgent  String?
+  disabledAt DateTime?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId, disabledAt])
+  @@index([disabledAt])
 }
 
 model InventoryAuditRun {

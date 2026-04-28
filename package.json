@@ -34,6 +34,7 @@
     "sharp": "^0.34.5",
     "three": "^0.183.2",
     "undici": "^7.24.5",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
@@ -43,6 +44,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.183.1",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.1.7",
     "prisma": "^6.19.2",

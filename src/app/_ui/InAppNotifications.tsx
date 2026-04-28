@@ -22,6 +22,8 @@ type NotificationPayload = {
   href?: string;
 };
 
+type PushState = "loading" | "unsupported" | "not_configured" | "blocked" | "disabled" | "enabled" | "error";
+
 function achievementImageSrc(code: string, level: "NONE" | "BRONZE" | "SILVER" | "GOLD"): string {
   const key =
     code === "PERFECT_ORDERS"
@@ -71,12 +73,24 @@ function BellIcon() {
   );
 }
 
+function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) output[i] = rawData.charCodeAt(i);
+  return output.buffer as ArrayBuffer;
+}
+
 export function InAppNotifications({ enabled }: { enabled: boolean }) {
   const [rows, setRows] = React.useState<InAppNotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [activeToast, setActiveToast] = React.useState<InAppNotificationRow | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [pushState, setPushState] = React.useState<PushState>("loading");
+  const [pushBusy, setPushBusy] = React.useState(false);
+  const [pushPublicKey, setPushPublicKey] = React.useState<string | null>(null);
   const seenToastRef = React.useRef<Set<string>>(new Set());
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -125,6 +139,45 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [panelOpen]);
 
+  const loadPushState = React.useCallback(async () => {
+    if (!enabled) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushState("blocked");
+      return;
+    }
+
+    const res = await fetch("/api/me/push-subscriptions", { cache: "no-store" }).catch(() => null);
+    if (!res?.ok) {
+      setPushState("error");
+      return;
+    }
+    const json = (await res.json()) as { enabled?: boolean; publicKey?: string | null };
+    if (!json.enabled || !json.publicKey) {
+      setPushState("not_configured");
+      setPushPublicKey(null);
+      return;
+    }
+    setPushPublicKey(json.publicKey);
+    const registration = await navigator.serviceWorker.getRegistration("/browser-push-sw.js");
+    const subscription = await registration?.pushManager.getSubscription();
+    if (subscription) {
+      await fetch("/api/me/push-subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      }).catch(() => null);
+    }
+    setPushState(subscription ? "enabled" : "disabled");
+  }, [enabled]);
+
+  React.useEffect(() => {
+    void loadPushState();
+  }, [loadPushState]);
+
   const markRead = React.useCallback(async (ids: string[]) => {
     if (ids.length === 0) return;
     await fetch("/api/me/notifications", {
@@ -166,6 +219,68 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
       setBusy(false);
     }
   }, []);
+
+  const enableBrowserPush = React.useCallback(async () => {
+    if (!pushPublicKey || pushBusy) return;
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "denied") {
+        setPushState("blocked");
+        return;
+      }
+      if (permission !== "granted") {
+        setPushState("disabled");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/browser-push-sw.js");
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToArrayBuffer(pushPublicKey),
+        }));
+
+      const res = await fetch("/api/me/push-subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+      if (!res.ok) {
+        setPushState("error");
+        return;
+      }
+      setPushState("enabled");
+    } catch (error) {
+      console.error("[browser-push] subscribe failed", error);
+      setPushState("error");
+    } finally {
+      setPushBusy(false);
+    }
+  }, [pushBusy, pushPublicKey]);
+
+  const disableBrowserPush = React.useCallback(async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/browser-push-sw.js");
+      const subscription = await registration?.pushManager.getSubscription();
+      const endpoint = subscription?.endpoint;
+      await subscription?.unsubscribe().catch(() => null);
+      if (endpoint) {
+        await fetch("/api/me/push-subscriptions", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        }).catch(() => null);
+      }
+      setPushState("disabled");
+    } finally {
+      setPushBusy(false);
+    }
+  }, [pushBusy]);
 
   if (!enabled) return null;
 
@@ -216,6 +331,12 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
                 </button>
               </div>
             </div>
+            <BrowserPushControl
+              state={pushState}
+              busy={pushBusy}
+              onEnable={enableBrowserPush}
+              onDisable={disableBrowserPush}
+            />
           </div>
           <div className="max-h-[430px] overflow-y-auto p-2">
             {rows.length === 0 ? (
@@ -279,6 +400,52 @@ function NotificationListItem({
     >
       {content}
     </Link>
+  );
+}
+
+function BrowserPushControl({
+  state,
+  busy,
+  onEnable,
+  onDisable,
+}: {
+  state: PushState;
+  busy: boolean;
+  onEnable: () => Promise<void>;
+  onDisable: () => Promise<void>;
+}) {
+  if (state === "loading") {
+    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Проверяем уведомления браузера...</div>;
+  }
+  if (state === "unsupported") {
+    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Этот браузер не поддерживает push-уведомления.</div>;
+  }
+  if (state === "not_configured") {
+    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Push-уведомления будут доступны после добавления VAPID-ключей.</div>;
+  }
+  if (state === "blocked") {
+    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-600">Уведомления заблокированы в настройках браузера.</div>;
+  }
+
+  const enabled = state === "enabled";
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-100 bg-white/75 px-3 py-2">
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-zinc-800">Уведомления браузера</div>
+        <div className="text-[11px] text-zinc-500">{enabled ? "Включены на этом устройстве" : state === "error" ? "Не удалось обновить подписку" : "Можно получать уведомления вне вкладки"}</div>
+      </div>
+      <button
+        type="button"
+        onClick={() => void (enabled ? onDisable() : onEnable())}
+        disabled={busy}
+        className={[
+          "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50",
+          enabled ? "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" : "bg-violet-600 text-white hover:bg-violet-700",
+        ].join(" ")}
+      >
+        {busy ? "..." : enabled ? "Выключить" : "Включить"}
+      </button>
+    </div>
   );
 }
 

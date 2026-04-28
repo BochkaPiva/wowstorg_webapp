@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-04-28T07:12:39.273Z  
-> **Файлов route.ts:** 93  
+> **Сгенерировано:** 2026-04-28T08:51:32.332Z  
+> **Файлов route.ts:** 94  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -46,6 +46,7 @@
 | GET, PATCH, DELETE | `/api/inventory/positions/[id]` | `src/app/api/inventory/positions/[id]/route.ts` |
 | GET, POST | `/api/inventory/positions` | `src/app/api/inventory/positions/route.ts` |
 | GET, PATCH, DELETE | `/api/me/notifications` | `src/app/api/me/notifications/route.ts` |
+| GET, POST, DELETE | `/api/me/push-subscriptions` | `src/app/api/me/push-subscriptions/route.ts` |
 | POST | `/api/orders/[id]/approve` | `src/app/api/orders/[id]/approve/route.ts` |
 | POST | `/api/orders/[id]/cancel` | `src/app/api/orders/[id]/cancel/route.ts` |
 | POST | `/api/orders/[id]/check-in` | `src/app/api/orders/[id]/check-in/route.ts` |

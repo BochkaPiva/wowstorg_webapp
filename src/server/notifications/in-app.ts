@@ -1,6 +1,7 @@
 import type { InAppNotificationType, OrderStatus, Prisma, Role } from "@prisma/client";
 
 import { prisma } from "@/server/db";
+import { sendBrowserPushToUser } from "@/server/notifications/browser-push";
 
 function statusLabel(status: OrderStatus): string {
   if (status === "ESTIMATE_SENT") return "Смета отправлена";
@@ -45,7 +46,7 @@ export async function createInAppNotification(args: {
 }): Promise<void> {
   if (!args.userId) return;
   try {
-    await prisma.inAppNotification.create({
+    const notification = await prisma.inAppNotification.create({
       data: {
         userId: args.userId,
         type: args.type,
@@ -54,6 +55,14 @@ export async function createInAppNotification(args: {
         ...(args.payloadJson !== undefined ? { payloadJson: args.payloadJson } : {}),
       },
     });
+    void sendBrowserPushToUser({
+      userId: args.userId,
+      notificationId: notification.id,
+      type: args.type,
+      title: args.title,
+      body: args.body,
+      payloadJson: args.payloadJson,
+    }).catch((error) => console.error("[browser-push] background send failed", error));
   } catch (error) {
     console.error("[in-app] create notification failed", error);
   }
@@ -99,6 +108,15 @@ export async function createInAppNotificationForRole(args: {
         body: args.body,
         ...(args.payloadJson !== undefined ? { payloadJson: args.payloadJson } : {}),
       })),
+    });
+    users.forEach((user) => {
+      void sendBrowserPushToUser({
+        userId: user.id,
+        type: args.type,
+        title: args.title,
+        body: args.body,
+        payloadJson: args.payloadJson,
+      }).catch((error) => console.error("[browser-push] background role send failed", error));
     });
   } catch (error) {
     console.error("[in-app] create role notifications failed", error);

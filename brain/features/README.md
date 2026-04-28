@@ -43,6 +43,7 @@
 | Тема | Документ |
 |------|----------|
 | Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) (спека), [`projects-foundation.md`](./projects-foundation.md) (риски, зависимости, фазы), [`projects-predeploy-checklist.md`](./projects-predeploy-checklist.md) (бакет + env), [`projects-post-implementation-checklist.md`](./projects-post-implementation-checklist.md) (статус MVP + чеклист перед продом) |
+| Админ-аналитика | [`admin-analytics.md`](./admin-analytics.md) (редизайн, формулы, вкладки, Excel) |
 
 ## Индекс существующих крупных тем (в docs)
 
@@ -58,5 +59,6 @@
 | Внешние заявки склада | `docs/EXTERNAL_ORDER_FLOW_WAREHOUSE.md` |
 | Рентабельность | `docs/ITEM_PROFITABILITY_PLAN.md` |
 | Аудит проекта / риски | `docs/PROJECT_AUDIT.md` |
+| Редизайн админ-аналитики | `docs/ADMIN_ANALYTICS_REDESIGN.md` |
 | Telegram | `docs/telegram-notifications.md` |
 | Календарь выдачи | `docs/ADMIN_ISSUANCE_CALENDAR.md` |

@@ -6,7 +6,7 @@ import { requireRole } from "@/server/auth/require";
 import { jsonError } from "@/server/http";
 
 const QuerySchema = z.object({
-  section: z.enum(["global", "overview", "tops", "profitability"]).default("global"),
+  section: z.enum(["global", "requisites", "projects", "customers"]).default("global"),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });

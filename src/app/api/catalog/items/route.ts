@@ -17,6 +17,7 @@ const QuerySchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   excludeOrderId: z.string().trim().min(1).max(64).optional(),
   ids: z.string().trim().max(2000).optional(), // comma-separated item ids for cart
+  all: z.enum(["true", "false"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(64).default(32),
 });
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
     endDate: url.searchParams.get("endDate") ?? undefined,
     excludeOrderId: url.searchParams.get("excludeOrderId") ?? undefined,
     ids: url.searchParams.get("ids") ?? undefined,
+    all: url.searchParams.get("all") ?? undefined,
     page: url.searchParams.get("page") ?? undefined,
     pageSize: url.searchParams.get("pageSize") ?? undefined,
   });
@@ -41,7 +43,7 @@ export async function GET(req: Request) {
     return jsonError(400, "Invalid query", parsed.error.flatten());
   }
 
-  const { query, category, internalOnly, startDate, endDate, excludeOrderId, ids, page, pageSize } =
+  const { query, category, internalOnly, startDate, endDate, excludeOrderId, ids, all, page, pageSize } =
     parsed.data;
 
   const internalOnlyBool =
@@ -87,7 +89,7 @@ export async function GET(req: Request) {
     categories: { select: { categoryId: true } },
   } satisfies Prisma.ItemSelect;
 
-  const usePagination = !ids?.trim();
+  const usePagination = !ids?.trim() && all !== "true";
   const total = usePagination ? await prisma.item.count({ where }) : undefined;
   const currentPage = usePagination ? page : 1;
   const currentPageSize = usePagination ? pageSize : 0;

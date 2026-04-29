@@ -641,7 +641,14 @@ export default function OrderDetailsPage() {
   const [declareDraft, setDeclareDraft] = React.useState<Record<string, ReturnLineDraft>>({});
   const [checkInDraft, setCheckInDraft] = React.useState<Record<string, ReturnLineDraft>>({});
 
-  type EditLine = { id?: string; itemId: string; itemName: string; requestedQty: number | string; lineComment: string };
+  type EditLine = {
+    id?: string;
+    itemId: string;
+    itemName: string;
+    itemPhoto1Key?: string | null;
+    requestedQty: number | string;
+    lineComment: string;
+  };
   const [isEditing, setIsEditing] = React.useState(false);
   const [editLines, setEditLines] = React.useState<EditLine[]>([]);
   const [editEventName, setEditEventName] = React.useState("");
@@ -872,6 +879,7 @@ export default function OrderDetailsPage() {
         id: l.id,
         itemId: l.item.id,
         itemName: l.item.name,
+        itemPhoto1Key: l.item.photo1Key,
         requestedQty: l.requestedQty,
         lineComment: (isGreenwich ? (l.greenwichComment ?? "") : (l.warehouseComment ?? "")) as string,
       })),
@@ -908,7 +916,7 @@ export default function OrderDetailsPage() {
     const start = order.startDate.slice(0, 10);
     const end = order.endDate.slice(0, 10);
     fetch(
-      `/api/catalog/items?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&excludeOrderId=${encodeURIComponent(orderId)}`,
+      `/api/catalog/items?all=true&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&excludeOrderId=${encodeURIComponent(orderId)}`,
       { cache: "no-store" },
     )
       .then((r) => r.json().catch(() => null))
@@ -1076,7 +1084,11 @@ export default function OrderDetailsPage() {
   function addEditLine(itemId: string, itemName: string, qty: number, maxForDates?: number) {
     if (!itemId || qty < 1) return;
     const safeQty = maxForDates != null ? Math.min(maxForDates, qty) : qty;
-    setEditLines((prev) => [...prev, { itemId, itemName, requestedQty: safeQty, lineComment: "" }]);
+    const option = catalogItemsById.get(itemId);
+    setEditLines((prev) => [
+      ...prev,
+      { itemId, itemName, itemPhoto1Key: option?.photo1Key ?? null, requestedQty: safeQty, lineComment: "" },
+    ]);
   }
 
   function removeEditLine(index: number) {
@@ -1518,7 +1530,7 @@ export default function OrderDetailsPage() {
                         <td className="px-5 py-3">
                           <ProductIdentity
                             itemId={line.itemId}
-                            photo1Key={catalogItemsById.get(line.itemId)?.photo1Key}
+                            photo1Key={catalogItemsById.get(line.itemId)?.photo1Key ?? line.itemPhoto1Key}
                             name={line.itemName}
                             subtitle={
                               catalogItemsById.get(line.itemId)?.availableForDates != null ? (

@@ -2514,7 +2514,7 @@ function RequisiteSectionEditor({
       const [orderRes, catalogRes] = await Promise.all([
         fetch(`/api/orders/${orderId}`, { cache: "no-store" }),
         fetch(
-          `/api/catalog/items?startDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[0] ?? "")}&endDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[1] ?? "")}&excludeOrderId=${encodeURIComponent(orderId)}`,
+          `/api/catalog/items?all=true&startDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[0] ?? "")}&endDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[1] ?? "")}&excludeOrderId=${encodeURIComponent(orderId)}`,
           { cache: "no-store" },
         ),
       ]);

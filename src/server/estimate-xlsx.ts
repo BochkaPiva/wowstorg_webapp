@@ -79,16 +79,6 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   wb.created = new Date();
 
   const ws = wb.addWorksheet("Смета");
-  ws.columns = [
-    { width: 34 },
-    { width: 10 },
-    { width: 14 },
-    { width: 8 },
-    { width: 8 },
-    { width: 16 },
-    { width: 16 },
-  ];
-
   const pricing = calcOrderPricing({
     startDate: order.startDate,
     endDate: order.endDate,
@@ -103,60 +93,98 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     })),
     discount: order,
   });
+  const hasManualDiscount = pricing.discountAmount > 0;
+  const cols = hasManualDiscount ? 6 : 5;
+  const amountCol = cols;
+  ws.columns = [
+    { width: 34 },
+    { width: 10 },
+    { width: 16 },
+    { width: 8 },
+    { width: 18 },
+    ...(hasManualDiscount ? [{ width: 18 }] : []),
+  ];
   const days = pricing.days;
   const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
   const period = `${order.startDate.toLocaleDateString("ru-RU")} — ${order.endDate.toLocaleDateString("ru-RU")}`;
+  const totalValues = (label: string, amount: number): Array<string | number> => [
+    label,
+    ...Array(Math.max(0, cols - 2)).fill(""),
+    amount,
+  ];
 
   ws.addRow(["Смета по заявке"]);
-  ws.mergeCells(1, 1, 1, 7);
+  ws.mergeCells(1, 1, 1, cols);
   const title = ws.getCell(1, 1);
   styleCellBase(title);
   title.font = { name: "Calibri", size: 16, bold: true, color: { argb: COLORS.titleText } };
   title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.titleBg } };
 
-  addRowStyled(ws, ["Клиент", order.customer.name], 7);
-  addRowStyled(ws, ["Мероприятие", order.eventName || "—"], 7);
-  addRowStyled(ws, ["Период", period], 7);
-  addRowStyled(ws, ["Дней", days], 7);
+  addRowStyled(ws, ["Клиент", order.customer.name], cols);
+  addRowStyled(ws, ["Мероприятие", order.eventName || "—"], cols);
+  addRowStyled(ws, ["Период", period], cols);
+  addRowStyled(ws, ["Дней", days], cols);
   ws.addRow([]);
 
-  ws.addRow(["Позиция", "Кол-во", "Цена/сут (₽)", "Дней", "Коэфф.", "До скидки (₽)", "После скидки (₽)"]);
-  styleHeaderRow(ws, ws.lastRow!.number, 7);
+  ws.addRow(
+    hasManualDiscount
+      ? ["Позиция", "Кол-во", "Цена/сут (₽)", "Дней", "До скидки (₽)", "После скидки (₽)"]
+      : ["Позиция", "Кол-во", "Цена/сут (₽)", "Дней", "Сумма (₽)"],
+  );
+  styleHeaderRow(ws, ws.lastRow!.number, cols);
 
   for (const [idx, l] of order.lines.entries()) {
     const price = l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : 0;
+    const clientPrice = Math.round(price * mult * 100) / 100;
     const allocation = pricing.lineAllocations[idx];
     const before = Math.round(allocation?.rentalBeforeDiscount ?? price * l.requestedQty * days * mult);
     const after = Math.round(allocation?.rentalAfterDiscount ?? before);
-    const row = addRowStyled(ws, [l.item?.name ?? "Позиция", l.requestedQty, price, days, mult, before, after], 7);
+    const row = addRowStyled(
+      ws,
+      hasManualDiscount
+        ? [l.item?.name ?? "Позиция", l.requestedQty, clientPrice, days, before, after]
+        : [l.item?.name ?? "Позиция", l.requestedQty, clientPrice, days, before],
+      cols,
+    );
     ws.getCell(row, 3).numFmt = "#,##0.00";
-    ws.getCell(row, 6).numFmt = "#,##0.00";
-    ws.getCell(row, 7).numFmt = "#,##0.00";
+    ws.getCell(row, amountCol).numFmt = "#,##0.00";
+    if (hasManualDiscount) ws.getCell(row, amountCol - 1).numFmt = "#,##0.00";
   }
 
   ws.addRow([]);
-  const rentalTotalRow = addRowStyled(ws, ["Итого аренда до скидки (₽)", "", "", "", "", "", Math.round(pricing.rentalSubtotalBeforeDiscount)], 7);
-  for (let i = 1; i <= 7; i++) {
+  const rentalTotalRow = addRowStyled(
+    ws,
+    totalValues(
+      hasManualDiscount ? "Итого аренда до скидки (₽)" : "Итого аренда (₽)",
+      Math.round(pricing.rentalSubtotalBeforeDiscount),
+    ),
+    cols,
+  );
+  for (let i = 1; i <= cols; i++) {
     const c = ws.getCell(rentalTotalRow, i);
     c.font = { name: "Calibri", size: 11, bold: true };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
   }
-  ws.getCell(rentalTotalRow, 7).numFmt = "#,##0.00";
+  ws.getCell(rentalTotalRow, amountCol).numFmt = "#,##0.00";
 
   if (pricing.discountAmount > 0) {
     const label =
       pricing.discountType === "PERCENT" && pricing.discountPercent != null
         ? `Скидка на реквизит (${pricing.discountPercent}%)`
         : "Скидка на реквизит";
-    const discountRow = addRowStyled(ws, [label, "", "", "", "", "", -Math.round(pricing.discountAmount)], 7);
-    ws.getCell(discountRow, 7).numFmt = "#,##0.00";
-    const afterRow = addRowStyled(ws, ["Итого аренда после скидки (₽)", "", "", "", "", "", Math.round(pricing.rentalSubtotalAfterDiscount)], 7);
-    for (let i = 1; i <= 7; i++) {
+    const discountRow = addRowStyled(ws, totalValues(label, -Math.round(pricing.discountAmount)), cols);
+    ws.getCell(discountRow, amountCol).numFmt = "#,##0.00";
+    const afterRow = addRowStyled(
+      ws,
+      totalValues("Итого аренда после скидки (₽)", Math.round(pricing.rentalSubtotalAfterDiscount)),
+      cols,
+    );
+    for (let i = 1; i <= cols; i++) {
       const c = ws.getCell(afterRow, i);
       c.font = { name: "Calibri", size: 11, bold: true };
       c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
     }
-    ws.getCell(afterRow, 7).numFmt = "#,##0.00";
+    ws.getCell(afterRow, amountCol).numFmt = "#,##0.00";
   }
 
   const servicesTotal =
@@ -168,50 +196,50 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     ws.addRow([]);
     ws.addRow(["Доп. услуги", "Цена (₽)", "Комментарий"]);
     const h = ws.lastRow!.number;
-    ws.mergeCells(h, 3, h, 7);
-    styleHeaderRow(ws, h, 7);
+    ws.mergeCells(h, 3, h, cols);
+    styleHeaderRow(ws, h, cols);
 
     if (order.deliveryEnabled) {
       const p = order.deliveryPrice != null ? Number(order.deliveryPrice) : 0;
       const comment = (order.deliveryComment ?? "").trim();
-      const row = addRowStyled(ws, ["Доставка", p, comment], 7);
-      ws.mergeCells(row, 3, row, 7);
+      const row = addRowStyled(ws, ["Доставка", p, comment], cols);
+      ws.mergeCells(row, 3, row, cols);
       ws.getCell(row, 2).numFmt = "#,##0.00";
     }
     if (order.montageEnabled) {
       const p = order.montagePrice != null ? Number(order.montagePrice) : 0;
       const comment = (order.montageComment ?? "").trim();
-      const row = addRowStyled(ws, ["Монтаж", p, comment], 7);
-      ws.mergeCells(row, 3, row, 7);
+      const row = addRowStyled(ws, ["Монтаж", p, comment], cols);
+      ws.mergeCells(row, 3, row, cols);
       ws.getCell(row, 2).numFmt = "#,##0.00";
     }
     if (order.demontageEnabled) {
       const p = order.demontagePrice != null ? Number(order.demontagePrice) : 0;
       const comment = (order.demontageComment ?? "").trim();
-      const row = addRowStyled(ws, ["Демонтаж", p, comment], 7);
-      ws.mergeCells(row, 3, row, 7);
+      const row = addRowStyled(ws, ["Демонтаж", p, comment], cols);
+      ws.mergeCells(row, 3, row, cols);
       ws.getCell(row, 2).numFmt = "#,##0.00";
     }
 
     ws.addRow([]);
-    const servicesRow = addRowStyled(ws, ["Итого доп. услуги (₽)", "", "", "", "", "", servicesTotal], 7);
-    for (let i = 1; i <= 7; i++) {
+    const servicesRow = addRowStyled(ws, totalValues("Итого доп. услуги (₽)", servicesTotal), cols);
+    for (let i = 1; i <= cols; i++) {
       const c = ws.getCell(servicesRow, i);
       c.font = { name: "Calibri", size: 11, bold: true };
       c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
     }
-    ws.getCell(servicesRow, 7).numFmt = "#,##0.00";
+    ws.getCell(servicesRow, amountCol).numFmt = "#,##0.00";
   }
 
   const grandTotal = pricing.grandTotal;
   ws.addRow([]);
-  const grandRow = addRowStyled(ws, ["Сумма заявки (₽)", "", "", "", "", "", grandTotal], 7);
-  for (let i = 1; i <= 7; i++) {
+  const grandRow = addRowStyled(ws, totalValues("Сумма заявки (₽)", grandTotal), cols);
+  for (let i = 1; i <= cols; i++) {
     const c = ws.getCell(grandRow, i);
     c.font = { name: "Calibri", size: 12, bold: true, color: { argb: COLORS.accentText } };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.accentBg } };
   }
-  ws.getCell(grandRow, 7).numFmt = "#,##0.00";
+  ws.getCell(grandRow, amountCol).numFmt = "#,##0.00";
   ws.views = [{ state: "frozen", ySplit: 7 }];
 
   const ab = await wb.xlsx.writeBuffer();

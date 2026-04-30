@@ -40,6 +40,7 @@ type OrderForNotify = {
   id: string;
   status: string;
   source: string;
+  greenwichUserId?: string | null;
   eventName: string | null;
   readyByDate: Date;
   startDate: Date;
@@ -408,51 +409,58 @@ function buildEstimateBody(o: OrderForNotify): string {
   return block;
 }
 
-/** Сколько личных сообщений реально ушло в Telegram (текстовая часть). */
-async function sendToGreenwichUsers(
+/** Отправляет личное Greenwich-уведомление строго владельцу конкретной заявки. */
+async function sendToOrderGreenwichUser(
+  order: Pick<OrderForNotify, "id" | "greenwichUserId">,
   text: string,
   estimateFile?: { buffer: Buffer; fileName: string },
 ): Promise<number> {
-  // Личные сообщения всем активным GREENWICH пользователям. Сначала всегда текст (информация + «проверьте смету»), затем файл.
   try {
-    const rows = await prisma.user.findMany({
-      where: {
-        role: "GREENWICH",
-        isActive: true,
-        telegramChatId: { not: null },
+    const row = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: {
+        greenwichUserId: true,
+        greenwichUser: {
+          select: {
+            id: true,
+            isActive: true,
+            telegramChatId: true,
+          },
+        },
       },
-      select: { telegramChatId: true },
     });
-    const ids = Array.from(
-      new Set(
-        (rows ?? [])
-          .map((r) => (r.telegramChatId ?? "").trim())
-          .filter(Boolean),
-      ),
-    );
-    notifyDebugLog(`[sendToGreenwichUsers] recipients: ${ids.length}`);
-    if (ids.length === 0) {
-      notifyDebugLog("[sendToGreenwichUsers] 0 получателей — укажите Telegram ID сотрудникам Grinvich в админке (Пользователи)");
+
+    if (!row?.greenwichUserId || row.greenwichUserId !== order.greenwichUserId) {
+      notifyDebugLog(
+        `[sendToOrderGreenwichUser] skip: order=${order.id} staleOrMissingGreenwichUser expected=${order.greenwichUserId ?? "—"} actual=${row?.greenwichUserId ?? "—"}`,
+      );
       return 0;
     }
-    let textOk = 0;
-    // Сначала гарантированно отправляем текстовое сообщение каждому, затем файл.
-    for (const chatId of ids) {
-      const ok = await sendTelegramMessage(chatId, text);
-      if (ok) textOk += 1;
-      else notifyDebugLog(`[sendToGreenwichUsers] text not sent to ${chatId}`);
+    if (!row.greenwichUser?.isActive) {
+      notifyDebugLog(`[sendToOrderGreenwichUser] skip: Greenwich user inactive order=${order.id} user=${row.greenwichUserId}`);
+      return 0;
     }
+    const chatId = row.greenwichUser.telegramChatId?.trim();
+    if (!chatId) {
+      notifyDebugLog(`[sendToOrderGreenwichUser] skip: no telegramChatId order=${order.id} user=${row.greenwichUserId}`);
+      return 0;
+    }
+
+    const ok = await sendTelegramMessage(chatId, text);
+    if (!ok) {
+      notifyDebugLog(`[sendToOrderGreenwichUser] text not sent order=${order.id} user=${row.greenwichUserId}`);
+      return 0;
+    }
+
     if (estimateFile?.buffer?.length) {
-      for (const chatId of ids) {
-        await sendTelegramDocument(chatId, estimateFile.buffer, estimateFile.fileName, {
-          caption: "Файл сметы во вложении",
-        });
-      }
+      await sendTelegramDocument(chatId, estimateFile.buffer, estimateFile.fileName, {
+        caption: "Файл сметы во вложении",
+      });
     }
-    return textOk;
+    return 1;
   } catch (e) {
-    notifyDebugLog(`[sendToGreenwichUsers] error: ${e instanceof Error ? e.message : String(e)}`);
-    console.error("[notify] sendToGreenwichUsers failed:", e);
+    notifyDebugLog(`[sendToOrderGreenwichUser] error: ${e instanceof Error ? e.message : String(e)}`);
+    console.error("[notify] sendToOrderGreenwichUser failed:", e);
     return 0;
   }
 }
@@ -628,7 +636,7 @@ export async function notifyEstimateSent(
     }
 
     if (shouldNotifyGreenwich(order)) {
-      await sendToGreenwichUsers(bodyGrinvich, estimateFile);
+      await sendToOrderGreenwichUser(order, bodyGrinvich, estimateFile);
       notifyDebugLog(`[notifyEstimateSent] sent to warehouse and Grinvich for order ${order.id}`);
     } else {
       notifyDebugLog(`[notifyEstimateSent] external order: warehouse-only for order ${order.id}`);
@@ -704,7 +712,7 @@ export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
       `${orderHeader(order)}\n\n` +
       `${buildLinesBlock(order)}\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToGreenwichUsers(text);
+    await sendToOrderGreenwichUser(order, text);
   } catch (e) {
     console.error("[notifyStartPicking] unexpected error:", e);
   }
@@ -720,7 +728,7 @@ export async function notifyIssued(order: OrderForNotify): Promise<void> {
       `${buildLinesBlock(order)}\n\n` +
       `Можно отправить на приёмку после возврата.\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToGreenwichUsers(text);
+    await sendToOrderGreenwichUser(order, text);
   } catch (e) {
     console.error("[notifyIssued] unexpected error:", e);
   }
@@ -805,7 +813,7 @@ export async function notifyCheckInClosed(
       statusBlock +
       `\n\nЗаявка закрыта.\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToGreenwichUsers(text);
+    await sendToOrderGreenwichUser(order, text);
   } catch (e) {
     console.error("[notifyCheckInClosed] unexpected error:", e);
   }
@@ -851,7 +859,7 @@ export async function notifyOrderCancelled(order: OrderForNotify): Promise<Order
         }),
       );
     }
-    const greenwichDmSent = shouldNotifyGreenwich(order) ? await sendToGreenwichUsers(body) : 0;
+    const greenwichDmSent = shouldNotifyGreenwich(order) ? await sendToOrderGreenwichUser(order, body) : 0;
     const sent = warehouseSent || greenwichDmSent > 0;
 
     if (!sent) {

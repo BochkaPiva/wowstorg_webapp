@@ -18,6 +18,13 @@ type TelegramStatus = {
   greenwich: {
     activeUsers: number;
     withTelegramChatId: number;
+    users: Array<{
+      id: string;
+      displayName: string;
+      login: string;
+      telegramChatId: string | null;
+      hasTelegramChatId: boolean;
+    }>;
   };
 };
 
@@ -32,6 +39,7 @@ export default function AdminTelegramPage() {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [lastResult, setLastResult] = React.useState<string | null>(null);
   const [dmChatId, setDmChatId] = React.useState("");
+  const [greenwichUserId, setGreenwichUserId] = React.useState("");
 
   const load = React.useCallback(async () => {
     setError(null);
@@ -75,14 +83,19 @@ export default function AdminTelegramPage() {
     if (!forbidden) void load();
   }, [forbidden, load]);
 
-  async function postTest(kind: "warehouse" | "dm" | "greenwich-broadcast", chatId?: string) {
-    setBusy(kind + (chatId ? "-dm" : ""));
+  async function postTest(
+    kind: "warehouse" | "dm" | "greenwich-broadcast" | "greenwich-user",
+    options?: { chatId?: string; userId?: string },
+  ) {
+    setBusy(kind);
     setLastResult(null);
     setError(null);
     try {
       const body =
         kind === "dm"
-          ? { kind: "dm" as const, chatId: chatId ?? "" }
+          ? { kind: "dm" as const, chatId: options?.chatId ?? "" }
+          : kind === "greenwich-user"
+            ? { kind: "greenwich-user" as const, userId: options?.userId ?? "" }
           : kind === "greenwich-broadcast"
             ? { kind: "greenwich-broadcast" as const }
           : { kind: "warehouse" as const };
@@ -204,6 +217,56 @@ export default function AdminTelegramPage() {
             </button>
           </div>
 
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-emerald-950">Индивидуальный тест Grinvich</h2>
+            <p className="mt-1 text-xs text-emerald-800">
+              Выберите сотрудника по ФИО. Тест уйдет только в Telegram ID, который привязан к этому пользователю на сайте.
+            </p>
+            <select
+              value={greenwichUserId}
+              onChange={(e) => setGreenwichUserId(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">Выберите сотрудника Grinvich</option>
+              {(status?.greenwich.users ?? []).map((user) => (
+                <option
+                  key={user.id}
+                  value={user.id}
+                  disabled={!user.hasTelegramChatId}
+                >
+                  {user.displayName} · @{user.login}
+                  {user.telegramChatId ? ` · ${user.telegramChatId}` : " · Telegram ID не заполнен"}
+                </option>
+              ))}
+            </select>
+            {greenwichUserId ? (
+              <div className="mt-2 rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-zinc-600">
+                {(() => {
+                  const user = status?.greenwich.users.find((u) => u.id === greenwichUserId);
+                  if (!user) return "Сотрудник не найден в текущем списке.";
+                  return (
+                    <>
+                      Получатель: <span className="font-semibold text-zinc-900">{user.displayName}</span>
+                      {" · "}
+                      Telegram ID:{" "}
+                      <span className="font-mono text-zinc-900">
+                        {user.telegramChatId ?? "не заполнен"}
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void postTest("greenwich-user", { userId: greenwichUserId })}
+              disabled={Boolean(busy) || !greenwichUserId}
+              className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {busy === "greenwich-user" ? "Отправка…" : "Отправить выбранному сотруднику"}
+            </button>
+          </div>
+
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-zinc-800">Тест в личку (DM)</h2>
             <p className="mt-1 text-xs text-zinc-500">
@@ -217,18 +280,19 @@ export default function AdminTelegramPage() {
             />
             <button
               type="button"
-              onClick={() => void postTest("dm", dmChatId.trim())}
+              onClick={() => void postTest("dm", { chatId: dmChatId.trim() })}
               disabled={Boolean(busy) || !dmChatId.trim()}
               className="mt-3 rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
             >
-              {busy === "dm-dm" ? "Отправка…" : "Отправить тест в ЛС"}
+              {busy === "dm" ? "Отправка…" : "Отправить тест в ЛС"}
             </button>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-zinc-800">Тест всем Grinvich</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              Отправляет тестовое сообщение всем активным пользователям Grinvich, у которых заполнен Telegram Chat ID.
+              Массовая проверка всех активных сотрудников с Telegram ID. Каждому придёт персональное сообщение с его ФИО,
+              логином и Telegram ID, чтобы было видно, кому именно оно доставлено.
             </p>
             <button
               type="button"

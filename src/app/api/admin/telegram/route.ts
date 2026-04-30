@@ -26,6 +26,16 @@ export async function GET() {
   const greenwichWithTelegram = await prisma.user.count({
     where: { role: "GREENWICH", isActive: true, telegramChatId: { not: null } },
   });
+  const greenwichUsers = await prisma.user.findMany({
+    where: { role: "GREENWICH", isActive: true },
+    orderBy: [{ displayName: "asc" }, { login: "asc" }],
+    select: {
+      id: true,
+      displayName: true,
+      login: true,
+      telegramChatId: true,
+    },
+  });
 
   return jsonOk({
     telegram: {
@@ -39,14 +49,22 @@ export async function GET() {
     greenwich: {
       activeUsers: totalGreenwich,
       withTelegramChatId: greenwichWithTelegram,
+      users: greenwichUsers.map((user) => ({
+        id: user.id,
+        displayName: user.displayName,
+        login: user.login,
+        telegramChatId: user.telegramChatId?.trim() || null,
+        hasTelegramChatId: Boolean(user.telegramChatId?.trim()),
+      })),
     },
   });
 }
 
 const PostSchema = z.object({
-  kind: z.enum(["warehouse", "dm", "greenwich-broadcast"]),
+  kind: z.enum(["warehouse", "dm", "greenwich-broadcast", "greenwich-user"]),
   text: z.string().trim().min(1).max(4000).optional(),
   chatId: z.string().trim().min(1).max(64).optional(), // only for dm
+  userId: z.string().trim().min(1).max(64).optional(), // only for greenwich-user
 });
 
 export async function POST(req: Request) {
@@ -77,30 +95,45 @@ export async function POST(req: Request) {
         isActive: true,
         telegramChatId: { not: null },
       },
-      select: { telegramChatId: true },
+      select: {
+        id: true,
+        displayName: true,
+        login: true,
+        telegramChatId: true,
+      },
     });
-    const chatIds = Array.from(
-      new Set(
-        users
-          .map((u) => (u.telegramChatId ?? "").trim())
-          .filter(Boolean),
-      ),
-    );
-    if (chatIds.length === 0) {
+    const recipients = users
+      .map((user) => ({
+        ...user,
+        telegramChatId: user.telegramChatId?.trim() || "",
+      }))
+      .filter((user) => user.telegramChatId);
+
+    if (recipients.length === 0) {
       return jsonError(400, "Нет активных пользователей Grinvich с Telegram Chat ID");
     }
 
     let sent = 0;
-    const failed: string[] = [];
-    for (const chatId of chatIds) {
-      const result = await sendTelegramMessageDetailed(chatId, text);
+    const failed: Array<{ id: string; displayName: string; login: string; telegramChatId: string }> = [];
+    for (const user of recipients) {
+      const personalizedText =
+        parsed.data.text ??
+        `🧪 <b>Тест уведомлений Grinvich</b>\n\nПолучатель: ${user.displayName}\nЛогин: ${user.login}\nTelegram ID: ${user.telegramChatId}\nВремя: ${new Date().toLocaleString("ru-RU")}`;
+      const result = await sendTelegramMessageDetailed(user.telegramChatId, personalizedText);
       if (result.ok) sent += 1;
-      else failed.push(chatId);
+      else {
+        failed.push({
+          id: user.id,
+          displayName: user.displayName,
+          login: user.login,
+          telegramChatId: user.telegramChatId,
+        });
+      }
     }
     return jsonOk({
       ok: failed.length === 0,
       sent,
-      total: chatIds.length,
+      total: recipients.length,
       failed,
     });
   }
@@ -116,6 +149,46 @@ export async function POST(req: Request) {
       return jsonError(400, result.error, { hint: "warehouse_group" });
     }
     return jsonOk({ ok: true });
+  }
+
+  if (parsed.data.kind === "greenwich-user") {
+    const userId = parsed.data.userId;
+    if (!userId) return jsonError(400, "userId is required for Greenwich user test");
+    const user = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        role: "GREENWICH",
+        isActive: true,
+      },
+      select: {
+        id: true,
+        displayName: true,
+        login: true,
+        telegramChatId: true,
+      },
+    });
+    if (!user) return jsonError(404, "Пользователь Greenwich не найден или не активен");
+    const chatId = user.telegramChatId?.trim();
+    if (!chatId) {
+      return jsonError(400, `У сотрудника ${user.displayName} не заполнен Telegram Chat ID`);
+    }
+    const result = await sendTelegramMessageDetailed(
+      chatId,
+      parsed.data.text ??
+        `🧪 <b>Индивидуальный тест уведомлений</b>\n\nПолучатель: ${user.displayName}\nЛогин: ${user.login}\nВремя: ${new Date().toLocaleString("ru-RU")}`,
+    );
+    if (!result.ok) {
+      return jsonError(400, result.error, { hint: "greenwich_user", userId: user.id });
+    }
+    return jsonOk({
+      ok: true,
+      recipient: {
+        id: user.id,
+        displayName: user.displayName,
+        login: user.login,
+        telegramChatId: chatId,
+      },
+    });
   }
 
   const dmChatId = parsed.data.chatId;

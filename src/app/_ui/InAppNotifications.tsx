@@ -24,6 +24,31 @@ type NotificationPayload = {
 
 type PushState = "loading" | "unsupported" | "not_configured" | "blocked" | "disabled" | "enabled" | "error";
 
+const TOAST_SESSION_KEY = "wowstorg:in-app-notification-toasts-seen";
+const TOAST_SESSION_LIMIT = 200;
+
+function readSeenToastIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.sessionStorage.getItem(TOAST_SESSION_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberSeenToastId(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const ids = [...readSeenToastIds(), id].slice(-TOAST_SESSION_LIMIT);
+    window.sessionStorage.setItem(TOAST_SESSION_KEY, JSON.stringify([...new Set(ids)]));
+  } catch {
+    // If storage is unavailable, the in-memory ref still prevents repeats until remount.
+  }
+}
+
 function achievementImageSrc(code: string, level: "NONE" | "BRONZE" | "SILVER" | "GOLD"): string {
   const key =
     code === "PERFECT_ORDERS"
@@ -103,9 +128,12 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
     setRows(nextRows);
     setUnreadCount(json.unreadCount ?? 0);
 
+    const persistedSeen = readSeenToastIds();
+    for (const id of persistedSeen) seenToastRef.current.add(id);
     const newestUnread = [...nextRows].reverse().find((row) => !row.isRead && !seenToastRef.current.has(row.id));
     if (newestUnread) {
       seenToastRef.current.add(newestUnread.id);
+      rememberSeenToastId(newestUnread.id);
       setActiveToast((current) => current ?? newestUnread);
     }
   }, [enabled]);

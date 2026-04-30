@@ -1,4 +1,5 @@
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import { rentalCalendarDaysInclusiveUtcDates } from "@/lib/rental-days";
 
 export type OrderDiscountType = "NONE" | "PERCENT" | "AMOUNT";
 
@@ -40,9 +41,7 @@ export type OrderPricingBreakdown = {
 };
 
 export function daysBetween(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
+  return rentalCalendarDaysInclusiveUtcDates(start, end);
 }
 
 function num(v: unknown): number {

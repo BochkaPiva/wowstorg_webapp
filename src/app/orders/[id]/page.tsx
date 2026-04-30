@@ -9,6 +9,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
 
 type OrderLine = {
   id: string;
@@ -142,14 +143,6 @@ function fmtDate(s: string) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function daysBetween(startDate: string, endDate: string): number {
-  const a = new Date(startDate + "T12:00:00");
-  const b = new Date(endDate + "T12:00:00");
-  const ms = b.getTime() - a.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
-}
-
 function orderTotal(order: {
   lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
   startDate: string;
@@ -177,7 +170,7 @@ function calcOrderPricingClient(order: {
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
 }) {
-  const days = daysBetween(order.startDate, order.endDate);
+  const days = rentalCalendarDaysInclusive(order.startDate, order.endDate) || 1;
   const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
   const rentalBeforeDiscount = order.lines.reduce(
     (sum, l) => sum + (l.pricePerDaySnapshot ?? 0) * l.requestedQty * days * multiplier,

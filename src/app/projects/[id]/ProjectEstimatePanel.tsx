@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
 import {
   normalizedLocalLineCostClientNumber,
   normalizedLocalLineCostClientString,
@@ -214,14 +215,6 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
 
 function orderStatusLabel(status: string) {
   return ORDER_STATUS_LABEL[status] ?? status;
-}
-
-function daysBetween(startDate: string, endDate: string): number {
-  const a = new Date(`${startDate}T12:00:00`);
-  const b = new Date(`${endDate}T12:00:00`);
-  const ms = b.getTime() - a.getTime();
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
 }
 
 function formatDateRu(dateOnly: string | null | undefined) {
@@ -2708,7 +2701,7 @@ function RequisiteSectionEditor({
 
   const rentalTotal = React.useMemo(() => {
     if (!order) return 0;
-    const days = daysBetween(order.startDate, order.endDate);
+    const days = rentalCalendarDaysInclusive(order.startDate, order.endDate);
     const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
     return lines.reduce(
       (sum, line) => sum + (line.pricePerDaySnapshot ?? 0) * line.requestedQty * days * multiplier,
@@ -2808,7 +2801,7 @@ function RequisiteSectionEditor({
             <div className="space-y-2">
               {lines.map((line, index) => {
                 const maxQty = maxQtyAllowedForRequisiteLine(linesForCap, index, availableForDatesByItemId);
-                const dayC = normalizeProjectEstimateDays(daysBetween(order.startDate, order.endDate)) ?? 1;
+                const dayC = normalizeProjectEstimateDays(rentalCalendarDaysInclusive(order.startDate, order.endDate)) ?? 1;
                 const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
                 const lk = String(line.id ?? `${line.itemId}-${index}`);
                 const qtyDraftRaw = requisiteQtyDraft[lk];

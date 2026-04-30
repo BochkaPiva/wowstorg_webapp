@@ -14,6 +14,7 @@ import {
   normalizeCatalogDates,
   todayDateOnly,
 } from "@/lib/catalogDates";
+import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
 import "./catalog.css";
 import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
@@ -63,15 +64,13 @@ function buildPaginationTokens(currentPage: number, totalPages: number): Array<n
   return tokens;
 }
 
-function daysBetweenDateOnly(start: string, end: string) {
-  // Treat end as exclusive like backend ([start, end))
-  const a = new Date(start + "T12:00:00");
-  const b = new Date(end + "T12:00:00");
-  const ms = b.getTime() - a.getTime();
-  if (!Number.isFinite(ms)) return 0;
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  // UX: если пользователь выбрал один и тот же день, считаем 1 день аренды
-  return days === 0 ? 1 : days;
+function ruCalendarDayCount(n: number): string {
+  const m100 = n % 100;
+  const m10 = n % 10;
+  if (m100 >= 11 && m100 <= 14) return `${n} календарных дней`;
+  if (m10 === 1) return `${n} календарный день`;
+  if (m10 >= 2 && m10 <= 4) return `${n} календарных дня`;
+  return `${n} календарных дней`;
 }
 
 function catalogCartHref(args: {
@@ -592,7 +591,7 @@ export default function CatalogPage() {
     const price = l.pricePerDay ?? (item ? Number(item.pricePerDay) : 0);
     return sum + l.qty * price;
   }, 0);
-  const rentalDays = isProjectDemoCatalog ? 1 : daysBetweenDateOnly(startDate, endDate);
+  const rentalDays = isProjectDemoCatalog ? 1 : rentalCalendarDaysInclusive(startDate, endDate);
   const cartTotalForPeriod = cartTotalPerDay * (rentalDays || 1);
 
   const cartHref = catalogCartHref({
@@ -736,6 +735,11 @@ export default function CatalogPage() {
                   />
                 ) : null}
               </div>
+              {startDate && endDate && rentalDays > 0 ? (
+                <p className="mt-2 text-sm font-medium text-violet-900/90">
+                  Выбрано: {ruCalendarDayCount(rentalDays)} (даты начала и окончания включаются в период)
+                </p>
+              ) : null}
               <span className="mk-subtitle">
                 Доступность и цены считаются на выбранный период. Даты в прошлом недоступны; по умолчанию —
                 готовность сегодня, аренда с завтра до послезавтра.
@@ -744,6 +748,9 @@ export default function CatalogPage() {
           ) : isQuickSupplement ? (
             <div className="mk-subtitle">
               Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
+              {rentalDays > 0 ? (
+                <span className="ml-1 text-zinc-500">· {ruCalendarDayCount(rentalDays)}</span>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-950">

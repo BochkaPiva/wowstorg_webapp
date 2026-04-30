@@ -10,6 +10,7 @@ import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { catalogDatesFromStorage } from "@/lib/catalogDates";
 import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
 import "./cart.css";
 import "../checkout/checkout.css";
 
@@ -26,15 +27,6 @@ function formatDateRu(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
   if (!y || !m || !d) return dateOnly;
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
-}
-
-function daysBetweenDateOnly(start: string, end: string) {
-  const a = new Date(start + "T12:00:00");
-  const b = new Date(end + "T12:00:00");
-  const ms = b.getTime() - a.getTime();
-  if (!Number.isFinite(ms)) return 0;
-  const days = Math.max(0, Math.round(ms / (24 * 60 * 60 * 1000)));
-  return days === 0 ? 1 : days;
 }
 
 function Toggle({
@@ -597,7 +589,7 @@ export default function CartPage() {
     const price = basePrice * displayMultiplier;
     return sum + price * line.qty;
   }, 0);
-  const rentalDays = startDate && endDate ? daysBetweenDateOnly(startDate, endDate) : 0;
+  const rentalDays = startDate && endDate ? rentalCalendarDaysInclusive(startDate, endDate) : 0;
   const totalForPeriod = totalPerDay * (rentalDays || 1);
 
   const deliveryPriceNum =

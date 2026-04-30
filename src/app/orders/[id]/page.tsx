@@ -97,13 +97,39 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const CONDITION_LABEL: Record<ReturnSplit["condition"], string> = {
-  OK: "В норме",
-  NEEDS_REPAIR: "Нужен ремонт",
+  OK: "Все в норме",
+  NEEDS_REPAIR: "Требует ремонта",
   BROKEN: "Сломано",
-  MISSING: "Потеряно",
+  MISSING: "Утеряно",
 };
 
 const CONDITIONS: ReturnSplit["condition"][] = ["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"];
+const CONDITION_LEGEND: Array<{
+  condition: ReturnSplit["condition"];
+  description: string;
+  className: string;
+}> = [
+  {
+    condition: "OK",
+    description: "Вернулось в исходном состоянии: реквизит чистый, целый и готов снова уйти в аренду.",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  },
+  {
+    condition: "NEEDS_REPAIR",
+    description: "Есть поломка или износ, но вещь можно восстановить: нужен ремонт, замена детали или обслуживание.",
+    className: "border-amber-200 bg-amber-50 text-amber-950",
+  },
+  {
+    condition: "BROKEN",
+    description: "Серьезное повреждение: скорее всего, реквизит уже нельзя нормально восстановить или использовать дальше.",
+    className: "border-rose-200 bg-rose-50 text-rose-950",
+  },
+  {
+    condition: "MISSING",
+    description: "Реквизит не вернулся: потерян, не найден или остался не у клиента.",
+    className: "border-zinc-200 bg-zinc-50 text-zinc-900",
+  },
+];
 const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label: string; hint: string }> = [
   { value: "NONE", label: "Без скидки", hint: "Итог без ручной скидки" },
   { value: "PERCENT", label: "Процент", hint: "Например, 10%" },
@@ -2045,8 +2071,24 @@ export default function OrderDetailsPage() {
                 </div>
                 <div className="p-5 space-y-4 max-h-[70vh] overflow-auto">
                   <div className="text-sm text-zinc-600">
-                    Полученное количество фиксировано. Если статус не «В норме», укажите количество и при необходимости разбейте остаток на следующий статус.
+                    Полученное количество фиксировано. Если статус не «Все в норме», укажите количество и при необходимости разбейте остаток на следующий статус.
                   </div>
+                  <details className="group rounded-2xl border border-violet-100 bg-violet-50/60">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-violet-950">
+                      <span>Что означают статусы?</span>
+                      <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-700 transition group-open:rotate-180">
+                        ↓
+                      </span>
+                    </summary>
+                    <div className="grid gap-2 border-t border-violet-100 p-3 sm:grid-cols-2">
+                      {CONDITION_LEGEND.map((item) => (
+                        <div key={item.condition} className={`rounded-2xl border p-3 text-sm ${item.className}`}>
+                          <div className="font-bold">{CONDITION_LABEL[item.condition]}</div>
+                          <div className="mt-1 text-xs leading-relaxed opacity-80">{item.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                   {order.lines.filter((l) => lineIssuedQty(l) > 0).map((l) => {
                     const total = lineIssuedQty(l);
                     const draft = declareDraft[l.id] ?? { comment: "", rows: [{ condition: "OK", qty: total }] };

@@ -45,6 +45,7 @@
 | Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) (спека), [`projects-foundation.md`](./projects-foundation.md) (риски, зависимости, фазы), [`projects-predeploy-checklist.md`](./projects-predeploy-checklist.md) (бакет + env), [`projects-post-implementation-checklist.md`](./projects-post-implementation-checklist.md) (статус MVP + чеклист перед продом) |
 | Админ-аналитика | [`admin-analytics.md`](./admin-analytics.md) (редизайн, формулы, вкладки, Excel) |
 | Центр уведомлений | [`notifications-center.md`](./notifications-center.md) (in-app уведомления, колокольчик, задел под browser push) |
+| Утро/вечер на границах аренды | [`rental-part-of-day.md`](./rental-part-of-day.md) (план в [`docs/RENTAL_PART_OF_DAY_PLAN.md`](../../docs/RENTAL_PART_OF_DAY_PLAN.md)) |
 
 ## Индекс существующих крупных тем (в docs)
 
@@ -58,6 +59,7 @@
 | Первый вход / пароль | `docs/FIRST_LOGIN_AUTH_PLAN.md` |
 | Аудит инвентаря | `docs/INVENTORY_AUDIT_SYSTEM_PLAN.md` |
 | Внешние заявки склада | `docs/EXTERNAL_ORDER_FLOW_WAREHOUSE.md` |
+| Утро/вечер — оплачиваемые дни аренды | `docs/RENTAL_PART_OF_DAY_PLAN.md` |
 | Рентабельность | `docs/ITEM_PROFITABILITY_PLAN.md` |
 | Аудит проекта / риски | `docs/PROJECT_AUDIT.md` |
 | Редизайн админ-аналитики | `docs/ADMIN_ANALYTICS_REDESIGN.md` |

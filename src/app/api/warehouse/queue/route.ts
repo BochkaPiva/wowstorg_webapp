@@ -187,6 +187,7 @@ export async function GET(req: Request) {
           }
         : null,
       totalAmount,
+      taxAmount: pricing.taxAmount,
       discount:
         pricing.discountAmount > 0
           ? {

@@ -13,7 +13,7 @@
 
 ## Источники заявки (`Order.source`)
 
-- **`GREENWICH_INTERNAL`** — внутренняя заявка Greenwich; цена с коэффициентом **`payMultiplier`** (по умолчанию **0.76** — константа `PAY_MULTIPLIER_GREENWICH` в `src/lib/constants.ts`).
+- **`GREENWICH_INTERNAL`** — внутренняя заявка Greenwich; аренда реквизита считается с коэффициентом **`payMultiplier`** (по умолчанию **0.70** — константа `PAY_MULTIPLIER_GREENWICH` в `src/lib/constants.ts`). Налог **6%** добавляется отдельной строкой ко всему чеку заявки.
 - **`WOWSTORG_EXTERNAL`** — заявка склада для внешнего клиента; отдельный флоу (сразу «согласована», смета и т.д., см. `docs/EXTERNAL_ORDER_FLOW_WAREHOUSE.md`).
 
 ## Жизненный цикл заявки

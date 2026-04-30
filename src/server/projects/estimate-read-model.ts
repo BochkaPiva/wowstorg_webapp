@@ -348,7 +348,6 @@ export async function buildProjectEstimateReadModel(args: {
                       })()
                     : null,
                 ].filter((line): line is NonNullable<typeof line> => line !== null);
-
                 return {
                   id: section.id,
                   sortOrder: section.sortOrder,

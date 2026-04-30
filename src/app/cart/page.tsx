@@ -9,7 +9,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { catalogDatesFromStorage } from "@/lib/catalogDates";
-import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import "./cart.css";
 import "../checkout/checkout.css";
 
@@ -614,6 +614,8 @@ export default function CartPage() {
       : 0;
   const totalWithServices =
     totalForPeriod + deliveryPriceNum + montagePriceNum + demontagePriceNum;
+  const taxAmount = Math.round(totalWithServices * ORDER_TAX_RATE);
+  const totalWithTax = Math.round(totalWithServices + taxAmount);
 
   const canCheckoutGreenwich =
     isGreenwich && cart.length > 0 && canSubmitCustomer;
@@ -1360,16 +1362,19 @@ export default function CartPage() {
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
                     {isWarehouse && (deliveryPriceNum > 0 || montagePriceNum > 0 || demontagePriceNum > 0) ? (
                       <>
-                        Итого: <strong>{totalWithServices.toFixed(0)}</strong>{" "}
+                        Итого: <strong>{totalWithTax.toFixed(0)}</strong>{" "}
                         <span className="cart-unit">р</span>
                         <span className="cart-total-detail">
-                          {" "}(аренда {totalForPeriod.toFixed(0)} + доп. услуги {deliveryPriceNum + montagePriceNum + demontagePriceNum} р)
+                          {" "}(до налога {totalWithServices.toFixed(0)} + налог {taxAmount} р)
                         </span>
                       </>
                     ) : (
                       <>
-                        Итого за период: <strong>{totalForPeriod.toFixed(0)}</strong>{" "}
+                        Итого за период: <strong>{totalWithTax.toFixed(0)}</strong>{" "}
                         <span className="cart-unit">р</span>
+                        <span className="cart-total-detail">
+                          {" "}(до налога {totalWithServices.toFixed(0)} + налог {taxAmount} р)
+                        </span>
                       </>
                     )}
                   </div>
@@ -1399,12 +1404,15 @@ export default function CartPage() {
                 <div className="cart-total">
                   {rentalDays > 0 ? (
                     <>
-                      Итого за период: <strong>{totalForPeriod.toFixed(0)}</strong>{" "}
+                      Итого за период: <strong>{totalWithTax.toFixed(0)}</strong>{" "}
                       <span className="cart-unit">р</span>
+                      <span className="cart-total-detail">
+                        {" "}(до налога {totalWithServices.toFixed(0)} + налог {taxAmount} р)
+                      </span>
                     </>
                   ) : (
                     <>
-                      Итого в день: <strong>{totalPerDay.toFixed(0)}</strong>{" "}
+                      Итого в день: <strong>{(totalPerDay + Math.round(totalPerDay * ORDER_TAX_RATE)).toFixed(0)}</strong>{" "}
                       <span className="cart-unit">р/сут</span>
                     </>
                   )}

@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { ORDER_TAX_RATE } from "@/lib/constants";
 
 type OrderLine = {
   id: string;
@@ -79,6 +80,7 @@ type CatalogItemOption = {
   id: string;
   name: string;
   photo1Key?: string | null;
+  pricePerDay?: number | null;
   availableForDates?: number;
 };
 
@@ -165,6 +167,8 @@ function calcOrderPricingClient(order: {
   const rentalAfterDiscount = Math.max(0, rentalBeforeDiscount - discountAmount);
   const services =
     (order.deliveryPrice ?? 0) + (order.montagePrice ?? 0) + (order.demontagePrice ?? 0);
+  const grandTotalBeforeTax = rentalAfterDiscount + services;
+  const taxAmount = Math.round(grandTotalBeforeTax * ORDER_TAX_RATE);
   return {
     days,
     multiplier,
@@ -172,7 +176,10 @@ function calcOrderPricingClient(order: {
     discountAmount,
     rentalAfterDiscount,
     services,
-    grandTotal: Math.round(rentalAfterDiscount + services),
+    grandTotalBeforeTax,
+    taxRate: ORDER_TAX_RATE,
+    taxAmount,
+    grandTotal: Math.round(grandTotalBeforeTax + taxAmount),
   };
 }
 
@@ -646,6 +653,7 @@ export default function OrderDetailsPage() {
     itemId: string;
     itemName: string;
     itemPhoto1Key?: string | null;
+    pricePerDaySnapshot?: number | null;
     requestedQty: number | string;
     lineComment: string;
   };
@@ -693,6 +701,44 @@ export default function OrderDetailsPage() {
     () => new Map(catalogItems.map((item) => [item.id, item])),
     [catalogItems],
   );
+  const orderPricing = order ? calcOrderPricingClient(order) : null;
+  const editPricing = React.useMemo(() => {
+    if (!order) return null;
+    return calcOrderPricingClient({
+      lines: editLines.map((line) => ({
+        pricePerDaySnapshot:
+          line.pricePerDaySnapshot ?? catalogItemsById.get(line.itemId)?.pricePerDay ?? 0,
+        requestedQty: Number(line.requestedQty) || 0,
+      })),
+      startDate: order.startDate,
+      endDate: order.endDate,
+      payMultiplier: order.payMultiplier,
+      deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
+      montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
+      demontagePrice: editDemontageEnabled ? Number(editDemontagePrice || 0) : 0,
+      rentalDiscountType: isWarehouse ? editRentalDiscountType : order.rentalDiscountType,
+      rentalDiscountPercent: isWarehouse
+        ? editRentalDiscountPercent === "" ? null : Number(editRentalDiscountPercent)
+        : order.rentalDiscountPercent,
+      rentalDiscountAmount: isWarehouse
+        ? editRentalDiscountAmount === "" ? null : Number(editRentalDiscountAmount)
+        : order.rentalDiscountAmount,
+    });
+  }, [
+    catalogItemsById,
+    editDeliveryEnabled,
+    editDeliveryPrice,
+    editDemontageEnabled,
+    editDemontagePrice,
+    editLines,
+    editMontageEnabled,
+    editMontagePrice,
+    editRentalDiscountAmount,
+    editRentalDiscountPercent,
+    editRentalDiscountType,
+    isWarehouse,
+    order,
+  ]);
 
   function notifyProjectParent() {
     if (!embed || typeof window === "undefined") return;
@@ -880,6 +926,7 @@ export default function OrderDetailsPage() {
         itemId: l.item.id,
         itemName: l.item.name,
         itemPhoto1Key: l.item.photo1Key,
+        pricePerDaySnapshot: l.pricePerDaySnapshot,
         requestedQty: l.requestedQty,
         lineComment: (isGreenwich ? (l.greenwichComment ?? "") : (l.warehouseComment ?? "")) as string,
       })),
@@ -920,12 +967,13 @@ export default function OrderDetailsPage() {
       { cache: "no-store" },
     )
       .then((r) => r.json().catch(() => null))
-      .then((data: { items?: { id: string; name: string; photo1Key?: string | null; availability?: { availableForDates?: number } }[] } | null) => {
+      .then((data: { items?: { id: string; name: string; photo1Key?: string | null; pricePerDay?: number; availability?: { availableForDates?: number } }[] } | null) => {
         setCatalogItems(
           (data?.items ?? []).map((i) => ({
             id: i.id,
             name: i.name,
             photo1Key: i.photo1Key ?? null,
+            pricePerDay: i.pricePerDay ?? null,
             availableForDates: i.availability?.availableForDates,
           })),
         );
@@ -1087,7 +1135,14 @@ export default function OrderDetailsPage() {
     const option = catalogItemsById.get(itemId);
     setEditLines((prev) => [
       ...prev,
-      { itemId, itemName, itemPhoto1Key: option?.photo1Key ?? null, requestedQty: safeQty, lineComment: "" },
+      {
+        itemId,
+        itemName,
+        itemPhoto1Key: option?.photo1Key ?? null,
+        pricePerDaySnapshot: option?.pricePerDay ?? null,
+        requestedQty: safeQty,
+        lineComment: "",
+      },
     ]);
   }
 
@@ -1246,12 +1301,25 @@ export default function OrderDetailsPage() {
                 <span className="rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                   {orderTotal(order).toLocaleString("ru-RU")} ₽
                 </span>
-                {calcOrderPricingClient(order).discountAmount > 0 ? (
+                {orderPricing && orderPricing.discountAmount > 0 ? (
                   <span className="ml-2 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">
                     скидка {formatDiscountLabel(order.rentalDiscountType, order.rentalDiscountPercent, order.rentalDiscountAmount)}
                   </span>
                 ) : null}
               </p>
+              {orderPricing ? (
+                <p className="mt-1 text-xs text-zinc-500">
+                  Включая налог {Math.round(orderPricing.taxRate * 100)}%:{" "}
+                  <span className="font-semibold tabular-nums text-zinc-700">
+                    {orderPricing.taxAmount.toLocaleString("ru-RU")} ₽
+                  </span>
+                  {" · "}
+                  сумма до налога:{" "}
+                  <span className="font-semibold tabular-nums text-zinc-700">
+                    {Math.round(orderPricing.grandTotalBeforeTax).toLocaleString("ru-RU")} ₽
+                  </span>
+                </p>
+              ) : null}
               {isWarehouse ? (
                 <p className="mt-1 text-xs text-zinc-600">
                   Себестоимость доп. услуг (внутр.):{" "}
@@ -1659,6 +1727,26 @@ export default function OrderDetailsPage() {
                 />
               </div>
             </div>
+            {editPricing ? (
+              <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span>Сумма до налога</span>
+                  <span className="font-semibold tabular-nums">
+                    {Math.round(editPricing.grandTotalBeforeTax).toLocaleString("ru-RU")} ₽
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+                  <span>Налог {Math.round(editPricing.taxRate * 100)}%</span>
+                  <span className="font-semibold tabular-nums">
+                    {editPricing.taxAmount.toLocaleString("ru-RU")} ₽
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base font-bold">
+                  <span>Итого с налогом</span>
+                  <span className="tabular-nums">{editPricing.grandTotal.toLocaleString("ru-RU")} ₽</span>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <>

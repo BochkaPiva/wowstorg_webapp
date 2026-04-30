@@ -5,6 +5,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
+import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
   normalizedLocalLineCostClientNumber,
   normalizedLocalLineCostClientString,
@@ -2718,6 +2719,7 @@ function RequisiteSectionEditor({
     (services.deliveryEnabled ? Number(services.deliveryPrice || 0) : 0) +
     (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
     (services.demontageEnabled ? Number(services.demontagePrice || 0) : 0);
+  const taxAmount = Math.round((rentalTotal + servicesTotal) * ORDER_TAX_RATE);
 
   const summaryTitleAddon =
     order && !loading ? (
@@ -3060,9 +3062,13 @@ function RequisiteSectionEditor({
                 <span>Доп. услуги</span>
                 <span className="font-semibold text-zinc-950">{formatOrderMoney(servicesTotal)} ₽</span>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <span>Налог {Math.round(ORDER_TAX_RATE * 100)}%</span>
+                <span className="font-semibold text-zinc-950">{formatOrderMoney(taxAmount)} ₽</span>
+              </div>
               <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base font-bold text-violet-950">
                 <span>Всего</span>
-                <span>{formatOrderMoney(rentalTotal + servicesTotal)} ₽</span>
+                <span>{formatOrderMoney(rentalTotal + servicesTotal + taxAmount)} ₽</span>
               </div>
             </div>
           </div>

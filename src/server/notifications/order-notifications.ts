@@ -328,8 +328,8 @@ export async function notifyRentalDiscountApplied(order: OrderForNotify): Promis
       orderHeader(order),
       `Склад применил скидку на реквизит: <b>${escapeTelegramHtml(formatDiscountFields(discount))}</b>.`,
       pricing.discountAmount > 0
-        ? `Сумма скидки: −${fmtNum(Math.round(pricing.discountAmount))} ₽\nНовая сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`
-        : `Скидка снята. Сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`,
+        ? `Сумма скидки: −${fmtNum(Math.round(pricing.discountAmount))} ₽\nНалог ${Math.round(pricing.taxRate * 100)}%: ${fmtNum(pricing.taxAmount)} ₽\nНовая сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`
+        : `Скидка снята. Налог ${Math.round(pricing.taxRate * 100)}%: ${fmtNum(pricing.taxAmount)} ₽\nСумма заявки: ${fmtNum(pricing.grandTotal)} ₽`,
       link(`/orders/${order.id}`, "Открыть заявку"),
     ].filter(Boolean);
     await sendTelegramMessage(chatId, `💸 <b>Скидка по заявке обновлена</b>\n\n${blocks.join("\n\n")}`);
@@ -403,7 +403,8 @@ function buildEstimateBody(o: OrderForNotify): string {
   if (serv.length) {
     block += `\n\n🚚 Доп. услуги:\n${serv.join("\n")}\n  Итого услуги: ${fmtNum(services)} ₽`;
   }
-  block += `\n\n💰 Сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`;
+  block += `\n\n🧾 Налог ${Math.round(pricing.taxRate * 100)}%: ${fmtNum(pricing.taxAmount)} ₽`;
+  block += `\n💰 Сумма заявки: ${fmtNum(pricing.grandTotal)} ₽`;
   return block;
 }
 

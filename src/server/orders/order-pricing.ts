@@ -1,3 +1,5 @@
+import { ORDER_TAX_RATE } from "@/lib/constants";
+
 export type OrderDiscountType = "NONE" | "PERCENT" | "AMOUNT";
 
 export type OrderDiscountInput = {
@@ -30,6 +32,9 @@ export type OrderPricingBreakdown = {
   discountAmount: number;
   rentalSubtotalAfterDiscount: number;
   servicesTotal: number;
+  grandTotalBeforeTax: number;
+  taxRate: number;
+  taxAmount: number;
   grandTotal: number;
   lineAllocations: OrderPricingAllocation[];
 };
@@ -102,7 +107,10 @@ export function calcOrderPricing(args: {
   const discountAmount = Math.min(Math.max(0, requestedDiscount), rentalSubtotalBeforeDiscount);
   const rentalSubtotalAfterDiscount = Math.max(0, rentalSubtotalBeforeDiscount - discountAmount);
   const servicesTotal = num(args.deliveryPrice) + num(args.montagePrice) + num(args.demontagePrice);
-  const grandTotal = Math.round(rentalSubtotalAfterDiscount + servicesTotal);
+  const grandTotalBeforeTax = rentalSubtotalAfterDiscount + servicesTotal;
+  const taxRate = ORDER_TAX_RATE;
+  const taxAmount = Math.round(grandTotalBeforeTax * taxRate);
+  const grandTotal = Math.round(grandTotalBeforeTax + taxAmount);
   const lineAllocations = baseLines.map((line) => {
     const share =
       rentalSubtotalBeforeDiscount > 0
@@ -127,6 +135,9 @@ export function calcOrderPricing(args: {
     discountAmount,
     rentalSubtotalAfterDiscount,
     servicesTotal,
+    grandTotalBeforeTax,
+    taxRate,
+    taxAmount,
     grandTotal,
     lineAllocations,
   };

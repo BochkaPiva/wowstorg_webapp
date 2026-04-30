@@ -231,6 +231,13 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     ws.getCell(servicesRow, amountCol).numFmt = "#,##0.00";
   }
 
+  const taxRow = addRowStyled(
+    ws,
+    totalValues(`Налог ${Math.round(pricing.taxRate * 100)}% (₽)`, pricing.taxAmount),
+    cols,
+  );
+  ws.getCell(taxRow, amountCol).numFmt = "#,##0.00";
+
   const grandTotal = pricing.grandTotal;
   ws.addRow([]);
   const grandRow = addRowStyled(ws, totalValues("Сумма заявки (₽)", grandTotal), cols);

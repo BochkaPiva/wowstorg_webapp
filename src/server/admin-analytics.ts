@@ -334,6 +334,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
 
   let totalItemsRevenue = 0;
   let totalServiceRevenue = 0;
+  let totalTaxAmount = 0;
   let totalRentalDays = 0;
 
   for (const order of closedOrders) {
@@ -370,8 +371,9 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     const services = pricing.servicesTotal;
     totalServiceRevenue += services;
     totalItemsRevenue += orderItemsRevenue;
+    totalTaxAmount += pricing.taxAmount;
 
-    const orderRevenue = Math.round(orderItemsRevenue + services);
+    const orderRevenue = pricing.grandTotal;
     customerTotal.set(order.customerId, {
       name: order.customer.name,
       total: (customerTotal.get(order.customerId)?.total ?? 0) + orderRevenue,
@@ -428,6 +430,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     .sort((a, b) => b.revenue - a.revenue || (b.roiPercent ?? -Infinity) - (a.roiPercent ?? -Infinity));
 
   const totalRevenue = Math.round(totalItemsRevenue + totalServiceRevenue);
+  const totalRevenueWithTax = Math.round(totalItemsRevenue + totalServiceRevenue + totalTaxAmount);
   const totalProfitabilityRevenue = profitabilityRows.reduce((s, r) => s + r.revenue, 0);
   const totalPurchaseCost = profitabilityRows.reduce((s, r) => s + r.purchaseCost, 0);
   const totalGrossProfit = totalProfitabilityRevenue - totalPurchaseCost;
@@ -439,10 +442,10 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     kpi: {
       ordersTotal: orders.length,
       ordersClosed: closedOrders.length,
-      totalRevenue,
+      totalRevenue: totalRevenueWithTax,
       itemsRevenue: Math.round(totalItemsRevenue),
       servicesRevenue: Math.round(totalServiceRevenue),
-      averageOrderRevenue: closedOrders.length > 0 ? Math.round(totalRevenue / closedOrders.length) : 0,
+      averageOrderRevenue: closedOrders.length > 0 ? Math.round(totalRevenueWithTax / closedOrders.length) : 0,
       averageRentalDays: closedOrders.length > 0 ? round2(totalRentalDays / closedOrders.length) : 0,
     },
     breakdowns: {
@@ -586,19 +589,19 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
             endDate: order.endDate,
             payMultiplier: order.payMultiplier,
             lines: order.lines,
+            deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
+            montagePrice: order.montageEnabled ? order.montagePrice : 0,
+            demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
             discount: order,
           });
-          clientSubtotal += pricing.rentalSubtotalAfterDiscount;
+          clientSubtotal += pricing.grandTotalBeforeTax;
           if (order.deliveryEnabled) {
-            clientSubtotal += order.deliveryPrice != null ? Number(order.deliveryPrice) : 0;
             internalSubtotal += order.deliveryInternalCost != null ? Number(order.deliveryInternalCost) : 0;
           }
           if (order.montageEnabled) {
-            clientSubtotal += order.montagePrice != null ? Number(order.montagePrice) : 0;
             internalSubtotal += order.montageInternalCost != null ? Number(order.montageInternalCost) : 0;
           }
           if (order.demontageEnabled) {
-            clientSubtotal += order.demontagePrice != null ? Number(order.demontagePrice) : 0;
             internalSubtotal += order.demontageInternalCost != null ? Number(order.demontageInternalCost) : 0;
           }
           continue;

@@ -58,6 +58,7 @@ export async function GET() {
         createdAt: o.createdAt.toISOString(),
         customer: o.customer,
         totalAmount: pricing.grandTotal,
+        taxAmount: pricing.taxAmount,
         discount:
           pricing.discountAmount > 0
             ? {

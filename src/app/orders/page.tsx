@@ -27,6 +27,7 @@ type OrderCard = {
   createdAt: string;
   customer: { id: string; name: string };
   totalAmount?: number;
+  taxAmount?: number;
   discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
 };
 
@@ -298,6 +299,11 @@ export default function OrdersPage() {
             {o.totalAmount != null ? (
               <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
                 {o.totalAmount.toLocaleString("ru-RU")} ₽
+              </span>
+            ) : null}
+            {o.taxAmount != null ? (
+              <span className="ml-2 rounded-md bg-zinc-100 px-2 py-0.5 font-semibold text-zinc-700">
+                налог {o.taxAmount.toLocaleString("ru-RU")} ₽
               </span>
             ) : null}
             {o.discount ? (

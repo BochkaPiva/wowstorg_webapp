@@ -392,8 +392,14 @@ export default function AdminAnalyticsPage() {
               {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
               {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
 
-              <SectionCard title="Методология расчета">
-                <div className="grid gap-3 md:grid-cols-2">
+              <details className="group rounded-3xl border border-zinc-200 bg-white shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-bold text-zinc-900">
+                  <span>Как считаются показатели</span>
+                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600 transition group-open:rotate-180">
+                    ↓
+                  </span>
+                </summary>
+                <div className="grid gap-3 border-t border-zinc-100 p-4 md:grid-cols-2">
                   {data.methodology.map((row) => (
                     <div key={row.section} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
                       <div className="font-semibold text-zinc-900">{row.section}</div>
@@ -401,7 +407,7 @@ export default function AdminAnalyticsPage() {
                     </div>
                   ))}
                 </div>
-              </SectionCard>
+              </details>
             </>
           ) : null}
         </div>

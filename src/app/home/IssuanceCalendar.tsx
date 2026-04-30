@@ -75,28 +75,20 @@ function buildWeekColumns(
   return cols;
 }
 
-function intensityLevel(count: number, max: number): number {
+function intensityLevel(count: number): number {
   if (count <= 0) return 0;
-  if (max <= 0) return 1;
-  // For tiny datasets (1-3 concurrent orders), avoid jumping to the brightest tone.
-  if (max <= 1) return 2;
-  if (max <= 3) {
-    if (count >= max) return 3;
-    return 2;
-  }
-  const ratio = count / max;
-  if (ratio >= 0.95) return 4;
-  if (ratio >= 0.7) return 3;
-  if (ratio >= 0.35) return 2;
-  return 1;
+  if (count === 1) return 1;
+  if (count === 2) return 2;
+  if (count === 3) return 3;
+  return 4;
 }
 
 const LEVEL_CLASS: Record<number, string> = {
   0: "bg-zinc-100 dark:bg-zinc-800/50",
   1: "bg-violet-200 dark:bg-violet-900/50",
   2: "bg-violet-400 dark:bg-violet-700/70",
-  3: "bg-violet-800 dark:bg-violet-500",
-  4: "bg-violet-600 dark:bg-violet-600",
+  3: "bg-violet-600 dark:bg-violet-600",
+  4: "bg-violet-800 dark:bg-violet-500",
 };
 
 function fmtDayRu(ymd: string): string {
@@ -151,8 +143,6 @@ export function IssuanceCalendar({ className = "" }: { className?: string }) {
     if (!data || columns.length === 0) return [];
     return monthLabelsByWeekColumn(data.year, columns.length);
   }, [data, columns]);
-
-  const maxCount = data?.maxCount ?? 0;
 
   const gapCell = "gap-px sm:gap-0.5";
   const labelCol = "w-9 shrink-0 sm:w-10";
@@ -256,7 +246,7 @@ export function IssuanceCalendar({ className = "" }: { className?: string }) {
                               />
                             );
                           }
-                          const lvl = intensityLevel(cell.count, maxCount);
+                          const lvl = intensityLevel(cell.count);
                           const title = `${fmtDayRu(cell.key)} — заявок: ${cell.count}`;
                           return (
                             <div

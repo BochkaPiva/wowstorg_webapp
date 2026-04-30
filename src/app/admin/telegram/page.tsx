@@ -11,6 +11,8 @@ type TelegramStatus = {
     hasBotToken: boolean;
     warehouseChatId: string | null;
     warehouseTopicId: string | null;
+    webhookUrl: string | null;
+    webhookSecretConfigured: boolean;
     sendTimeoutMs?: number;
     proxyEnabled?: boolean;
     proxyLabel?: string | null;
@@ -174,6 +176,14 @@ export default function AdminTelegramPage() {
                   <dd className="font-mono">{status.telegram.warehouseTopicId ?? "—"}</dd>
                 </div>
                 <div className="flex gap-2">
+                  <dt className="text-zinc-500">Webhook /start</dt>
+                  <dd className="break-all font-mono text-xs">{status.telegram.webhookUrl ?? "—"}</dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="text-zinc-500">Webhook secret</dt>
+                  <dd className="font-mono">{status.telegram.webhookSecretConfigured ? "задан" : "не задан"}</dd>
+                </div>
+                <div className="flex gap-2">
                   <dt className="text-zinc-500">Таймаут API</dt>
                   <dd className="font-mono">
                     {status.telegram.sendTimeoutMs != null
@@ -198,6 +208,31 @@ export default function AdminTelegramPage() {
                 </div>
               </dl>
             )}
+          </div>
+
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-sky-950">Приветствие после /start</h2>
+            <p className="mt-1 text-xs text-sky-800">
+              Чтобы бот отвечал сотрудникам после команды <code className="rounded bg-white px-1">/start</code>,
+              задайте webhook в Telegram. В Vercel должны быть переменные{" "}
+              <code className="rounded bg-white px-1">TELEGRAM_BOT_TOKEN</code>,{" "}
+              <code className="rounded bg-white px-1">TELEGRAM_WEBHOOK_SECRET</code> и{" "}
+              <code className="rounded bg-white px-1">NEXT_PUBLIC_APP_URL</code>.
+            </p>
+            <div className="mt-3 rounded-xl border border-sky-100 bg-white px-3 py-2 text-xs text-zinc-700">
+              <div className="font-semibold text-zinc-900">Webhook URL</div>
+              <div className="mt-1 break-all font-mono">{status?.telegram.webhookUrl ?? "NEXT_PUBLIC_APP_URL не задан"}</div>
+            </div>
+            <p className="mt-2 text-xs text-sky-800">
+              После деплоя нужно один раз вызвать Telegram Bot API:
+            </p>
+            <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-950 p-3 text-xs text-slate-100">{`curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \\
+  -d "url=${status?.telegram.webhookUrl ?? "https://your-domain/api/telegram/webhook"}" \\
+  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"`}</pre>
+            <p className="mt-2 text-xs text-sky-800">
+              Если Telegram ID уже привязан к сотруднику, бот ответит персональным приветствием. Если не привязан,
+              бот покажет ID, который нужно занести в карточку пользователя.
+            </p>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">

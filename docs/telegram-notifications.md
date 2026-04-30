@@ -8,7 +8,19 @@
 2. **Залогиниться складом** (роль WOWSTORG) → **Админка** → **Telegram** → «Обновить статус» (должны быть токен **да** и виден чат склада) → **«Отправить тест в чат склада»**.
 3. Если тест не пришёл — в окне терминала с `npm run dev` искать строки **`[Telegram]`** (там будет текст ошибки от API Telegram: нет прав, неверный chat_id, не тот топик и т.д.).
 
-Личные уведомления Greenwich: у пользователей с ролью Greenwich в **Админка → Пользователи** должен быть заполнен **Telegram Chat ID** (и пользователь написал боту `/start`).
+Личные уведомления Greenwich: у пользователей с ролью Greenwich в **Админка → Пользователи** должен быть заполнен **Telegram Chat ID**, а пользователь должен написать боту `/start`.
+
+Если настроен Telegram webhook, после `/start` бот отвечает:
+- привязанному сотруднику Greenwich — персональным приветствием и подтверждением, что уведомления подключены;
+- непривязанному пользователю — показывает его Telegram ID, который нужно занести в карточку пользователя.
+
+Для webhook нужны `NEXT_PUBLIC_APP_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` и одноразовая настройка через Bot API:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -d "url=https://your-domain/api/telegram/webhook" \
+  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+```
 
 ### Скорость интерфейса
 
@@ -61,6 +73,7 @@
 | `TELEGRAM_WAREHOUSE_CHAT_ID` | То же, что чат склада (если не задан `TELEGRAM_NOTIFICATION_CHAT_ID`). |
 | `TELEGRAM_WAREHOUSE_TOPIC_ID` | То же, что топик (если не задан `TELEGRAM_NOTIFICATION_TOPIC_ID`). |
 | `TELEGRAM_GREENWICH_CHAT_ID` | ID чата/канала для уведомлений Greenwich (сметы, сборка, выдача, приёмка). |
+| `TELEGRAM_WEBHOOK_SECRET` | Секрет входящего webhook для команды `/start`; передается в `setWebhook` как `secret_token`. |
 | `NEXT_PUBLIC_APP_URL` | Базовый URL сайта (для ссылок «Открыть заявку»), например `https://wowstorg.ru`. |
 | `TELEGRAM_SEND_TIMEOUT_MS` | Таймаут HTTP к Bot API (по умолчанию 25000, максимум 120000). Используется и как **таймаут установки TCP/TLS** к `api.telegram.org` (через undici). |
 | `TELEGRAM_HTTPS_PROXY` | HTTP-прокси для запросов только к Telegram API, например `http://127.0.0.1:7890` (порт «Mixed port» в Clash / аналог). Если до `api.telegram.org` **Connect timeout** без VPN — включите VPN и укажите локальный прокси. Альтернативные имена: `TELEGRAM_PROXY`, `HTTPS_PROXY`. |

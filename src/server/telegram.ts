@@ -25,6 +25,15 @@ export function isTelegramConfigured(): boolean {
   return Boolean(getBotToken());
 }
 
+export function getTelegramWebhookSecret(): string | undefined {
+  return process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || undefined;
+}
+
+export function getTelegramWebhookUrl(): string | null {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  return baseUrl ? `${baseUrl}/api/telegram/webhook` : null;
+}
+
 export function getWarehouseChatId(): string | undefined {
   const id =
     process.env.TELEGRAM_NOTIFICATION_CHAT_ID?.trim() ||

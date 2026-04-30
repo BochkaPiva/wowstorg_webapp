@@ -6,6 +6,8 @@ import { jsonError, jsonOk } from "@/server/http";
 import {
   getSendTimeoutMs,
   getTelegramProxyLabel,
+  getTelegramWebhookSecret,
+  getTelegramWebhookUrl,
   getWarehouseChatId,
   getWarehouseTopicId,
   isTelegramConfigured,
@@ -42,6 +44,8 @@ export async function GET() {
       hasBotToken: isTelegramConfigured(),
       warehouseChatId,
       warehouseTopicId,
+      webhookUrl: getTelegramWebhookUrl(),
+      webhookSecretConfigured: Boolean(getTelegramWebhookSecret()),
       sendTimeoutMs: getSendTimeoutMs(),
       proxyEnabled: isTelegramProxyConfigured(),
       proxyLabel: getTelegramProxyLabel(),

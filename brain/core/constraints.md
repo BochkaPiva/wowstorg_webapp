@@ -43,6 +43,7 @@
 | `TELEGRAM_NOTIFICATION_CHAT_ID` / `TELEGRAM_WAREHOUSE_CHAT_ID` | Чат склада |
 | `TELEGRAM_NOTIFICATION_TOPIC_ID` / `TELEGRAM_WAREHOUSE_TOPIC_ID` | Топик в форуме |
 | `TELEGRAM_GREENWICH_CHAT_ID` | Опционально |
+| `TELEGRAM_WEBHOOK_SECRET` | Секрет входящего Telegram webhook (`/api/telegram/webhook`) |
 | `TELEGRAM_SEND_TIMEOUT_MS` | Таймаут |
 | `TELEGRAM_HTTPS_PROXY` / `TELEGRAM_PROXY` / `HTTPS_PROXY` | Прокси для Telegram в РФ |
 | `REMINDERS_CRON_TOKEN` | `POST /api/reminders/run` (заголовок `x-cron-token`) |

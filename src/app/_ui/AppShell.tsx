@@ -91,25 +91,30 @@ export function AppShell({
       : `${state.user.displayName} · ${state.user.role}`;
 
   return (
-    <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
+    <div className="relative min-h-screen w-full min-w-0 overflow-x-clip bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
       {isCatalogRoute ? (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden [contain:paint]"
+          aria-hidden="true"
+        >
+          {/* Боковые орбы только от sm+: на узкой ширине отрицательные offsets в Safari раздувают scrollWidth,
+              центрирующие блоки с mx-auto визуально «уезжают» вправо без горизонтального скролла. */}
           <div
-            className="absolute -left-28 top-16 h-[360px] w-[360px] rounded-full opacity-80"
+            className="absolute -left-28 top-16 hidden h-[360px] w-[360px] rounded-full opacity-80 sm:block"
             style={{
               background:
                 "radial-gradient(circle at 35% 35%, rgba(124,58,237,0.22), rgba(124,58,237,0) 68%)",
             }}
           />
           <div
-            className="absolute right-[-120px] top-28 h-[340px] w-[340px] rounded-full opacity-80"
+            className="absolute right-[-120px] top-28 hidden h-[340px] w-[340px] rounded-full opacity-80 sm:block"
             style={{
               background:
                 "radial-gradient(circle at 30% 30%, rgba(250,204,21,0.18), rgba(250,204,21,0) 70%)",
             }}
           />
           <div
-            className="absolute bottom-24 left-1/3 h-[280px] w-[280px] rounded-full opacity-60"
+            className="absolute bottom-20 left-[20%] h-[220px] w-[220px] rounded-full opacity-60 max-sm:left-[18%] sm:bottom-24 sm:left-1/3 sm:h-[280px] sm:w-[280px]"
             style={{
               background:
                 "radial-gradient(circle at 50% 50%, rgba(168,85,247,0.14), rgba(168,85,247,0) 72%)",
@@ -167,7 +172,7 @@ export function AppShell({
             : "bg-white/70 backdrop-blur",
         ].join(" ")}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
+        <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -329,10 +334,10 @@ export function AppShell({
       ) : null}
 
       {/* content */}
-      <div className="mx-auto max-w-7xl px-3 pb-4 pt-2 sm:px-5 sm:pb-8 sm:pt-5">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-3 pb-4 pt-2 sm:px-5 sm:pb-8 sm:pt-5">
         <main
           className={[
-            "rounded-2xl border border-violet-200/60 p-3 text-zinc-900 shadow-sm sm:p-5",
+            "min-w-0 max-w-full rounded-2xl border border-violet-200/60 p-3 text-zinc-900 shadow-sm sm:p-5",
             isCatalogRoute
               ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,255,0.98))] shadow-[0_18px_45px_rgba(109,40,217,0.08)]"
               : "bg-white/90 backdrop-blur",

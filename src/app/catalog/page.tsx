@@ -786,23 +786,45 @@ export default function CatalogPage() {
                       onChange={(v) => patchCatalogDates({ readyByDate: v })}
                       min={dateMin}
                       max={startDate}
-                      hint="Склад обязуется подготовить реквизит к этой дате (не позже начала аренды)"
                     />
                   </div>
                 ) : null}
               </div>
-              {startDate && endDate && rentalDays > 0 ? (
-                <p className="mt-2 text-sm font-medium text-violet-900/90">
-                  Выбрано: {ruRentalBillableDayCount(rentalDays)}
-                  {" "}
-                  (на границах периода учитываются «утро» и «вечер»)
-                </p>
-              ) : null}
-              <span className="mk-subtitle">
-                Доступность и цены считаются на выбранный период. В календаре два месяца рядом: подсвечен диапазон; один
-                день — дважды нажмите на дату. Даты в прошлом недоступны; по умолчанию готовность сегодня, аренда с
-                завтра до послезавтра.
-              </span>
+              <div className="mk-catalogDateSummary">
+                <div className="mk-dateDaysBadge">
+                  Дней выбрано: {rentalDays > 0 ? rentalDays : "—"}
+                </div>
+                <details className="mk-dateLegend">
+                  <summary>Подсказки по датам</summary>
+                  <ul>
+                    <li>
+                      <strong>Календарь</strong> — кнопка с иконкой у периода. Прошлые даты недоступны.
+                    </li>
+                    <li>
+                      <strong>Начало и окончание</strong> — нажмите сначала одну дату, потом другую (календарь сам расставит
+                      порядок).
+                    </li>
+                    <li>
+                      <strong>Один день</strong> — нажмите нужную дату один раз: начало и окончание совпадут.
+                    </li>
+                    <li>
+                      <strong>Снова один день</strong> после длинного периода — нажмите крестик у даты окончания.
+                    </li>
+                    {startDate !== endDate ? (
+                      <li>
+                        <strong>Время первого и последнего дня</strong> — переключатели «утро / вечер», если они есть рядом
+                        с полем: они влияют на расчёт за первые и последние сутки.
+                      </li>
+                    ) : null}
+                    {isGreenwich ? (
+                      <li>
+                        <strong>Готовность</strong> — к какому числу нужно успеть всё собрать на складе; не позже первого дня
+                        аренды.
+                      </li>
+                    ) : null}
+                  </ul>
+                </details>
+              </div>
             </>
           ) : isQuickSupplement ? (
             <div className="mk-subtitle">

@@ -14,12 +14,15 @@ import type { RentalPartOfDay } from "@/lib/rental-days";
 import { RentalPartOfDayToggle } from "@/app/catalog/RentalPartOfDayToggle";
 
 function measurePopoverLeft(wrapRect: DOMRect) {
-  const popoverW = Math.min(640, window.innerWidth - 24);
+  const edge = 12;
+  const maxByViewport = typeof window !== "undefined" ? window.innerWidth - edge * 2 : 720;
+  /** Ширина на два месяца в один ряд; на узком экране — ширина вьюпорта, скролл горизонтальный */
+  const popoverW = Math.min(760, Math.max(280, maxByViewport));
   let left = wrapRect.left + wrapRect.width / 2 - popoverW / 2;
-  if (left + popoverW > window.innerWidth - 8) {
-    left = Math.max(8, window.innerWidth - popoverW - 8);
+  if (left + popoverW > window.innerWidth - edge) {
+    left = Math.max(edge, window.innerWidth - popoverW - edge);
   }
-  left = Math.max(8, left);
+  left = Math.max(edge, left);
   return { left, width: popoverW };
 }
 
@@ -51,7 +54,7 @@ export function CatalogRentalPeriodPicker({
   onStartPartChange: (v: RentalPartOfDay) => void;
   onEndPartChange: (v: RentalPartOfDay) => void;
 }) {
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
   const popRef = React.useRef<HTMLDivElement>(null);
   const [open, setOpen] = React.useState(false);
   const [coords, setCoords] = React.useState<{ top: number; left: number; width: number } | null>(null);
@@ -127,6 +130,13 @@ export function CatalogRentalPeriodPicker({
 
   const minD = ymdLocalToDate(minDate);
 
+  function commitRange(from: Date, to: Date) {
+    let a = dateToYmdLocal(from);
+    let b = dateToYmdLocal(to);
+    if (a > b) [a, b] = [b, a];
+    onRangeChange(a, b);
+  }
+
   const popover =
     open && typeof document !== "undefined" && coords
       ? createPortal(
@@ -144,14 +154,10 @@ export function CatalogRentalPeriodPicker({
             }}
           >
             <div className="mk-rangePicker-popoverInner">
-              <p className="mk-rangePicker-hint">
-                Первый клик — начало, второй — окончание. Один день: дважды нажмите на ту же дату.
-              </p>
               <div className="mk-rangePicker-scroll">
                 <DayPicker
                   mode="range"
                   required={false}
-                  min={1}
                   numberOfMonths={2}
                   locale={ru}
                   pagedNavigation
@@ -159,10 +165,7 @@ export function CatalogRentalPeriodPicker({
                   onSelect={(r) => {
                     setDraftRange(r ?? { from: undefined, to: undefined });
                     if (r?.from && r?.to) {
-                      let a = dateToYmdLocal(r.from);
-                      let b = dateToYmdLocal(r.to);
-                      if (a > b) [a, b] = [b, a];
-                      onRangeChange(a, b);
+                      commitRange(r.from, r.to);
                     }
                   }}
                   defaultMonth={draftRange.from ?? draftRange.to ?? minD}
@@ -193,12 +196,28 @@ export function CatalogRentalPeriodPicker({
           )}
         </div>
 
-        <button
-          type="button"
+        <div
           ref={triggerRef}
+          role="group"
+          tabIndex={0}
           className="mk-rentalPeriod-trigger"
           aria-expanded={open}
           aria-haspopup="dialog"
+          aria-label="Период аренды — открыть календарь"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (open) {
+                setOpen(false);
+                setCoords(null);
+              } else if (triggerRef.current) {
+                const r = triggerRef.current.getBoundingClientRect();
+                const { left, width } = measurePopoverLeft(r);
+                setCoords({ top: r.bottom + 10, left, width });
+                setOpen(true);
+              }
+            }
+          }}
           onClick={() => {
             if (open) {
               setOpen(false);
@@ -220,7 +239,31 @@ export function CatalogRentalPeriodPicker({
           <span className="mk-rentalPeriod-triggerSep" aria-hidden />
           <span className="mk-rentalPeriod-seg mk-rentalPeriod-segEnd">
             <span className="mk-rentalPeriod-segHint">Окончание</span>
-            <span className="mk-rentalPeriod-segDate">{formatDateRu(endDate)}</span>
+            <span className="mk-rentalPeriod-segDateRow">
+              <span className="mk-rentalPeriod-segDate">{formatDateRu(endDate)}</span>
+              {multiDay ? (
+                <button
+                  type="button"
+                  className="mk-rentalPeriod-clearEnd"
+                  aria-label="Оставить аренду на один день — убрать дату окончания"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    commitRange(ymdLocalToDate(startDate), ymdLocalToDate(startDate));
+                    setDraftRange({
+                      from: ymdLocalToDate(startDate),
+                      to: ymdLocalToDate(startDate),
+                    });
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden>
+                    <path d="M18 6L6 18M6 6l12 12" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              ) : null}
+            </span>
           </span>
           <span className="mk-rentalPeriod-calIcon" aria-hidden>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -230,7 +273,7 @@ export function CatalogRentalPeriodPicker({
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
           </span>
-        </button>
+        </div>
 
         <div className="mk-rentalPeriod-edge">
           {multiDay ? (
@@ -238,7 +281,6 @@ export function CatalogRentalPeriodPicker({
           ) : (
             <span
               className="mk-partDay-chip"
-              title="За один календарный день доступен только тариф с утра до вечера"
               style={{ cursor: "default" }}
             >
               Целый день

@@ -88,6 +88,7 @@
   flex-direction: column;
   gap: 0.55rem;
   min-width: 0;
+  align-items: flex-start;
 }
 
 /* Строка: поле даты + компактный тумблер справа */
@@ -99,11 +100,17 @@
   min-width: 0;
 }
 
+/* Поле даты не растягивается на всю ячейку сетки — только по содержимому (flex-grow убран). */
 .mk-dateField.mk-dateField--hasAccessory .mk-dateWrap {
-  flex: 1 1 9rem;
-  min-width: 0;
-  width: auto;
+  flex: 0 0 auto;
+  width: fit-content;
   max-width: 100%;
+  min-width: 0;
+}
+
+.mk-dateField.mk-dateField--hasAccessory .mk-dateText {
+  max-width: 100%;
+  width: clamp(9rem, 100%, 11rem);
 }
 
 .mk-dateEndAccessory {

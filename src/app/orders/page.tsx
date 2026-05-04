@@ -6,6 +6,8 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 
+import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
+
 type OrderCard = {
   id: string;
   parentOrderId?: string | null;
@@ -24,6 +26,8 @@ type OrderCard = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay | null;
+  rentalEndPartOfDay?: RentalPartOfDay | null;
   createdAt: string;
   customer: { id: string; name: string };
   totalAmount?: number;
@@ -82,6 +86,17 @@ function fmtDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function periodLineOrders(o: OrderCard): string {
+  return formatRentalPeriodRangeRu({
+    startDateIso: o.startDate.slice(0, 10),
+    endDateIso: o.endDate.slice(0, 10),
+    startDateFormatted: fmtDate(o.startDate),
+    endDateFormatted: fmtDate(o.endDate),
+    rentalStartPartOfDay: o.rentalStartPartOfDay ?? undefined,
+    rentalEndPartOfDay: o.rentalEndPartOfDay ?? undefined,
+  });
 }
 
 function norm(s: string): string {
@@ -294,8 +309,7 @@ export default function OrdersPage() {
           <div className="mt-2 text-sm text-zinc-600">
             Готовность к: <span className="font-semibold">{fmtDate(o.readyByDate)}</span>
             {" · "}
-            Период: <span className="font-semibold">{fmtDate(o.startDate)}</span> —{" "}
-            <span className="font-semibold">{fmtDate(o.endDate)}</span>
+            Период: <span className="font-semibold">{periodLineOrders(o)}</span>
             {o.totalAmount != null ? (
               <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
                 {o.totalAmount.toLocaleString("ru-RU")} ₽

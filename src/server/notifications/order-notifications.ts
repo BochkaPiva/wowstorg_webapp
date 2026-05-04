@@ -15,6 +15,7 @@ import {
 } from "@/server/telegram";
 import { isTelegramConfigured } from "@/server/telegram";
 import { prisma } from "@/server/db";
+import { formatRentalPeriodRangeFromUtcDatesRu } from "@/lib/rental-days";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 /** Пишет строку в notification-debug.log в корне проекта (можно открыть файл и посмотреть после теста). */
@@ -45,6 +46,8 @@ type OrderForNotify = {
   readyByDate: Date;
   startDate: Date;
   endDate: Date;
+  rentalStartPartOfDay?: "MORNING" | "EVENING";
+  rentalEndPartOfDay?: "MORNING" | "EVENING";
   comment: string | null;
   deliveryEnabled: boolean;
   deliveryComment: string | null;
@@ -120,9 +123,13 @@ function orderHeader(o: OrderForNotify): string {
   const greenwich = o.greenwichUser ? ` · ${escapeTelegramHtml(o.greenwichUser.displayName)}` : "";
   const event = o.eventName ? `\n📌 ${escapeTelegramHtml(o.eventName)}` : "";
   const ready = o.readyByDate.toLocaleDateString("ru-RU");
-  const start = o.startDate.toLocaleDateString("ru-RU");
-  const end = o.endDate.toLocaleDateString("ru-RU");
-  return `👤 ${customer}${greenwich}${event}\n📅 Готовность: ${ready} · Период: ${start} — ${end}`;
+  const period = formatRentalPeriodRangeFromUtcDatesRu({
+    startDate: o.startDate,
+    endDate: o.endDate,
+    rentalStartPartOfDay: o.rentalStartPartOfDay,
+    rentalEndPartOfDay: o.rentalEndPartOfDay,
+  });
+  return `👤 ${customer}${greenwich}${event}\n📅 Готовность: ${ready} · Период: ${escapeTelegramHtml(period)}`;
 }
 
 function buildLinesBlock(o: OrderForNotify): string {
@@ -201,6 +208,24 @@ function buildGreenwichDiff(before: OrderForNotify, after: OrderForNotify): { li
   }
   if ((before.greenwichDiscountRequestComment ?? "").trim() !== (after.greenwichDiscountRequestComment ?? "").trim()) {
     notes.push("Комментарий к запросу скидки обновлён");
+  }
+
+  const periodSig = (x: OrderForNotify) =>
+    `${x.startDate.toISOString().slice(0, 10)}|${x.endDate.toISOString().slice(0, 10)}|${x.rentalStartPartOfDay ?? "MORNING"}|${x.rentalEndPartOfDay ?? "EVENING"}`;
+  if (periodSig(before) !== periodSig(after)) {
+    notes.push(
+      `Аренда: «${formatRentalPeriodRangeFromUtcDatesRu({
+        startDate: before.startDate,
+        endDate: before.endDate,
+        rentalStartPartOfDay: before.rentalStartPartOfDay,
+        rentalEndPartOfDay: before.rentalEndPartOfDay,
+      })}» → «${formatRentalPeriodRangeFromUtcDatesRu({
+        startDate: after.startDate,
+        endDate: after.endDate,
+        rentalStartPartOfDay: after.rentalStartPartOfDay,
+        rentalEndPartOfDay: after.rentalEndPartOfDay,
+      })}»`,
+    );
   }
 
   return { lines: out, orderNote: notes.length ? notes.join(" · ") : undefined };
@@ -317,6 +342,8 @@ export async function notifyRentalDiscountApplied(order: OrderForNotify): Promis
     const pricing = calcOrderPricing({
       startDate: order.startDate,
       endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
       deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
       montagePrice: order.montageEnabled ? order.montagePrice : 0,
@@ -364,6 +391,8 @@ function buildEstimateBody(o: OrderForNotify): string {
   const pricing = calcOrderPricing({
     startDate: o.startDate,
     endDate: o.endDate,
+    rentalStartPartOfDay: o.rentalStartPartOfDay,
+    rentalEndPartOfDay: o.rentalEndPartOfDay,
     payMultiplier: o.payMultiplier,
     deliveryPrice: o.deliveryEnabled ? o.deliveryPrice : 0,
     montagePrice: o.montageEnabled ? o.montagePrice : 0,

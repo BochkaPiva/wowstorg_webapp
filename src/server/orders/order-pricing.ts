@@ -1,5 +1,9 @@
 import { ORDER_TAX_RATE } from "@/lib/constants";
-import { rentalCalendarDaysInclusiveUtcDates } from "@/lib/rental-days";
+import {
+  billableRentalDays,
+  rentalCalendarDaysInclusiveUtcDates,
+  type RentalPartOfDay,
+} from "@/lib/rental-days";
 
 export type OrderDiscountType = "NONE" | "PERCENT" | "AMOUNT";
 
@@ -72,6 +76,8 @@ export function normalizeOrderDiscount(input: OrderDiscountInput): {
 export function calcOrderPricing(args: {
   startDate: Date;
   endDate: Date;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier: unknown;
   deliveryPrice?: unknown;
   montagePrice?: unknown;
@@ -80,7 +86,14 @@ export function calcOrderPricing(args: {
   discount?: OrderDiscountInput;
   quantityMode?: "requested" | "issued";
 }): OrderPricingBreakdown {
-  const days = daysBetween(args.startDate, args.endDate);
+  const startPart = args.rentalStartPartOfDay ?? "MORNING";
+  const endPart = args.rentalEndPartOfDay ?? "EVENING";
+  const days = billableRentalDays({
+    startDate: args.startDate,
+    endDate: args.endDate,
+    rentalStartPartOfDay: startPart,
+    rentalEndPartOfDay: endPart,
+  });
   const payMultiplier = num(args.payMultiplier) || 1;
   const quantityMode = args.quantityMode ?? "requested";
   const baseLines = args.lines.map((line) => {

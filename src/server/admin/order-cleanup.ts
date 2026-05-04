@@ -154,6 +154,8 @@ function uniqueIds(ids: string[]): string[] {
 function calcOrderTotalAmount(args: {
   startDate: Date;
   endDate: Date;
+  rentalStartPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalStartPartOfDay"];
+  rentalEndPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalEndPartOfDay"];
   payMultiplier: Prisma.Decimal | number | null;
   deliveryPrice: Prisma.Decimal | number | null;
   montagePrice: Prisma.Decimal | number | null;
@@ -237,6 +239,8 @@ export async function listOrdersForCleanup(
       readyByDate: true,
       startDate: true,
       endDate: true,
+      rentalStartPartOfDay: true,
+      rentalEndPartOfDay: true,
       createdAt: true,
       eventName: true,
       estimateFileKey: true,
@@ -275,6 +279,8 @@ export async function listOrdersForCleanup(
     totalAmount: calcOrderTotalAmount({
       startDate: order.startDate,
       endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
       deliveryPrice: order.deliveryPrice,
       montagePrice: order.montagePrice,
@@ -373,6 +379,8 @@ async function prepareOrderCleanup(
       readyByDate: true,
       startDate: true,
       endDate: true,
+      rentalStartPartOfDay: true,
+      rentalEndPartOfDay: true,
       createdAt: true,
       eventName: true,
       greenwichUserId: true,
@@ -447,6 +455,8 @@ async function prepareOrderCleanup(
     totalAmount: calcOrderTotalAmount({
       startDate: order.startDate,
       endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
       deliveryPrice: order.deliveryPrice,
       montagePrice: order.montagePrice,

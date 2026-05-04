@@ -42,6 +42,12 @@ enum OrderDiscountType {
   AMOUNT
 }
 
+/// Половина календарного дня аренды («утро» / «вечер»).
+enum RentalPartOfDay {
+  MORNING
+  EVENING
+}
+
 enum Condition {
   OK
   NEEDS_REPAIR
@@ -724,6 +730,10 @@ model Order {
   readyByDate DateTime
   startDate   DateTime
   endDate     DateTime
+
+  /// Интервал оплаты внутри календарного дня (см. `billableRentalDays`).
+  rentalStartPartOfDay RentalPartOfDay @default(MORNING)
+  rentalEndPartOfDay   RentalPartOfDay @default(EVENING)
 
   deliveryEnabled  Boolean  @default(false)
   deliveryComment  String?

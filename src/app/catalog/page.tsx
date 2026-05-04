@@ -14,11 +14,12 @@ import {
   normalizeCatalogDates,
   todayDateOnly,
 } from "@/lib/catalogDates";
-import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
+import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./catalog.css";
 import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { ItemModal } from "@/app/catalog/ItemModal";
+import { RentalPartOfDayToggle } from "@/app/catalog/RentalPartOfDayToggle";
 
 type CatalogTab = "positions" | "categories" | "kits";
 
@@ -64,13 +65,13 @@ function buildPaginationTokens(currentPage: number, totalPages: number): Array<n
   return tokens;
 }
 
-function ruCalendarDayCount(n: number): string {
+function ruRentalBillableDayCount(n: number): string {
   const m100 = n % 100;
   const m10 = n % 10;
-  if (m100 >= 11 && m100 <= 14) return `${n} календарных дней`;
-  if (m10 === 1) return `${n} календарный день`;
-  if (m10 >= 2 && m10 <= 4) return `${n} календарных дня`;
-  return `${n} календарных дней`;
+  if (m100 >= 11 && m100 <= 14) return `${n} дней аренды`;
+  if (m10 === 1) return `${n} день аренды`;
+  if (m10 >= 2 && m10 <= 4) return `${n} дня аренды`;
+  return `${n} дней аренды`;
 }
 
 function catalogCartHref(args: {
@@ -130,6 +131,12 @@ export default function CatalogPage() {
   const [startDate, setStartDate] = React.useState(() => getDefaultCatalogDates().startDate);
   const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
   const [readyByDate, setReadyByDate] = React.useState(() => getDefaultCatalogDates().readyByDate);
+  const [rentalStartPartOfDay, setRentalStartPartOfDay] = React.useState<RentalPartOfDay>(
+    () => getDefaultCatalogDates().rentalStartPartOfDay,
+  );
+  const [rentalEndPartOfDay, setRentalEndPartOfDay] = React.useState<RentalPartOfDay>(
+    () => getDefaultCatalogDates().rentalEndPartOfDay,
+  );
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
   const projectDatesPrefilledRef = React.useRef<string | null>(null);
 
@@ -148,16 +155,32 @@ export default function CatalogPage() {
   const isProjectDemoCatalogRef = React.useRef(isProjectDemoCatalog);
   isProjectDemoCatalogRef.current = isProjectDemoCatalog;
 
-  const datesRef = React.useRef({ readyByDate, startDate, endDate });
-  datesRef.current = { readyByDate, startDate, endDate };
+  const datesRef = React.useRef({
+    readyByDate,
+    startDate,
+    endDate,
+    rentalStartPartOfDay,
+    rentalEndPartOfDay,
+  });
+  datesRef.current = { readyByDate, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay };
 
   const patchCatalogDates = React.useCallback(
     (patch: Partial<{ readyByDate: string; startDate: string; endDate: string }>) => {
       try {
-        const n = normalizeCatalogDates({ ...datesRef.current, ...patch });
+        const cur = datesRef.current;
+        const n = normalizeCatalogDates({
+          readyByDate: cur.readyByDate,
+          startDate: cur.startDate,
+          endDate: cur.endDate,
+          rentalStartPartOfDay: cur.rentalStartPartOfDay,
+          rentalEndPartOfDay: cur.rentalEndPartOfDay,
+          ...patch,
+        });
         setReadyByDate(n.readyByDate);
         setStartDate(n.startDate);
         setEndDate(n.endDate);
+        setRentalStartPartOfDay(n.rentalStartPartOfDay);
+        setRentalEndPartOfDay(n.rentalEndPartOfDay);
         setCurrentPage(1);
       } catch (e) {
         console.error("[catalog] patchCatalogDates", e);
@@ -195,6 +218,8 @@ export default function CatalogPage() {
     setStartDate(n.startDate);
     setEndDate(n.endDate);
     setReadyByDate(n.readyByDate);
+    setRentalStartPartOfDay(n.rentalStartPartOfDay);
+    setRentalEndPartOfDay(n.rentalEndPartOfDay);
   }, []);
 
   React.useEffect(() => {
@@ -204,13 +229,21 @@ export default function CatalogPage() {
       try {
         const res = await fetch(`/api/orders/${quickParentId}/quick-supplement/parent`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as
-          | { startDate?: string; endDate?: string; readyByDate?: string }
+          | {
+              startDate?: string;
+              endDate?: string;
+              readyByDate?: string;
+              rentalStartPartOfDay?: RentalPartOfDay;
+              rentalEndPartOfDay?: RentalPartOfDay;
+            }
           | null;
         if (!res.ok || !data) return;
         if (cancelled) return;
         if (data.startDate) setStartDate(data.startDate);
         if (data.endDate) setEndDate(data.endDate);
         if (data.readyByDate) setReadyByDate(data.readyByDate);
+        if (data.rentalStartPartOfDay) setRentalStartPartOfDay(data.rentalStartPartOfDay);
+        if (data.rentalEndPartOfDay) setRentalEndPartOfDay(data.rentalEndPartOfDay);
       } catch {
         // ignore: page can still work with existing dates
       }
@@ -323,6 +356,15 @@ export default function CatalogPage() {
       }
     }
   }, [startDate, endDate, isProjectDemoCatalog, isQuickSupplement]);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (!isQuickSupplement && !isProjectDemoCatalog) {
+        localStorage.setItem("catalog_rentalStartPart", rentalStartPartOfDay);
+        localStorage.setItem("catalog_rentalEndPart", rentalEndPartOfDay);
+      }
+    }
+  }, [rentalStartPartOfDay, rentalEndPartOfDay, isProjectDemoCatalog, isQuickSupplement]);
 
   React.useEffect(() => {
     setCart(loadCart(cartScope));
@@ -591,7 +633,17 @@ export default function CatalogPage() {
     const price = l.pricePerDay ?? (item ? Number(item.pricePerDay) : 0);
     return sum + l.qty * price;
   }, 0);
-  const rentalDays = isProjectDemoCatalog ? 1 : rentalCalendarDaysInclusive(startDate, endDate);
+  const rentalDays =
+    !isProjectDemoCatalog && startDate && endDate
+      ? billableRentalDaysFromDateOnly({
+          startDate,
+          endDate,
+          rentalStartPartOfDay,
+          rentalEndPartOfDay,
+        })
+      : isProjectDemoCatalog
+        ? 1
+        : 0;
   const cartTotalForPeriod = cartTotalPerDay * (rentalDays || 1);
 
   const cartHref = catalogCartHref({
@@ -712,18 +764,42 @@ export default function CatalogPage() {
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
               <div className="mk-datesRow">
-                <CatalogDateField
-                  label="Дата начала"
-                  value={startDate}
-                  onChange={(v) => patchCatalogDates({ startDate: v })}
-                  min={dateMin}
-                />
-                <CatalogDateField
-                  label="Дата окончания"
-                  value={endDate}
-                  onChange={(v) => patchCatalogDates({ endDate: v })}
-                  min={endMin >= dateMin ? endMin : dateMin}
-                />
+                <div className="mk-dateColumn">
+                  <CatalogDateField
+                    label="Дата начала"
+                    value={startDate}
+                    onChange={(v) => patchCatalogDates({ startDate: v })}
+                    min={dateMin}
+                  />
+                  {startDate && endDate ? (
+                    startDate !== endDate ? (
+                      <RentalPartOfDayToggle
+                        id="catalog-rental-start"
+                        value={rentalStartPartOfDay}
+                        onChange={setRentalStartPartOfDay}
+                      />
+                    ) : (
+                      <span className="mk-partDay-fixed">Один календарный день — с утра до вечера</span>
+                    )
+                  ) : null}
+                </div>
+                <div className="mk-dateColumn">
+                  <CatalogDateField
+                    label="Дата окончания"
+                    value={endDate}
+                    onChange={(v) => patchCatalogDates({ endDate: v })}
+                    min={endMin >= dateMin ? endMin : dateMin}
+                  />
+                  {startDate && endDate ? (
+                    startDate !== endDate ? (
+                      <RentalPartOfDayToggle
+                        id="catalog-rental-end"
+                        value={rentalEndPartOfDay}
+                        onChange={setRentalEndPartOfDay}
+                      />
+                    ) : null
+                  ) : null}
+                </div>
                 {isGreenwich ? (
                   <CatalogDateField
                     label="Готовность к дате"
@@ -737,7 +813,9 @@ export default function CatalogPage() {
               </div>
               {startDate && endDate && rentalDays > 0 ? (
                 <p className="mt-2 text-sm font-medium text-violet-900/90">
-                  Выбрано: {ruCalendarDayCount(rentalDays)} (даты начала и окончания включаются в период)
+                  Выбрано: {ruRentalBillableDayCount(rentalDays)}
+                  {" "}
+                  (на границах периода учитываются «утро» и «вечер»)
                 </p>
               ) : null}
               <span className="mk-subtitle">
@@ -749,7 +827,7 @@ export default function CatalogPage() {
             <div className="mk-subtitle">
               Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
               {rentalDays > 0 ? (
-                <span className="ml-1 text-zinc-500">· {ruCalendarDayCount(rentalDays)}</span>
+                <span className="ml-1 text-zinc-500">· {ruRentalBillableDayCount(rentalDays)}</span>
               ) : null}
             </div>
           ) : (

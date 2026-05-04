@@ -12,7 +12,7 @@ import {
   PROJECT_ESTIMATE_TAX_RATE,
 } from "@/lib/project-estimate-totals";
 import { prisma } from "@/server/db";
-import { calcOrderPricing, daysBetween } from "@/server/orders/order-pricing";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 export type AnalyticsScope = { from?: string; to?: string };
 
@@ -282,6 +282,8 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         source: true,
         startDate: true,
         endDate: true,
+        rentalStartPartOfDay: true,
+        rentalEndPartOfDay: true,
         payMultiplier: true,
         deliveryPrice: true,
         montagePrice: true,
@@ -338,11 +340,11 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   let totalRentalDays = 0;
 
   for (const order of closedOrders) {
-    const days = daysBetween(order.startDate, order.endDate);
-    totalRentalDays += days;
     const pricing = calcOrderPricing({
       startDate: order.startDate,
       endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
       deliveryPrice: order.deliveryPrice,
       montagePrice: order.montagePrice,
@@ -351,6 +353,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       discount: order,
       quantityMode: "issued",
     });
+    totalRentalDays += pricing.days;
     const orderItemsRevenue = pricing.rentalSubtotalAfterDiscount;
 
     for (const [idx, line] of order.lines.entries()) {
@@ -536,6 +539,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                 select: {
                   startDate: true,
                   endDate: true,
+                  rentalStartPartOfDay: true,
+                  rentalEndPartOfDay: true,
                   payMultiplier: true,
                   deliveryEnabled: true,
                   deliveryPrice: true,
@@ -587,6 +592,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
           const pricing = calcOrderPricing({
             startDate: order.startDate,
             endDate: order.endDate,
+            rentalStartPartOfDay: order.rentalStartPartOfDay,
+            rentalEndPartOfDay: order.rentalEndPartOfDay,
             payMultiplier: order.payMultiplier,
             lines: order.lines,
             deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,

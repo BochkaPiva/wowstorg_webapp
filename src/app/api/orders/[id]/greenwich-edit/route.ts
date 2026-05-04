@@ -145,6 +145,8 @@ export async function PATCH(
           const pricingPreview = calcOrderPricing({
             startDate: order.startDate,
             endDate: order.endDate,
+            rentalStartPartOfDay: order.rentalStartPartOfDay,
+            rentalEndPartOfDay: order.rentalEndPartOfDay,
             payMultiplier: order.payMultiplier,
             lines: data.lines.map((row) => ({
               itemId: row.itemId,

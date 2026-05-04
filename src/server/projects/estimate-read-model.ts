@@ -9,7 +9,6 @@ import {
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
-import { daysBetween } from "@/server/orders/order-total";
 
 function dec(v: { toString(): string } | null | undefined): string | null {
   if (v == null) return null;
@@ -91,6 +90,8 @@ export async function buildProjectEstimateReadModel(args: {
           eventName: true,
           startDate: true,
           endDate: true,
+          rentalStartPartOfDay: true,
+          rentalEndPartOfDay: true,
           payMultiplier: true,
           deliveryEnabled: true,
           deliveryComment: true,
@@ -221,16 +222,16 @@ export async function buildProjectEstimateReadModel(args: {
 
               if (linkedOrder) {
                 const extras = parseLineLocalExtras(section.lineLocalExtras);
-                const dayCount = normalizeProjectEstimateDays(
-                  daysBetween(linkedOrder.startDate, linkedOrder.endDate),
-                ) ?? 1;
                 const pricing = calcOrderPricing({
                   startDate: linkedOrder.startDate,
                   endDate: linkedOrder.endDate,
+                  rentalStartPartOfDay: linkedOrder.rentalStartPartOfDay,
+                  rentalEndPartOfDay: linkedOrder.rentalEndPartOfDay,
                   payMultiplier: linkedOrder.payMultiplier,
                   lines: linkedOrder.lines,
                   discount: linkedOrder,
                 });
+                const dayCount = normalizeProjectEstimateDays(pricing.days) ?? 1;
                 const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => {
                   const qty = line.requestedQty;
                   const clientTotal = Math.round(pricing.lineAllocations[index]?.rentalAfterDiscount ?? 0);

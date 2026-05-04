@@ -8,6 +8,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 type QueueOrder = {
   id: string;
@@ -17,6 +18,8 @@ type QueueOrder = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay | null;
+  rentalEndPartOfDay?: RentalPartOfDay | null;
   createdAt: string;
   customer: { id: string; name: string };
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
@@ -63,6 +66,19 @@ function fmtDateRu(iso: string) {
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const yy = d.getUTCFullYear();
   return `${dd}.${mm}.${yy}`;
+}
+
+function periodLineQueue(o: QueueOrder): string {
+  const startIso = o.startDate.slice(0, 10);
+  const endIso = o.endDate.slice(0, 10);
+  return formatRentalPeriodRangeRu({
+    startDateIso: startIso,
+    endDateIso: endIso,
+    startDateFormatted: fmtDateRu(o.startDate),
+    endDateFormatted: fmtDateRu(o.endDate),
+    rentalStartPartOfDay: o.rentalStartPartOfDay ?? undefined,
+    rentalEndPartOfDay: o.rentalEndPartOfDay ?? undefined,
+  });
 }
 
 function statusHeaderClass(status: string): string {
@@ -288,8 +304,7 @@ function WarehouseQueueContent() {
           ) : null}
           <div className="mt-2 text-sm text-zinc-600">
             Готовность: <span className="font-semibold">{fmtDateRu(o.readyByDate)}</span> · Период:{" "}
-            <span className="font-semibold">{fmtDateRu(o.startDate)}</span> —{" "}
-            <span className="font-semibold">{fmtDateRu(o.endDate)}</span>
+            <span className="font-semibold">{periodLineQueue(o)}</span>
             {o.totalAmount != null ? (
               <span className="ml-2 rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                 · {o.totalAmount.toLocaleString("ru-RU")} ₽

@@ -3,6 +3,11 @@
  * Правила: нет дат в прошлом; readyByDate ≤ startDate ≤ endDate (один день аренды — ок).
  */
 
+import {
+  coerceRentalPartsForDates,
+  type RentalPartOfDay,
+} from "@/lib/rental-days";
+
 export function todayDateOnly(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -14,17 +19,32 @@ export function addDays(dateStr: string, days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** Значения по умолчанию: готовность сегодня, аренда — завтра … послезавтра. */
+export const DEFAULT_RENTAL_START_PART: RentalPartOfDay = "MORNING";
+export const DEFAULT_RENTAL_END_PART: RentalPartOfDay = "EVENING";
+
+export function parseStoredRentalPart(raw: string | null, fallback: RentalPartOfDay): RentalPartOfDay {
+  if (raw === "MORNING" || raw === "EVENING") return raw;
+  return fallback;
+}
+
+/** Значения по умолчанию: готовность сегодня, аренда — завтра … послезавтра; половины «утро→вечер» на одном дне. */
 export function getDefaultCatalogDates(): {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
 } {
   const t = todayDateOnly();
+  const startDate = addDays(t, 1);
+  const endDate = addDays(t, 2);
+  const coerced = coerceRentalPartsForDates(startDate, endDate, DEFAULT_RENTAL_START_PART, DEFAULT_RENTAL_END_PART);
   return {
     readyByDate: t,
-    startDate: addDays(t, 1),
-    endDate: addDays(t, 2),
+    startDate,
+    endDate,
+    rentalStartPartOfDay: coerced.rentalStartPartOfDay,
+    rentalEndPartOfDay: coerced.rentalEndPartOfDay,
   };
 }
 
@@ -35,7 +55,15 @@ export function normalizeCatalogDates(input: {
   readyByDate: string;
   startDate: string;
   endDate: string;
-}): { readyByDate: string; startDate: string; endDate: string } {
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
+}): {
+  readyByDate: string;
+  startDate: string;
+  endDate: string;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
+} {
   const min = todayDateOnly();
   let ready = input.readyByDate >= min ? input.readyByDate : min;
   let start = input.startDate >= min ? input.startDate : min;
@@ -45,24 +73,42 @@ export function normalizeCatalogDates(input: {
   if (end < start) end = start;
   if (ready > start) ready = start;
 
-  return { readyByDate: ready, startDate: start, endDate: end };
+  const startPart = input.rentalStartPartOfDay ?? DEFAULT_RENTAL_START_PART;
+  const endPart = input.rentalEndPartOfDay ?? DEFAULT_RENTAL_END_PART;
+  const coerced = coerceRentalPartsForDates(start, end, startPart, endPart);
+
+  return {
+    readyByDate: ready,
+    startDate: start,
+    endDate: end,
+    rentalStartPartOfDay: coerced.rentalStartPartOfDay,
+    rentalEndPartOfDay: coerced.rentalEndPartOfDay,
+  };
 }
 
-/** Собрать даты из localStorage или дефолты, затем нормализовать (устаревшие значения поднимаются к сегодня). */
 export function catalogDatesFromStorage(): {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
 } {
   if (typeof window === "undefined") return getDefaultCatalogDates();
   const defs = getDefaultCatalogDates();
   const ready = localStorage.getItem("catalog_readyByDate") ?? defs.readyByDate;
   const start = localStorage.getItem("catalog_startDate") ?? defs.startDate;
   const end = localStorage.getItem("catalog_endDate") ?? defs.endDate;
+  const startPart = parseStoredRentalPart(
+    localStorage.getItem("catalog_rentalStartPart"),
+    DEFAULT_RENTAL_START_PART,
+  );
+  const endPart = parseStoredRentalPart(localStorage.getItem("catalog_rentalEndPart"), DEFAULT_RENTAL_END_PART);
   return normalizeCatalogDates({
     readyByDate: ready,
     startDate: start,
     endDate: end,
+    rentalStartPartOfDay: startPart,
+    rentalEndPartOfDay: endPart,
   });
 }
 

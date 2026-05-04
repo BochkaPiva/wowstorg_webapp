@@ -9,7 +9,10 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
-import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
+import {
+  billableRentalDaysFromDateOnly,
+  type RentalPartOfDay,
+} from "@/lib/rental-days";
 
 type OrderLine = {
   id: string;
@@ -43,6 +46,8 @@ type Order = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   createdAt: string;
   updatedAt: string;
   eventName: string | null;
@@ -143,10 +148,16 @@ function fmtDate(s: string) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function fmtDateRentPart(dateIso: string, part: RentalPartOfDay) {
+  return `${fmtDate(dateIso)} · ${part === "MORNING" ? "утро" : "вечер"}`;
+}
+
 function orderTotal(order: {
   lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier?: number | null;
   deliveryPrice: number | null;
   montagePrice: number | null;
@@ -162,6 +173,8 @@ function calcOrderPricingClient(order: {
   lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier?: number | null;
   deliveryPrice: number | null;
   montagePrice: number | null;
@@ -170,7 +183,14 @@ function calcOrderPricingClient(order: {
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
 }) {
-  const days = rentalCalendarDaysInclusive(order.startDate, order.endDate) || 1;
+  const startPart: RentalPartOfDay = order.rentalStartPartOfDay ?? "MORNING";
+  const endPart: RentalPartOfDay = order.rentalEndPartOfDay ?? "EVENING";
+  const days = billableRentalDaysFromDateOnly({
+    startDate: order.startDate,
+    endDate: order.endDate,
+    rentalStartPartOfDay: startPart,
+    rentalEndPartOfDay: endPart,
+  });
   const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
   const rentalBeforeDiscount = order.lines.reduce(
     (sum, l) => sum + (l.pricePerDaySnapshot ?? 0) * l.requestedQty * days * multiplier,
@@ -731,6 +751,8 @@ export default function OrderDetailsPage() {
       })),
       startDate: order.startDate,
       endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "EVENING",
       payMultiplier: order.payMultiplier,
       deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
       montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
@@ -1310,7 +1332,8 @@ export default function OrderDetailsPage() {
               ) : null}
               <p className="text-sm text-zinc-500">
                 Готовность к: <strong>{fmtDate(order.readyByDate)}</strong> · Период:{" "}
-                <strong>{fmtDate(order.startDate)}</strong> — <strong>{fmtDate(order.endDate)}</strong>
+                <strong>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</strong> —{" "}
+                <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "EVENING")}</strong>
               </p>
               <p className="text-xs text-zinc-400">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}

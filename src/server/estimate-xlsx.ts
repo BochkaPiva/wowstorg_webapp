@@ -6,6 +6,8 @@ type OrderForEstimate = {
   eventName: string | null;
   startDate: Date;
   endDate: Date;
+  rentalStartPartOfDay?: "MORNING" | "EVENING";
+  rentalEndPartOfDay?: "MORNING" | "EVENING";
   payMultiplier: unknown;
   deliveryEnabled: boolean;
   deliveryPrice: unknown;
@@ -82,6 +84,8 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   const pricing = calcOrderPricing({
     startDate: order.startDate,
     endDate: order.endDate,
+    rentalStartPartOfDay: order.rentalStartPartOfDay,
+    rentalEndPartOfDay: order.rentalEndPartOfDay,
     payMultiplier: order.payMultiplier,
     deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
     montagePrice: order.montageEnabled ? order.montagePrice : 0,

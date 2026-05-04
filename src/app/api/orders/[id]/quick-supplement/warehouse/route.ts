@@ -14,6 +14,7 @@ import {
   isTelegramConfigured,
   sendTelegramMessage,
 } from "@/server/telegram";
+import { formatRentalPeriodRangeFromUtcDatesRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 const LineSchema = z.object({
   itemId: z.string().trim().min(1),
@@ -42,6 +43,8 @@ function buildQuickWarehouseMessage(args: {
     readyByDate: Date;
     startDate: Date;
     endDate: Date;
+    rentalStartPartOfDay?: RentalPartOfDay | null;
+    rentalEndPartOfDay?: RentalPartOfDay | null;
     customerName: string;
     greenwichDisplayName: string;
     eventName?: string | null;
@@ -49,8 +52,12 @@ function buildQuickWarehouseMessage(args: {
   lines: Array<{ itemName: string; qty: number }>;
 }): string {
   const ready = args.order.readyByDate.toLocaleDateString("ru-RU");
-  const start = args.order.startDate.toLocaleDateString("ru-RU");
-  const end = args.order.endDate.toLocaleDateString("ru-RU");
+  const period = formatRentalPeriodRangeFromUtcDatesRu({
+    startDate: args.order.startDate,
+    endDate: args.order.endDate,
+    rentalStartPartOfDay: args.order.rentalStartPartOfDay,
+    rentalEndPartOfDay: args.order.rentalEndPartOfDay,
+  });
   const eventBlock = args.order.eventName ? `\n📌 ${escapeTelegramHtml(args.order.eventName)}` : "";
   const linesBlock =
     args.lines.length > 0
@@ -65,7 +72,7 @@ function buildQuickWarehouseMessage(args: {
   return (
     `🚨 <b>СРОЧНО!! ПРИШЛА БЫСТРАЯ ЗАЯВКА</b>\n\n` +
     `👤 ${escapeTelegramHtml(args.order.customerName)} · ${escapeTelegramHtml(args.order.greenwichDisplayName)}\n` +
-    `📅 Готовность: ${escapeTelegramHtml(ready)} · Период: ${escapeTelegramHtml(start)} — ${escapeTelegramHtml(end)}` +
+    `📅 Готовность: ${escapeTelegramHtml(ready)} · Период: ${escapeTelegramHtml(period)}` +
     eventBlock +
     linesBlock +
     `\n\n${link}`
@@ -114,6 +121,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             readyByDate: true,
             startDate: true,
             endDate: true,
+            rentalStartPartOfDay: true,
+            rentalEndPartOfDay: true,
             payMultiplier: true,
           },
         });
@@ -182,6 +191,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             readyByDate: parent.readyByDate,
             startDate: parent.startDate,
             endDate: parent.endDate,
+            rentalStartPartOfDay: parent.rentalStartPartOfDay,
+            rentalEndPartOfDay: parent.rentalEndPartOfDay,
             payMultiplier: parent.payMultiplier,
             deliveryEnabled: parsed.data.deliveryEnabled ?? false,
             deliveryComment: parsed.data.deliveryEnabled ? parsed.data.deliveryComment?.trim() || null : null,
@@ -258,6 +269,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           readyByDate: true,
           startDate: true,
           endDate: true,
+          rentalStartPartOfDay: true,
+          rentalEndPartOfDay: true,
           customer: { select: { name: true } },
           greenwichUser: { select: { displayName: true } },
           eventName: true,
@@ -275,6 +288,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             readyByDate: createdOrder.readyByDate,
             startDate: createdOrder.startDate,
             endDate: createdOrder.endDate,
+            rentalStartPartOfDay: createdOrder.rentalStartPartOfDay,
+            rentalEndPartOfDay: createdOrder.rentalEndPartOfDay,
             customerName: createdOrder.customer.name,
             greenwichDisplayName: createdOrder.greenwichUser.displayName,
             eventName: createdOrder.eventName,

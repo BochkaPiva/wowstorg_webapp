@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { ORDER_TAX_RATE } from "@/lib/constants";
-import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
+import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import {
   normalizedLocalLineCostClientNumber,
   normalizedLocalLineCostClientString,
@@ -68,6 +68,8 @@ type RequisiteOrder = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   eventName: string | null;
   comment: string | null;
   deliveryEnabled: boolean;
@@ -2699,15 +2701,25 @@ function RequisiteSectionEditor({
     }
   }
 
+  const billableRentalDayCount = React.useMemo(() => {
+    if (!order) return 1;
+    return billableRentalDaysFromDateOnly({
+      startDate: order.startDate,
+      endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "EVENING",
+    });
+  }, [order]);
+
   const rentalTotal = React.useMemo(() => {
     if (!order) return 0;
-    const days = rentalCalendarDaysInclusive(order.startDate, order.endDate);
     const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
     return lines.reduce(
-      (sum, line) => sum + (line.pricePerDaySnapshot ?? 0) * line.requestedQty * days * multiplier,
+      (sum, line) =>
+        sum + (line.pricePerDaySnapshot ?? 0) * line.requestedQty * billableRentalDayCount * multiplier,
       0,
     );
-  }, [lines, order]);
+  }, [billableRentalDayCount, lines, order]);
   const servicesTotal =
     (services.deliveryEnabled ? Number(services.deliveryPrice || 0) : 0) +
     (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
@@ -2801,7 +2813,7 @@ function RequisiteSectionEditor({
             <div className="space-y-2">
               {lines.map((line, index) => {
                 const maxQty = maxQtyAllowedForRequisiteLine(linesForCap, index, availableForDatesByItemId);
-                const dayC = normalizeProjectEstimateDays(rentalCalendarDaysInclusive(order.startDate, order.endDate)) ?? 1;
+                const dayC = normalizeProjectEstimateDays(billableRentalDayCount) ?? 1;
                 const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
                 const lk = String(line.id ?? `${line.itemId}-${index}`);
                 const qtyDraftRaw = requisiteQtyDraft[lk];

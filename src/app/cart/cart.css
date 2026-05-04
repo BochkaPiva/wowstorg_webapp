@@ -315,3 +315,11 @@
   box-shadow: 0 12px 32px rgba(124, 58, 237, 0.5);
   color: #fff;
 }
+
+.mk-partDay-cartRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.85rem 1.75rem;
+  margin-top: 0.5rem;
+}

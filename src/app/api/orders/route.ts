@@ -21,6 +21,7 @@ const LineSchema = z.object({
 
 const OrderSourceSchema = z.enum(["GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"]);
 const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
+const RentalPartSchema = z.enum(["MORNING", "EVENING"]);
 
 const BodySchema = z.object({
   customerId: z.string().trim().min(1).optional(),
@@ -28,6 +29,8 @@ const BodySchema = z.object({
   readyByDate: DateOnlySchema,
   startDate: DateOnlySchema,
   endDate: DateOnlySchema,
+  rentalStartPartOfDay: RentalPartSchema.optional(),
+  rentalEndPartOfDay: RentalPartSchema.optional(),
   eventName: z.string().trim().max(200).optional(),
   comment: z.string().trim().max(5000).optional(),
 
@@ -127,6 +130,8 @@ export async function POST(req: Request) {
           readyByDate: data.readyByDate,
           startDate: data.startDate,
           endDate: data.endDate,
+          rentalStartPartOfDay: data.rentalStartPartOfDay,
+          rentalEndPartOfDay: data.rentalEndPartOfDay,
           eventName: data.eventName,
           comment: data.comment,
           deliveryEnabled: data.deliveryEnabled,
@@ -208,6 +213,9 @@ export async function POST(req: Request) {
       }
       if (e.code === "END_BEFORE_START") {
         return jsonError(400, "Дата окончания не может быть раньше даты начала");
+      }
+      if (e.code === "INVALID_RENTAL_PARTS") {
+        return jsonError(400, e.message || "Некорректный интервал утро/вечер для выбранных дат");
       }
       if (e.code === "INVALID_DISCOUNT") {
         return jsonError(400, e.message || "Некорректная скидка");

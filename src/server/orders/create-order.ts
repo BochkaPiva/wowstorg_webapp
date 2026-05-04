@@ -1,6 +1,7 @@
 import { Prisma, ProjectActivityKind, type OrderSource, type Role } from "@prisma/client";
 
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { validateRentalPartCombo, type RentalPartOfDay } from "@/lib/rental-days";
 import { utcTodayDateOnlyString } from "@/server/dates";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 import { calcOrderPricing, validateOrderDiscount, type OrderDiscountType } from "@/server/orders/order-pricing";
@@ -50,6 +51,8 @@ export type CreateOrderInput = {
   greenwichRequestedDiscountAmount?: number | null;
   greenwichDiscountRequestComment?: string | null;
   lines: InputLine[];
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
 };
 
 export type CreateOrderResult = {
@@ -147,6 +150,18 @@ export async function createOrderInTransaction(
   }
   if (!(startDate.getTime() <= endDate.getTime())) {
     throw new CreateOrderError("END_BEFORE_START");
+  }
+
+  const rentalStartPartOfDay: RentalPartOfDay = input.rentalStartPartOfDay ?? "MORNING";
+  const rentalEndPartOfDay: RentalPartOfDay = input.rentalEndPartOfDay ?? "EVENING";
+  const rentalCombo = validateRentalPartCombo({
+    startDate: input.startDate,
+    endDate: input.endDate,
+    rentalStartPartOfDay,
+    rentalEndPartOfDay,
+  });
+  if (!rentalCombo.ok) {
+    throw new CreateOrderError("INVALID_RENTAL_PARTS", rentalCombo.message);
   }
 
   const lines = groupLines(input.lines);
@@ -264,6 +279,8 @@ export async function createOrderInTransaction(
   const pricingPreview = calcOrderPricing({
     startDate,
     endDate,
+    rentalStartPartOfDay,
+    rentalEndPartOfDay,
     payMultiplier: Number(payMultiplier),
     deliveryPrice: input.deliveryPrice ?? null,
     montagePrice: input.montagePrice ?? null,
@@ -309,6 +326,8 @@ export async function createOrderInTransaction(
       readyByDate,
       startDate,
       endDate,
+      rentalStartPartOfDay,
+      rentalEndPartOfDay,
       deliveryEnabled: input.deliveryEnabled ?? false,
       deliveryComment: normalizeNullableComment(input.deliveryComment),
       deliveryPrice: input.deliveryPrice != null ? input.deliveryPrice : undefined,

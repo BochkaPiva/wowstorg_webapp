@@ -1,3 +1,4 @@
+import type { RentalPartOfDay } from "@/lib/rental-days";
 import {
   calcOrderPricing,
   daysBetween,
@@ -9,6 +10,8 @@ export { daysBetween };
 export function calcOrderTotalAmount(args: {
   startDate: Date;
   endDate: Date;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier: number | null;
   deliveryPrice: number | null;
   montagePrice: number | null;

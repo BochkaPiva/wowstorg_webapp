@@ -8,6 +8,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 import { BackgroundStackGame } from "./BackgroundStackGame";
 import { IssuanceCalendar } from "./IssuanceCalendar";
@@ -425,6 +426,22 @@ function fmtDateRu(iso: string) {
   return `${dd}.${mm}.${yy}`;
 }
 
+function periodLineHomeDash(o: {
+  startDate: string;
+  endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay | null;
+  rentalEndPartOfDay?: RentalPartOfDay | null;
+}): string {
+  return formatRentalPeriodRangeRu({
+    startDateIso: o.startDate.slice(0, 10),
+    endDateIso: o.endDate.slice(0, 10),
+    startDateFormatted: fmtDateRu(o.startDate),
+    endDateFormatted: fmtDateRu(o.endDate),
+    rentalStartPartOfDay: o.rentalStartPartOfDay ?? undefined,
+    rentalEndPartOfDay: o.rentalEndPartOfDay ?? undefined,
+  });
+}
+
 type GreenwichDashboardOrder = {
   id: string;
   status: OrderStatus;
@@ -433,6 +450,8 @@ type GreenwichDashboardOrder = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay | null;
+  rentalEndPartOfDay?: RentalPartOfDay | null;
   totalAmount: number;
 };
 
@@ -507,8 +526,7 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
                 </div>
                 <div className="mt-2 text-sm text-zinc-600">
                   Готовность: <span className="font-semibold">{fmtDateRu(data.nearest.readyByDate)}</span> · Период:{" "}
-                  <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
-                  <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
+                  <span className="font-semibold">{periodLineHomeDash(data.nearest)}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
@@ -753,6 +771,8 @@ type WowstorgDashboardData = {
     readyByDate: string;
     startDate: string;
     endDate: string;
+    rentalStartPartOfDay?: RentalPartOfDay | null;
+    rentalEndPartOfDay?: RentalPartOfDay | null;
     totalAmount: number;
   };
   activeOrders: Array<{
@@ -764,6 +784,8 @@ type WowstorgDashboardData = {
     readyByDate: string;
     startDate: string;
     endDate: string;
+    rentalStartPartOfDay?: RentalPartOfDay | null;
+    rentalEndPartOfDay?: RentalPartOfDay | null;
     totalAmount: number;
   }>;
   equipment: {
@@ -977,8 +999,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                     </div>
                     <div className="mt-2 text-sm text-zinc-600">
                       Готовность: <span className="font-semibold">{fmtDateRu(data.nearest.readyByDate)}</span> · Период:{" "}
-                      <span className="font-semibold">{fmtDateRu(data.nearest.startDate)}</span> —{" "}
-                      <span className="font-semibold">{fmtDateRu(data.nearest.endDate)}</span>
+                      <span className="font-semibold">{periodLineHomeDash(data.nearest)}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Link
@@ -1017,7 +1038,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-zinc-900">{o.customerName}</div>
                               <div className="text-xs text-zinc-600">
-                                До {fmtDateRu(o.readyByDate)} · {fmtDateRu(o.startDate)} — {fmtDateRu(o.endDate)}
+                                До {fmtDateRu(o.readyByDate)} · {periodLineHomeDash(o)}
                               </div>
                             </div>
                             <div className="shrink-0 flex items-center gap-2">

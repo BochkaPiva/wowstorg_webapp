@@ -57,6 +57,8 @@ export async function GET(req: Request) {
     select: {
       startDate: true,
       endDate: true,
+      rentalStartPartOfDay: true,
+      rentalEndPartOfDay: true,
       payMultiplier: true,
       rentalDiscountType: true,
       rentalDiscountPercent: true,
@@ -93,6 +95,8 @@ export async function GET(req: Request) {
     const pricing = calcOrderPricing({
       startDate: o.startDate,
       endDate: o.endDate,
+      rentalStartPartOfDay: o.rentalStartPartOfDay,
+      rentalEndPartOfDay: o.rentalEndPartOfDay,
       payMultiplier: o.payMultiplier,
       lines: o.lines,
       discount: o,

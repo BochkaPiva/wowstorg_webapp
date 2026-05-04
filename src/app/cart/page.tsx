@@ -10,9 +10,11 @@ import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { catalogDatesFromStorage } from "@/lib/catalogDates";
 import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
-import { rentalCalendarDaysInclusive } from "@/lib/rental-days";
+import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./cart.css";
+import "../catalog/catalog.css";
 import "../checkout/checkout.css";
+import { RentalPartOfDayToggle } from "@/app/catalog/RentalPartOfDayToggle";
 
 type CatalogItem = {
   id: string;
@@ -22,6 +24,15 @@ type CatalogItem = {
   photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
+
+function ruRentalBillableDayCountRU(n: number): string {
+  const m100 = n % 100;
+  const m10 = n % 10;
+  if (m100 >= 11 && m100 <= 14) return `${n} дней аренды`;
+  if (m10 === 1) return `${n} день аренды`;
+  if (m10 >= 2 && m10 <= 4) return `${n} дня аренды`;
+  return `${n} дней аренды`;
+}
 
 function formatDateRu(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
@@ -141,6 +152,8 @@ export default function CartPage() {
   const [startDate, setStartDate] = React.useState<string | null>(null);
   const [endDate, setEndDate] = React.useState<string | null>(null);
   const [readyByDate, setReadyByDate] = React.useState<string | null>(null);
+  const [rentalStartPartOfDay, setRentalStartPartOfDay] = React.useState<RentalPartOfDay>("MORNING");
+  const [rentalEndPartOfDay, setRentalEndPartOfDay] = React.useState<RentalPartOfDay>("EVENING");
 
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [customerId, setCustomerId] = React.useState("");
@@ -190,7 +203,16 @@ export default function CartPage() {
       try {
         const res = await fetch(`/api/orders/${quickParentId}/quick-supplement/parent`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as
-          | { parentId?: string; readyByDate?: string; startDate?: string; endDate?: string; eventName?: string; comment?: string }
+          | {
+              parentId?: string;
+              readyByDate?: string;
+              startDate?: string;
+              endDate?: string;
+              rentalStartPartOfDay?: RentalPartOfDay;
+              rentalEndPartOfDay?: RentalPartOfDay;
+              eventName?: string;
+              comment?: string;
+            }
           | null;
         if (!res.ok || !data) throw new Error(data ? "Parent fetch failed" : "Parent fetch failed");
 
@@ -198,6 +220,8 @@ export default function CartPage() {
         setStartDate(data.startDate ?? null);
         setEndDate(data.endDate ?? null);
         setReadyByDate(data.readyByDate ?? null);
+        setRentalStartPartOfDay(data.rentalStartPartOfDay ?? "MORNING");
+        setRentalEndPartOfDay(data.rentalEndPartOfDay ?? "EVENING");
         setEventName(data.eventName ?? "");
         setComment(data.comment ?? "");
 
@@ -336,10 +360,29 @@ export default function CartPage() {
     setStartDate(n.startDate);
     setEndDate(n.endDate);
     setReadyByDate(n.readyByDate);
+    setRentalStartPartOfDay(n.rentalStartPartOfDay);
+    setRentalEndPartOfDay(n.rentalEndPartOfDay);
     localStorage.setItem("catalog_readyByDate", n.readyByDate);
     localStorage.setItem("catalog_startDate", n.startDate);
     localStorage.setItem("catalog_endDate", n.endDate);
+    localStorage.setItem("catalog_rentalStartPart", n.rentalStartPartOfDay);
+    localStorage.setItem("catalog_rentalEndPart", n.rentalEndPartOfDay);
   }, [isProjectDemoCart, isQuickSupplement]);
+
+  React.useEffect(() => {
+    if (!startDate || !endDate) return;
+    if (startDate === endDate) {
+      setRentalStartPartOfDay("MORNING");
+      setRentalEndPartOfDay("EVENING");
+    }
+  }, [startDate, endDate]);
+
+  React.useEffect(() => {
+    if (isQuickSupplement || isProjectDemoCart) return;
+    if (typeof window === "undefined" || !startDate || !endDate) return;
+    localStorage.setItem("catalog_rentalStartPart", rentalStartPartOfDay);
+    localStorage.setItem("catalog_rentalEndPart", rentalEndPartOfDay);
+  }, [rentalStartPartOfDay, rentalEndPartOfDay, startDate, endDate, isProjectDemoCart, isQuickSupplement]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -589,7 +632,17 @@ export default function CartPage() {
     const price = basePrice * displayMultiplier;
     return sum + price * line.qty;
   }, 0);
-  const rentalDays = startDate && endDate ? rentalCalendarDaysInclusive(startDate, endDate) : 0;
+  const rentalDays =
+    !isProjectDemoCart && startDate && endDate
+      ? billableRentalDaysFromDateOnly({
+          startDate,
+          endDate,
+          rentalStartPartOfDay,
+          rentalEndPartOfDay,
+        })
+      : isProjectDemoCart
+        ? 1
+        : 0;
   const totalForPeriod = totalPerDay * (rentalDays || 1);
 
   const deliveryPriceNum =
@@ -753,6 +806,8 @@ export default function CartPage() {
             readyByDate,
             startDate,
             endDate,
+            rentalStartPartOfDay,
+            rentalEndPartOfDay,
             eventName: eventName.trim() || undefined,
             comment: comment.trim() || undefined,
             deliveryEnabled,
@@ -768,6 +823,8 @@ export default function CartPage() {
             readyByDate,
             startDate,
             endDate,
+            rentalStartPartOfDay,
+            rentalEndPartOfDay,
             eventName: eventName.trim() || undefined,
             comment: comment.trim() || undefined,
             deliveryEnabled,
@@ -859,10 +916,30 @@ export default function CartPage() {
         ) : (
           <>
             {startDate && endDate && rentalDays > 0 ? (
-              <p className="cart-muted" style={{ marginBottom: "0.75rem" }}>
-                Период: <strong>{formatDateRu(startDate)}</strong> —{" "}
-                <strong>{formatDateRu(endDate)}</strong> · {rentalDays} дн.
-              </p>
+              <div style={{ marginBottom: "0.75rem" }}>
+                <p className="cart-muted">
+                  Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong> ·{" "}
+                  {ruRentalBillableDayCountRU(rentalDays)}
+                </p>
+                {!isQuickSupplement && !isProjectDemoCart && startDate !== endDate ? (
+                  <div className="mk-partDay-cartRow">
+                    <RentalPartOfDayToggle
+                      id="cart-rental-start"
+                      value={rentalStartPartOfDay}
+                      onChange={setRentalStartPartOfDay}
+                    />
+                    <RentalPartOfDayToggle
+                      id="cart-rental-end"
+                      value={rentalEndPartOfDay}
+                      onChange={setRentalEndPartOfDay}
+                    />
+                  </div>
+                ) : startDate === endDate && !isQuickSupplement && !isProjectDemoCart ? (
+                  <p className="cart-muted mk-partDay-fixed" style={{ marginTop: "0.35rem" }}>
+                    Один календарный день — с утра до вечера.
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <p className="cart-muted" style={{ marginBottom: "0.75rem" }}>
                 Укажи даты в каталоге, чтобы посчитать итог за период.

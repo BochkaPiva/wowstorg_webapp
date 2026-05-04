@@ -65,6 +65,25 @@ function buildPaginationTokens(currentPage: number, totalPages: number): Array<n
   return tokens;
 }
 
+function catalogDateHelpParagraphs(multiDayPeriod: boolean, isGreenwich: boolean): readonly string[] {
+  const chunks: string[] = [
+    "В календаре выберите первый и последний нужный календарный день включительно. Все даты между ними входят в период аренды и считаются в сумме заказа.",
+    "Если нужен только один календарный день — нажмите в календаре одну нужную дату один раз.",
+    "Если период уже на несколько дней, но нужны снова сутки в одну дату — нажмите крестик у блока «Окончание».",
+  ];
+  if (multiDayPeriod) {
+    chunks.push(
+      "Переключатели «утро» и «вечер» у краёв поля задают первую и последнюю часть календарного дня аренды. При тех же датах на календаре могут измениться учтённые дни и сумма.",
+    );
+  }
+  if (isGreenwich) {
+    chunks.push(
+      "Поле «Готовность к дате» — последний срок, когда склад должен успеть всё собрать. Эту дату нельзя поставить позже первого дня аренды.",
+    );
+  }
+  return chunks;
+}
+
 function ruRentalBillableDayCount(n: number): string {
   const m100 = n % 100;
   const m10 = n % 10;
@@ -138,6 +157,7 @@ export default function CatalogPage() {
     () => getDefaultCatalogDates().rentalEndPartOfDay,
   );
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
+  const [catalogDateHelpOpen, setCatalogDateHelpOpen] = React.useState(false);
   const projectDatesPrefilledRef = React.useRef<string | null>(null);
 
   const itemLookup = React.useMemo(() => {
@@ -203,6 +223,15 @@ export default function CatalogPage() {
     }, 250);
     return () => window.clearTimeout(timeoutId);
   }, [query]);
+
+  React.useEffect(() => {
+    if (!catalogDateHelpOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setCatalogDateHelpOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [catalogDateHelpOpen]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -791,39 +820,53 @@ export default function CatalogPage() {
                 ) : null}
               </div>
               <div className="mk-catalogDateSummary">
-                <div className="mk-dateDaysBadge">
-                  Дней выбрано: {rentalDays > 0 ? rentalDays : "—"}
-                </div>
-                <details className="mk-dateLegend">
-                  <summary>Как считается период</summary>
-                  <div className="mk-dateLegend-body">
-                    <p>
-                      Нажмите в календаре <strong>первый</strong> и <strong>последний</strong> нужный календарный день —
-                      промежуток между ними (вместе с ними) пойдёт в период и в сумму.
-                    </p>
-                    <p>
-                      Если арендуете только на один календарный день — в календаре достаточно <strong>одного выбора</strong>
-                      нужной даты.
-                    </p>
-                    <p>
-                      Если уже выбрали несколько дней, но нужен снова один — нажмите <strong>крестик</strong> у даты окончания.
-                    </p>
-                    {startDate !== endDate ? (
-                      <p>
-                        На <strong>первый и последний</strong> день периода можно отдельно указать «утро» или «вечер» —
-                        если вам важно время сдачи и возврата. Так при тех же числах в календаре может измениться строка «Дней
-                        выбрано» и итоговая сумма.
-                      </p>
-                    ) : null}
-                    {isGreenwich ? (
-                      <p>
-                        <strong>Готовность</strong> — до какого числа склад обязан подготовить реквизит к отгрузке. Эту дату нельзя
-                        задать позже первого дня аренды.
-                      </p>
-                    ) : null}
-                  </div>
-                </details>
+                <span className="mk-dateBillInline">
+                  Учтено дней в сумме:&nbsp;<span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>
+                </span>
+                <button
+                  type="button"
+                  className="mk-dateHelpBtn"
+                  aria-label="Подробнее — как считаются даты аренды"
+                  onClick={() => setCatalogDateHelpOpen(true)}
+                >
+                  ?
+                </button>
               </div>
+              {catalogDateHelpOpen && typeof document !== "undefined"
+                ? createPortal(
+                    <div
+                      className="mk-modalOverlay mk-modalOverlay--dateHelp"
+                      onMouseDown={() => setCatalogDateHelpOpen(false)}
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="catalog-date-help-title"
+                    >
+                      <div className="mk-modal mk-dateHelpModal" onMouseDown={(e) => e.stopPropagation()}>
+                        <div className="mk-dateHelpModal-body">
+                          <div className="mk-modalTop mk-dateHelpModal-head">
+                            <h2 id="catalog-date-help-title" className="mk-dateHelpModal-title">
+                              Как считается период
+                            </h2>
+                            <button
+                              type="button"
+                              className="mk-close"
+                              aria-label="Закрыть"
+                              onClick={() => setCatalogDateHelpOpen(false)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="mk-dateHelpModal-prose">
+                            {catalogDateHelpParagraphs(startDate !== endDate, isGreenwich).map((text, idx) => (
+                              <p key={idx}>{text}</p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body,
+                  )
+                : null}
             </>
           ) : isQuickSupplement ? (
             <div className="mk-subtitle">

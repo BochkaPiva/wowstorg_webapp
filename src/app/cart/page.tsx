@@ -917,28 +917,38 @@ export default function CartPage() {
           <>
             {startDate && endDate && rentalDays > 0 ? (
               <div style={{ marginBottom: "0.75rem" }}>
-                <p className="cart-muted">
-                  Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong> ·{" "}
-                  {ruRentalBillableDayCountRU(rentalDays)}
+                <p className="cart-periodInline">
+                  <span>
+                    Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
+                    {" · "}
+                    {ruRentalBillableDayCountRU(rentalDays)}
+                  </span>
+                  {!isQuickSupplement && !isProjectDemoCart && startDate !== endDate ? (
+                    <span className="cart-periodToggles">
+                      <RentalPartOfDayToggle
+                        compact
+                        edge="start"
+                        id="cart-rental-start"
+                        value={rentalStartPartOfDay}
+                        onChange={setRentalStartPartOfDay}
+                      />
+                      <RentalPartOfDayToggle
+                        compact
+                        edge="end"
+                        id="cart-rental-end"
+                        value={rentalEndPartOfDay}
+                        onChange={setRentalEndPartOfDay}
+                      />
+                    </span>
+                  ) : !isQuickSupplement && !isProjectDemoCart ? (
+                    <span
+                      className="mk-partDay-chip"
+                      title="За один календарный день доступен только тариф с утра до вечера"
+                    >
+                      Целый день
+                    </span>
+                  ) : null}
                 </p>
-                {!isQuickSupplement && !isProjectDemoCart && startDate !== endDate ? (
-                  <div className="mk-partDay-cartRow">
-                    <RentalPartOfDayToggle
-                      id="cart-rental-start"
-                      value={rentalStartPartOfDay}
-                      onChange={setRentalStartPartOfDay}
-                    />
-                    <RentalPartOfDayToggle
-                      id="cart-rental-end"
-                      value={rentalEndPartOfDay}
-                      onChange={setRentalEndPartOfDay}
-                    />
-                  </div>
-                ) : startDate === endDate && !isQuickSupplement && !isProjectDemoCart ? (
-                  <p className="cart-muted mk-partDay-fixed" style={{ marginTop: "0.35rem" }}>
-                    Один календарный день — с утра до вечера.
-                  </p>
-                ) : null}
               </div>
             ) : (
               <p className="cart-muted" style={{ marginBottom: "0.75rem" }}>

@@ -26,6 +26,23 @@
   font-size: 0.95rem;
 }
 
+.cart-periodInline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 1rem;
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.cart-periodToggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+
 .cart-empty {
   padding: 2rem;
   text-align: center;
@@ -316,10 +333,3 @@
   color: #fff;
 }
 
-.mk-partDay-cartRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.85rem 1.75rem;
-  margin-top: 0.5rem;
-}

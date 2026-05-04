@@ -763,25 +763,36 @@ export default function CatalogPage() {
 
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
-              <div className="mk-datesRow">
+              <div className={["mk-datesRow", !isGreenwich ? "mk-datesRow--twoCols" : ""].filter(Boolean).join(" ")}>
                 <div className="mk-dateColumn">
                   <CatalogDateField
                     label="Дата начала"
                     value={startDate}
                     onChange={(v) => patchCatalogDates({ startDate: v })}
                     min={dateMin}
+                    endAccessory={
+                      startDate && endDate
+                        ? startDate !== endDate
+                          ? (
+                              <RentalPartOfDayToggle
+                                compact
+                                edge="start"
+                                id="catalog-rental-start"
+                                value={rentalStartPartOfDay}
+                                onChange={setRentalStartPartOfDay}
+                              />
+                            )
+                          : (
+                              <span
+                                className="mk-partDay-chip"
+                                title="За один календарный день доступен только тариф с утра до вечера"
+                              >
+                                Целый день
+                              </span>
+                            )
+                        : undefined
+                    }
                   />
-                  {startDate && endDate ? (
-                    startDate !== endDate ? (
-                      <RentalPartOfDayToggle
-                        id="catalog-rental-start"
-                        value={rentalStartPartOfDay}
-                        onChange={setRentalStartPartOfDay}
-                      />
-                    ) : (
-                      <span className="mk-partDay-fixed">Один календарный день — с утра до вечера</span>
-                    )
-                  ) : null}
                 </div>
                 <div className="mk-dateColumn">
                   <CatalogDateField
@@ -789,26 +800,37 @@ export default function CatalogPage() {
                     value={endDate}
                     onChange={(v) => patchCatalogDates({ endDate: v })}
                     min={endMin >= dateMin ? endMin : dateMin}
+                    endAccessory={
+                      startDate && endDate
+                        ? startDate !== endDate
+                          ? (
+                              <RentalPartOfDayToggle
+                                compact
+                                edge="end"
+                                id="catalog-rental-end"
+                                value={rentalEndPartOfDay}
+                                onChange={setRentalEndPartOfDay}
+                              />
+                            )
+                          : (<span className="mk-partDay-spacer" aria-hidden />)
+                        : undefined
+                    }
                   />
-                  {startDate && endDate ? (
-                    startDate !== endDate ? (
-                      <RentalPartOfDayToggle
-                        id="catalog-rental-end"
-                        value={rentalEndPartOfDay}
-                        onChange={setRentalEndPartOfDay}
-                      />
-                    ) : null
-                  ) : null}
                 </div>
                 {isGreenwich ? (
-                  <CatalogDateField
-                    label="Готовность к дате"
-                    value={readyByDate}
-                    onChange={(v) => patchCatalogDates({ readyByDate: v })}
-                    min={dateMin}
-                    max={startDate}
-                    hint="Склад обязуется подготовить реквизит к этой дате (не позже начала аренды)"
-                  />
+                  <div className="mk-dateColumn">
+                    <CatalogDateField
+                      label="Готовность к дате"
+                      value={readyByDate}
+                      onChange={(v) => patchCatalogDates({ readyByDate: v })}
+                      min={dateMin}
+                      max={startDate}
+                      hint="Склад обязуется подготовить реквизит к этой дате (не позже начала аренды)"
+                      endAccessory={
+                        startDate && endDate ? <span className="mk-partDay-spacer" aria-hidden /> : undefined
+                      }
+                    />
+                  </div>
                 ) : null}
               </div>
               {startDate && endDate && rentalDays > 0 ? (

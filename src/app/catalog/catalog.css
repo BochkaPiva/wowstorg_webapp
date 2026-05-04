@@ -9,6 +9,8 @@
   --mk-surface: rgba(255, 255, 255, 0.92);
   --mk-border: rgba(124, 58, 237, 0.16);
   --mk-shadow: 0 18px 50px rgba(17, 24, 39, 0.08);
+  --mk-partday-compact-w: 58px;
+  --mk-partday-compact-h: 28px;
 }
 
 .mk-section {
@@ -63,10 +65,20 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem 1.5rem;
-  align-items: end;
+  align-items: start;
 }
 @media (max-width: 640px) {
   .mk-datesRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mk-datesRow--twoCols {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .mk-datesRow--twoCols {
     grid-template-columns: 1fr;
   }
 }
@@ -78,7 +90,63 @@
   min-width: 0;
 }
 
-/* Утро / вечер: Uiverse-style checkbox + slider (иконки ☀ / ☾ по сторонам дорожки). */
+/* Строка: поле даты + компактный тумблер справа */
+.mk-dateInputRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  min-width: 0;
+}
+
+.mk-dateField.mk-dateField--hasAccessory .mk-dateWrap {
+  flex: 1 1 9rem;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+}
+
+.mk-dateEndAccessory {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .mk-dateInputRow .mk-dateEndAccessory {
+    margin-left: auto;
+  }
+}
+
+/* Короткая подпись один день + невидимый выравниватель под ширину тумблера */
+.mk-partDay-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--mk-partday-compact-w);
+  height: var(--mk-partday-compact-h);
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--mk-muted);
+  border: 1px dashed rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.05);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.mk-partDay-spacer {
+  display: block;
+  width: var(--mk-partday-compact-w);
+  height: var(--mk-partday-compact-h);
+  flex-shrink: 0;
+}
+
+/* Утро / вечер: Uiverse-style checkbox + slider */
 .mk-partDay {
   display: flex;
   align-items: center;
@@ -182,6 +250,50 @@
 
 .mk-partDay-switch input:checked ~ .mk-partDay-moon {
   opacity: 0.9;
+}
+
+.mk-partDay-caption--visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mk-partDay--compact {
+  position: relative;
+  gap: 0;
+  padding-left: 0;
+  min-height: 0;
+}
+
+.mk-partDay--compact .mk-partDay-switch {
+  width: var(--mk-partday-compact-w);
+  height: var(--mk-partday-compact-h);
+}
+
+.mk-partDay--compact .mk-partDay-slider::before {
+  width: 22px;
+  height: 22px;
+  left: 3px;
+}
+
+.mk-partDay--compact .mk-partDay-switch input:checked + .mk-partDay-slider::before {
+  transform: translate(30px, -50%);
+}
+
+.mk-partDay--compact .mk-partDay-sun {
+  left: 8px;
+  font-size: 0.72rem;
+}
+
+.mk-partDay--compact .mk-partDay-moon {
+  right: 8px;
+  font-size: 0.72rem;
 }
 
 .mk-partDay-fixed {

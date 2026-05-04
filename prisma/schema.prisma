@@ -733,7 +733,7 @@ model Order {
 
   /// Интервал оплаты внутри календарного дня (см. `billableRentalDays`).
   rentalStartPartOfDay RentalPartOfDay @default(MORNING)
-  rentalEndPartOfDay   RentalPartOfDay @default(EVENING)
+  rentalEndPartOfDay   RentalPartOfDay @default(MORNING)
 
   deliveryEnabled  Boolean  @default(false)
   deliveryComment  String?

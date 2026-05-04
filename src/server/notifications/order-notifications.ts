@@ -211,7 +211,7 @@ function buildGreenwichDiff(before: OrderForNotify, after: OrderForNotify): { li
   }
 
   const periodSig = (x: OrderForNotify) =>
-    `${x.startDate.toISOString().slice(0, 10)}|${x.endDate.toISOString().slice(0, 10)}|${x.rentalStartPartOfDay ?? "MORNING"}|${x.rentalEndPartOfDay ?? "EVENING"}`;
+    `${x.startDate.toISOString().slice(0, 10)}|${x.endDate.toISOString().slice(0, 10)}|${x.rentalStartPartOfDay ?? "MORNING"}|${x.rentalEndPartOfDay ?? "MORNING"}`;
   if (periodSig(before) !== periodSig(after)) {
     notes.push(
       `Аренда: «${formatRentalPeriodRangeFromUtcDatesRu({

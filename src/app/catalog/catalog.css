@@ -34,6 +34,22 @@
   overflow: hidden;
 }
 
+@media (max-width: 639px) {
+  .mk-head {
+    padding: 1rem 0.9rem 0.95rem;
+    border-radius: 20px;
+    gap: 0.6rem;
+  }
+  .mk-title {
+    font-size: clamp(1.25rem, 2.5vw + 0.85rem, 2.2rem);
+    line-height: 1.2;
+  }
+  .mk-subtitle {
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+}
+
 .mk-head::after {
   content: "";
   position: absolute;
@@ -318,16 +334,179 @@
   flex-shrink: 0;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 639px) {
+  .mk-dateText {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mk-dateField .mk-dateWrap {
+    width: 100%;
+    max-width: 100%;
+  }
+  .mk-catalogDateSummary {
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.55rem;
+    padding: 0.4rem 0.45rem;
+    border-radius: 12px;
+    background: rgba(124, 58, 237, 0.05);
+    box-sizing: border-box;
+  }
+  .mk-dateBillInline {
+    flex: 1 1 auto;
+    font-size: 0.8rem;
+    min-width: 0;
+  }
+  .mk-dateHelpBtn {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 0.92rem;
+    flex-shrink: 0;
+  }
+
+  .mk-rentalPeriod {
+    max-width: none;
+    width: 100%;
+  }
+
   .mk-rentalPeriodRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 0.4rem;
+    flex-direction: unset;
+    flex-wrap: unset;
+  }
+
+  .mk-rentalPeriod-edge {
+    justify-self: start;
+    padding-top: 0.1rem;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .mk-rentalPeriod-edge:last-child {
+    justify-self: end;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .mk-rentalPeriod-trigger {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
     flex-direction: column;
     align-items: stretch;
   }
-  .mk-rentalPeriod-trigger {
+
+  .mk-rentalPeriod-seg {
+    padding-inline: 0.6rem;
     width: 100%;
   }
-  .mk-rentalPeriod-edge {
+
+  .mk-rentalPeriod-segHint {
+    font-size: 0.66rem;
+  }
+
+  .mk-rentalPeriod-segDate {
+    font-size: 0.9rem;
+  }
+
+  .mk-rentalPeriod-triggerSep {
+    width: auto;
+    height: 1px;
+    align-self: stretch;
+    margin: 0 0.35rem;
+  }
+
+  .mk-rentalPeriod-calIcon {
+    border-left: none;
+    border-top: 1px solid rgba(17, 24, 39, 0.08);
     justify-content: center;
+    padding: 0.62rem 1rem;
+    min-height: 2.85rem;
+    box-sizing: border-box;
+  }
+
+  .mk-rentalPeriod-clearEnd {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.5rem;
+    border-radius: 10px;
+    margin: 0;
+  }
+
+  .mk-partDay--compact .mk-partDay-switch {
+    width: 70px;
+    height: 34px;
+  }
+
+  .mk-partDay--compact .mk-partDay-slider::before {
+    width: 26px;
+    height: 26px;
+    left: 4px;
+  }
+
+  .mk-partDay--compact .mk-partDay-switch input:checked + .mk-partDay-slider::before {
+    transform: translate(36px, -50%);
+  }
+
+  .mk-partDay--compact .mk-partDay-sun {
+    left: 9px;
+  }
+
+  .mk-partDay--compact .mk-partDay-moon {
+    right: 9px;
+  }
+
+  .mk-tabs {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.2rem;
+    padding: 0.3rem;
+    margin-top: 1rem;
+  }
+
+  .mk-tab {
+    font-size: 0.82rem;
+    padding: 0.55rem 0.4rem;
+    text-align: center;
+  }
+
+  .mk-toolbar {
+    margin-top: 1rem;
+  }
+
+  a.mk-cartPill {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  /* Один календарный день: скрываем пустой край, чип «Целый день» — под полем */
+  .mk-rentalPeriodRow:has(.mk-partDay-chip) {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-rentalPeriodRow:has(.mk-partDay-chip) .mk-rentalPeriod-edge:has(.mk-partDay-spacer) {
+    display: none;
+  }
+
+  .mk-rentalPeriodRow:has(.mk-partDay-chip) .mk-rentalPeriod-trigger {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .mk-rentalPeriodRow:has(.mk-partDay-chip) .mk-rentalPeriod-edge:last-child {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
   }
 }
 
@@ -1458,12 +1637,14 @@ a.mk-cartPill:hover {
 /* floating cart — bottom-right when scrolled */
 .mk-floatingCart {
   position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  right: max(0.85rem, env(safe-area-inset-right, 0px));
+  left: auto;
   z-index: 9998;
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
+  max-width: min(22rem, calc(100vw - 1.25rem));
   padding: 0.7rem 1rem;
   border-radius: 16px;
   background: linear-gradient(
@@ -1491,5 +1672,7 @@ a.mk-cartPill:hover {
 }
 .mk-floatingCartSum {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 

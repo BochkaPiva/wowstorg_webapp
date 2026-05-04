@@ -2707,7 +2707,7 @@ function RequisiteSectionEditor({
       startDate: order.startDate,
       endDate: order.endDate,
       rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
-      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "EVENING",
+      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
     });
   }, [order]);
 

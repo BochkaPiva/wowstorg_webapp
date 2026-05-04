@@ -153,7 +153,7 @@ export async function createOrderInTransaction(
   }
 
   const rentalStartPartOfDay: RentalPartOfDay = input.rentalStartPartOfDay ?? "MORNING";
-  const rentalEndPartOfDay: RentalPartOfDay = input.rentalEndPartOfDay ?? "EVENING";
+  const rentalEndPartOfDay: RentalPartOfDay = input.rentalEndPartOfDay ?? "MORNING";
   const rentalCombo = validateRentalPartCombo({
     startDate: input.startDate,
     endDate: input.endDate,

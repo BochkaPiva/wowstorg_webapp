@@ -113,7 +113,7 @@ export function formatRentalPeriodRangeRu(args: {
   rentalEndPartOfDay?: RentalPartOfDay | null;
 }): string {
   const sp = args.rentalStartPartOfDay ?? "MORNING";
-  const ep = args.rentalEndPartOfDay ?? "EVENING";
+  const ep = args.rentalEndPartOfDay ?? "MORNING";
   if (args.startDateIso === args.endDateIso) {
     return `${args.startDateFormatted} (${rentalPartLabelRu(sp)} → ${rentalPartLabelRu(ep)})`;
   }

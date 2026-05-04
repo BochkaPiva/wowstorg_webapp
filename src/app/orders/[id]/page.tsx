@@ -184,7 +184,7 @@ function calcOrderPricingClient(order: {
   rentalDiscountAmount?: number | null;
 }) {
   const startPart: RentalPartOfDay = order.rentalStartPartOfDay ?? "MORNING";
-  const endPart: RentalPartOfDay = order.rentalEndPartOfDay ?? "EVENING";
+  const endPart: RentalPartOfDay = order.rentalEndPartOfDay ?? "MORNING";
   const days = billableRentalDaysFromDateOnly({
     startDate: order.startDate,
     endDate: order.endDate,
@@ -752,7 +752,7 @@ export default function OrderDetailsPage() {
       startDate: order.startDate,
       endDate: order.endDate,
       rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
-      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "EVENING",
+      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
       payMultiplier: order.payMultiplier,
       deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
       montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
@@ -1333,7 +1333,7 @@ export default function OrderDetailsPage() {
               <p className="text-sm text-zinc-500">
                 Готовность к: <strong>{fmtDate(order.readyByDate)}</strong> · Период:{" "}
                 <strong>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</strong> —{" "}
-                <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "EVENING")}</strong>
+                <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</strong>
               </p>
               <p className="text-xs text-zinc-400">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}

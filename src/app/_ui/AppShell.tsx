@@ -85,6 +85,11 @@ export function AppShell({
   const showBack = pathname !== "/home";
   const isCatalogRoute = pathname === "/catalog";
 
+  const headerSubtitle =
+    state.user.role === "GREENWICH"
+      ? state.user.displayName
+      : `${state.user.displayName} · ${state.user.role}`;
+
   return (
     <div className="relative min-h-screen bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
       {isCatalogRoute ? (
@@ -162,12 +167,12 @@ export function AppShell({
             : "bg-white/70 backdrop-blur",
         ].join(" ")}
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => setNavOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white hover:bg-violet-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white hover:bg-violet-50"
               aria-label="Открыть меню"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5 fill-zinc-800">
@@ -177,7 +182,7 @@ export function AppShell({
 
             <Link
               href="/home"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-transparent hover:bg-violet-50"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-transparent hover:bg-violet-50"
               aria-label="На главную"
               title="На главную"
             >
@@ -193,7 +198,7 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => router.push(sectionBackHref(pathname))}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-800 hover:bg-violet-50"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-800 hover:bg-violet-50 sm:px-3"
                 aria-label="Назад"
                 title="Назад"
               >
@@ -203,22 +208,18 @@ export function AppShell({
                 <span className="hidden sm:inline">Назад</span>
               </button>
             ) : null}
-            <div>
-              <div className="text-base font-semibold tracking-tight text-zinc-900">
-                {title}
-              </div>
-              <div className="text-xs text-zinc-600">
-                {state.user.role === "GREENWICH"
-                  ? state.user.displayName
-                  : `${state.user.displayName} · ${state.user.role}`}
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+              <div className="truncate text-base font-semibold tracking-tight text-zinc-900">{title}</div>
+              <div className="truncate text-xs text-zinc-600" title={headerSubtitle}>
+                {headerSubtitle}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <InAppNotifications enabled={state.status === "authenticated"} />
             <button
               onClick={logout}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-violet-50"
+              className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm text-zinc-800 hover:bg-violet-50 sm:px-3"
             >
               Выйти
             </button>
@@ -328,10 +329,10 @@ export function AppShell({
       ) : null}
 
       {/* content */}
-      <div className="mx-auto max-w-7xl px-4 py-4">
+      <div className="mx-auto max-w-7xl px-3 pb-4 pt-2 sm:px-5 sm:pb-8 sm:pt-5">
         <main
           className={[
-            "rounded-2xl border border-violet-200/60 p-4 text-zinc-900 shadow-sm",
+            "rounded-2xl border border-violet-200/60 p-3 text-zinc-900 shadow-sm sm:p-5",
             isCatalogRoute
               ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,255,0.98))] shadow-[0_18px_45px_rgba(109,40,217,0.08)]"
               : "bg-white/90 backdrop-blur",

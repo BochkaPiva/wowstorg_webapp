@@ -87,7 +87,7 @@ export function calcOrderPricing(args: {
   quantityMode?: "requested" | "issued";
 }): OrderPricingBreakdown {
   const startPart = args.rentalStartPartOfDay ?? "MORNING";
-  const endPart = args.rentalEndPartOfDay ?? "EVENING";
+  const endPart = args.rentalEndPartOfDay ?? "MORNING";
   const days = billableRentalDays({
     startDate: args.startDate,
     endDate: args.endDate,

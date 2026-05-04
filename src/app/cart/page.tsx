@@ -221,7 +221,7 @@ export default function CartPage() {
         setEndDate(data.endDate ?? null);
         setReadyByDate(data.readyByDate ?? null);
         setRentalStartPartOfDay(data.rentalStartPartOfDay ?? "MORNING");
-        setRentalEndPartOfDay(data.rentalEndPartOfDay ?? "EVENING");
+        setRentalEndPartOfDay(data.rentalEndPartOfDay ?? "MORNING");
         setEventName(data.eventName ?? "");
         setComment(data.comment ?? "");
 

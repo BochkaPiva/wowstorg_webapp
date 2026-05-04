@@ -6,6 +6,12 @@ import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import {
+  achievementImageSrc,
+  levelBadgeTone,
+  levelLabel,
+  type AchievementLevelUi,
+} from "@/lib/achievements-display";
 
 type UserRow = {
   id: string;
@@ -17,6 +23,22 @@ type UserRow = {
   mustSetPassword: boolean;
   createdAt: string;
   greenwichRating: null | { score: number; manualLocked: boolean };
+};
+
+type AdminAchievementsResponse = {
+  applicable: boolean;
+  cards: Array<{
+    code: string;
+    title: string;
+    description: string;
+    value: number;
+    level: AchievementLevelUi;
+    nextLevel: AchievementLevelUi | null;
+    nextThreshold: number | null;
+    progressPercentToNext: number | null;
+    thresholds: { bronze: number; silver: number; gold: number };
+  }>;
+  unreadNotifications: number;
 };
 
 export default function AdminUsersPage() {
@@ -45,6 +67,10 @@ export default function AdminUsersPage() {
     greenwichRatingOriginalScore: 100,
   });
   const [saving, setSaving] = React.useState(false);
+  const [adminAchievements, setAdminAchievements] = React.useState<AdminAchievementsResponse | null>(null);
+  const [adminAchievementsLoading, setAdminAchievementsLoading] = React.useState(false);
+  const [adminAchievementsError, setAdminAchievementsError] = React.useState<string | null>(null);
+  const achievementsAbortRef = React.useRef<AbortController | null>(null);
 
   const load = React.useCallback(async () => {
     setError(null);
@@ -80,6 +106,66 @@ export default function AdminUsersPage() {
   React.useEffect(() => {
     setLoading(false);
   }, [users]);
+
+  React.useEffect(() => {
+    achievementsAbortRef.current?.abort();
+    achievementsAbortRef.current = null;
+
+    if (forbidden || !modal || modal === "create" || !("id" in modal)) {
+      setAdminAchievements(null);
+      setAdminAchievementsError(null);
+      setAdminAchievementsLoading(false);
+      return;
+    }
+
+    if (editForm.role !== "GREENWICH") {
+      setAdminAchievements(null);
+      setAdminAchievementsError(null);
+      setAdminAchievementsLoading(false);
+      return;
+    }
+
+    const ac = new AbortController();
+    achievementsAbortRef.current = ac;
+    setAdminAchievementsLoading(true);
+    setAdminAchievementsError(null);
+    setAdminAchievements(null);
+
+    void fetch(`/api/admin/users/${modal.id}/achievements`, { cache: "no-store", signal: ac.signal })
+      .then(async (res) => {
+        const text = await res.text();
+        let parsed: unknown = {};
+        if (text) {
+          try {
+            parsed = JSON.parse(text) as unknown;
+          } catch {
+            throw new Error("Не удалось разобрать ответ сервера");
+          }
+        }
+        if (!res.ok) {
+          const msg =
+            parsed && typeof parsed === "object" && "error" in parsed
+              ? String((parsed as { error?: { message?: string } }).error?.message ?? "")
+              : "";
+          throw new Error(msg || `Ошибка ${res.status}`);
+        }
+        return parsed as AdminAchievementsResponse;
+      })
+      .then((json) => {
+        if (ac.signal.aborted) return;
+        setAdminAchievements(json);
+      })
+      .catch((e: unknown) => {
+        if (ac.signal.aborted) return;
+        setAdminAchievements(null);
+        setAdminAchievementsError(e instanceof Error ? e.message : "Ошибка загрузки ачивок");
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setAdminAchievementsLoading(false);
+      });
+
+    return () => ac.abort();
+  }, [forbidden, modal, editForm.role]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -401,7 +487,7 @@ export default function AdminUsersPage() {
             typeof document !== "undefined" &&
             createPortal(
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
+                <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
                 <h2 className="text-lg font-semibold text-zinc-900">Редактировать: {modal.login}</h2>
                 <form onSubmit={updateUser} className="mt-4 space-y-3">
                   <div>
@@ -494,6 +580,104 @@ export default function AdminUsersPage() {
                       placeholder="не менее 6 символов"
                     />
                   </div>
+
+                  {editForm.role === "GREENWICH" ? (
+                    <div className="border-t border-zinc-100 pt-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-600">
+                        Ачивки Grinvich
+                      </div>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Данные из базы (актуализируются при закрытии заявки и сохранении рекорда башни). Для точного
+                        пересчёта пользователь может открыть «Очивки» у себя.
+                      </p>
+                      {adminAchievementsLoading ? (
+                        <div className="mt-2 text-sm text-zinc-600">Загрузка ачивок…</div>
+                      ) : null}
+                      {adminAchievementsError ? (
+                        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">
+                          {adminAchievementsError}
+                        </div>
+                      ) : null}
+                      {!adminAchievementsLoading && !adminAchievementsError && adminAchievements?.applicable ? (
+                        <>
+                          <div className="mt-2 rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-900">
+                            Непрочитанных уведомлений в приложении: {adminAchievements.unreadNotifications}
+                          </div>
+                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {adminAchievements.cards.map((card) => (
+                              <div
+                                key={card.code}
+                                className="rounded-lg border border-zinc-200 bg-zinc-50/90 p-2.5 text-left"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md bg-white">
+                                      <img
+                                        src={achievementImageSrc(card.code, card.level)}
+                                        alt=""
+                                        className={[
+                                          "h-full w-full object-cover",
+                                          card.level === "NONE" ? "opacity-45 grayscale" : "",
+                                        ].join(" ")}
+                                      />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-xs font-semibold text-zinc-900">{card.title}</div>
+                                      <div className="line-clamp-2 text-[11px] text-zinc-600">{card.description}</div>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={[
+                                      "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
+                                      levelBadgeTone(card.level),
+                                    ].join(" ")}
+                                  >
+                                    {levelLabel(card.level)}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 text-[11px] text-zinc-700">
+                                  Значение: <span className="font-semibold tabular-nums">{card.value}</span>
+                                  <span className="text-zinc-500">
+                                    {" "}
+                                    · б {card.thresholds.bronze} / с {card.thresholds.silver} / з{" "}
+                                    {card.thresholds.gold}
+                                  </span>
+                                </div>
+                                {card.nextThreshold != null ? (
+                                  <>
+                                    <div className="mt-1 flex items-center justify-between text-[10px] text-zinc-600">
+                                      <span>До след. порога: {card.nextThreshold}</span>
+                                      <span>{card.progressPercentToNext ?? 0}%</span>
+                                    </div>
+                                    <div className="mt-0.5 h-1.5 overflow-hidden rounded-full border border-violet-100 bg-white">
+                                      <div
+                                        className="h-full bg-gradient-to-r from-violet-500 to-violet-700"
+                                        style={{ width: `${card.progressPercentToNext ?? 0}%` }}
+                                      />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="mt-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-center text-[10px] font-semibold text-emerald-800">
+                                    Максимум
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                      {!adminAchievementsLoading &&
+                      !adminAchievementsError &&
+                      adminAchievements &&
+                      adminAchievements.applicable === false ? (
+                        <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
+                          В базе у этого пользователя ещё не роль Grinvich. Если вы только что поменяли роль выше —
+                          сохраните пользователя и откройте форму снова.
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {error && (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                       {error}

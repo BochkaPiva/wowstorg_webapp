@@ -5,8 +5,14 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import {
+  achievementImageSrc,
+  levelBadgeTone,
+  levelLabel,
+  type AchievementLevelUi,
+} from "@/lib/achievements-display";
 
-type AchievementLevel = "NONE" | "BRONZE" | "SILVER" | "GOLD";
+type AchievementLevel = AchievementLevelUi;
 type AchievementCardData = {
   code: string;
   title: string;
@@ -23,42 +29,6 @@ type AchievementSnapshot = {
   cards: AchievementCardData[];
   unreadNotifications: number;
 };
-
-function levelBadgeTone(level: AchievementLevel): string {
-  if (level === "GOLD") return "border-amber-300 bg-amber-50 text-amber-900";
-  if (level === "SILVER") return "border-slate-300 bg-slate-50 text-slate-800";
-  if (level === "BRONZE") return "border-orange-300 bg-orange-50 text-orange-900";
-  return "border-zinc-200 bg-zinc-50 text-zinc-600";
-}
-
-function levelLabel(level: AchievementLevel): string {
-  if (level === "GOLD") return "Золото";
-  if (level === "SILVER") return "Серебро";
-  if (level === "BRONZE") return "Бронза";
-  return "Нет";
-}
-
-function achievementImageSrc(code: string, level: AchievementLevel): string {
-  const key =
-    code === "PERFECT_ORDERS"
-      ? "perfect_orders"
-      : code === "TOWER_SCORE"
-        ? "tower_score"
-        : code === "ORDER_VOLUME"
-          ? "order_volume"
-          : code === "BIGGEST_CHECK"
-            ? "biggest_check"
-            : code === "CLOSED_ORDERS"
-              ? "closed_orders"
-              : "no_cancel_streak";
-  const levelKey =
-    level === "NONE" || level === "BRONZE"
-      ? "bronze"
-      : level === "SILVER"
-        ? "silver"
-        : "gold";
-  return `/achievements/${key}_${levelKey}.png`;
-}
 
 export default function AchievementsPage() {
   const { state } = useAuth();

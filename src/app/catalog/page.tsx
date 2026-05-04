@@ -18,8 +18,8 @@ import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rent
 import "./catalog.css";
 import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
+import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
-import { RentalPartOfDayToggle } from "@/app/catalog/RentalPartOfDayToggle";
 
 type CatalogTab = "positions" | "categories" | "kits";
 
@@ -165,7 +165,13 @@ export default function CatalogPage() {
   datesRef.current = { readyByDate, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay };
 
   const patchCatalogDates = React.useCallback(
-    (patch: Partial<{ readyByDate: string; startDate: string; endDate: string }>) => {
+    (patch: Partial<{
+      readyByDate: string;
+      startDate: string;
+      endDate: string;
+      rentalStartPartOfDay: RentalPartOfDay;
+      rentalEndPartOfDay: RentalPartOfDay;
+    }>) => {
       try {
         const cur = datesRef.current;
         const n = normalizeCatalogDates({
@@ -190,8 +196,6 @@ export default function CatalogPage() {
   );
 
   const dateMin = todayDateOnly();
-  /** Конец периода не раньше начала; один и тот же день — допустим. */
-  const endMin = startDate;
 
   React.useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -763,62 +767,19 @@ export default function CatalogPage() {
 
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
-              <div className={["mk-datesRow", !isGreenwich ? "mk-datesRow--twoCols" : ""].filter(Boolean).join(" ")}>
-                <div className="mk-dateColumn">
-                  <CatalogDateField
-                    label="Дата начала"
-                    value={startDate}
-                    onChange={(v) => patchCatalogDates({ startDate: v })}
-                    min={dateMin}
-                    endAccessory={
-                      startDate && endDate
-                        ? startDate !== endDate
-                          ? (
-                              <RentalPartOfDayToggle
-                                compact
-                                edge="start"
-                                id="catalog-rental-start"
-                                value={rentalStartPartOfDay}
-                                onChange={setRentalStartPartOfDay}
-                              />
-                            )
-                          : (
-                              <span
-                                className="mk-partDay-chip"
-                                title="За один календарный день доступен только тариф с утра до вечера"
-                              >
-                                Целый день
-                              </span>
-                            )
-                        : undefined
-                    }
-                  />
-                </div>
-                <div className="mk-dateColumn">
-                  <CatalogDateField
-                    label="Дата окончания"
-                    value={endDate}
-                    onChange={(v) => patchCatalogDates({ endDate: v })}
-                    min={endMin >= dateMin ? endMin : dateMin}
-                    endAccessory={
-                      startDate && endDate
-                        ? startDate !== endDate
-                          ? (
-                              <RentalPartOfDayToggle
-                                compact
-                                edge="end"
-                                id="catalog-rental-end"
-                                value={rentalEndPartOfDay}
-                                onChange={setRentalEndPartOfDay}
-                              />
-                            )
-                          : (<span className="mk-partDay-spacer" aria-hidden />)
-                        : undefined
-                    }
-                  />
-                </div>
+              <div className={["mk-datesRowGrouped", isGreenwich ? "mk-datesRowGrouped--withReady" : ""].filter(Boolean).join(" ")}>
+                <CatalogRentalPeriodPicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  minDate={dateMin}
+                  rentalStartPartOfDay={rentalStartPartOfDay}
+                  rentalEndPartOfDay={rentalEndPartOfDay}
+                  onRangeChange={(s, e) => patchCatalogDates({ startDate: s, endDate: e })}
+                  onStartPartChange={(v) => patchCatalogDates({ rentalStartPartOfDay: v })}
+                  onEndPartChange={(v) => patchCatalogDates({ rentalEndPartOfDay: v })}
+                />
                 {isGreenwich ? (
-                  <div className="mk-dateColumn">
+                  <div className="mk-dateColumn mk-dateColumn--ready">
                     <CatalogDateField
                       label="Готовность к дате"
                       value={readyByDate}
@@ -826,9 +787,6 @@ export default function CatalogPage() {
                       min={dateMin}
                       max={startDate}
                       hint="Склад обязуется подготовить реквизит к этой дате (не позже начала аренды)"
-                      endAccessory={
-                        startDate && endDate ? <span className="mk-partDay-spacer" aria-hidden /> : undefined
-                      }
                     />
                   </div>
                 ) : null}
@@ -841,8 +799,9 @@ export default function CatalogPage() {
                 </p>
               ) : null}
               <span className="mk-subtitle">
-                Доступность и цены считаются на выбранный период. Даты в прошлом недоступны; по умолчанию —
-                готовность сегодня, аренда с завтра до послезавтра.
+                Доступность и цены считаются на выбранный период. В календаре два месяца рядом: подсвечен диапазон; один
+                день — дважды нажмите на дату. Даты в прошлом недоступны; по умолчанию готовность сегодня, аренда с
+                завтра до послезавтра.
               </span>
             </>
           ) : isQuickSupplement ? (

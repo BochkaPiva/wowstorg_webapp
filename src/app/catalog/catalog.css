@@ -60,35 +60,181 @@
   font-size: 0.95rem;
 }
 
-.mk-datesRow {
-  margin-top: 1rem;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem 1.5rem;
-  align-items: start;
-}
-@media (max-width: 640px) {
-  .mk-datesRow {
-    grid-template-columns: 1fr;
-  }
-}
-
-.mk-datesRow--twoCols {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (max-width: 640px) {
-  .mk-datesRow--twoCols {
-    grid-template-columns: 1fr;
-  }
-}
-
 .mk-dateColumn {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
   min-width: 0;
   align-items: flex-start;
+}
+
+/* Объединённый период + (опционально) готовность */
+.mk-datesRowGrouped {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem 1.75rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mk-datesRowGrouped--withReady {
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 17rem);
+}
+
+@media (max-width: 920px) {
+  .mk-datesRowGrouped--withReady {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mk-dateColumn--ready {
+  min-width: 0;
+}
+
+.mk-rentalPeriod {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 42rem;
+}
+
+.mk-rentalPeriodRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.65rem;
+}
+
+.mk-rentalPeriod-edge {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.mk-rentalPeriod-trigger {
+  flex: 1 1 14rem;
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 2.85rem;
+  min-width: min(100%, 13rem);
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  cursor: pointer;
+  font: inherit;
+  color: var(--mk-text);
+  box-shadow: 0 2px 12px rgba(109, 40, 217, 0.07);
+  overflow: hidden;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.mk-rentalPeriod-trigger:hover {
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.mk-rentalPeriod-trigger:focus-visible {
+  outline: none;
+  border-color: rgba(124, 58, 237, 0.55);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.mk-rentalPeriod-seg {
+  flex: 1 1 0;
+  padding: 0.45rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.mk-rentalPeriod-segHint {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mk-muted);
+}
+
+.mk-rentalPeriod-segDate {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-rentalPeriod-triggerSep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(17, 24, 39, 0.1);
+  flex-shrink: 0;
+}
+
+.mk-rentalPeriod-calIcon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.85rem;
+  color: var(--mk-violet);
+  background: rgba(124, 58, 237, 0.08);
+  border-left: 1px solid rgba(17, 24, 39, 0.08);
+  flex-shrink: 0;
+}
+
+@media (max-width: 520px) {
+  .mk-rentalPeriodRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .mk-rentalPeriod-trigger {
+    width: 100%;
+  }
+  .mk-rentalPeriod-edge {
+    justify-content: center;
+  }
+}
+
+.mk-rangePicker-popover {
+  padding: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
+  overflow: hidden;
+}
+
+.mk-rangePicker-popoverInner {
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.mk-rangePicker-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--mk-muted);
+}
+
+.mk-rangePicker-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+/* Лаймовый диапазон как в референсе; края — насыщеннее */
+.mk-rangePicker-scroll .rdp-root {
+  --rdp-accent-color: #4d7c0f;
+  --rdp-accent-background-color: rgba(190, 242, 100, 0.42);
+  --rdp-range_middle-background-color: rgba(190, 242, 100, 0.3);
+}
+
+.mk-rangePicker-scroll .rdp-months {
+  gap: 1rem;
 }
 
 /* Строка: поле даты + компактный тумблер справа */

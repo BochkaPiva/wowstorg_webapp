@@ -475,6 +475,8 @@ export default function CatalogPage() {
         if (!isProjectDemoCatalog) {
           url.searchParams.set("startDate", startDate);
           url.searchParams.set("endDate", endDate);
+          url.searchParams.set("rentalStartPartOfDay", rentalStartPartOfDay);
+          url.searchParams.set("rentalEndPartOfDay", rentalEndPartOfDay);
         }
         url.searchParams.set("page", String(currentPage));
         url.searchParams.set("pageSize", String(CATALOG_PAGE_SIZE));
@@ -507,6 +509,8 @@ export default function CatalogPage() {
     endDate,
     fetchCategoryId,
     isProjectDemoCatalog,
+    rentalEndPartOfDay,
+    rentalStartPartOfDay,
     shouldFetchPagedItems,
     startDate,
   ]);
@@ -525,6 +529,8 @@ export default function CatalogPage() {
         if (!isProjectDemoCatalog) {
           params.set("startDate", startDate);
           params.set("endDate", endDate);
+          params.set("rentalStartPartOfDay", rentalStartPartOfDay);
+          params.set("rentalEndPartOfDay", rentalEndPartOfDay);
         }
         const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
@@ -542,7 +548,7 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [endDate, isProjectDemoCatalog, kits, startDate]);
+  }, [endDate, isProjectDemoCatalog, kits, rentalEndPartOfDay, rentalStartPartOfDay, startDate]);
 
   const addToCart = React.useCallback((itemId: string, pricePerDay?: number) => {
     setCart((prev) => {

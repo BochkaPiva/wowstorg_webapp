@@ -1003,8 +1003,10 @@ export default function OrderDetailsPage() {
     setActionError(null);
     const start = order.startDate.slice(0, 10);
     const end = order.endDate.slice(0, 10);
+    const rsp = encodeURIComponent(order.rentalStartPartOfDay ?? "MORNING");
+    const rep = encodeURIComponent(order.rentalEndPartOfDay ?? "MORNING");
     fetch(
-      `/api/catalog/items?all=true&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&excludeOrderId=${encodeURIComponent(orderId)}`,
+      `/api/catalog/items?all=true&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&rentalStartPartOfDay=${rsp}&rentalEndPartOfDay=${rep}&excludeOrderId=${encodeURIComponent(orderId)}`,
       { cache: "no-store" },
     )
       .then((r) => r.json().catch(() => null))

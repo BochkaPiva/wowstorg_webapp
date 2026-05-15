@@ -203,6 +203,8 @@ export async function GET() {
       db: prisma,
       startDate: todayUtc,
       endDate: todayUtc,
+      rentalStartPartOfDay: "MORNING",
+      rentalEndPartOfDay: "EVENING",
     });
 
     const catalogPositions = catalogItems.map((it) => {

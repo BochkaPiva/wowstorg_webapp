@@ -177,6 +177,8 @@ export async function materializeProjectDraftOrder(args: {
           db: tx,
           startDate: new Date(`${period.startDate}T00:00:00.000Z`),
           endDate: new Date(`${period.endDate}T00:00:00.000Z`),
+          rentalStartPartOfDay: "MORNING",
+          rentalEndPartOfDay: "EVENING",
         });
         const allocatedByItem = new Map<string, number>();
         const orderLines: Array<{ itemId: string; qty: number; comment?: string | null }> = [];

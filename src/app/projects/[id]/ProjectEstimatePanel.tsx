@@ -2507,28 +2507,11 @@ function RequisiteSectionEditor({
     setLoading(true);
     setError(null);
     try {
-      const [orderRes, catalogRes] = await Promise.all([
-        fetch(`/api/orders/${orderId}`, { cache: "no-store" }),
-        fetch(
-          `/api/catalog/items?all=true&startDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[0] ?? "")}&endDate=${encodeURIComponent(orderMeta?.dateLabel?.split(" — ")[1] ?? "")}&excludeOrderId=${encodeURIComponent(orderId)}`,
-          { cache: "no-store" },
-        ),
-      ]);
-      const orderJson = (await orderRes.json().catch(() => null)) as { order?: RequisiteOrder; error?: { message?: string } } | null;
-      const catalogJson = (await catalogRes.json().catch(() => null)) as
-        | {
-            items?: Array<{
-              id: string;
-              name: string;
-              total: number;
-              inRepair: number;
-              broken: number;
-              missing: number;
-              pricePerDay?: number;
-              availability?: { availableNow: number; availableForDates?: number };
-            }>;
-          }
-        | null;
+      const orderRes = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+      const orderJson = (await orderRes.json().catch(() => null)) as {
+        order?: RequisiteOrder;
+        error?: { message?: string };
+      } | null;
       if (!orderRes.ok || !orderJson?.order) {
         setError(orderJson?.error?.message ?? "Не удалось загрузить связанную заявку");
         setOrder(null);
@@ -2571,6 +2554,29 @@ function RequisiteSectionEditor({
         demontageInternalCost:
           nextOrder.demontageInternalCost != null ? String(nextOrder.demontageInternalCost) : "",
       });
+
+      const start = nextOrder.startDate.slice(0, 10);
+      const end = nextOrder.endDate.slice(0, 10);
+      const rsp = encodeURIComponent(nextOrder.rentalStartPartOfDay ?? "MORNING");
+      const rep = encodeURIComponent(nextOrder.rentalEndPartOfDay ?? "MORNING");
+      const catalogRes = await fetch(
+        `/api/catalog/items?all=true&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&rentalStartPartOfDay=${rsp}&rentalEndPartOfDay=${rep}&excludeOrderId=${encodeURIComponent(orderId)}`,
+        { cache: "no-store" },
+      );
+      const catalogJson = (await catalogRes.json().catch(() => null)) as
+        | {
+            items?: Array<{
+              id: string;
+              name: string;
+              total: number;
+              inRepair: number;
+              broken: number;
+              missing: number;
+              pricePerDay?: number;
+              availability?: { availableNow: number; availableForDates?: number };
+            }>;
+          }
+        | null;
       setCatalogItems(
         (catalogJson?.items ?? []).map((item) => ({
           id: item.id,
@@ -2597,7 +2603,7 @@ function RequisiteSectionEditor({
     } finally {
       setLoading(false);
     }
-  }, [orderId, orderMeta?.dateLabel]);
+  }, [orderId]);
 
   React.useEffect(() => {
     void load();

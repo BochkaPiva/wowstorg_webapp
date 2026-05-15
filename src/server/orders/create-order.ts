@@ -257,7 +257,13 @@ export async function createOrderInTransaction(
   }
   const itemById = new Map(items.map((item) => [item.id, item]));
 
-  const reserved = await getReservedQtyByItemId({ db: tx, startDate, endDate });
+  const reserved = await getReservedQtyByItemId({
+    db: tx,
+    startDate,
+    endDate,
+    rentalStartPartOfDay,
+    rentalEndPartOfDay,
+  });
   for (const line of lines) {
     const item = itemById.get(line.itemId)!;
     const availableTotal = Math.max(0, item.total - item.inRepair - item.broken - item.missing);

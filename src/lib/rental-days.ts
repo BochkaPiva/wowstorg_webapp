@@ -32,6 +32,31 @@ function utcCalendarDayIndexISO(d: Date): number {
 }
 
 /**
+ * Занятые половины суток для резерва: [halfStart, halfExclusive) в той же шкале, что и {@link billableRentalDays}.
+ * «Утро» последнего дня — занята только первая половина дня; «вечер» — обе половины до конца вечера.
+ */
+export function rentalOccupiedHalfInterval(args: {
+  startDate: Date;
+  endDate: Date;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
+}): { halfStart: number; halfExclusive: number } {
+  const dayStart = utcCalendarDayIndexISO(args.startDate);
+  const dayEnd = utcCalendarDayIndexISO(args.endDate);
+  const halfStart = dayStart * 2 + (args.rentalStartPartOfDay === "MORNING" ? 0 : 1);
+  const halfExclusive = dayEnd * 2 + (args.rentalEndPartOfDay === "MORNING" ? 1 : 2);
+  return { halfStart, halfExclusive };
+}
+
+/** Пересечение двух полуинтервалов половин суток (граница «конец==начало» — без пересечения). */
+export function rentalHalfIntervalsOverlap(
+  a: { halfStart: number; halfExclusive: number },
+  b: { halfStart: number; halfExclusive: number },
+): boolean {
+  return a.halfStart < b.halfExclusive && b.halfStart < a.halfExclusive;
+}
+
+/**
  * Оплачиваемые единицы «дня аренды» по половинам суток (полуинтервалы [half, half+1)).
  * По умолчанию MORNING→EVENING на одном календарном дне эквивалентно классической «будням вкл.» между теми же датами.
  */

@@ -144,6 +144,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           db: tx,
           startDate: parent.startDate,
           endDate: parent.endDate,
+          rentalStartPartOfDay: parent.rentalStartPartOfDay ?? "MORNING",
+          rentalEndPartOfDay: parent.rentalEndPartOfDay ?? "MORNING",
         });
 
         const requestedTotalByItemId = new Map<string, number>();

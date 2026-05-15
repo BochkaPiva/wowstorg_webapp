@@ -8,6 +8,7 @@ import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import { usableStockUnits } from "@/lib/inventory-stock";
+import type { RentalPartOfDay } from "@/lib/rental-days";
 
 const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
@@ -15,6 +16,8 @@ const QuerySchema = z.object({
   internalOnly: z.enum(["true", "false"]).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  rentalStartPartOfDay: z.enum(["MORNING", "EVENING"]).optional(),
+  rentalEndPartOfDay: z.enum(["MORNING", "EVENING"]).optional(),
   excludeOrderId: z.string().trim().min(1).max(64).optional(),
   ids: z.string().trim().max(2000).optional(), // comma-separated item ids for cart
   all: z.enum(["true", "false"]).optional(),
@@ -33,6 +36,8 @@ export async function GET(req: Request) {
     internalOnly: url.searchParams.get("internalOnly") ?? undefined,
     startDate: url.searchParams.get("startDate") ?? undefined,
     endDate: url.searchParams.get("endDate") ?? undefined,
+    rentalStartPartOfDay: url.searchParams.get("rentalStartPartOfDay") ?? undefined,
+    rentalEndPartOfDay: url.searchParams.get("rentalEndPartOfDay") ?? undefined,
     excludeOrderId: url.searchParams.get("excludeOrderId") ?? undefined,
     ids: url.searchParams.get("ids") ?? undefined,
     all: url.searchParams.get("all") ?? undefined,
@@ -43,8 +48,20 @@ export async function GET(req: Request) {
     return jsonError(400, "Invalid query", parsed.error.flatten());
   }
 
-  const { query, category, internalOnly, startDate, endDate, excludeOrderId, ids, all, page, pageSize } =
-    parsed.data;
+  const {
+    query,
+    category,
+    internalOnly,
+    startDate,
+    endDate,
+    rentalStartPartOfDay: qStartPart,
+    rentalEndPartOfDay: qEndPart,
+    excludeOrderId,
+    ids,
+    all,
+    page,
+    pageSize,
+  } = parsed.data;
 
   const internalOnlyBool =
     auth.user.role === "GREENWICH"
@@ -108,12 +125,17 @@ export async function GET(req: Request) {
     try {
       const start = parseDateOnlyToUtcMidnight(startDate);
       const end = parseDateOnlyToUtcMidnight(endDate);
+      // Без параметров половин дня — как «полный календарный диапазон» (утро первого дня … вечер последнего).
+      const rentalStartPartOfDay: RentalPartOfDay = qStartPart ?? "MORNING";
+      const rentalEndPartOfDay: RentalPartOfDay = qEndPart ?? "EVENING";
       // Включая один день аренды (start === end): пересечение по дням всё равно считается.
       if (start.getTime() <= end.getTime()) {
         reservedByItemId = await getReservedQtyByItemId({
           db: prisma,
           startDate: start,
           endDate: end,
+          rentalStartPartOfDay,
+          rentalEndPartOfDay,
           ...(excludeOrderId ? { excludeOrderId } : {}),
         });
       }

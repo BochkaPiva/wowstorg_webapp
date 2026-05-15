@@ -84,6 +84,8 @@ async function computeItemsAudit(db: DbClient): Promise<ItemAuditComputed[]> {
     db,
     startDate: today,
     endDate: today,
+    rentalStartPartOfDay: "MORNING",
+    rentalEndPartOfDay: "EVENING",
   });
 
   return items.map((it) => {

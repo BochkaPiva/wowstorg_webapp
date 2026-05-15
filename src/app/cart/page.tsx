@@ -499,6 +499,8 @@ export default function CartPage() {
     if (!isProjectDemoCart && startDate && endDate) {
       params.set("startDate", startDate);
       params.set("endDate", endDate);
+      params.set("rentalStartPartOfDay", rentalStartPartOfDay);
+      params.set("rentalEndPartOfDay", rentalEndPartOfDay);
     }
     if (quickParentId) {
       params.set("excludeOrderId", quickParentId);
@@ -522,7 +524,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [cartItemIdsKey, startDate, endDate, quickParentId, isProjectDemoCart]);
+  }, [cartItemIdsKey, startDate, endDate, rentalEndPartOfDay, rentalStartPartOfDay, quickParentId, isProjectDemoCart]);
 
   function maxQtyForItem(itemId: string): number | null {
     const inv = items.find((i) => i.id === itemId);

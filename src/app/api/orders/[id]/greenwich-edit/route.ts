@@ -115,6 +115,8 @@ export async function PATCH(
             db: tx,
             startDate: order.startDate,
             endDate: order.endDate,
+            rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+            rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
             excludeOrderId: id,
           });
           for (const [itemId, requestedTotal] of requestedByItemId) {

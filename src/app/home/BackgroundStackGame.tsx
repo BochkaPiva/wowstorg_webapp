@@ -291,9 +291,9 @@ export function BackgroundStackGame() {
       });
     };
     const applyVerticalShift = (count: number) => {
-      // Компенсируем рост высоты башни (~2.8 на блок): раньше 2.2/блок — верх успевал уезжать под меню карточек.
-      const linear = Math.max(0, (count - 2) * 3.12);
-      const extra = Math.max(0, count - 17) * 0.72;
+      // Рост блока по Y ~dimension.height (~2.8); смещение чуть ниже — верх медленнее уходит к меню, зона падения почти стабильна.
+      const linear = Math.max(0, (count - 2) * 2.5);
+      const extra = Math.max(0, count - 17) * 0.58;
       const sink = Math.min(158, linear + extra);
       gsap.to(newBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
       gsap.to(placedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });

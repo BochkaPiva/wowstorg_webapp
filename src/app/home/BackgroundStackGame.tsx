@@ -80,8 +80,11 @@ class Block {
   material: THREE.MeshPhongMaterial;
   dimension: { width: number; height: number; depth: number };
   position: { x: number; y: number; z: number };
-  speed: number;
-  direction: number;
+  /** Положительное |скорость| в координатах сцены за кадр при 60 FPS (до перевода на u/s). */
+  moveMagPerFrameRef: number;
+  /** Единицы сцены в секунду — движение не зависит от FPS монитора. */
+  speedPerSecond: number;
+  directionSign: number;
   workingPlane: "x" | "z";
   workingDimension: "width" | "depth";
   readonly moveAmount = 12;
@@ -116,8 +119,9 @@ class Block {
     }
 
     this.state = this.index > 1 ? "active" : "stopped";
-    this.speed = Math.max(-8, -0.22 - this.index * 0.02);
-    this.direction = this.speed;
+    // Как раньше: ускоряется с уровнем, потолок сохранён.
+    this.moveMagPerFrameRef = Math.min(8, 0.22 + this.index * 0.02);
+    this.speedPerSecond = this.moveMagPerFrameRef * 60;
 
     const geometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
     geometry.translate(this.dimension.width / 2, this.dimension.height / 2, this.dimension.depth / 2);
@@ -132,27 +136,41 @@ class Block {
     this.mesh.receiveShadow = true;
     this.mesh.position.set(this.position.x, this.position.y, this.position.z);
 
+    this.directionSign = 1;
     if (this.state === "active") {
       this.position[this.workingPlane] = Math.random() > 0.5 ? -this.moveAmount : this.moveAmount;
       this.mesh.position[this.workingPlane] = this.position[this.workingPlane];
+      // К центру платформы: с «+края» в сторону нуля — знак минус; с «−края» — плюс.
+      this.directionSign = this.position[this.workingPlane] > 0 ? -1 : 1;
     }
   }
 
-  reverseDirection() {
-    this.direction = this.direction > 0 ? this.speed : Math.abs(this.speed);
-  }
-
-  tick() {
+  tick(deltaSeconds: number) {
     if (this.state !== "active") return;
-    const value = this.position[this.workingPlane];
-    if (value > this.moveAmount || value < -this.moveAmount) this.reverseDirection();
-    this.position[this.workingPlane] += this.direction;
-    this.mesh.position[this.workingPlane] = this.position[this.workingPlane];
+    const p = this.workingPlane;
+    const B = this.moveAmount;
+    let v = this.position[p];
+    const dt = Math.min(1 / 15, Math.max(0, deltaSeconds));
+    v += this.directionSign * this.speedPerSecond * dt;
+    let guard = 0;
+    while ((v > B || v < -B) && guard++ < 48) {
+      if (v > B) {
+        v = 2 * B - v;
+        this.directionSign = -1;
+      } else {
+        v = -2 * B - v;
+        this.directionSign = 1;
+      }
+    }
+    this.position[p] = v;
+    this.mesh.position[p] = v;
   }
 
   place() {
     this.state = "stopped";
-    if (!this.targetBlock) return { plane: this.workingPlane, direction: this.direction };
+    const impulseDir = this.directionSign * this.moveMagPerFrameRef;
+
+    if (!this.targetBlock) return { plane: this.workingPlane, direction: impulseDir };
 
     let overlap =
       this.targetBlock.dimension[this.workingDimension] -
@@ -165,7 +183,7 @@ class Block {
       chopped?: THREE.Mesh;
     } = {
       plane: this.workingPlane,
-      direction: this.direction,
+      direction: impulseDir,
     };
 
     if (this.dimension[this.workingDimension] - overlap < 0.1) {
@@ -258,6 +276,7 @@ export function BackgroundStackGame() {
     let state: GameState = "ready";
     gameStateRef.current = state;
     let raf = 0;
+    let lastFrameTime = performance.now();
     let reportedBest = 0;
     const reportTowerScore = (score: number) => {
       if (score <= 0) return;
@@ -272,8 +291,10 @@ export function BackgroundStackGame() {
       });
     };
     const applyVerticalShift = (count: number) => {
-      // Force growth to go downward stronger than upward.
-      const sink = Math.min(86, Math.max(0, (count - 2) * 2.2));
+      // Компенсируем рост высоты башни (~2.8 на блок): раньше 2.2/блок — верх успевал уезжать под меню карточек.
+      const linear = Math.max(0, (count - 2) * 3.12);
+      const extra = Math.max(0, count - 17) * 0.72;
+      const sink = Math.min(158, linear + extra);
       gsap.to(newBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
       gsap.to(placedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
       gsap.to(choppedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
@@ -417,12 +438,14 @@ export function BackgroundStackGame() {
     addBlock();
     addBlock();
 
-    const tick = () => {
-      blocks[blocks.length - 1]?.tick();
+    const tickLoop = (now: number) => {
+      const deltaSeconds = Math.min(1 / 20, Math.max(0, (now - lastFrameTime) / 1000));
+      lastFrameTime = now;
+      blocks[blocks.length - 1]?.tick(deltaSeconds);
       stage.render();
-      raf = window.requestAnimationFrame(tick);
+      raf = window.requestAnimationFrame(tickLoop);
     };
-    tick();
+    tickLoop(lastFrameTime);
 
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKey);

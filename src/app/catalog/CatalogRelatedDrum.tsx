@@ -70,7 +70,7 @@ function DrumCard({
         tabIndex={Math.abs(offset) <= 1 ? 0 : -1}
         onClick={onAdd}
       >
-        {renderRelatedThumb(row.relatedItemId, row.photo1Key, isCenter ? 48 : 40, "catalog-related-drum-thumb")}
+        {renderRelatedThumb(row.relatedItemId, row.photo1Key, 44, "catalog-related-drum-thumb")}
         <span className="catalog-related-drum-copy">
           <span className="catalog-related-drum-headline">
             <span className="catalog-related-drum-name">{row.name}</span>
@@ -84,25 +84,30 @@ function DrumCard({
             </span>
           </span>
           <span className="catalog-related-drum-source">{sourceLabel}</span>
-          {row.note ? <span className="catalog-related-drum-note">{row.note}</span> : null}
-          <span className="catalog-related-drum-meta">
-            {canAdd ? (
-              <>
-                Доступно {maxAvail} · {price.toFixed(0)} р/сут
+          <span className="catalog-related-drum-note">{row.note ?? "\u00a0"}</span>
+          {canAdd ? (
+            <span className="catalog-related-drum-pricing">
+              <span className="catalog-related-drum-price">{price.toFixed(0)} ₽/сут</span>
+              <span className="catalog-related-drum-meta">
+                Доступно {maxAvail}
                 {row.totalSuggestedQty > 1 ? ` · рекомендуем ${row.totalSuggestedQty} шт.` : ""}
-              </>
-            ) : (
+              </span>
+            </span>
+          ) : (
+            <span className="catalog-related-drum-meta">
               <span className="cart-related-unavailable">Нет на выбранные даты</span>
-            )}
-          </span>
+            </span>
+          )}
         </span>
         <span className="catalog-related-drum-add">{canAdd ? `+ ${qty}` : "—"}</span>
       </button>
-      {isCenter ? (
-        <button type="button" className="catalog-related-drum-dismiss" onClick={onDismiss}>
-          Не нужно
-        </button>
-      ) : null}
+      <div className="catalog-related-drum-dismiss-slot">
+        {isCenter ? (
+          <button type="button" className="catalog-related-drum-dismiss" onClick={onDismiss}>
+            Не нужно
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -349,12 +354,6 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
           </ul>
         </div>
       </div>
-
-      {autoScrollEnabled ? (
-        <p className="catalog-related-drum-hint">Прокрутка автоматическая · колёсико или ← → для ручного листания</p>
-      ) : loopEnabled ? (
-        <p className="catalog-related-drum-hint">Листайте колёсиком мыши</p>
-      ) : null}
     </section>
   );
 }

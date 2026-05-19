@@ -235,9 +235,9 @@ export function CartRelatedSuggestions({
         }
         if (excludeOrderId) params.set("excludeOrderId", excludeOrderId);
         const res = await fetch(`/api/catalog/related?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { groups?: CartRelatedSuggestionGroup[] } | null;
+        const data = (await res.json().catch(() => null)) as { groups?: unknown } | null;
         if (!cancelled) {
-          setGroups(normalizeGroups(data?.groups));
+          setGroups(res.ok ? normalizeGroups(data?.groups) : []);
         }
       } catch {
         if (!cancelled) setGroups([]);

@@ -31,7 +31,11 @@ export function CatalogRelatedStickyShell({ suggestionCount, children }: Props) 
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const nextCompact = !entry?.isIntersecting;
+        if (!entry) return;
+        // Сворачиваем только после прокрутки мимо блока (sentinel ушёл вверх).
+        // Если блок ещё ниже экрана — показываем полный список, иначе он «пропадает».
+        const scrolledPast = entry.boundingClientRect.top < 0;
+        const nextCompact = scrolledPast && !entry.isIntersecting;
         setCompact(nextCompact);
         if (!nextCompact) setExpanded(false);
       },

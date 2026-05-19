@@ -18,12 +18,19 @@ type Props = {
   onDismiss: (next: Set<string>) => void;
 };
 
-const WHEEL_LOCK_MS = 420;
-const AUTO_INTERVAL_MS = 3400;
+const WHEEL_LOCK_MS = 450;
+const AUTO_INTERVAL_MS = 5000;
+const PAUSE_AFTER_ROWS_CHANGE_MS = 6500;
 
 function mod(n: number, m: number): number {
   if (m <= 0) return 0;
   return ((n % m) + m) % m;
+}
+
+function logicalFromTrack(trackIndex: number, count: number, loopEnabled: boolean): number {
+  if (count <= 0) return 0;
+  const raw = loopEnabled ? trackIndex - count : trackIndex;
+  return mod(raw, count);
 }
 
 function DrumCard({
@@ -48,19 +55,19 @@ function DrumCard({
     row.sources.length === 1
       ? `к «${row.sources[0]!.sourceItemName}»`
       : `к ${formatSourceNamesRu(row.sources.map((source) => source.sourceItemName))}`;
+  const isCenter = offset === 0;
   const isVisible = Math.abs(offset) <= 1;
 
   return (
     <>
       <button
         type="button"
-        className="catalog-related-drum-card"
+        className={["catalog-related-drum-card", isCenter ? "catalog-related-drum-card--center" : ""].filter(Boolean).join(" ")}
         disabled={!canAdd || !isVisible}
         tabIndex={isVisible ? 0 : -1}
         onClick={onAdd}
       >
-        <span className="catalog-related-drum-card-glass" aria-hidden="true" />
-        {renderRelatedThumb(row.relatedItemId, row.photo1Key, offset === 0 ? 44 : 36, "catalog-related-drum-thumb")}
+        {renderRelatedThumb(row.relatedItemId, row.photo1Key, isCenter ? 42 : 36, "catalog-related-drum-thumb")}
         <span className="catalog-related-drum-copy">
           <span className="catalog-related-drum-name">{row.name}</span>
           <span className="catalog-related-drum-source">{sourceLabel}</span>
@@ -77,7 +84,7 @@ function DrumCard({
         </span>
         <span className="catalog-related-drum-add">{canAdd ? `+ ${qty}` : "—"}</span>
       </button>
-      {isVisible ? (
+      {isCenter ? (
         <button type="button" className="catalog-related-drum-dismiss" onClick={onDismiss}>
           Не нужно
         </button>
@@ -88,6 +95,7 @@ function DrumCard({
 
 export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onAdd, onDismiss }: Props) {
   const count = rows.length;
+  const rowIdsKey = rows.map((row) => row.relatedItemId).join("|");
   const loopEnabled = count > 1;
   const autoScrollEnabled = count >= 3;
 
@@ -96,34 +104,49 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     [rows, loopEnabled],
   );
 
-  const [trackIndex, setTrackIndex] = React.useState(() => (loopEnabled ? count : 0));
-  const [transitionEnabled, setTransitionEnabled] = React.useState(true);
-
+  const logicalIndexRef = React.useRef(0);
+  const trackIndexRef = React.useRef(0);
+  const countRef = React.useRef(count);
+  const pauseUntilRef = React.useRef(0);
   const wheelLockedRef = React.useRef(false);
   const pausedRef = React.useRef(false);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const trackRef = React.useRef<HTMLUListElement>(null);
 
+  const [trackIndex, setTrackIndexState] = React.useState(0);
+  const [transitionEnabled, setTransitionEnabled] = React.useState(true);
+
+  countRef.current = count;
+
+  const applyTrackIndex = React.useCallback((next: number, animate: boolean) => {
+    const safeCount = countRef.current;
+    const loop = safeCount > 1;
+    trackIndexRef.current = next;
+    logicalIndexRef.current = logicalFromTrack(next, safeCount, loop);
+    setTransitionEnabled(animate);
+    setTrackIndexState(next);
+  }, []);
+
   React.useEffect(() => {
-    if (!loopEnabled) {
-      setTrackIndex(0);
-      return;
-    }
-    setTrackIndex((prev) => {
-      const logical = mod(prev - count, count);
-      return count + logical;
-    });
-  }, [count, loopEnabled]);
+    pauseUntilRef.current = Date.now() + PAUSE_AFTER_ROWS_CHANGE_MS;
+    if (count === 0) return;
+
+    const loop = count > 1;
+    const clamped = Math.min(logicalIndexRef.current, count - 1);
+    logicalIndexRef.current = clamped;
+    applyTrackIndex(loop ? count + clamped : clamped, false);
+  }, [rowIdsKey, count, applyTrackIndex]);
 
   const step = React.useCallback(
     (direction: 1 | -1) => {
       if (!loopEnabled) return;
-      setTrackIndex((prev) => prev + direction);
+      applyTrackIndex(trackIndexRef.current + direction, true);
     },
-    [loopEnabled],
+    [applyTrackIndex, loopEnabled],
   );
 
   const pauseTemporarily = React.useCallback((ms = AUTO_INTERVAL_MS) => {
+    pauseUntilRef.current = Date.now() + ms;
     pausedRef.current = true;
     window.setTimeout(() => {
       pausedRef.current = false;
@@ -132,39 +155,31 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
 
   React.useEffect(() => {
     const track = trackRef.current;
-    if (!track || !loopEnabled || count <= 1) return;
+    if (!track || !loopEnabled) return;
 
     const onTransitionEnd = (event: TransitionEvent) => {
-      if (event.propertyName !== "transform") return;
+      if (event.target !== track || event.propertyName !== "transform") return;
 
-      if (trackIndex >= count * 2) {
-        setTransitionEnabled(false);
-        setTrackIndex((prev) => prev - count);
-        return;
-      }
+      const idx = trackIndexRef.current;
+      const safeCount = countRef.current;
+      if (safeCount <= 1) return;
 
-      if (trackIndex < count) {
-        setTransitionEnabled(false);
-        setTrackIndex((prev) => prev + count);
+      if (idx >= safeCount * 2) {
+        applyTrackIndex(idx - safeCount, false);
+      } else if (idx < safeCount) {
+        applyTrackIndex(idx + safeCount, false);
       }
     };
 
     track.addEventListener("transitionend", onTransitionEnd);
     return () => track.removeEventListener("transitionend", onTransitionEnd);
-  }, [trackIndex, count, loopEnabled]);
-
-  React.useEffect(() => {
-    if (transitionEnabled) return;
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setTransitionEnabled(true));
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, [transitionEnabled]);
+  }, [applyTrackIndex, loopEnabled]);
 
   React.useEffect(() => {
     if (!autoScrollEnabled) return;
 
     const id = window.setInterval(() => {
+      if (Date.now() < pauseUntilRef.current) return;
       if (pausedRef.current || wheelLockedRef.current) return;
       step(1);
     }, AUTO_INTERVAL_MS);
@@ -181,10 +196,10 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
       if (wheelLockedRef.current) return;
 
       const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (Math.abs(delta) < 6) return;
+      if (Math.abs(delta) < 8) return;
 
       wheelLockedRef.current = true;
-      pauseTemporarily(WHEEL_LOCK_MS + 200);
+      pauseTemporarily(WHEEL_LOCK_MS + 300);
       window.setTimeout(() => {
         wheelLockedRef.current = false;
       }, WHEEL_LOCK_MS);
@@ -204,14 +219,15 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     const qty = Math.min(row.totalSuggestedQty, maxAvail > 0 ? maxAvail : row.totalSuggestedQty);
     if (maxAvail <= 0) return;
 
-    pauseTemporarily();
+    pauseTemporarily(PAUSE_AFTER_ROWS_CHANGE_MS);
     onAdd(row.relatedItemId, qty, row.pricePerDay, maxAvail);
     onDismiss(dismissRelatedSuggestion(cartScope, row.relatedItemId));
   }
 
   function handleDismiss(row: MergedSuggestionRow, event: React.MouseEvent) {
+    event.preventDefault();
     event.stopPropagation();
-    pauseTemporarily();
+    pauseTemporarily(PAUSE_AFTER_ROWS_CHANGE_MS);
     onDismiss(dismissRelatedSuggestion(cartScope, row.relatedItemId));
   }
 
@@ -225,19 +241,13 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
       onMouseLeave={() => {
         pausedRef.current = false;
       }}
-      onFocusCapture={() => {
-        pausedRef.current = true;
-      }}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          pausedRef.current = false;
-        }
-      }}
     >
       <h2 className="catalog-related-drum-title">Рекомендуем добавить</h2>
 
       <div className="catalog-related-drum-shell">
         <div className="catalog-related-drum-backdrop" aria-hidden="true" />
+        <div className="catalog-related-drum-edge catalog-related-drum-edge--left" aria-hidden="true" />
+        <div className="catalog-related-drum-edge catalog-related-drum-edge--right" aria-hidden="true" />
         <div
           className="catalog-related-drum-viewport"
           ref={viewportRef}
@@ -296,12 +306,10 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
         </div>
       </div>
 
-      {loopEnabled ? (
-        <p className="catalog-related-drum-hint">
-          {autoScrollEnabled
-            ? "Листайте колёсиком или дождитесь автопрокрутки"
-            : "Листайте колёсиком мыши"}
-        </p>
+      {autoScrollEnabled ? (
+        <p className="catalog-related-drum-hint">Прокрутка автоматическая · колёсико или ← → для ручного листания</p>
+      ) : loopEnabled ? (
+        <p className="catalog-related-drum-hint">Листайте колёсиком мыши</p>
       ) : null}
     </section>
   );

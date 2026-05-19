@@ -9,7 +9,7 @@ import {
 } from "@/lib/cart-related-dismiss";
 
 import {
-  mergeByTarget,
+  buildDrumRows,
   type CartRelatedSuggestion,
   type CartRelatedSuggestionGroup,
 } from "@/app/cart/cart-related-shared";
@@ -195,6 +195,21 @@ export function CartRelatedSuggestions({
     [itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
   );
 
+  const catalogRequestKey = React.useMemo(
+    () =>
+      [
+        [...itemIds].sort().join(","),
+        startDate ?? "",
+        endDate ?? "",
+        rentalStartPartOfDay,
+        rentalEndPartOfDay,
+        excludeOrderId ?? "",
+      ].join("|"),
+    [itemIds, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
+  );
+
+  const fetchKey = variant === "catalog" ? catalogRequestKey : requestKey;
+
   const groupsRef = React.useRef(groups);
   groupsRef.current = groups;
 
@@ -234,7 +249,7 @@ export function CartRelatedSuggestions({
     return () => {
       cancelled = true;
     };
-  }, [disabled, requestKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
+  }, [disabled, fetchKey, itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
 
   const visibleGroups = React.useMemo(
     () =>
@@ -255,18 +270,7 @@ export function CartRelatedSuggestions({
   const shownRequired = filterGroupsByKind(shownGroups, "REQUIRED", dismissed);
   const shownRecommended = filterGroupsByKind(shownGroups, "RECOMMENDED", dismissed);
 
-  const mergedRequiredAll = React.useMemo(
-    () => mergeByTarget(visibleGroups, "REQUIRED"),
-    [visibleGroups],
-  );
-  const mergedRecommendedAll = React.useMemo(
-    () => mergeByTarget(visibleGroups, "RECOMMENDED"),
-    [visibleGroups],
-  );
-  const drumRows = React.useMemo(
-    () => [...mergedRequiredAll, ...mergedRecommendedAll],
-    [mergedRequiredAll, mergedRecommendedAll],
-  );
+  const drumRows = React.useMemo(() => buildDrumRows(visibleGroups), [visibleGroups]);
 
   const isCatalog = variant === "catalog";
 

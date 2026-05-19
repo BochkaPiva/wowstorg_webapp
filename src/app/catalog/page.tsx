@@ -684,7 +684,6 @@ export default function CatalogPage() {
 
   const catalogRelatedSuggestions = showCatalogRelated ? (
     <CartRelatedSuggestions
-      key={cartRelatedInputs.itemIds.join(",")}
       variant="catalog"
       cartScope={cartScope}
       itemIds={cartRelatedInputs.itemIds}

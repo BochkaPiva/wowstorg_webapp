@@ -69,6 +69,16 @@ export function mergeByTarget(
   return [...map.values()];
 }
 
+export function buildDrumRows(groups: CartRelatedSuggestionGroup[]): MergedSuggestionRow[] {
+  const required = mergeByTarget(groups, "REQUIRED");
+  const recommended = mergeByTarget(groups, "RECOMMENDED");
+
+  return [...required, ...recommended].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "REQUIRED" ? -1 : 1;
+    return a.name.localeCompare(b.name, "ru");
+  });
+}
+
 export function formatSourceNamesRu(names: string[]): string {
   const unique = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
   if (unique.length === 0) return "";

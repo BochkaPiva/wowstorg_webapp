@@ -367,49 +367,64 @@
 
 .catalog-related-drum-shell {
   position: relative;
-  max-width: 42rem;
+  max-width: 40rem;
   margin: 0 auto;
-  padding: 0.65rem 0 0.35rem;
-  isolation: isolate;
+  padding: 0.5rem 0 0.25rem;
 }
 
 .catalog-related-drum-backdrop {
   position: absolute;
-  inset: 0.15rem 4% 0.35rem;
-  border-radius: 22px;
+  inset: 0.35rem 6% 0.55rem;
+  border-radius: 18px;
   background:
-    radial-gradient(ellipse 55% 90% at 14% 50%, rgba(124, 58, 237, 0.16), transparent 68%),
-    radial-gradient(ellipse 50% 85% at 86% 50%, rgba(250, 204, 21, 0.18), transparent 68%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(245, 243, 255, 0.35));
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    radial-gradient(ellipse 70% 120% at 18% 50%, rgba(124, 58, 237, 0.14), transparent 70%),
+    radial-gradient(ellipse 65% 120% at 82% 50%, rgba(250, 204, 21, 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 245, 255, 0.72));
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.08);
   pointer-events: none;
   z-index: 0;
 }
 
+.catalog-related-drum-edge {
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.55rem;
+  width: 18%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.catalog-related-drum-edge--left {
+  left: 0;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.92), transparent);
+}
+
+.catalog-related-drum-edge--right {
+  right: 0;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.92), transparent);
+}
+
 .catalog-related-drum-viewport {
-  --slot-width: min(19.5rem, 72vw);
+  --slot-width: min(18rem, 68vw);
   --drum-index: 0;
   position: relative;
   z-index: 1;
   width: min(100%, calc(var(--slot-width) * 3));
-  height: 5.65rem;
+  height: 5.15rem;
   margin: 0 auto;
   overflow: hidden;
-  perspective: 1100px;
   outline: none;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 14%, #000 86%, transparent 100%);
 }
 
 .catalog-related-drum-viewport::before,
 .catalog-related-drum-viewport::after {
   content: "";
   position: absolute;
-  top: 16%;
-  bottom: 16%;
+  top: 18%;
+  bottom: 18%;
   width: 1px;
-  background: rgba(124, 58, 237, 0.24);
+  background: rgba(124, 58, 237, 0.16);
   z-index: 4;
   pointer-events: none;
 }
@@ -431,11 +446,10 @@
   align-items: center;
   height: 100%;
   transform: translate3d(calc(50% - (var(--drum-index) + 0.5) * var(--slot-width)), 0, 0);
-  will-change: transform;
 }
 
 .catalog-related-drum-track--animated {
-  transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.48s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .catalog-related-drum-track--instant {
@@ -450,27 +464,17 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.12rem;
-  transform-style: preserve-3d;
-  transition:
-    transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.52s ease;
+  gap: 0.1rem;
 }
 
 .catalog-related-drum-item--center {
-  transform: rotateY(0deg) scale(1);
-  opacity: 1;
   z-index: 2;
 }
 
-.catalog-related-drum-item--left {
-  transform: rotateY(24deg) scale(0.9) translateZ(-24px);
-  opacity: 0.78;
-}
-
+.catalog-related-drum-item--left,
 .catalog-related-drum-item--right {
-  transform: rotateY(-24deg) scale(0.9) translateZ(-24px);
-  opacity: 0.78;
+  opacity: 0.62;
+  transform: scale(0.94);
 }
 
 .catalog-related-drum-item--far {
@@ -479,76 +483,63 @@
 }
 
 .catalog-related-drum-card {
-  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.55rem;
-  width: calc(100% - 0.7rem);
-  padding: 0.44rem 0.62rem;
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  border-radius: 16px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.22));
-  backdrop-filter: blur(22px) saturate(185%);
-  -webkit-backdrop-filter: blur(22px) saturate(185%);
+  gap: 0.5rem;
+  width: calc(100% - 0.85rem);
+  padding: 0.42rem 0.58rem;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
   box-shadow:
-    0 10px 28px rgba(124, 58, 237, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+    0 6px 18px rgba(124, 58, 237, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
   cursor: pointer;
   text-align: left;
-  overflow: hidden;
   appearance: none;
   -webkit-appearance: none;
   transition:
-    transform 0.22s ease,
-    border-color 0.22s ease,
-    box-shadow 0.22s ease;
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
 }
 
-.catalog-related-drum-card-glass {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(125deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.08) 42%, rgba(255, 255, 255, 0.28) 100%);
-  pointer-events: none;
-}
-
-.catalog-related-drum-card > :not(.catalog-related-drum-card-glass) {
-  position: relative;
-  z-index: 1;
-}
-
-.catalog-related-drum-item--center .catalog-related-drum-card {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(249, 245, 255, 0.34));
-  border-color: rgba(124, 58, 237, 0.28);
+.catalog-related-drum-card--center {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(124, 58, 237, 0.22);
   box-shadow:
-    0 14px 34px rgba(124, 58, 237, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.42);
+    0 10px 24px rgba(124, 58, 237, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
 .catalog-related-drum-card:hover:not(:disabled) {
-  border-color: rgba(124, 58, 237, 0.42);
+  border-color: rgba(124, 58, 237, 0.32);
   transform: translateY(-1px);
 }
 
 .catalog-related-drum-card:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
+.catalog-related-drum-item--left .catalog-related-drum-card,
+.catalog-related-drum-item--right .catalog-related-drum-card {
+  pointer-events: auto;
+}
+
 .catalog-related-drum-thumb {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
 }
 
 .catalog-related-drum-item--left .catalog-related-drum-thumb,
 .catalog-related-drum-item--right .catalog-related-drum-thumb {
-  width: 36px;
-  height: 36px;
-  flex-basis: 36px;
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
 }
 
 .catalog-related-drum-copy {
@@ -1133,14 +1124,18 @@
   }
 
   .catalog-related-drum-viewport {
-    --slot-width: min(17rem, 78vw);
-    height: 5.35rem;
+    --slot-width: min(16rem, 74vw);
+    height: 4.95rem;
   }
 
   .catalog-related-drum-card {
     gap: 0.4rem;
     padding: 0.35rem 0.45rem;
-    width: calc(100% - 0.5rem);
+    width: calc(100% - 0.65rem);
+  }
+
+  .catalog-related-drum-edge {
+    width: 14%;
   }
 
   .catalog-related-drum-name {

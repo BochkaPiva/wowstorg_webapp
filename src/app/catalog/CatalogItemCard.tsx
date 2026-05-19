@@ -40,7 +40,8 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
   onInc: (id: string, currentQty: number) => void;
   onSetQty: (id: string, qty: number) => void;
 }) {
-  const available = item.availability.availableForDates ?? item.availability.availableNow;
+  const availability = item.availability ?? { availableNow: 0 };
+  const available = availability.availableForDates ?? availability.availableNow ?? 0;
   const canAdd = available > qtyInCart;
   const priceNum = Number(item.pricePerDay);
   const [qtyDraft, setQtyDraft] = React.useState<string>(qtyInCart > 0 ? String(qtyInCart) : "");

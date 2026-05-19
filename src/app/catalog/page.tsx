@@ -23,8 +23,8 @@ import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
 
-const CartRelatedSuggestions = dynamic(
-  () => import("@/app/cart/CartRelatedSuggestions").then((m) => m.CartRelatedSuggestions),
+const CatalogRelatedBlock = dynamic(
+  () => import("@/app/catalog/CatalogRelatedBlock").then((m) => m.CatalogRelatedBlock),
   { ssr: false },
 );
 
@@ -691,17 +691,16 @@ export default function CatalogPage() {
     (activeTab === "positions" || (activeTab === "categories" && categoryId));
 
   const catalogRelatedSuggestions = showCatalogRelated ? (
-    <CartRelatedSuggestions
-        variant="catalog"
-        cartScope={cartScope}
-        itemIds={cartRelatedInputs.itemIds}
-        qtys={cartRelatedInputs.qtys}
-        startDate={startDate}
-        endDate={endDate}
-        rentalStartPartOfDay={rentalStartPartOfDay}
-        rentalEndPartOfDay={rentalEndPartOfDay}
-        excludeOrderId={quickParentId}
-        onAdd={addRelatedToCart}
+    <CatalogRelatedBlock
+      cartScope={cartScope}
+      itemIds={cartRelatedInputs.itemIds}
+      qtys={cartRelatedInputs.qtys}
+      startDate={startDate}
+      endDate={endDate}
+      rentalStartPartOfDay={rentalStartPartOfDay}
+      rentalEndPartOfDay={rentalEndPartOfDay}
+      excludeOrderId={quickParentId}
+      onAdd={addRelatedToCart}
     />
   ) : null;
 

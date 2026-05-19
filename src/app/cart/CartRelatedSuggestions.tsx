@@ -47,6 +47,56 @@ type Props = {
 
 const FLAT_LIMIT = 8;
 
+function normalizeSuggestion(raw: unknown): CartRelatedSuggestion | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Partial<CartRelatedSuggestion> & {
+    availability?: Partial<CartRelatedSuggestion["availability"]> | null;
+  };
+  if (!row.relatedItemId || !row.name) return null;
+
+  const availability = row.availability ?? { availableNow: 0 };
+  return {
+    relatedItemId: row.relatedItemId,
+    name: row.name,
+    kind: row.kind === "REQUIRED" ? "REQUIRED" : "RECOMMENDED",
+    note: row.note ?? null,
+    suggestedQty: Math.max(1, Number(row.suggestedQty) || 1),
+    pricePerDay: Number(row.pricePerDay) || 0,
+    photo1Key: row.photo1Key ?? null,
+    availability: {
+      availableNow: Number(availability.availableNow) || 0,
+      ...(availability.availableForDates !== undefined
+        ? { availableForDates: Number(availability.availableForDates) || 0 }
+        : {}),
+    },
+    sourceItemNames: Array.isArray(row.sourceItemNames) ? row.sourceItemNames : [],
+  };
+}
+
+function normalizeGroup(raw: unknown): CartRelatedSuggestionGroup | null {
+  if (!raw || typeof raw !== "object") return null;
+  const group = raw as Partial<CartRelatedSuggestionGroup>;
+  if (!group.sourceItemId || !group.sourceItemName) return null;
+
+  const suggestions = Array.isArray(group.suggestions)
+    ? group.suggestions.map(normalizeSuggestion).filter((s): s is CartRelatedSuggestion => Boolean(s))
+    : [];
+  if (suggestions.length === 0) return null;
+
+  return {
+    sourceItemId: group.sourceItemId,
+    sourceItemName: group.sourceItemName,
+    sourcePhoto1Key: group.sourcePhoto1Key ?? null,
+    sourceQtyInCart: Math.max(1, Number(group.sourceQtyInCart) || 1),
+    suggestions,
+  };
+}
+
+function normalizeGroups(raw: unknown): CartRelatedSuggestionGroup[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeGroup).filter((group): group is CartRelatedSuggestionGroup => Boolean(group));
+}
+
 function filterGroupsByKind(
   groups: CartRelatedSuggestionGroup[],
   kind: CartRelatedSuggestion["kind"],
@@ -187,15 +237,7 @@ export function CartRelatedSuggestions({
         const res = await fetch(`/api/catalog/related?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as { groups?: CartRelatedSuggestionGroup[] } | null;
         if (!cancelled) {
-          const rawGroups = data?.groups;
-          setGroups(
-            Array.isArray(rawGroups)
-              ? rawGroups.map((group) => ({
-                  ...group,
-                  suggestions: Array.isArray(group.suggestions) ? group.suggestions : [],
-                }))
-              : [],
-          );
+          setGroups(normalizeGroups(data?.groups));
         }
       } catch {
         if (!cancelled) setGroups([]);
@@ -236,7 +278,8 @@ export function CartRelatedSuggestions({
   const sourceThumbSize = isCatalog ? 36 : 48;
 
   function renderTarget(s: CartRelatedSuggestion, groupKey: string) {
-    const maxAvail = s.availability.availableForDates ?? s.availability.availableNow;
+    const availability = s.availability ?? { availableNow: 0 };
+    const maxAvail = availability.availableForDates ?? availability.availableNow ?? 0;
     const qty = Math.min(s.suggestedQty, maxAvail > 0 ? maxAvail : s.suggestedQty);
     const canAdd = maxAvail > 0;
     const price = s.pricePerDay * displayMultiplier;
@@ -306,7 +349,7 @@ export function CartRelatedSuggestions({
   function renderSection(title: string, sectionGroups: CartRelatedSuggestionGroup[], kind: CartRelatedSuggestion["kind"]) {
     const rows = sectionGroups
       .map((group) => renderGroupRow(group, kind))
-      .filter((row): row is React.ReactElement => Boolean(row));
+      .filter((row) => row !== null);
     if (rows.length === 0) return null;
 
     return (

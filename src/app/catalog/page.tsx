@@ -1020,6 +1020,8 @@ export default function CatalogPage() {
           ) : null}
         </div>
 
+        {catalogRelatedSuggestions}
+
         {activeTab === "positions" ? (
           loading ? (
             <div className="text-sm text-zinc-600">Загрузка каталога…</div>
@@ -1027,7 +1029,6 @@ export default function CatalogPage() {
             <div className="text-sm text-zinc-600">По выбранным параметрам ничего не найдено.</div>
           ) : (
             <>
-              {catalogRelatedSuggestions}
               <div className="mk-grid">
                 {items.map((it) => (
                   <CatalogItemCard
@@ -1056,7 +1057,6 @@ export default function CatalogPage() {
             <div className="text-sm text-zinc-600">В этой категории пока нет позиций по выбранным параметрам.</div>
           ) : (
             <>
-              {catalogRelatedSuggestions}
               <div className="mk-grid">
                 {items.map((it) => (
                   <CatalogItemCard

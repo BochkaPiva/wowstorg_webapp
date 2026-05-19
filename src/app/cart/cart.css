@@ -367,14 +367,14 @@
 
 .catalog-related-drum-shell {
   position: relative;
-  max-width: 40rem;
+  max-width: 52rem;
   margin: 0 auto;
-  padding: 0.5rem 0 0.25rem;
+  padding: 0.55rem 0 0.35rem;
 }
 
 .catalog-related-drum-backdrop {
   position: absolute;
-  inset: 0.35rem 6% 0.55rem;
+  inset: 0.35rem 3% 0.65rem;
   border-radius: 18px;
   background:
     radial-gradient(ellipse 70% 120% at 18% 50%, rgba(124, 58, 237, 0.14), transparent 70%),
@@ -389,40 +389,44 @@
 .catalog-related-drum-edge {
   position: absolute;
   top: 0.35rem;
-  bottom: 0.55rem;
-  width: 18%;
+  bottom: 0.65rem;
+  width: 12%;
   z-index: 3;
   pointer-events: none;
 }
 
 .catalog-related-drum-edge--left {
   left: 0;
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.92), transparent);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.94), transparent);
 }
 
 .catalog-related-drum-edge--right {
   right: 0;
-  background: linear-gradient(to left, rgba(255, 255, 255, 0.92), transparent);
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.94), transparent);
 }
 
 .catalog-related-drum-viewport {
-  --slot-width: min(18rem, 68vw);
-  --drum-index: 0;
+  --slot-width: min(22rem, 88vw);
+  --drum-shift: 1;
   position: relative;
   z-index: 1;
   width: min(100%, calc(var(--slot-width) * 3));
-  height: 5.15rem;
+  min-height: 6.35rem;
   margin: 0 auto;
   overflow: hidden;
   outline: none;
+}
+
+.catalog-related-drum-viewport--single {
+  width: var(--slot-width);
 }
 
 .catalog-related-drum-viewport::before,
 .catalog-related-drum-viewport::after {
   content: "";
   position: absolute;
-  top: 18%;
-  bottom: 18%;
+  top: 14%;
+  bottom: 14%;
   width: 1px;
   background: rgba(124, 58, 237, 0.16);
   z-index: 4;
@@ -443,13 +447,18 @@
   padding: 0;
   display: flex;
   flex-direction: row;
-  align-items: center;
-  height: 100%;
-  transform: translate3d(calc(50% - (var(--drum-index) + 0.5) * var(--slot-width)), 0, 0);
+  align-items: stretch;
+  min-height: 6.35rem;
+  transform: translate3d(calc(50% - (var(--drum-shift) + 0.5) * var(--slot-width)), 0, 0);
+}
+
+.catalog-related-drum-track--single {
+  width: var(--slot-width);
+  transform: translate3d(calc(50% - var(--slot-width) / 2), 0, 0);
 }
 
 .catalog-related-drum-track--animated {
-  transition: transform 0.48s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: transform 0.46s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .catalog-related-drum-track--instant {
@@ -459,12 +468,12 @@
 .catalog-related-drum-item {
   flex: 0 0 var(--slot-width);
   width: var(--slot-width);
-  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.1rem;
+  gap: 0.12rem;
+  padding: 0.15rem 0;
 }
 
 .catalog-related-drum-item--center {
@@ -473,25 +482,28 @@
 
 .catalog-related-drum-item--left,
 .catalog-related-drum-item--right {
-  opacity: 0.62;
-  transform: scale(0.94);
-}
-
-.catalog-related-drum-item--far {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.68;
+  transform: scale(0.96);
 }
 
 .catalog-related-drum-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.12rem;
+  width: calc(100% - 0.65rem);
+}
+
+.catalog-related-drum-card-main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.5rem;
-  width: calc(100% - 0.85rem);
-  padding: 0.42rem 0.58rem;
+  gap: 0.62rem;
+  width: 100%;
+  padding: 0.52rem 0.62rem;
   border: 1px solid rgba(255, 255, 255, 0.95);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.82);
   box-shadow:
     0 6px 18px rgba(124, 58, 237, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
@@ -502,97 +514,144 @@
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
-    border-color 0.2s ease,
-    opacity 0.2s ease;
+    border-color 0.2s ease;
 }
 
-.catalog-related-drum-card--center {
-  background: rgba(255, 255, 255, 0.92);
+.catalog-related-drum-card--center .catalog-related-drum-card-main {
+  background: rgba(255, 255, 255, 0.94);
   border-color: rgba(124, 58, 237, 0.22);
   box-shadow:
     0 10px 24px rgba(124, 58, 237, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 
-.catalog-related-drum-card:hover:not(:disabled) {
+.catalog-related-drum-card--side .catalog-related-drum-card-main {
+  padding: 0.42rem 0.52rem;
+}
+
+.catalog-related-drum-card-main:hover:not(:disabled) {
   border-color: rgba(124, 58, 237, 0.32);
   transform: translateY(-1px);
 }
 
-.catalog-related-drum-card:disabled {
+.catalog-related-drum-card-main:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.catalog-related-drum-item--left .catalog-related-drum-card,
-.catalog-related-drum-item--right .catalog-related-drum-card {
-  pointer-events: auto;
-}
-
 .catalog-related-drum-thumb {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
 }
 
-.catalog-related-drum-item--left .catalog-related-drum-thumb,
-.catalog-related-drum-item--right .catalog-related-drum-thumb {
-  width: 34px;
-  height: 34px;
-  flex-basis: 34px;
+.catalog-related-drum-card--side .catalog-related-drum-thumb {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
 }
 
 .catalog-related-drum-copy {
   display: flex;
   flex-direction: column;
-  gap: 0.06rem;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.catalog-related-drum-headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
   min-width: 0;
 }
 
 .catalog-related-drum-name {
-  font-size: 0.86rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #111827;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.catalog-related-drum-card--side .catalog-related-drum-name {
+  font-size: 0.82rem;
+  -webkit-line-clamp: 1;
+}
+
+.catalog-related-drum-badge {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
   font-weight: 700;
   line-height: 1.2;
-  color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.catalog-related-drum-badge--required {
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+}
+
+.catalog-related-drum-badge--recommended {
+  background: rgba(124, 58, 237, 0.12);
+  color: #6d28d9;
 }
 
 .catalog-related-drum-source {
-  font-size: 0.68rem;
-  line-height: 1.2;
+  font-size: 0.74rem;
+  line-height: 1.3;
   color: #6d28d9;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.catalog-related-drum-note {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #4b5563;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .catalog-related-drum-meta {
-  font-size: 0.66rem;
-  line-height: 1.25;
+  font-size: 0.72rem;
+  line-height: 1.35;
   color: #6b7280;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .catalog-related-drum-add {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.55rem;
-  padding: 0.24rem 0.52rem;
-  border-radius: 9px;
-  background: rgba(124, 58, 237, 0.16);
-  border: 1px solid rgba(124, 58, 237, 0.34);
+  min-width: 2.75rem;
+  padding: 0.32rem 0.58rem;
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.14);
+  border: 1px solid rgba(124, 58, 237, 0.32);
   color: #6d28d9;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.86rem;
+  align-self: center;
 }
 
 .catalog-related-drum-dismiss {
-  font-size: 0.64rem;
+  align-self: center;
+  font-size: 0.68rem;
   color: #6b7280;
   background: none;
   border: none;
@@ -1123,23 +1182,30 @@
     max-width: 6.5rem;
   }
 
+  .catalog-related-drum-shell {
+    max-width: 100%;
+  }
+
   .catalog-related-drum-viewport {
-    --slot-width: min(16rem, 74vw);
-    height: 4.95rem;
+    --slot-width: min(19rem, 92vw);
+    min-height: 5.85rem;
   }
 
-  .catalog-related-drum-card {
-    gap: 0.4rem;
-    padding: 0.35rem 0.45rem;
-    width: calc(100% - 0.65rem);
+  .catalog-related-drum-track {
+    min-height: 5.85rem;
   }
 
-  .catalog-related-drum-edge {
-    width: 14%;
+  .catalog-related-drum-card-main {
+    gap: 0.45rem;
+    padding: 0.42rem 0.48rem;
   }
 
   .catalog-related-drum-name {
-    font-size: 0.8rem;
+    font-size: 0.84rem;
+  }
+
+  .catalog-related-drum-edge {
+    width: 10%;
   }
 }
 

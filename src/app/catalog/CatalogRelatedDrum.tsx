@@ -18,19 +18,14 @@ type Props = {
   onDismiss: (next: Set<string>) => void;
 };
 
-const WHEEL_LOCK_MS = 450;
 const AUTO_INTERVAL_MS = 5000;
 const PAUSE_AFTER_ROWS_CHANGE_MS = 6500;
+const SLIDE_MS = 460;
+const WHEEL_LOCK_MS = SLIDE_MS + 120;
 
 function mod(n: number, m: number): number {
   if (m <= 0) return 0;
   return ((n % m) + m) % m;
-}
-
-function logicalFromTrack(trackIndex: number, count: number, loopEnabled: boolean): number {
-  if (count <= 0) return 0;
-  const raw = loopEnabled ? trackIndex - count : trackIndex;
-  return mod(raw, count);
 }
 
 function DrumCard({
@@ -51,34 +46,53 @@ function DrumCard({
   const qty = Math.min(row.totalSuggestedQty, maxAvail > 0 ? maxAvail : row.totalSuggestedQty);
   const canAdd = maxAvail > 0;
   const price = row.pricePerDay * displayMultiplier;
+  const isCenter = offset === 0;
   const sourceLabel =
     row.sources.length === 1
-      ? `к «${row.sources[0]!.sourceItemName}»`
-      : `к ${formatSourceNamesRu(row.sources.map((source) => source.sourceItemName))}`;
-  const isCenter = offset === 0;
-  const isVisible = Math.abs(offset) <= 1;
+      ? `Для «${row.sources[0]!.sourceItemName}»`
+      : `Для ${formatSourceNamesRu(row.sources.map((source) => source.sourceItemName))}`;
 
   return (
-    <>
+    <article
+      className={[
+        "catalog-related-drum-card",
+        isCenter ? "catalog-related-drum-card--center" : "",
+        offset === -1 ? "catalog-related-drum-card--side" : "",
+        offset === 1 ? "catalog-related-drum-card--side" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <button
         type="button"
-        className={["catalog-related-drum-card", isCenter ? "catalog-related-drum-card--center" : ""].filter(Boolean).join(" ")}
-        disabled={!canAdd || !isVisible}
-        tabIndex={isVisible ? 0 : -1}
+        className="catalog-related-drum-card-main"
+        disabled={!canAdd}
+        tabIndex={Math.abs(offset) <= 1 ? 0 : -1}
         onClick={onAdd}
       >
-        {renderRelatedThumb(row.relatedItemId, row.photo1Key, isCenter ? 42 : 36, "catalog-related-drum-thumb")}
+        {renderRelatedThumb(row.relatedItemId, row.photo1Key, isCenter ? 48 : 40, "catalog-related-drum-thumb")}
         <span className="catalog-related-drum-copy">
-          <span className="catalog-related-drum-name">{row.name}</span>
+          <span className="catalog-related-drum-headline">
+            <span className="catalog-related-drum-name">{row.name}</span>
+            <span
+              className={[
+                "catalog-related-drum-badge",
+                row.kind === "REQUIRED" ? "catalog-related-drum-badge--required" : "catalog-related-drum-badge--recommended",
+              ].join(" ")}
+            >
+              {row.kind === "REQUIRED" ? "Нужно" : "Совет"}
+            </span>
+          </span>
           <span className="catalog-related-drum-source">{sourceLabel}</span>
+          {row.note ? <span className="catalog-related-drum-note">{row.note}</span> : null}
           <span className="catalog-related-drum-meta">
             {canAdd ? (
               <>
-                доступно {maxAvail} · {price.toFixed(0)} р/сут
-                {row.totalSuggestedQty > 1 ? ` · +${row.totalSuggestedQty}` : ""}
+                Доступно {maxAvail} · {price.toFixed(0)} р/сут
+                {row.totalSuggestedQty > 1 ? ` · рекомендуем ${row.totalSuggestedQty} шт.` : ""}
               </>
             ) : (
-              <span className="cart-related-unavailable">нет на выбранные даты</span>
+              <span className="cart-related-unavailable">Нет на выбранные даты</span>
             )}
           </span>
         </span>
@@ -89,7 +103,7 @@ function DrumCard({
           Не нужно
         </button>
       ) : null}
-    </>
+    </article>
   );
 }
 
@@ -99,50 +113,74 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
   const loopEnabled = count > 1;
   const autoScrollEnabled = count >= 3;
 
-  const extendedRows = React.useMemo(
-    () => (loopEnabled ? [...rows, ...rows, ...rows] : rows),
-    [rows, loopEnabled],
-  );
+  const [logicalIndex, setLogicalIndex] = React.useState(0);
+  const [slideShift, setSlideShift] = React.useState(0);
+  const [transitionEnabled, setTransitionEnabled] = React.useState(true);
 
   const logicalIndexRef = React.useRef(0);
-  const trackIndexRef = React.useRef(0);
+  const animatingRef = React.useRef(false);
+  const pendingDirectionRef = React.useRef<0 | 1 | -1>(0);
   const countRef = React.useRef(count);
   const pauseUntilRef = React.useRef(0);
-  const wheelLockedRef = React.useRef(false);
   const pausedRef = React.useRef(false);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const trackRef = React.useRef<HTMLUListElement>(null);
 
-  const [trackIndex, setTrackIndexState] = React.useState(0);
-  const [transitionEnabled, setTransitionEnabled] = React.useState(true);
-
-  countRef.current = count;
-
-  const applyTrackIndex = React.useCallback((next: number, animate: boolean) => {
-    const safeCount = countRef.current;
-    const loop = safeCount > 1;
-    trackIndexRef.current = next;
-    logicalIndexRef.current = logicalFromTrack(next, safeCount, loop);
-    setTransitionEnabled(animate);
-    setTrackIndexState(next);
-  }, []);
-
   React.useEffect(() => {
     pauseUntilRef.current = Date.now() + PAUSE_AFTER_ROWS_CHANGE_MS;
     if (count === 0) return;
-
-    const loop = count > 1;
     const clamped = Math.min(logicalIndexRef.current, count - 1);
     logicalIndexRef.current = clamped;
-    applyTrackIndex(loop ? count + clamped : clamped, false);
-  }, [rowIdsKey, count, applyTrackIndex]);
+    setLogicalIndex(clamped);
+    setSlideShift(0);
+    setTransitionEnabled(false);
+    requestAnimationFrame(() => setTransitionEnabled(true));
+  }, [rowIdsKey, count]);
+
+  countRef.current = count;
+
+  const finishSlide = React.useCallback((direction: 1 | -1) => {
+    const nextLogical = mod(logicalIndexRef.current + direction, countRef.current);
+    logicalIndexRef.current = nextLogical;
+    pendingDirectionRef.current = 0;
+    setLogicalIndex(nextLogical);
+    setSlideShift(0);
+    setTransitionEnabled(false);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTransitionEnabled(true);
+        animatingRef.current = false;
+      });
+    });
+  }, []);
+
+  const beginSlide = React.useCallback(
+    (direction: 1 | -1) => {
+      if (!loopEnabled || animatingRef.current || countRef.current <= 1) return false;
+
+      animatingRef.current = true;
+      pendingDirectionRef.current = direction;
+      setTransitionEnabled(true);
+      setSlideShift(direction);
+      return true;
+    },
+    [loopEnabled],
+  );
+
+  const slotRows = React.useMemo(() => {
+    if (count === 0) return [];
+    if (count === 1) {
+      return [{ offset: 0 as const, row: rows[0]! }];
+    }
+    return ([-1, 0, 1] as const).map((offset) => ({
+      offset,
+      row: rows[mod(logicalIndex + offset, count)]!,
+    }));
+  }, [count, logicalIndex, rows]);
 
   const step = React.useCallback(
-    (direction: 1 | -1) => {
-      if (!loopEnabled) return;
-      applyTrackIndex(trackIndexRef.current + direction, true);
-    },
-    [applyTrackIndex, loopEnabled],
+    (direction: 1 | -1) => beginSlide(direction),
+    [beginSlide],
   );
 
   const pauseTemporarily = React.useCallback((ms = AUTO_INTERVAL_MS) => {
@@ -154,33 +192,11 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
   }, []);
 
   React.useEffect(() => {
-    const track = trackRef.current;
-    if (!track || !loopEnabled) return;
-
-    const onTransitionEnd = (event: TransitionEvent) => {
-      if (event.target !== track || event.propertyName !== "transform") return;
-
-      const idx = trackIndexRef.current;
-      const safeCount = countRef.current;
-      if (safeCount <= 1) return;
-
-      if (idx >= safeCount * 2) {
-        applyTrackIndex(idx - safeCount, false);
-      } else if (idx < safeCount) {
-        applyTrackIndex(idx + safeCount, false);
-      }
-    };
-
-    track.addEventListener("transitionend", onTransitionEnd);
-    return () => track.removeEventListener("transitionend", onTransitionEnd);
-  }, [applyTrackIndex, loopEnabled]);
-
-  React.useEffect(() => {
     if (!autoScrollEnabled) return;
 
     const id = window.setInterval(() => {
       if (Date.now() < pauseUntilRef.current) return;
-      if (pausedRef.current || wheelLockedRef.current) return;
+      if (pausedRef.current || animatingRef.current) return;
       step(1);
     }, AUTO_INTERVAL_MS);
 
@@ -188,23 +204,50 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
   }, [autoScrollEnabled, step]);
 
   React.useEffect(() => {
+    const track = trackRef.current;
+    if (!track || !loopEnabled) return;
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== track || event.propertyName !== "transform") return;
+      const direction = pendingDirectionRef.current;
+      if (!direction || !animatingRef.current) return;
+      finishSlide(direction);
+    };
+
+    track.addEventListener("transitionend", onTransitionEnd);
+    return () => track.removeEventListener("transitionend", onTransitionEnd);
+  }, [finishSlide, loopEnabled]);
+
+  React.useEffect(() => {
+    if (slideShift === 0) return;
+    const id = window.setTimeout(() => {
+      const direction = pendingDirectionRef.current;
+      if (direction && animatingRef.current) {
+        finishSlide(direction);
+      }
+    }, SLIDE_MS + 100);
+    return () => window.clearTimeout(id);
+  }, [finishSlide, slideShift]);
+
+  React.useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || !loopEnabled) return;
 
+    let wheelAccum = 0;
+
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      if (wheelLockedRef.current) return;
+      if (animatingRef.current) return;
 
       const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (Math.abs(delta) < 8) return;
+      wheelAccum += delta;
+      if (Math.abs(wheelAccum) < 36) return;
 
-      wheelLockedRef.current = true;
-      pauseTemporarily(WHEEL_LOCK_MS + 300);
-      window.setTimeout(() => {
-        wheelLockedRef.current = false;
-      }, WHEEL_LOCK_MS);
-
-      step(delta > 0 ? 1 : -1);
+      const direction: 1 | -1 = wheelAccum > 0 ? 1 : -1;
+      wheelAccum = 0;
+      if (step(direction)) {
+        pauseTemporarily(WHEEL_LOCK_MS);
+      }
     };
 
     viewport.addEventListener("wheel", onWheel, { passive: false });
@@ -231,6 +274,8 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     onDismiss(dismissRelatedSuggestion(cartScope, row.relatedItemId));
   }
 
+  const trackShift = count === 1 ? 0 : 1 + slideShift;
+
   return (
     <section
       className="catalog-related-drum"
@@ -249,12 +294,17 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
         <div className="catalog-related-drum-edge catalog-related-drum-edge--left" aria-hidden="true" />
         <div className="catalog-related-drum-edge catalog-related-drum-edge--right" aria-hidden="true" />
         <div
-          className="catalog-related-drum-viewport"
+          className={[
+            "catalog-related-drum-viewport",
+            count === 1 ? "catalog-related-drum-viewport--single" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           ref={viewportRef}
           tabIndex={0}
-          style={{ ["--drum-index" as string]: trackIndex }}
+          style={{ ["--drum-shift" as string]: trackShift }}
           onKeyDown={(event) => {
-            if (!loopEnabled) return;
+            if (!loopEnabled || animatingRef.current) return;
             if (event.key === "ArrowRight") {
               event.preventDefault();
               pauseTemporarily();
@@ -272,36 +322,30 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
             className={[
               "catalog-related-drum-track",
               transitionEnabled ? "catalog-related-drum-track--animated" : "catalog-related-drum-track--instant",
+              count === 1 ? "catalog-related-drum-track--single" : "",
             ].join(" ")}
           >
-            {extendedRows.map((row, index) => {
-              const offset = index - trackIndex;
-              const isVisible = Math.abs(offset) <= 1;
-
-              return (
-                <li
-                  key={`${row.relatedItemId}-${index}`}
-                  className={[
-                    "catalog-related-drum-item",
-                    offset === 0 ? "catalog-related-drum-item--center" : "",
-                    offset === -1 ? "catalog-related-drum-item--left" : "",
-                    offset === 1 ? "catalog-related-drum-item--right" : "",
-                    !isVisible ? "catalog-related-drum-item--far" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  aria-hidden={!isVisible}
-                >
-                  <DrumCard
-                    row={row}
-                    offset={offset}
-                    displayMultiplier={displayMultiplier}
-                    onAdd={() => handleAdd(row)}
-                    onDismiss={(event) => handleDismiss(row, event)}
-                  />
-                </li>
-              );
-            })}
+            {slotRows.map(({ row, offset }) => (
+              <li
+                key={`${row.relatedItemId}-${offset}-${logicalIndex}`}
+                className={[
+                  "catalog-related-drum-item",
+                  offset === 0 ? "catalog-related-drum-item--center" : "",
+                  offset === -1 ? "catalog-related-drum-item--left" : "",
+                  offset === 1 ? "catalog-related-drum-item--right" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <DrumCard
+                  row={row}
+                  offset={offset}
+                  displayMultiplier={displayMultiplier}
+                  onAdd={() => handleAdd(row)}
+                  onDismiss={(event) => handleDismiss(row, event)}
+                />
+              </li>
+            ))}
           </ul>
         </div>
       </div>

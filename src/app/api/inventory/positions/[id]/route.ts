@@ -197,7 +197,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
       return jsonError(
         409,
-        "Нельзя удалить позицию: у нее есть связанные записи в заявках, наборах, утерях или другой истории.",
+        "Нельзя удалить позицию: у нее есть связанные записи в заявках, наборах, рекомендациях каталога, утерях или другой истории.",
       );
     }
     return jsonError(500, "Не удалось удалить позицию");

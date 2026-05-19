@@ -48,6 +48,12 @@ enum RentalPartOfDay {
   EVENING
 }
 
+/// Жёсткость связи «позиция → рекомендуемая позиция» (см. docs/CATALOG_RELATED_ITEMS_PLAN.md).
+enum ItemRelationKind {
+  REQUIRED
+  RECOMMENDED
+}
+
 enum Condition {
   OK
   NEEDS_REPAIR
@@ -633,8 +639,31 @@ model Item {
   projectEstimateLines ProjectEstimateLine[]
   projectDraftOrderLines ProjectDraftOrderLine[]
 
+  relatedFrom ItemRelatedItem[] @relation("ItemRelationsFrom")
+  relatedTo   ItemRelatedItem[] @relation("ItemRelationsTo")
+
   @@index([isActive, internalOnly])
   @@index([name])
+}
+
+/// Направленная связь для рекомендаций в корзине: source → related.
+model ItemRelatedItem {
+  id                  String           @id @default(cuid())
+  sourceItemId        String
+  sourceItem          Item             @relation("ItemRelationsFrom", fields: [sourceItemId], references: [id], onDelete: Cascade)
+  relatedItemId       String
+  relatedItem         Item             @relation("ItemRelationsTo", fields: [relatedItemId], references: [id], onDelete: Restrict)
+  kind                ItemRelationKind @default(RECOMMENDED)
+  sortOrder           Int              @default(0)
+  defaultSuggestedQty Int              @default(1)
+  qtyPerSourceUnit    Int              @default(1)
+  note                String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([sourceItemId, relatedItemId])
+  @@index([sourceItemId, sortOrder])
+  @@index([relatedItemId])
 }
 
 model Collection {

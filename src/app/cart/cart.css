@@ -304,6 +304,149 @@
   box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
 }
 
+.cart-related {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+}
+
+.cart-related-section + .cart-related-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.cart-related-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cart-related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cart-related-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.cart-related-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.cart-related-thumb {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+}
+
+.cart-related-text {
+  min-width: 0;
+}
+
+.cart-related-name {
+  font-weight: 700;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.cart-related-note,
+.cart-related-source {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.cart-related-meta {
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.cart-related-unavailable {
+  color: #b91c1c;
+}
+
+.cart-related-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.cart-related-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.1);
+  color: #6d28d9;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.cart-related-add:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.18);
+}
+
+.cart-related-add:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cart-related-dismiss {
+  font-size: 0.85rem;
+  color: #6b7280;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0.25rem 0;
+}
+
+.cart-related-dismiss:hover {
+  color: #111827;
+}
+
+.cart-related-more {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #6d28d9;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.cart-related-more:hover {
+  color: #5b21b6;
+}
+
 /* Плавающая кнопка «В каталог» — слева, всегда видна */
 .cart-floatCatalog {
   position: fixed;

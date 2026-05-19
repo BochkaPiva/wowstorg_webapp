@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-05-04T16:03:50.458Z  
-> **Файлов route.ts:** 96  
+> **Сгенерировано:** 2026-05-19T15:28:46.678Z  
+> **Файлов route.ts:** 98  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -29,6 +29,7 @@
 | GET | `/api/catalog/categories` | `src/app/api/catalog/categories/route.ts` |
 | GET | `/api/catalog/items` | `src/app/api/catalog/items/route.ts` |
 | GET | `/api/catalog/kits` | `src/app/api/catalog/kits/route.ts` |
+| GET | `/api/catalog/related` | `src/app/api/catalog/related/route.ts` |
 | PATCH | `/api/customers/[id]` | `src/app/api/customers/[id]/route.ts` |
 | GET, POST | `/api/customers` | `src/app/api/customers/route.ts` |
 | GET | `/api/dashboard/greenwich` | `src/app/api/dashboard/greenwich/route.ts` |
@@ -44,6 +45,7 @@
 | GET, PATCH, DELETE | `/api/inventory/packages/[id]` | `src/app/api/inventory/packages/[id]/route.ts` |
 | GET, POST | `/api/inventory/packages` | `src/app/api/inventory/packages/route.ts` |
 | GET, POST, DELETE | `/api/inventory/positions/[id]/photo` | `src/app/api/inventory/positions/[id]/photo/route.ts` |
+| GET, PUT | `/api/inventory/positions/[id]/related` | `src/app/api/inventory/positions/[id]/related/route.ts` |
 | GET, PATCH, DELETE | `/api/inventory/positions/[id]` | `src/app/api/inventory/positions/[id]/route.ts` |
 | GET, POST | `/api/inventory/positions` | `src/app/api/inventory/positions/route.ts` |
 | GET, PATCH, DELETE | `/api/me/notifications` | `src/app/api/me/notifications/route.ts` |
@@ -90,7 +92,7 @@
 | GET, POST, PATCH | `/api/projects/[id]/schedule` | `src/app/api/projects/[id]/schedule/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/schedule/slots/[slotId]` | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` |
 | GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
-| POST | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
+| POST, GET | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
 | POST | `/api/telegram/webhook` | `src/app/api/telegram/webhook/route.ts` |
 | GET | `/api/users/greenwich` | `src/app/api/users/greenwich/route.ts` |
 | GET | `/api/warehouse/archive` | `src/app/api/warehouse/archive/route.ts` |

@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { PositionRelatedItemsEditor } from "@/app/inventory/positions/PositionRelatedItemsEditor";
 import { useAuth } from "@/app/providers";
 
 type ItemType = "ASSET" | "BULK" | "CONSUMABLE";
@@ -447,6 +448,8 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
                 ))}
               </div>
             </div>
+
+            <PositionRelatedItemsEditor positionId={id} />
           </>
         ) : (
           <div className="text-sm text-zinc-600">Позиция не найдена.</div>

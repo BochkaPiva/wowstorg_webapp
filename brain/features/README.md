@@ -46,6 +46,7 @@
 | Админ-аналитика | [`admin-analytics.md`](./admin-analytics.md) (редизайн, формулы, вкладки, Excel) |
 | Центр уведомлений | [`notifications-center.md`](./notifications-center.md) (in-app уведомления, колокольчик, задел под browser push) |
 | Утро/вечер на границах аренды | [`rental-part-of-day.md`](./rental-part-of-day.md) (план в [`docs/RENTAL_PART_OF_DAY_PLAN.md`](../../docs/RENTAL_PART_OF_DAY_PLAN.md)) |
+| Связанные позиции / рекомендации в корзине | [`catalog-related-items.md`](./catalog-related-items.md) (план в [`docs/CATALOG_RELATED_ITEMS_PLAN.md`](../../docs/CATALOG_RELATED_ITEMS_PLAN.md)) |
 
 ## Индекс существующих крупных тем (в docs)
 

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { catalogDatesFromStorage } from "@/lib/catalogDates";
@@ -1071,6 +1072,23 @@ export default function CartPage() {
                 );
               })}
             </ul>
+
+            <CartRelatedSuggestions
+              cartScope={cartScope ?? "default"}
+              itemIds={cart.map((l) => l.itemId)}
+              qtys={cart.map((l) => l.qty)}
+              startDate={startDate}
+              endDate={endDate}
+              rentalStartPartOfDay={rentalStartPartOfDay}
+              rentalEndPartOfDay={rentalEndPartOfDay}
+              excludeOrderId={quickParentId}
+              disabled={isProjectDemoCart}
+              displayMultiplier={displayMultiplier}
+              onAdd={(itemId, qty) => {
+                const existing = cart.find((l) => l.itemId === itemId);
+                setQty(itemId, (existing?.qty ?? 0) + qty);
+              }}
+            />
 
             {(isGreenwich || isWarehouse) ? (
               <>

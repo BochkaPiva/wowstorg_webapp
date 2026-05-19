@@ -20,6 +20,14 @@ export type CartRelatedSuggestion = {
   sourceItemNames: string[];
 };
 
+export type CartRelatedSuggestionGroup = {
+  sourceItemId: string;
+  sourceItemName: string;
+  sourcePhoto1Key: string | null;
+  sourceQtyInCart: number;
+  suggestions: CartRelatedSuggestion[];
+};
+
 type Props = {
   cartScope?: string;
   itemIds: string[];
@@ -37,6 +45,68 @@ type Props = {
 
 const FLAT_LIMIT = 8;
 
+function filterGroupsByKind(
+  groups: CartRelatedSuggestionGroup[],
+  kind: CartRelatedSuggestion["kind"],
+  dismissed: Set<string>,
+): CartRelatedSuggestionGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      suggestions: group.suggestions.filter((s) => s.kind === kind && !dismissed.has(s.relatedItemId)),
+    }))
+    .filter((group) => group.suggestions.length > 0);
+}
+
+function countSuggestions(groups: CartRelatedSuggestionGroup[]): number {
+  return groups.reduce((sum, group) => sum + group.suggestions.length, 0);
+}
+
+function limitGroups(
+  groups: CartRelatedSuggestionGroup[],
+  limit: number,
+): { groups: CartRelatedSuggestionGroup[]; hiddenCount: number } {
+  let remaining = limit;
+  const limited: CartRelatedSuggestionGroup[] = [];
+  let hiddenCount = 0;
+
+  for (const group of groups) {
+    if (remaining <= 0) {
+      hiddenCount += group.suggestions.length;
+      continue;
+    }
+    if (group.suggestions.length <= remaining) {
+      limited.push(group);
+      remaining -= group.suggestions.length;
+      continue;
+    }
+    limited.push({ ...group, suggestions: group.suggestions.slice(0, remaining) });
+    hiddenCount += group.suggestions.length - remaining;
+    remaining = 0;
+  }
+
+  return { groups: limited, hiddenCount };
+}
+
+function renderThumb(itemId: string, photo1Key: string | null, size: number, className?: string) {
+  return (
+    <div className={["cart-thumbWrap cart-related-thumb", className].filter(Boolean).join(" ")} aria-hidden="true">
+      {photo1Key ? (
+        <img
+          src={`/api/inventory/positions/${itemId}/photo?w=${size}`}
+          alt=""
+          className="cart-thumb"
+          loading="lazy"
+        />
+      ) : (
+        <div className="cart-thumbPlaceholder">
+          <span>WOW</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CartRelatedSuggestions({
   cartScope,
   itemIds,
@@ -51,7 +121,7 @@ export function CartRelatedSuggestions({
   variant = "cart",
   onAdd,
 }: Props) {
-  const [flat, setFlat] = React.useState<CartRelatedSuggestion[]>([]);
+  const [groups, setGroups] = React.useState<CartRelatedSuggestionGroup[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [dismissed, setDismissed] = React.useState<Set<string>>(() => loadDismissedRelatedIds(cartScope));
@@ -88,19 +158,19 @@ export function CartRelatedSuggestions({
     [itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
   );
 
-  const flatRef = React.useRef(flat);
-  flatRef.current = flat;
+  const groupsRef = React.useRef(groups);
+  groupsRef.current = groups;
 
   React.useEffect(() => {
     if (disabled || itemIds.length === 0) {
-      setFlat([]);
+      setGroups([]);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
     async function load() {
-      if (flatRef.current.length === 0) setLoading(true);
+      if (groupsRef.current.length === 0) setLoading(true);
       try {
         const params = new URLSearchParams();
         params.set("itemIds", itemIds.join(","));
@@ -113,10 +183,10 @@ export function CartRelatedSuggestions({
         }
         if (excludeOrderId) params.set("excludeOrderId", excludeOrderId);
         const res = await fetch(`/api/catalog/related?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { flat?: CartRelatedSuggestion[] } | null;
-        if (!cancelled) setFlat(data?.flat ?? []);
+        const data = (await res.json().catch(() => null)) as { groups?: CartRelatedSuggestionGroup[] } | null;
+        if (!cancelled) setGroups(data?.groups ?? []);
       } catch {
-        if (!cancelled) setFlat([]);
+        if (!cancelled) setGroups([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -127,53 +197,45 @@ export function CartRelatedSuggestions({
     };
   }, [disabled, requestKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
 
-  const visible = React.useMemo(
-    () => flat.filter((s) => !dismissed.has(s.relatedItemId)),
-    [flat, dismissed],
+  const visibleGroups = React.useMemo(
+    () =>
+      groups
+        .map((group) => ({
+          ...group,
+          suggestions: group.suggestions.filter((s) => !dismissed.has(s.relatedItemId)),
+        }))
+        .filter((group) => group.suggestions.length > 0),
+    [groups, dismissed],
   );
 
-  const shown = expanded ? visible : visible.slice(0, FLAT_LIMIT);
-  const hiddenCount = Math.max(0, visible.length - FLAT_LIMIT);
-  const shownRequired = shown.filter((s) => s.kind === "REQUIRED");
-  const shownRecommended = shown.filter((s) => s.kind === "RECOMMENDED");
+  const visibleCount = countSuggestions(visibleGroups);
+  const { groups: shownGroups, hiddenCount } = expanded
+    ? { groups: visibleGroups, hiddenCount: 0 }
+    : limitGroups(visibleGroups, FLAT_LIMIT);
+
+  const shownRequired = filterGroupsByKind(shownGroups, "REQUIRED", dismissed);
+  const shownRecommended = filterGroupsByKind(shownGroups, "RECOMMENDED", dismissed);
 
   if (disabled || itemIds.length === 0) return null;
-  if (visible.length === 0) return null;
+  if (visibleCount === 0) return null;
 
   const isCatalog = variant === "catalog";
-  const thumbSize = isCatalog ? 48 : 80;
+  const thumbSize = isCatalog ? 40 : 56;
+  const sourceThumbSize = isCatalog ? 36 : 48;
 
-  function renderRow(s: CartRelatedSuggestion) {
+  function renderTarget(s: CartRelatedSuggestion, groupKey: string) {
     const maxAvail = s.availability.availableForDates ?? s.availability.availableNow;
     const qty = Math.min(s.suggestedQty, maxAvail > 0 ? maxAvail : s.suggestedQty);
     const canAdd = maxAvail > 0;
     const price = s.pricePerDay * displayMultiplier;
-    const sourceLabel =
-      s.sourceItemNames.length > 0
-        ? `К: ${s.sourceItemNames.slice(0, 2).join(", ")}${s.sourceItemNames.length > 2 ? "…" : ""}`
-        : null;
 
     return (
-      <li key={s.relatedItemId} className="cart-related-row">
-        <div className="cart-related-main">
-          <div className="cart-thumbWrap cart-related-thumb" aria-hidden="true">
-            {s.photo1Key ? (
-              <img
-                src={`/api/inventory/positions/${s.relatedItemId}/photo?w=${thumbSize}`}
-                alt=""
-                className="cart-thumb"
-                loading="lazy"
-              />
-            ) : (
-              <div className="cart-thumbPlaceholder">
-                <span>WOW</span>
-              </div>
-            )}
-          </div>
+      <li key={`${groupKey}-${s.relatedItemId}`} className="cart-related-target">
+        <div className="cart-related-target-main">
+          {renderThumb(s.relatedItemId, s.photo1Key, thumbSize, "cart-related-target-thumb")}
           <div className="cart-related-text">
             <div className="cart-related-name">{s.name}</div>
             {s.note ? <div className="cart-related-note">{s.note}</div> : null}
-            {!isCatalog && sourceLabel ? <div className="cart-related-source">{sourceLabel}</div> : null}
             <div className="cart-related-meta">
               {maxAvail > 0 ? (
                 <span>
@@ -206,23 +268,50 @@ export function CartRelatedSuggestions({
     );
   }
 
+  function renderGroupRow(group: CartRelatedSuggestionGroup, kind: CartRelatedSuggestion["kind"]) {
+    const suggestions = group.suggestions.filter((s) => s.kind === kind);
+    if (suggestions.length === 0) return null;
+
+    return (
+      <li key={`${kind}-${group.sourceItemId}`} className="cart-related-group">
+        <div className="cart-related-group-source">
+          {renderThumb(group.sourceItemId, group.sourcePhoto1Key, sourceThumbSize, "cart-related-source-thumb")}
+          <div className="cart-related-group-sourceText">
+            <div className="cart-related-group-sourceName">{group.sourceItemName}</div>
+            {group.sourceQtyInCart > 1 ? (
+              <div className="cart-related-group-sourceQty">× {group.sourceQtyInCart} в корзине</div>
+            ) : null}
+          </div>
+        </div>
+        <div className="cart-related-group-connector" aria-hidden="true">
+          →
+        </div>
+        <ul className="cart-related-group-targets">{suggestions.map((s) => renderTarget(s, group.sourceItemId))}</ul>
+      </li>
+    );
+  }
+
+  function renderSection(title: string, sectionGroups: CartRelatedSuggestionGroup[], kind: CartRelatedSuggestion["kind"]) {
+    const rows = sectionGroups
+      .map((group) => renderGroupRow(group, kind))
+      .filter((row): row is React.ReactElement => Boolean(row));
+    if (rows.length === 0) return null;
+
+    return (
+      <div className="cart-related-section">
+        <h2 className="cart-related-title">{title}</h2>
+        <ul className="cart-related-list">{rows}</ul>
+      </div>
+    );
+  }
+
   return (
     <section
       className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
       aria-label="Рекомендации к корзине"
     >
-      {shownRequired.length > 0 ? (
-        <div className="cart-related-section">
-          <h2 className="cart-related-title">Обычно нужно вместе</h2>
-          <ul className="cart-related-list">{shownRequired.map(renderRow)}</ul>
-        </div>
-      ) : null}
-      {shownRecommended.length > 0 ? (
-        <div className="cart-related-section">
-          <h2 className="cart-related-title">Может пригодиться</h2>
-          <ul className="cart-related-list">{shownRecommended.map(renderRow)}</ul>
-        </div>
-      ) : null}
+      {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
+      {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
       {!expanded && hiddenCount > 0 ? (
         <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
           Ещё {hiddenCount}…

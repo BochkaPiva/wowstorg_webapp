@@ -7,15 +7,22 @@ type OrderServicePricingInput = {
   demontagePrice?: unknown;
 };
 
+/** Цена указана: допускается 0 ₽, не допускаются пустое значение и отрицательные суммы. */
+export function isEnabledServicePriceSpecified(price: unknown): boolean {
+  if (price == null || price === "") return false;
+  const n = Number(price);
+  return Number.isFinite(n) && n >= 0;
+}
+
 export function listMissingEnabledServicePrices(args: OrderServicePricingInput): string[] {
   const missing: string[] = [];
-  if (args.deliveryEnabled && (args.deliveryPrice == null || Number(args.deliveryPrice) <= 0)) {
+  if (args.deliveryEnabled && !isEnabledServicePriceSpecified(args.deliveryPrice)) {
     missing.push("Доставка");
   }
-  if (args.montageEnabled && (args.montagePrice == null || Number(args.montagePrice) <= 0)) {
+  if (args.montageEnabled && !isEnabledServicePriceSpecified(args.montagePrice)) {
     missing.push("Монтаж");
   }
-  if (args.demontageEnabled && (args.demontagePrice == null || Number(args.demontagePrice) <= 0)) {
+  if (args.demontageEnabled && !isEnabledServicePriceSpecified(args.demontagePrice)) {
     missing.push("Демонтаж");
   }
   return missing;

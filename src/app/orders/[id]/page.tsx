@@ -13,6 +13,10 @@ import {
   billableRentalDaysFromDateOnly,
   type RentalPartOfDay,
 } from "@/lib/rental-days";
+import {
+  isEnabledServicePriceSpecified,
+  listMissingEnabledServicePrices,
+} from "@/server/orders/service-pricing";
 
 type OrderLine = {
   id: string;
@@ -593,8 +597,7 @@ function ServiceEditRow({
   internalPrice?: number | "";
   onInternalPriceChange?: (v: number | "") => void;
 }) {
-  const priceNum = price === "" ? 0 : Number(price);
-  const priceMissing = enabled && (price === "" || priceNum <= 0);
+  const priceMissing = enabled && !isEnabledServicePriceSpecified(price);
   const gridCols =
     showPrice && showInternalPrice
       ? "sm:grid-cols-[1fr_auto_auto]"
@@ -1218,14 +1221,10 @@ export default function OrderDetailsPage() {
 
   const canSendEstimate =
     (order?.status === "SUBMITTED" || order?.status === "CHANGES_REQUESTED") &&
-    (!order.deliveryEnabled || (order.deliveryPrice != null && Number(order.deliveryPrice) > 0)) &&
-    (!order.montageEnabled || (order.montagePrice != null && Number(order.montagePrice) > 0)) &&
-    (!order.demontageEnabled || (order.demontagePrice != null && Number(order.demontagePrice) > 0));
+    listMissingEnabledServicePrices(order).length === 0;
   const canStartPicking =
     order?.status === "APPROVED_BY_GREENWICH" &&
-    (!order.deliveryEnabled || (order.deliveryPrice != null && Number(order.deliveryPrice) > 0)) &&
-    (!order.montageEnabled || (order.montagePrice != null && Number(order.montagePrice) > 0)) &&
-    (!order.demontageEnabled || (order.demontagePrice != null && Number(order.demontagePrice) > 0));
+    listMissingEnabledServicePrices(order).length === 0;
   const sendEstimateBlocked =
     (order?.status === "SUBMITTED" || order?.status === "CHANGES_REQUESTED") &&
     isWarehouse &&

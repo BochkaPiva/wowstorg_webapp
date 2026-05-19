@@ -34,6 +34,7 @@ export type CatalogRelatedSuggestion = {
 export type CatalogRelatedGroup = {
   sourceItemId: string;
   sourceItemName: string;
+  sourcePhoto1Key: string | null;
   sourceQtyInCart: number;
   suggestions: CatalogRelatedSuggestion[];
 };
@@ -130,9 +131,10 @@ export async function getCatalogRelatedSuggestions(args: {
 
   const sourceItems = await args.db.item.findMany({
     where: { id: { in: cartItemIds }, isActive: true },
-    select: { id: true, name: true },
+    select: { id: true, name: true, photo1Key: true },
   });
   const sourceNameById = new Map(sourceItems.map((i) => [i.id, i.name]));
+  const sourcePhotoById = new Map(sourceItems.map((i) => [i.id, i.photo1Key]));
   const activeSourceIds = sourceItems.map((i) => i.id);
   if (activeSourceIds.length === 0) {
     return { groups: [], flat: [] };
@@ -214,7 +216,13 @@ export async function getCatalogRelatedSuggestions(args: {
     }
 
     if (suggestions.length > 0) {
-      groups.push({ sourceItemId, sourceItemName, sourceQtyInCart, suggestions });
+      groups.push({
+        sourceItemId,
+        sourceItemName,
+        sourcePhoto1Key: sourcePhotoById.get(sourceItemId) ?? null,
+        sourceQtyInCart,
+        suggestions,
+      });
     }
   }
 

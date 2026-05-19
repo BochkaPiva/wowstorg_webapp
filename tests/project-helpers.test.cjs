@@ -124,7 +124,29 @@ test("missing service prices are reported only for enabled services", () => {
       demontageEnabled: true,
       demontagePrice: 0,
     }),
-    ["Доставка", "Демонтаж"],
+    ["Доставка"],
+  );
+});
+
+test("zero is a valid enabled service price", () => {
+  assert.deepEqual(
+    listMissingEnabledServicePrices({
+      deliveryEnabled: true,
+      deliveryPrice: 0,
+      montageEnabled: false,
+      demontageEnabled: false,
+    }),
+    [],
+  );
+});
+
+test("negative enabled service price is treated as missing", () => {
+  assert.deepEqual(
+    listMissingEnabledServicePrices({
+      deliveryEnabled: true,
+      deliveryPrice: -1,
+    }),
+    ["Доставка"],
   );
 });
 

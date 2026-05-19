@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
+import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
@@ -605,16 +606,13 @@ function ServiceEditRow({
         ? "sm:grid-cols-[1fr_auto]"
         : "";
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50/30 p-4">
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-          className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-        />
-        <span className="text-sm font-semibold text-zinc-800">{label}</span>
-      </label>
+    <div
+      className={[
+        "rounded-xl border p-4 transition-colors",
+        enabled ? "border-violet-200 bg-violet-50/35" : "border-zinc-200 bg-zinc-50/30",
+      ].join(" ")}
+    >
+      <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} />
       {enabled && (
         <div className={`mt-3 grid gap-3 ${gridCols}`}>
           <div>

@@ -68,8 +68,8 @@
 
 .mk-relatedSticky {
   position: sticky;
-  top: 0.5rem;
-  z-index: 35;
+  top: calc(3.5rem + 0.35rem);
+  z-index: 5;
   margin-bottom: 0.75rem;
 }
 

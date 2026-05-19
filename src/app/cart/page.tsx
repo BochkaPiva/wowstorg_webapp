@@ -1084,9 +1084,13 @@ export default function CartPage() {
               excludeOrderId={quickParentId}
               disabled={isProjectDemoCart}
               displayMultiplier={displayMultiplier}
-              onAdd={(itemId, qty) => {
+              onAdd={(itemId, qty, _pricePerDay, maxAvail) => {
                 const existing = cart.find((l) => l.itemId === itemId);
-                setQty(itemId, (existing?.qty ?? 0) + qty);
+                const cap = maxQtyForItem(itemId);
+                const max = cap !== null && cap > 0 ? cap : maxAvail;
+                const nextQty =
+                  max <= 0 ? 0 : Math.min((existing?.qty ?? 0) + qty, max);
+                setQty(itemId, nextQty);
               }}
             />
 

@@ -4,7 +4,10 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
+
+import "./position-edit.css";
 
 type Position = {
   id: string;
@@ -19,6 +22,7 @@ type Position = {
   inRepair: number;
   broken: number;
   missing: number;
+  photo1Key: string | null;
   categories: { categoryId: string; category: { name: string } }[];
   collections: { collectionId: string; collection: { name: string }; position: number }[];
   updatedAt: string;
@@ -64,7 +68,7 @@ export default function InventoryPositionsPage() {
     if (forbidden) return;
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden]);
+  }, [forbidden, includeInactive, internalOnly]);
 
   return (
     <AppShell title="Инвентарь · Позиции">
@@ -97,49 +101,74 @@ export default function InventoryPositionsPage() {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-zinc-500 mb-1">Поиск</label>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] lg:items-end">
+              <div>
+                <label className="pos-edit-label" htmlFor="pos-list-search">
+                  Поиск
+                </label>
                 <input
+                  id="pos-list-search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void load();
                   }}
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  className="pos-edit-input"
+                  style={{ marginTop: "0.35rem" }}
                   placeholder="Например: фотозона, стол, стойка…"
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-medium text-zinc-500 mb-1">Видимость</label>
-                <select
-                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-                  value={internalOnly}
-                  onChange={(e) => setInternalOnly(e.target.value as "all" | "internal" | "public")}
-                >
-                  <option value="all">Все</option>
-                  <option value="public">Только каталог</option>
-                  <option value="internal">Только внутренние</option>
-                </select>
+                <span className="pos-edit-label">Видимость</span>
+                <div className="pos-edit-segment" style={{ marginTop: "0.35rem" }} role="group" aria-label="Видимость">
+                  {(
+                    [
+                      { value: "public", label: "Каталог" },
+                      { value: "internal", label: "Внутренние" },
+                      { value: "all", label: "Все" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={[
+                        "pos-edit-segment-btn",
+                        internalOnly === opt.value ? "pos-edit-segment-btn--active" : "",
+                      ].join(" ")}
+                      onClick={() => setInternalOnly(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-end gap-3">
-                <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={includeInactive}
-                    onChange={(e) => setIncludeInactive(e.target.checked)}
-                  />
-                  Показывать неактивные
-                </label>
-                <button
-                  type="button"
-                  onClick={load}
-                  className="ml-auto rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-                >
-                  Найти
-                </button>
-              </div>
+
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="pos-edit-btn pos-edit-btn--primary"
+              >
+                Найти
+              </button>
+            </div>
+
+            <div
+              className="pos-edit-toggle-row"
+              style={{
+                marginTop: "1rem",
+                background: includeInactive
+                  ? "linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(255, 255, 255, 0.95))"
+                  : undefined,
+              }}
+            >
+              <ToggleSwitch
+                checked={includeInactive}
+                onChange={setIncludeInactive}
+                label="Показывать неактивные"
+                description="Включите, чтобы видеть позиции, снятые с каталога и недоступные для новых заявок."
+              />
             </div>
           </div>
 
@@ -163,7 +192,27 @@ export default function InventoryPositionsPage() {
                     ].join(" ")}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div
+                          className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50"
+                          aria-hidden="true"
+                        >
+                          {p.photo1Key ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={`/api/inventory/positions/${p.id}/photo?w=160`}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-50 to-amber-50 text-[0.65rem] font-bold tracking-wider text-violet-700">
+                              WOW
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-base font-semibold text-zinc-900 truncate">{p.name}</div>
                           {!p.isActive ? (
@@ -192,6 +241,7 @@ export default function InventoryPositionsPage() {
                               <strong className="text-zinc-900">{p.missing}</strong>
                             </span>
                           ) : null}
+                        </div>
                         </div>
                       </div>
 

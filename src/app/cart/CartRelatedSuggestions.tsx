@@ -30,7 +30,8 @@ type Props = {
   excludeOrderId?: string | null;
   disabled?: boolean;
   displayMultiplier?: number;
-  onAdd: (itemId: string, qty: number, pricePerDay: number) => void;
+  variant?: "cart" | "catalog";
+  onAdd: (itemId: string, qty: number, pricePerDay: number, maxAvail: number) => void;
 };
 
 const FLAT_LIMIT = 8;
@@ -46,6 +47,7 @@ export function CartRelatedSuggestions({
   excludeOrderId,
   disabled,
   displayMultiplier = 1,
+  variant = "cart",
   onAdd,
 }: Props) {
   const [flat, setFlat] = React.useState<CartRelatedSuggestion[]>([]);
@@ -166,7 +168,7 @@ export function CartRelatedSuggestions({
             type="button"
             className="cart-related-add"
             disabled={!canAdd}
-            onClick={() => onAdd(s.relatedItemId, qty, s.pricePerDay)}
+            onClick={() => onAdd(s.relatedItemId, qty, s.pricePerDay, maxAvail)}
           >
             {canAdd ? `+ ${qty}` : "—"}
           </button>
@@ -183,7 +185,13 @@ export function CartRelatedSuggestions({
   }
 
   return (
-    <section className="cart-related" aria-label="Рекомендации к корзине">
+    <section
+      className={["cart-related", variant === "catalog" ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
+      aria-label="Рекомендации к корзине"
+    >
+      {variant === "catalog" ? (
+        <p className="cart-related-intro">Подобрали по позициям, которые уже в корзине</p>
+      ) : null}
       {shownRequired.length > 0 ? (
         <div className="cart-related-section">
           <h2 className="cart-related-title">Обычно нужно вместе</h2>

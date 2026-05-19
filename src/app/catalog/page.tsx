@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/lib/catalogDates";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./catalog.css";
+import "../cart/cart.css";
 import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
@@ -646,6 +648,50 @@ export default function CatalogPage() {
     return m;
   }, [cart]);
 
+  const addRelatedToCart = React.useCallback(
+    (itemId: string, qty: number, pricePerDay: number, maxAvail: number) => {
+      setCart((prev) => {
+        const idx = prev.findIndex((l) => l.itemId === itemId);
+        const currentQty = idx >= 0 ? prev[idx]!.qty : 0;
+        const nextQty = maxAvail <= 0 ? 0 : Math.min(currentQty + qty, maxAvail);
+        const next = [...prev];
+        if (idx >= 0) {
+          next[idx] = {
+            ...next[idx]!,
+            qty: nextQty,
+            pricePerDay: pricePerDay || next[idx]!.pricePerDay,
+          };
+        } else if (nextQty > 0) {
+          next.push({ itemId, qty: nextQty, pricePerDay });
+        }
+        const cleaned = next.filter((l) => l.qty > 0);
+        saveCart(cleaned, cartScopeRef.current);
+        return cleaned;
+      });
+    },
+    [],
+  );
+
+  const showCatalogRelated =
+    cart.length > 0 &&
+    !isProjectDemoCatalog &&
+    (activeTab === "positions" || (activeTab === "categories" && categoryId));
+
+  const catalogRelatedSuggestions = showCatalogRelated ? (
+    <CartRelatedSuggestions
+      variant="catalog"
+      cartScope={cartScope ?? "default"}
+      itemIds={cart.map((l) => l.itemId)}
+      qtys={cart.map((l) => l.qty)}
+      startDate={startDate}
+      endDate={endDate}
+      rentalStartPartOfDay={rentalStartPartOfDay}
+      rentalEndPartOfDay={rentalEndPartOfDay}
+      excludeOrderId={quickParentId}
+      onAdd={addRelatedToCart}
+    />
+  ) : null;
+
   const openDetail = React.useCallback((id: string) => setSelectedId(id), []);
   const handleCardAdd = React.useCallback(
     (id: string, price: number) => addToCart(id, price),
@@ -981,6 +1027,7 @@ export default function CatalogPage() {
             <div className="text-sm text-zinc-600">По выбранным параметрам ничего не найдено.</div>
           ) : (
             <>
+              {catalogRelatedSuggestions}
               <div className="mk-grid">
                 {items.map((it) => (
                   <CatalogItemCard
@@ -1009,6 +1056,7 @@ export default function CatalogPage() {
             <div className="text-sm text-zinc-600">В этой категории пока нет позиций по выбранным параметрам.</div>
           ) : (
             <>
+              {catalogRelatedSuggestions}
               <div className="mk-grid">
                 {items.map((it) => (
                   <CatalogItemCard

@@ -8,6 +8,8 @@ import {
   loadDismissedRelatedIds,
 } from "@/lib/cart-related-dismiss";
 
+import { CatalogRelatedStickyShell } from "@/app/catalog/CatalogRelatedStickyShell";
+
 export type CartRelatedSuggestion = {
   relatedItemId: string;
   name: string;
@@ -305,18 +307,30 @@ export function CartRelatedSuggestions({
     );
   }
 
-  return (
-    <section
-      className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
-      aria-label="Рекомендации к корзине"
-    >
-      {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
-      {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
-      {!expanded && hiddenCount > 0 ? (
-        <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
-          Ещё {hiddenCount}…
-        </button>
-      ) : null}
-    </section>
-  );
+  function renderContent() {
+    return (
+      <section
+        className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
+        aria-label="Рекомендации к корзине"
+      >
+        {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
+        {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
+        {!expanded && hiddenCount > 0 ? (
+          <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
+            Ещё {hiddenCount}…
+          </button>
+        ) : null}
+      </section>
+    );
+  }
+
+  if (isCatalog) {
+    return (
+      <CatalogRelatedStickyShell suggestionCount={visibleCount}>
+        {renderContent()}
+      </CatalogRelatedStickyShell>
+    );
+  }
+
+  return renderContent();
 }

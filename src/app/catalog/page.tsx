@@ -686,8 +686,7 @@ export default function CatalogPage() {
     (activeTab === "positions" || (activeTab === "categories" && categoryId));
 
   const catalogRelatedSuggestions = showCatalogRelated ? (
-    <div className="mk-relatedSticky">
-      <CartRelatedSuggestions
+    <CartRelatedSuggestions
         variant="catalog"
         cartScope={cartScope}
         itemIds={cartRelatedInputs.itemIds}
@@ -698,8 +697,7 @@ export default function CatalogPage() {
         rentalEndPartOfDay={rentalEndPartOfDay}
         excludeOrderId={quickParentId}
         onAdd={addRelatedToCart}
-      />
-    </div>
+    />
   ) : null;
 
   const openDetail = React.useCallback((id: string) => setSelectedId(id), []);

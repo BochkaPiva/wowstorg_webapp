@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
-import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
 import {
@@ -22,11 +22,6 @@ import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
-
-const CatalogRelatedBlock = dynamic(
-  () => import("@/app/catalog/CatalogRelatedBlock").then((m) => m.CatalogRelatedBlock),
-  { ssr: false },
-);
 
 type CatalogTab = "positions" | "categories" | "kits";
 
@@ -685,13 +680,12 @@ export default function CatalogPage() {
     [cart],
   );
 
-  const showCatalogRelated =
-    cart.length > 0 &&
-    !isProjectDemoCatalog &&
-    (activeTab === "positions" || (activeTab === "categories" && categoryId));
+  const showCatalogRelated = cart.length > 0 && !isProjectDemoCatalog;
 
   const catalogRelatedSuggestions = showCatalogRelated ? (
-    <CatalogRelatedBlock
+    <CartRelatedSuggestions
+      key={cartRelatedInputs.itemIds.join(",")}
+      variant="catalog"
       cartScope={cartScope}
       itemIds={cartRelatedInputs.itemIds}
       qtys={cartRelatedInputs.qtys}

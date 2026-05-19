@@ -270,10 +270,21 @@ export function CartRelatedSuggestions({
   const shownRequired = filterGroupsByKind(shownGroups, "REQUIRED", dismissed);
   const shownRecommended = filterGroupsByKind(shownGroups, "RECOMMENDED", dismissed);
 
-  if (disabled || itemIds.length === 0) return null;
-  if (visibleCount === 0) return null;
-
   const isCatalog = variant === "catalog";
+
+  if (disabled || itemIds.length === 0) return null;
+
+  if (visibleCount === 0) {
+    if (loading) {
+      return (
+        <div className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}>
+          <p className="cart-related-loading">Подбираем рекомендации…</p>
+        </div>
+      );
+    }
+    return null;
+  }
+
   const thumbSize = isCatalog ? 40 : 56;
   const sourceThumbSize = isCatalog ? 36 : 48;
 

@@ -451,6 +451,12 @@
   font-size: 0.78rem;
 }
 
+.cart-related-loading {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #6b7280;
+}
+
 .cart-related-intro {
   margin: 0 0 0.85rem;
   font-size: 0.88rem;

@@ -29,21 +29,26 @@ export function CatalogRelatedStickyShell({ suggestionCount, children }: Props) 
     const node = sentinelRef.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry) return;
-        // Сворачиваем только после прокрутки мимо блока (sentinel ушёл вверх).
-        // Если блок ещё ниже экрана — показываем полный список, иначе он «пропадает».
-        const scrolledPast = entry.boundingClientRect.top < 0;
-        const nextCompact = scrolledPast && !entry.isIntersecting;
-        setCompact(nextCompact);
-        if (!nextCompact) setExpanded(false);
-      },
-      { threshold: 0, rootMargin: "-3.85rem 0px 0px 0px" },
-    );
+    let observer: IntersectionObserver | null = null;
+    try {
+      observer = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry) return;
+          // Сворачиваем только после прокрутки мимо блока (sentinel ушёл вверх).
+          const scrolledPast = entry.boundingClientRect.top < 0;
+          const nextCompact = scrolledPast && !entry.isIntersecting;
+          setCompact(nextCompact);
+          if (!nextCompact) setExpanded(false);
+        },
+        // rootMargin — только px или % (rem в IntersectionObserver недопустим).
+        { threshold: 0, rootMargin: "-56px 0px 0px 0px" },
+      );
+      observer.observe(node);
+    } catch (error) {
+      console.error("[CatalogRelatedStickyShell] observer init failed", error);
+    }
 
-    observer.observe(node);
-    return () => observer.disconnect();
+    return () => observer?.disconnect();
   }, []);
 
   const showFull = !compact || expanded;

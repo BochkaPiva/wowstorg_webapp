@@ -450,12 +450,14 @@ export function CartRelatedSuggestions({
         <div className="cart-related-group-source">
           {singleSource ? (
             <>
-              {renderThumb(
-                singleSource.sourceItemId,
-                singleSource.sourcePhoto1Key,
-                sourceThumbSize,
-                "cart-related-source-thumb",
-              )}
+              <div className="cart-related-sourceVisual">
+                {renderThumb(
+                  singleSource.sourceItemId,
+                  singleSource.sourcePhoto1Key,
+                  sourceThumbSize,
+                  "cart-related-source-thumb",
+                )}
+              </div>
               <div className="cart-related-group-sourceText">
                 <div className="cart-related-group-sourceName">{singleSource.sourceItemName}</div>
                 {singleSource.sourceQtyInCart > 1 ? (
@@ -465,18 +467,23 @@ export function CartRelatedSuggestions({
             </>
           ) : (
             <>
-              <div className="cart-related-mergedThumbs" aria-hidden="true">
-                {row.sources.slice(0, 3).map((source) => (
-                  <div key={source.sourceItemId} className="cart-related-mergedThumb">
-                    {renderThumb(source.sourceItemId, source.sourcePhoto1Key, 28, "cart-related-source-thumb")}
-                  </div>
-                ))}
-                {row.sources.length > 3 ? (
-                  <div className="cart-related-mergedThumb cart-related-mergedThumb-more">+{row.sources.length - 3}</div>
-                ) : null}
+              <div className="cart-related-sourceVisual">
+                <div className="cart-related-mergedThumbs" aria-hidden="true">
+                  {row.sources.slice(0, 3).map((source) => (
+                    <div key={source.sourceItemId} className="cart-related-mergedThumb">
+                      {renderThumb(source.sourceItemId, source.sourcePhoto1Key, 28, "cart-related-source-thumb")}
+                    </div>
+                  ))}
+                  {row.sources.length > 3 ? (
+                    <div className="cart-related-mergedThumb cart-related-mergedThumb-more">+{row.sources.length - 3}</div>
+                  ) : null}
+                </div>
               </div>
               <div className="cart-related-group-sourceText">
-                <div className="cart-related-group-sourceName">
+                <div
+                  className="cart-related-group-sourceName"
+                  title={row.sources.map((source) => source.sourceItemName).join(", ")}
+                >
                   {formatSourceNamesRu(row.sources.map((source) => source.sourceItemName))}
                 </div>
                 <div className="cart-related-group-sourceQty">к {row.sources.length} позициям в корзине</div>

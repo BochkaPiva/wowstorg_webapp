@@ -59,6 +59,7 @@ function DrumCard({
         isCenter ? "catalog-related-drum-card--center" : "",
         offset === -1 ? "catalog-related-drum-card--side" : "",
         offset === 1 ? "catalog-related-drum-card--side" : "",
+        offset === -2 || offset === 2 ? "catalog-related-drum-card--far" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -177,7 +178,8 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     if (count === 1) {
       return [{ offset: 0 as const, row: rows[0]! }];
     }
-    return ([-1, 0, 1] as const).map((offset) => ({
+    const offsets = count >= 3 ? ([-2, -1, 0, 1, 2] as const) : ([-1, 0, 1] as const);
+    return offsets.map((offset) => ({
       offset,
       row: rows[mod(logicalIndex + offset, count)]!,
     }));
@@ -279,7 +281,8 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     onDismiss(dismissRelatedSuggestion(cartScope, row.relatedItemId));
   }
 
-  const trackShift = count === 1 ? 0 : 1 + slideShift;
+  const baseTrackShift = count === 1 ? 0 : count >= 3 ? 2 : 1;
+  const trackShift = baseTrackShift + slideShift;
 
   return (
     <section
@@ -332,12 +335,12 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
           >
             {slotRows.map(({ row, offset }) => (
               <li
-                key={`${row.relatedItemId}-${offset}-${logicalIndex}`}
+                key={`slot-${offset}`}
                 className={[
                   "catalog-related-drum-item",
                   offset === 0 ? "catalog-related-drum-item--center" : "",
-                  offset === -1 ? "catalog-related-drum-item--left" : "",
-                  offset === 1 ? "catalog-related-drum-item--right" : "",
+                  offset === -1 || offset === 1 ? "catalog-related-drum-item--side" : "",
+                  offset === -2 || offset === 2 ? "catalog-related-drum-item--far" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}

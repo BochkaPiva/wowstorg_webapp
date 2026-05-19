@@ -482,10 +482,14 @@
   z-index: 2;
 }
 
-.catalog-related-drum-item--left,
-.catalog-related-drum-item--right {
+.catalog-related-drum-item--side {
   opacity: 0.68;
   transform: scale(0.96);
+}
+
+.catalog-related-drum-item--far {
+  opacity: 0.45;
+  transform: scale(0.92);
 }
 
 .catalog-related-drum-card {

@@ -4,18 +4,9 @@ import React from "react";
 
 import { MAX_ITEM_RELATIONS_PER_SOURCE } from "@/lib/item-related-constants";
 
-type RelationKind = "REQUIRED" | "RECOMMENDED";
+import "./position-edit.css";
 
-type RelationRow = {
-  relatedItemId: string;
-  relatedName: string;
-  isActive: boolean;
-  internalOnly: boolean;
-  kind: RelationKind;
-  sortOrder: number;
-  defaultSuggestedQty: number;
-  note: string;
-};
+type RelationKind = "REQUIRED" | "RECOMMENDED";
 
 type SearchItem = { id: string; name: string; isActive: boolean; internalOnly: boolean };
 
@@ -45,6 +36,12 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
   const [query, setQuery] = React.useState("");
   const [searchItems, setSearchItems] = React.useState<SearchItem[]>([]);
   const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
+
+  const existingRelatedIds = React.useMemo(
+    () => new Set([positionId, ...rows.map((r) => r.relatedItemId)]),
+    [positionId, rows],
+  );
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -91,40 +88,48 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
     const q = query.trim();
     if (q.length < 2) {
       setSearchItems([]);
+      setSearching(false);
       return;
     }
     let cancelled = false;
+    setSearching(true);
     const t = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams();
         params.set("query", q);
-        params.set("all", "true");
-        params.set("internalOnly", "true");
-        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(`/api/inventory/positions?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as {
-          items?: Array<{ id: string; name: string; internalOnly?: boolean }>;
+          items?: Array<{ id: string; name: string; isActive: boolean; internalOnly: boolean }>;
+          error?: { message?: string };
         } | null;
         if (!cancelled) {
+          if (!res.ok) {
+            setSearchItems([]);
+            setError(data?.error?.message ?? "Не удалось выполнить поиск");
+            return;
+          }
           setSearchItems(
             (data?.items ?? [])
-              .filter((i) => i.id !== positionId)
+              .filter((i) => !existingRelatedIds.has(i.id))
               .map((i) => ({
                 id: i.id,
                 name: i.name,
-                isActive: true,
-                internalOnly: Boolean(i.internalOnly),
+                isActive: i.isActive,
+                internalOnly: i.internalOnly,
               })),
           );
         }
       } catch {
         if (!cancelled) setSearchItems([]);
+      } finally {
+        if (!cancelled) setSearching(false);
       }
     }, 250);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [query, positionId]);
+  }, [query, existingRelatedIds]);
 
   function addRelation(item: SearchItem) {
     if (rows.some((r) => r.relatedItemId === item.id)) {
@@ -152,6 +157,7 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
     setQuery("");
     setSearchOpen(false);
     setSaved(false);
+    setError(null);
   }
 
   function moveRow(index: number, dir: -1 | 1) {
@@ -197,34 +203,41 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className="pos-edit-card">
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "0.75rem" }}>
         <div>
-          <div className="text-base font-semibold text-zinc-900">Связанные позиции</div>
-          <p className="mt-1 text-sm text-zinc-600">
-            Рекомендации в корзине: «если взяли эту позицию — предложить связанные». Направление только
-            от этой позиции к другим.
+          <h2 className="pos-edit-card-title">Связанные позиции</h2>
+          <p className="pos-edit-card-hint">
+            Рекомендации в корзине: если взяли эту позицию — предложить связанные. Направление только от
+            этой позиции к другим.
           </p>
         </div>
-        <div className="text-xs text-zinc-500 tabular-nums">
+        <div className="pos-edit-muted tabular-nums" style={{ fontSize: "0.82rem", fontWeight: 700 }}>
           {rows.length} / {MAX_ITEM_RELATIONS_PER_SOURCE}
         </div>
       </div>
 
-      {error ? (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className="pos-edit-alert pos-edit-alert--error" style={{ marginTop: "0.85rem" }}>{error}</div> : null}
       {saved ? (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <div
+          className="pos-edit-alert"
+          style={{
+            marginTop: "0.85rem",
+            border: "1px solid rgba(16, 185, 129, 0.35)",
+            background: "#ecfdf5",
+            color: "#047857",
+          }}
+        >
           Связи сохранены
         </div>
       ) : null}
 
-      <div className="mt-4 relative">
-        <label className="block text-xs font-medium text-zinc-500 mb-1">Добавить связь</label>
+      <div className="pos-edit-related-search" style={{ marginTop: "1rem" }}>
+        <label className="pos-edit-label" htmlFor="pos-related-search">
+          Добавить связь
+        </label>
         <input
+          id="pos-related-search"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -232,67 +245,87 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
           }}
           onFocus={() => setSearchOpen(true)}
           placeholder="Поиск позиции по названию…"
-          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
+          className="pos-edit-input"
+          style={{ marginTop: "0.35rem" }}
         />
-        {searchOpen && searchItems.length > 0 ? (
-          <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white shadow-lg">
-            {searchItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
-                onClick={() => addRelation(item)}
-              >
-                {item.name}
-                {item.internalOnly ? <span className="ml-2 text-xs text-zinc-500">внутр.</span> : null}
-              </button>
-            ))}
+        {searchOpen && query.trim().length >= 2 ? (
+          <div className="pos-edit-related-dropdown">
+            {searching ? (
+              <div className="pos-edit-related-option pos-edit-muted">Поиск…</div>
+            ) : searchItems.length > 0 ? (
+              searchItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="pos-edit-related-option"
+                  onClick={() => addRelation(item)}
+                >
+                  {item.name}
+                  {!item.isActive ? (
+                    <span className="pos-edit-badge pos-edit-badge--warn" style={{ marginLeft: "0.45rem" }}>
+                      неактивна
+                    </span>
+                  ) : null}
+                  {item.internalOnly ? (
+                    <span className="pos-edit-badge pos-edit-badge--muted" style={{ marginLeft: "0.35rem" }}>
+                      внутр.
+                    </span>
+                  ) : null}
+                </button>
+              ))
+            ) : (
+              <div className="pos-edit-related-option pos-edit-muted">Ничего не найдено</div>
+            )}
           </div>
         ) : null}
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm text-zinc-500">Загрузка связей…</p>
+        <p className="pos-edit-muted" style={{ marginTop: "1rem" }}>
+          Загрузка связей…
+        </p>
       ) : rows.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-500">Связей пока нет.</p>
+        <p className="pos-edit-muted" style={{ marginTop: "1rem" }}>
+          Связей пока нет.
+        </p>
       ) : (
-        <ul className="mt-4 space-y-3">
+        <div style={{ marginTop: "1rem" }}>
           {rows.map((row, index) => (
-            <li key={row.key} className="rounded-xl border border-zinc-200 p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
+            <div key={row.key} className="pos-edit-related-row">
+              <div className="pos-edit-related-row-head">
                 <div>
-                  <div className="font-medium text-zinc-900">{row.relatedName}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                  <div className="pos-edit-related-row-name">{row.relatedName}</div>
+                  <div style={{ marginTop: "0.35rem", display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
                     {!row.isActive ? (
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-900">неактивна</span>
+                      <span className="pos-edit-badge pos-edit-badge--warn">неактивна</span>
                     ) : null}
                     {row.internalOnly ? (
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-700">
-                        только склад (Greenwich не увидит)
-                      </span>
+                      <span className="pos-edit-badge pos-edit-badge--muted">только склад</span>
                     ) : null}
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="pos-edit-related-row-actions">
                   <button
                     type="button"
-                    className="rounded border border-zinc-200 px-2 py-1 text-xs"
+                    className="pos-edit-icon-btn"
                     onClick={() => moveRow(index, -1)}
                     disabled={index === 0}
+                    aria-label="Выше"
                   >
                     ↑
                   </button>
                   <button
                     type="button"
-                    className="rounded border border-zinc-200 px-2 py-1 text-xs"
+                    className="pos-edit-icon-btn"
                     onClick={() => moveRow(index, 1)}
                     disabled={index === rows.length - 1}
+                    aria-label="Ниже"
                   >
                     ↓
                   </button>
                   <button
                     type="button"
-                    className="rounded border border-red-200 px-2 py-1 text-xs text-red-800"
+                    className="pos-edit-icon-btn pos-edit-icon-btn--danger"
                     onClick={() => {
                       setRows((prev) => prev.filter((r) => r.key !== row.key));
                       setSaved(false);
@@ -302,27 +335,49 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
                   </button>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <label className="block text-xs text-zinc-500">
-                  Тип
-                  <select
-                    value={row.kind}
-                    onChange={(e) => {
-                      const kind = e.target.value as RelationKind;
-                      setRows((prev) =>
-                        prev.map((r) => (r.key === row.key ? { ...r, kind } : r)),
-                      );
-                      setSaved(false);
-                    }}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
-                  >
-                    <option value="REQUIRED">Обычно нужно</option>
-                    <option value="RECOMMENDED">Может пригодиться</option>
-                  </select>
-                </label>
-                <label className="block text-xs text-zinc-500">
-                  Кол-во в рекомендации
+
+              <div className="pos-edit-fields pos-edit-fields--2" style={{ marginTop: "0.75rem" }}>
+                <div className="pos-edit-field">
+                  <span className="pos-edit-label">Тип рекомендации</span>
+                  <div className="pos-edit-segment" role="group" aria-label="Тип рекомендации">
+                    <button
+                      type="button"
+                      className={[
+                        "pos-edit-segment-btn",
+                        row.kind === "REQUIRED" ? "pos-edit-segment-btn--active" : "",
+                      ].join(" ")}
+                      onClick={() => {
+                        setRows((prev) =>
+                          prev.map((r) => (r.key === row.key ? { ...r, kind: "REQUIRED" } : r)),
+                        );
+                        setSaved(false);
+                      }}
+                    >
+                      Обычно нужно
+                    </button>
+                    <button
+                      type="button"
+                      className={[
+                        "pos-edit-segment-btn",
+                        row.kind === "RECOMMENDED" ? "pos-edit-segment-btn--active" : "",
+                      ].join(" ")}
+                      onClick={() => {
+                        setRows((prev) =>
+                          prev.map((r) => (r.key === row.key ? { ...r, kind: "RECOMMENDED" } : r)),
+                        );
+                        setSaved(false);
+                      }}
+                    >
+                      Может пригодиться
+                    </button>
+                  </div>
+                </div>
+                <div className="pos-edit-field">
+                  <label className="pos-edit-label" htmlFor={`rel-qty-${row.key}`}>
+                    Кол-во в рекомендации
+                  </label>
                   <input
+                    id={`rel-qty-${row.key}`}
                     type="number"
                     min={1}
                     value={row.defaultSuggestedQty}
@@ -337,40 +392,41 @@ export function PositionRelatedItemsEditor({ positionId }: { positionId: string 
                       );
                       setSaved(false);
                     }}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
+                    className="pos-edit-input"
                   />
-                </label>
-                <label className="block text-xs text-zinc-500 md:col-span-1">
-                  Подпись (необяз.)
+                </div>
+                <div className="pos-edit-field pos-edit-field--full">
+                  <label className="pos-edit-label" htmlFor={`rel-note-${row.key}`}>
+                    Подпись (необяз.)
+                  </label>
                   <input
+                    id={`rel-note-${row.key}`}
                     value={row.note}
                     onChange={(e) => {
                       const note = e.target.value;
-                      setRows((prev) =>
-                        prev.map((r) => (r.key === row.key ? { ...r, note } : r)),
-                      );
+                      setRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, note } : r)));
                       setSaved(false);
                     }}
-                    placeholder="для утяжеления"
-                    className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
+                    placeholder="например: для утяжеления"
+                    className="pos-edit-input"
                   />
-                </label>
+                </div>
               </div>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div style={{ marginTop: "1rem" }}>
         <button
           type="button"
           disabled={saving || loading}
           onClick={() => void save()}
-          className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+          className="pos-edit-btn pos-edit-btn--primary"
         >
           {saving ? "Сохранение…" : "Сохранить связи"}
         </button>
       </div>
-    </div>
+    </section>
   );
 }

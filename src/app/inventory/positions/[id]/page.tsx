@@ -4,8 +4,11 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { PositionRelatedItemsEditor } from "@/app/inventory/positions/PositionRelatedItemsEditor";
 import { useAuth } from "@/app/providers";
+
+import "../position-edit.css";
 
 type ItemType = "ASSET" | "BULK" | "CONSUMABLE";
 type Category = { id: string; name: string; slug: string };
@@ -29,16 +32,28 @@ type Item = {
   updatedAt: string;
 };
 
+const TYPE_OPTIONS: Array<{ value: ItemType; label: string }> = [
+  { value: "ASSET", label: "Штучный" },
+  { value: "BULK", label: "Мерный" },
+  { value: "CONSUMABLE", label: "Расходник" },
+];
+
 function computeAvailableNow(p: Pick<Item, "total" | "inRepair" | "broken" | "missing">) {
   return Math.max(0, p.total - p.inRepair - p.broken - p.missing);
+}
+
+function parseStockField(raw: string): number {
+  const n = Math.trunc(Number(raw) || 0);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 export default function PositionEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  // Next 16: dynamic params are async
   const { id } = React.use(params);
+  const photoInputRef = React.useRef<HTMLInputElement | null>(null);
+
   const [item, setItem] = React.useState<Item | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -59,6 +74,17 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     isActive: true,
     categoryIds: [] as string[],
   });
+
+  const previewAvailable = React.useMemo(
+    () =>
+      computeAvailableNow({
+        total: parseStockField(form.total),
+        inRepair: parseStockField(form.inRepair),
+        broken: parseStockField(form.broken),
+        missing: parseStockField(form.missing),
+      }),
+    [form.total, form.inRepair, form.broken, form.missing],
+  );
 
   async function load() {
     setLoading(true);
@@ -107,10 +133,10 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     try {
       const price = Number(form.pricePerDay);
       const purchasePrice = Number(form.purchasePricePerUnit);
-      const total = Math.trunc(Number(form.total) || 0);
-      const inRepair = Math.trunc(Number(form.inRepair) || 0);
-      const broken = Math.trunc(Number(form.broken) || 0);
-      const missing = Math.trunc(Number(form.missing) || 0);
+      const total = parseStockField(form.total);
+      const inRepair = parseStockField(form.inRepair);
+      const broken = parseStockField(form.broken);
+      const missing = parseStockField(form.missing);
 
       const res = await fetch(`/api/inventory/positions/${id}`, {
         method: "PATCH",
@@ -123,7 +149,9 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
           purchasePricePerUnit:
             form.purchasePricePerUnit.trim() === ""
               ? null
-              : (Number.isFinite(purchasePrice) ? purchasePrice : 0),
+              : Number.isFinite(purchasePrice)
+                ? purchasePrice
+                : 0,
           total,
           inRepair,
           broken,
@@ -199,40 +227,44 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  function toggleCategory(categoryId: string) {
+    setForm((s) => ({
+      ...s,
+      categoryIds: s.categoryIds.includes(categoryId)
+        ? s.categoryIds.filter((cid) => cid !== categoryId)
+        : [...s.categoryIds, categoryId],
+    }));
+  }
+
   if (forbidden) {
     return (
       <AppShell title="Инвентарь · Позиция">
-        <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
+        <div className="pos-edit-muted">Этот раздел доступен только Wowstorg (склад).</div>
       </AppShell>
     );
   }
 
   return (
     <AppShell title="Инвентарь · Позиция">
-      <div className="space-y-4 max-w-4xl">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/inventory/positions"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              ← К позициям
-            </Link>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="pos-edit">
+        <div className="pos-edit-toolbar">
+          <Link href="/inventory/positions" className="pos-edit-back">
+            ← К позициям
+          </Link>
+          <div className="pos-edit-actions">
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
               disabled={busy || loading || !form.name.trim()}
-              className="rounded-lg border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              className="pos-edit-btn pos-edit-btn--primary"
             >
               {busy ? "Сохраняю…" : "Сохранить"}
             </button>
             <button
               type="button"
-              onClick={remove}
+              onClick={() => void remove()}
               disabled={busy || loading}
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+              className="pos-edit-btn pos-edit-btn--danger"
             >
               Удалить
             </button>
@@ -240,222 +272,284 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
         </div>
 
         {loading ? (
-          <div className="text-sm text-zinc-600">Загрузка…</div>
-        ) : error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
+          <div className="pos-edit-muted">Загрузка…</div>
+        ) : error && !item ? (
+          <div className="pos-edit-alert pos-edit-alert--error">{error}</div>
         ) : item ? (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold text-zinc-900">{item.name}</div>
-                  <div className="mt-1 text-sm text-zinc-600">
-                    Доступно сейчас:{" "}
-                    <span className="inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800 tabular-nums">
-                      {computeAvailableNow(item)}
-                    </span>{" "}
-                    из {item.total}
+            {error ? <div className="pos-edit-alert pos-edit-alert--error">{error}</div> : null}
+
+            <section className="pos-edit-hero">
+              <h1 className="pos-edit-hero-title">{form.name.trim() || item.name}</h1>
+              <div className="pos-edit-hero-meta">
+                <span className="pos-edit-stat">
+                  доступно <strong>{previewAvailable}</strong> из {parseStockField(form.total)}
+                </span>
+                <span
+                  className={[
+                    "pos-edit-badge",
+                    form.isActive ? "pos-edit-badge--ok" : "pos-edit-badge--muted",
+                  ].join(" ")}
+                >
+                  {form.isActive ? "Активна" : "Неактивна"}
+                </span>
+                {form.internalOnly ? (
+                  <span className="pos-edit-badge pos-edit-badge--warn">Только склад</span>
+                ) : (
+                  <span className="pos-edit-badge pos-edit-badge--violet">В каталоге</span>
+                )}
+                <span className="pos-edit-badge pos-edit-badge--muted">
+                  {TYPE_OPTIONS.find((t) => t.value === form.type)?.label ?? form.type}
+                </span>
+                <span>Обновлено: {new Date(item.updatedAt).toLocaleString("ru-RU")}</span>
+              </div>
+            </section>
+
+            <div className="pos-edit-grid">
+              <div className="pos-edit-stack">
+                <section className="pos-edit-card">
+                  <h2 className="pos-edit-card-title">Основное</h2>
+                  <p className="pos-edit-card-hint">Название, описание и тариф — то, что видит Greenwich в каталоге.</p>
+                  <div className="pos-edit-fields pos-edit-fields--2">
+                    <div className="pos-edit-field pos-edit-field--full">
+                      <label className="pos-edit-label" htmlFor="pos-name">
+                        Название
+                      </label>
+                      <input
+                        id="pos-name"
+                        value={form.name}
+                        onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+                        className="pos-edit-input"
+                      />
+                    </div>
+                    <div className="pos-edit-field pos-edit-field--full">
+                      <label className="pos-edit-label" htmlFor="pos-description">
+                        Описание
+                      </label>
+                      <textarea
+                        id="pos-description"
+                        value={form.description}
+                        onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                        className="pos-edit-textarea"
+                      />
+                    </div>
+                    <div className="pos-edit-field pos-edit-field--full">
+                      <span className="pos-edit-label">Тип позиции</span>
+                      <div className="pos-edit-segment" role="group" aria-label="Тип позиции">
+                        {TYPE_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            className={[
+                              "pos-edit-segment-btn",
+                              form.type === opt.value ? "pos-edit-segment-btn--active" : "",
+                            ].join(" ")}
+                            onClick={() => setForm((s) => ({ ...s, type: opt.value }))}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="pos-edit-field">
+                      <label className="pos-edit-label" htmlFor="pos-price">
+                        Цена / сутки (₽)
+                      </label>
+                      <input
+                        id="pos-price"
+                        value={form.pricePerDay}
+                        onChange={(e) => setForm((s) => ({ ...s, pricePerDay: e.target.value }))}
+                        className="pos-edit-input"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="pos-edit-field">
+                      <label className="pos-edit-label" htmlFor="pos-purchase">
+                        Закуп за единицу (₽)
+                      </label>
+                      <input
+                        id="pos-purchase"
+                        value={form.purchasePricePerUnit}
+                        onChange={(e) => setForm((s) => ({ ...s, purchasePricePerUnit: e.target.value }))}
+                        className="pos-edit-input"
+                        inputMode="decimal"
+                        placeholder="Необязательно"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs text-zinc-400">Обновлено: {new Date(item.updatedAt).toLocaleString("ru-RU")}</div>
-              </div>
-            </div>
+                </section>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="text-base font-semibold text-zinc-900">Фото</div>
-              <div className="mt-1 text-sm text-zinc-600">
-                Можно добавить сейчас или позже. Фото используется для удобства в инвентаре (в каталоге подключим следующим шагом).
-              </div>
+                <section className="pos-edit-card">
+                  <h2 className="pos-edit-card-title">Склад и остатки</h2>
+                  <p className="pos-edit-card-hint">Общее количество и позиции вне выдачи.</p>
+                  <div className="pos-edit-fields">
+                    <div className="pos-edit-stock-grid">
+                      <div className="pos-edit-field">
+                        <label className="pos-edit-label" htmlFor="pos-total">
+                          Всего
+                        </label>
+                        <input
+                          id="pos-total"
+                          value={form.total}
+                          onChange={(e) => setForm((s) => ({ ...s, total: e.target.value }))}
+                          className="pos-edit-input"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="pos-edit-field">
+                        <label className="pos-edit-label" htmlFor="pos-repair">
+                          В ремонте
+                        </label>
+                        <input
+                          id="pos-repair"
+                          value={form.inRepair}
+                          onChange={(e) => setForm((s) => ({ ...s, inRepair: e.target.value }))}
+                          className="pos-edit-input"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="pos-edit-field">
+                        <label className="pos-edit-label" htmlFor="pos-broken">
+                          Сломано
+                        </label>
+                        <input
+                          id="pos-broken"
+                          value={form.broken}
+                          onChange={(e) => setForm((s) => ({ ...s, broken: e.target.value }))}
+                          className="pos-edit-input"
+                          inputMode="numeric"
+                        />
+                      </div>
+                      <div className="pos-edit-field">
+                        <label className="pos-edit-label" htmlFor="pos-missing">
+                          Утеряно
+                        </label>
+                        <input
+                          id="pos-missing"
+                          value={form.missing}
+                          onChange={(e) => setForm((s) => ({ ...s, missing: e.target.value }))}
+                          className="pos-edit-input"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </div>
+                    <div className="pos-edit-stock-summary">
+                      К выдаче сейчас: <strong>{previewAvailable}</strong> шт. (всего − ремонт − сломано − утеряно)
+                    </div>
+                  </div>
+                </section>
 
-              <div className="mt-4 flex flex-wrap items-start gap-4">
-                <div className="w-[220px] h-[140px] rounded-xl border border-zinc-200 bg-zinc-50 overflow-hidden flex items-center justify-center">
-                  {item.photo1Key ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/inventory/positions/${id}/photo`}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
+                <section className="pos-edit-card">
+                  <h2 className="pos-edit-card-title">Категории каталога</h2>
+                  <p className="pos-edit-card-hint">Нажмите на категорию, чтобы включить или выключить.</p>
+                  {categories.length === 0 ? (
+                    <p className="pos-edit-muted" style={{ marginTop: "0.85rem" }}>
+                      Категории пока не созданы.
+                    </p>
                   ) : (
-                    <div className="text-xs text-zinc-500">Фото не загружено</div>
+                    <div className="pos-edit-chips">
+                      {categories.map((c) => {
+                        const selected = form.categoryIds.includes(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={["pos-edit-chip", selected ? "pos-edit-chip--on" : ""].join(" ")}
+                            aria-pressed={selected}
+                            onClick={() => toggleCategory(c.id)}
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </div>
+                </section>
+              </div>
 
-                <div className="min-w-[240px] space-y-2">
-                  <label className="block text-xs font-medium text-zinc-500">Загрузить</label>
+              <div className="pos-edit-stack">
+                <section className="pos-edit-card">
+                  <h2 className="pos-edit-card-title">Фото</h2>
+                  <p className="pos-edit-card-hint">JPG, PNG, WebP или GIF — до 5 MB.</p>
                   <input
+                    ref={photoInputRef}
                     type="file"
                     accept="image/*"
                     disabled={busy}
+                    className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) void uploadPhoto(f);
                       e.currentTarget.value = "";
                     }}
-                    className="block w-full text-sm"
                   />
-                  {item.photo1Key ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={deletePhoto}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
-                    >
-                      Удалить фото
-                    </button>
-                  ) : null}
-                  <div className="text-xs text-zinc-500">Поддержка: JPG/PNG/WebP/GIF, до 5MB.</div>
-                </div>
+                  <div className="pos-edit-photo-drop">
+                    <div className="pos-edit-photo-row">
+                      <div className="pos-edit-photo-preview">
+                        {item.photo1Key ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={`/api/inventory/positions/${id}/photo`} alt="" />
+                        ) : (
+                          <span>Фото не загружено</span>
+                        )}
+                      </div>
+                      <div className="pos-edit-photo-actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => photoInputRef.current?.click()}
+                          className="pos-edit-btn pos-edit-btn--primary"
+                        >
+                          {item.photo1Key ? "Заменить фото" : "Загрузить фото"}
+                        </button>
+                        {item.photo1Key ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void deletePhoto()}
+                            className="pos-edit-btn pos-edit-btn--ghost"
+                          >
+                            Удалить
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="pos-edit-card">
+                  <h2 className="pos-edit-card-title">Видимость</h2>
+                  <p className="pos-edit-card-hint">Управление доступностью позиции в каталоге и для клиентов.</p>
+                  <div style={{ marginTop: "0.85rem" }}>
+                    <div className="pos-edit-toggle-row">
+                      <ToggleSwitch
+                        checked={form.isActive}
+                        onChange={(next) => setForm((s) => ({ ...s, isActive: next }))}
+                        label="Позиция активна"
+                        description="Неактивные позиции скрыты из каталога и недоступны для новых заявок."
+                      />
+                    </div>
+                    <div className="pos-edit-toggle-row">
+                      <ToggleSwitch
+                        checked={form.internalOnly}
+                        onChange={(next) => setForm((s) => ({ ...s, internalOnly: next }))}
+                        label="Только для склада"
+                        description="Не показывать в каталоге Greenwich — только внутренний реквизит Wowstorg."
+                      />
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="text-base font-semibold text-zinc-900">Реквизит</div>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Название</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Описание</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
-                    className="w-full min-h-[96px] rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Тип</label>
-                  <select
-                    value={form.type}
-                    onChange={(e) => setForm((s) => ({ ...s, type: e.target.value as ItemType }))}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="ASSET">Штучный</option>
-                    <option value="BULK">Мерный</option>
-                    <option value="CONSUMABLE">Расходник</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Цена / сутки (₽)</label>
-                  <input
-                    value={form.pricePerDay}
-                    onChange={(e) => setForm((s) => ({ ...s, pricePerDay: e.target.value }))}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                    inputMode="decimal"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">
-                    Цена закупа за единицу (₽, опционально)
-                  </label>
-                  <input
-                    value={form.purchasePricePerUnit}
-                    onChange={(e) => setForm((s) => ({ ...s, purchasePricePerUnit: e.target.value }))}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                    inputMode="decimal"
-                    placeholder="Оставьте пустым, если не знаете цену"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Общее количество</label>
-                  <input
-                    value={form.total}
-                    onChange={(e) => setForm((s) => ({ ...s, total: e.target.value }))}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                    inputMode="numeric"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-500 mb-1">Ремонт</label>
-                    <input
-                      value={form.inRepair}
-                      onChange={(e) => setForm((s) => ({ ...s, inRepair: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                      inputMode="numeric"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-500 mb-1">Сломано</label>
-                    <input
-                      value={form.broken}
-                      onChange={(e) => setForm((s) => ({ ...s, broken: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                      inputMode="numeric"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-500 mb-1">Утеряно</label>
-                    <input
-                      value={form.missing}
-                      onChange={(e) => setForm((s) => ({ ...s, missing: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm tabular-nums"
-                      inputMode="numeric"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-end gap-4">
-                  <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-                    <input
-                      type="checkbox"
-                      checked={form.internalOnly}
-                      onChange={(e) => setForm((s) => ({ ...s, internalOnly: e.target.checked }))}
-                    />
-                    Внутренний реквизит (не показывать в каталоге)
-                  </label>
-                </div>
-                <div className="flex items-end gap-4">
-                  <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-                    <input
-                      type="checkbox"
-                      checked={form.isActive}
-                      onChange={(e) => setForm((s) => ({ ...s, isActive: e.target.checked }))}
-                    />
-                    Активна
-                  </label>
-                </div>
-              </div>
+            <div style={{ marginTop: "1rem" }}>
+              <PositionRelatedItemsEditor positionId={id} />
             </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-              <div className="text-base font-semibold text-zinc-900">Категории</div>
-              <p className="mt-1 text-xs text-zinc-500">Выберите категории для отображения в каталоге.</p>
-              <div className="mt-3 max-h-[200px] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 space-y-1">
-                {categories.map((c) => (
-                  <label key={c.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-zinc-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.categoryIds.includes(c.id)}
-                      onChange={(e) => {
-                        setForm((s) => ({
-                          ...s,
-                          categoryIds: e.target.checked
-                            ? [...s.categoryIds, c.id]
-                            : s.categoryIds.filter((id) => id !== c.id),
-                        }));
-                      }}
-                      className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-                    />
-                    <span className="text-sm text-zinc-800">{c.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <PositionRelatedItemsEditor positionId={id} />
           </>
         ) : (
-          <div className="text-sm text-zinc-600">Позиция не найдена.</div>
+          <div className="pos-edit-muted">Позиция не найдена.</div>
         )}
       </div>
     </AppShell>
   );
 }
-

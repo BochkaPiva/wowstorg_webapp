@@ -331,9 +331,13 @@
 }
 
 .cart-related--catalog {
-  margin-bottom: 0;
+  margin-bottom: 0.75rem;
   padding: 0.55rem 0.7rem 0.5rem;
   border-radius: 14px;
+  max-height: min(36vh, 16rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   box-shadow:
     0 8px 22px rgba(124, 58, 237, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
@@ -455,6 +459,40 @@
   margin: 0;
   font-size: 0.84rem;
   color: #6b7280;
+}
+
+.cart-related-mergedThumbs {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.cart-related-mergedThumb {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.12);
+}
+
+.cart-related-mergedThumb + .cart-related-mergedThumb {
+  margin-left: -0.45rem;
+}
+
+.cart-related-mergedThumb-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(124, 58, 237, 0.12);
+  color: #5b21b6;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.cart-related--catalog .cart-related-group--merged .cart-related-group-source {
+  align-items: flex-start;
 }
 
 .cart-related-intro {

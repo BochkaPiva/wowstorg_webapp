@@ -1,3 +1,6 @@
+import type { OrderStatus } from "@prisma/client";
+
+import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { prisma } from "@/server/db";
 import {
   escapeTelegramHtml,
@@ -6,11 +9,16 @@ import {
   isTelegramConfigured,
   sendTelegramMessage,
 } from "@/server/telegram";
-import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 
 const OMSK_TZ = "Asia/Omsk";
 
 type ReminderType = "WAREHOUSE_PREP" | "GREENWICH_RETURN";
+
+/** Подготовка: всё, кроме отмены и закрытых (страховка от «застряла в смете»). */
+const WAREHOUSE_PREP_EXCLUDED_STATUSES: OrderStatus[] = ["CANCELLED", "CLOSED"];
+
+/** Возврат / приёмка: только выданная заявка. */
+const RETURN_REMINDER_STATUS: OrderStatus = "ISSUED";
 
 function getOmskYmd(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -75,36 +83,34 @@ function SITE_LINK() {
 }
 
 function link(path: string, label: string): string {
-  // Telegram HTML mode: we store only safe path; label is escaped.
   const safeLabel = escapeTelegramHtml(label);
   return `<a href="${SITE_LINK()}${path}">${safeLabel}</a>`;
 }
 
+function quickSupplementBlock(parentOrderId: string | null): string {
+  if (!parentOrderId) return "";
+  return `📎 <b>Доп. заявка</b> · ${link(`/orders/${parentOrderId}`, "основная заявка")}\n\n`;
+}
+
+function warehouseTopicOptions(topicId: string | undefined) {
+  return topicId ? { messageThreadId: parseInt(topicId, 10) } : undefined;
+}
+
 export async function runDailyReminders(now = new Date()): Promise<{
-  warehouseSent: number;
-  greenwichSent: number;
+  warehousePrepSent: number;
+  greenwichReturnSent: number;
+  warehouseReturnSent: number;
 }> {
   if (!isTelegramConfigured()) {
-    return { warehouseSent: 0, greenwichSent: 0 };
+    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0 };
   }
 
   const warehouseChatId = getWarehouseChatId();
   if (!warehouseChatId) {
-    return { warehouseSent: 0, greenwichSent: 0 };
+    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0 };
   }
   const topicId = getWarehouseTopicId();
-
-  const activeStatuses: Array<
-    "SUBMITTED" | "ESTIMATE_SENT" | "CHANGES_REQUESTED" | "APPROVED_BY_GREENWICH" | "PICKING" | "ISSUED" | "RETURN_DECLARED"
-  > = [
-    "SUBMITTED",
-    "ESTIMATE_SENT",
-    "CHANGES_REQUESTED",
-    "APPROVED_BY_GREENWICH",
-    "PICKING",
-    "ISSUED",
-    "RETURN_DECLARED",
-  ];
+  const warehouseOpts = warehouseTopicOptions(topicId);
 
   const omskTodayYmd = getOmskYmd(now);
   const omskTomorrowYmd = addDaysToYmd(omskTodayYmd, 1);
@@ -116,31 +122,35 @@ export async function runDailyReminders(now = new Date()): Promise<{
   const todayStartUtc = parseDateOnlyToUtcMidnight(omskTodayYmd);
   const tomorrowStartForReturnUtc = parseDateOnlyToUtcMidnight(omskTomorrowYmd);
 
-  // 1) Склад: отправлять напоминание за 1 день до readyByDate (т.е. "сегодня" для готовности "завтра").
+  // 1) Склад: за 1 календарный день до readyByDate (cron в 11:00 Омск → «завтра» по Омску).
   const warehouseOrders = await prisma.order.findMany({
     where: {
-      status: { in: activeStatuses },
+      status: { notIn: WAREHOUSE_PREP_EXCLUDED_STATUSES },
       readyByDate: { gte: tomorrowStartUtc, lt: dayAfterTomorrowStartUtc },
     },
     select: {
       id: true,
       readyByDate: true,
+      parentOrderId: true,
       customer: { select: { name: true } },
     },
     orderBy: [{ readyByDate: "asc" }, { createdAt: "desc" }],
   });
 
-  let warehouseSent = 0;
+  let warehousePrepSent = 0;
   for (const o of warehouseOrders) {
     const receiverKey = "warehouse";
     const ymd = omskTodayYmd;
-    const already = await alreadySent({
-      type: "WAREHOUSE_PREP",
-      orderId: o.id,
-      ymd,
-      receiverKey,
-    });
-    if (already) continue;
+    if (
+      await alreadySent({
+        type: "WAREHOUSE_PREP",
+        orderId: o.id,
+        ymd,
+        receiverKey,
+      })
+    ) {
+      continue;
+    }
 
     const intro = pickRandom([
       "⏳ Давайте соберём реквизит заранее!",
@@ -155,15 +165,14 @@ export async function runDailyReminders(now = new Date()): Promise<{
 
     const msg =
       `⏰ <b>Напоминание складу</b>\n\n` +
+      quickSupplementBlock(o.parentOrderId) +
       `${intro}\n` +
       `Завтра (${escapeTelegramHtml(formatDateRu(o.readyByDate))}) нужно подготовить реквизит.\n` +
       `Клиент: <b>${escapeTelegramHtml(o.customer.name)}</b>\n\n` +
       `${tone}\n` +
       `${link(`/orders/${o.id}`, "Открыть заявку")}`;
 
-    const ok = await sendTelegramMessage(warehouseChatId, msg, {
-      messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
-    });
+    const ok = await sendTelegramMessage(warehouseChatId, msg, warehouseOpts);
     if (!ok) continue;
 
     await markSent({
@@ -173,18 +182,19 @@ export async function runDailyReminders(now = new Date()): Promise<{
       receiverKey,
       receiverChatId: warehouseChatId,
     });
-    warehouseSent += 1;
+    warehousePrepSent += 1;
   }
 
-  // 2) Greenwich (и/или склад для внешних заявок): в день endDate.
+  // 2) Возврат: в день endDate, только ISSUED.
   const returnOrders = await prisma.order.findMany({
     where: {
-      status: { in: activeStatuses },
+      status: RETURN_REMINDER_STATUS,
       endDate: { gte: todayStartUtc, lt: tomorrowStartForReturnUtc },
     },
     select: {
       id: true,
       endDate: true,
+      parentOrderId: true,
       customer: { select: { name: true } },
       greenwichUserId: true,
       greenwichUser: { select: { telegramChatId: true, isActive: true, displayName: true } },
@@ -192,53 +202,132 @@ export async function runDailyReminders(now = new Date()): Promise<{
     orderBy: [{ endDate: "asc" }, { createdAt: "desc" }],
   });
 
-  let greenwichSent = 0;
-  for (const o of returnOrders) {
-    const receiverIsGreenwich = Boolean(o.greenwichUserId);
-    const receiverKey = receiverIsGreenwich ? (o.greenwichUserId as string) : "warehouse";
+  let greenwichReturnSent = 0;
+  let warehouseReturnSent = 0;
 
-    let receiverChatId: string | undefined;
+  for (const o of returnOrders) {
+    const ymd = omskTodayYmd;
+    const supplementBlock = quickSupplementBlock(o.parentOrderId);
+    const customerLine = `Клиент: <b>${escapeTelegramHtml(o.customer.name)}</b>\n`;
+    const dateLine = `Ориентир: <b>${escapeTelegramHtml(formatDateRu(o.endDate))}</b>\n\n`;
+    const orderLink = link(`/orders/${o.id}`, "Открыть заявку");
+
+    const receiverIsGreenwich = Boolean(o.greenwichUserId);
+
     if (receiverIsGreenwich) {
-      receiverChatId =
+      const displayName = o.greenwichUser?.displayName?.trim() || "сотрудник Greenwich";
+      const personalChatId =
         o.greenwichUser?.isActive && o.greenwichUser.telegramChatId
           ? o.greenwichUser.telegramChatId
           : undefined;
-    } else {
-      receiverChatId = warehouseChatId;
+
+      if (personalChatId) {
+        const receiverKey = o.greenwichUserId as string;
+        if (
+          await alreadySent({
+            type: "GREENWICH_RETURN",
+            orderId: o.id,
+            ymd,
+            receiverKey,
+          })
+        ) {
+          continue;
+        }
+
+        const dinoWord = pickRandom(["динозаврик", "дракончик", "диня", "динозаврик-тренер"]);
+        const header = pickRandom([
+          "🦖 <b>День возврата!</b>",
+          "⚡ <b>Сегодня дедлайн</b>",
+          "🌟 <b>Возврат по заявке</b>",
+        ]);
+        const friendlyWarning = pickRandom([
+          `Если опоздаешь — ${escapeTelegramHtml(dinoWord)} пересчитает рейтинг в сторону минуса.`,
+          `Почти всё решает “вовремя”: если задержаться, ${escapeTelegramHtml(dinoWord)} будет строгим.`,
+          `Вовремя = плюс к рейтингу, а задержки обычно дают минус — пусть ${escapeTelegramHtml(dinoWord)} порадуется.`,
+        ]);
+
+        const msg =
+          `${header}\n\n` +
+          supplementBlock +
+          `Сегодня нужно вернуть реквизит по заявке.\n` +
+          customerLine +
+          dateLine +
+          `${friendlyWarning}\n` +
+          orderLink;
+
+        const ok = await sendTelegramMessage(personalChatId, msg);
+        if (!ok) continue;
+
+        await markSent({
+          type: "GREENWICH_RETURN",
+          orderId: o.id,
+          ymd,
+          receiverKey,
+          receiverChatId: personalChatId,
+        });
+        greenwichReturnSent += 1;
+        continue;
+      }
+
+      // Greenwich назначен, но Telegram не привязан — дублируем складу.
+      const fallbackKey = `warehouse:greenwich-missing-tg:${o.greenwichUserId}`;
+      if (
+        await alreadySent({
+          type: "GREENWICH_RETURN",
+          orderId: o.id,
+          ymd,
+          receiverKey: fallbackKey,
+        })
+      ) {
+        continue;
+      }
+
+      const msg =
+        `⚠️ <b>Напоминание складу (fallback)</b>\n\n` +
+        `У ${escapeTelegramHtml(displayName)} не привязан Telegram — напоминание о возврате ушло сюда.\n\n` +
+        supplementBlock +
+        `Сегодня последний день аренды, нужен возврат на приёмку.\n` +
+        customerLine +
+        dateLine +
+        `Свяжитесь с ${escapeTelegramHtml(displayName)} и проверьте заявку.\n` +
+        orderLink;
+
+      const ok = await sendTelegramMessage(warehouseChatId, msg, warehouseOpts);
+      if (!ok) continue;
+
+      await markSent({
+        type: "GREENWICH_RETURN",
+        orderId: o.id,
+        ymd,
+        receiverKey: fallbackKey,
+        receiverChatId: warehouseChatId,
+      });
+      warehouseReturnSent += 1;
+      continue;
     }
 
-    if (!receiverChatId) continue;
-
-    const ymd = omskTodayYmd;
-    const already = await alreadySent({
-      type: "GREENWICH_RETURN",
-      orderId: o.id,
-      ymd,
-      receiverKey,
-    });
-    if (already) continue;
-
-    const dinoWord = pickRandom(["динозаврик", "дракончик", "диня", "динозаврик-тренер"]);
-    const header = pickRandom([
-      "🦖 <b>День возврата!</b>",
-      "⚡ <b>Сегодня дедлайн</b>",
-      "🌟 <b>Возврат по заявке</b>",
-    ]);
-    const friendlyWarning = pickRandom([
-      `Если опоздаешь — ${escapeTelegramHtml(dinoWord)} пересчитает рейтинг в сторону минуса.`,
-      `Почти всё решает “вовремя”: если задержаться, ${escapeTelegramHtml(dinoWord)} будет строгим.`,
-      `Вовремя = плюс к рейтингу, а задержки обычно дают минус — пусть ${escapeTelegramHtml(dinoWord)} порадуется.`,
-    ]);
+    // Внешняя заявка (без Greenwich) — в рабочий чат склада.
+    const receiverKey = "warehouse:external-return";
+    if (
+      await alreadySent({
+        type: "GREENWICH_RETURN",
+        orderId: o.id,
+        ymd,
+        receiverKey,
+      })
+    ) {
+      continue;
+    }
 
     const msg =
-      `${header}\n\n` +
-      `Сегодня нужно вернуть реквизит по заявке.\n` +
-      `Клиент: <b>${escapeTelegramHtml(o.customer.name)}</b>\n` +
-      `Ориентир: <b>${escapeTelegramHtml(formatDateRu(o.endDate))}</b>\n\n` +
-      `${friendlyWarning}\n` +
-      `${link(`/orders/${o.id}`, "Открыть заявку")}`;
+      `📦 <b>Напоминание складу: возврат</b>\n\n` +
+      supplementBlock +
+      `Сегодня последний день аренды по <b>внешней заявке</b> — ожидается возврат на приёмку.\n` +
+      customerLine +
+      dateLine +
+      orderLink;
 
-    const ok = await sendTelegramMessage(receiverChatId, msg);
+    const ok = await sendTelegramMessage(warehouseChatId, msg, warehouseOpts);
     if (!ok) continue;
 
     await markSent({
@@ -246,11 +335,10 @@ export async function runDailyReminders(now = new Date()): Promise<{
       orderId: o.id,
       ymd,
       receiverKey,
-      receiverChatId,
+      receiverChatId: warehouseChatId,
     });
-    greenwichSent += 1;
+    warehouseReturnSent += 1;
   }
 
-  return { warehouseSent, greenwichSent };
+  return { warehousePrepSent, greenwichReturnSent, warehouseReturnSent };
 }
-

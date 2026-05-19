@@ -4,6 +4,10 @@
     {
       "path": "/api/admin/inventory-audit/cron",
       "schedule": "10 0 * * *"
+    },
+    {
+      "path": "/api/reminders/run",
+      "schedule": "0 5 * * *"
     }
   ]
 }

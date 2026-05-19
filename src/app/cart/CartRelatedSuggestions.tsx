@@ -8,38 +8,12 @@ import {
   loadDismissedRelatedIds,
 } from "@/lib/cart-related-dismiss";
 
-export type CartRelatedSuggestion = {
-  relatedItemId: string;
-  name: string;
-  kind: "REQUIRED" | "RECOMMENDED";
-  note: string | null;
-  suggestedQty: number;
-  pricePerDay: number;
-  photo1Key: string | null;
-  availability: { availableNow: number; availableForDates?: number };
-  sourceItemNames: string[];
-};
-
-export type CartRelatedSuggestionGroup = {
-  sourceItemId: string;
-  sourceItemName: string;
-  sourcePhoto1Key: string | null;
-  sourceQtyInCart: number;
-  suggestions: CartRelatedSuggestion[];
-};
-
-type MergedSource = {
-  sourceItemId: string;
-  sourceItemName: string;
-  sourcePhoto1Key: string | null;
-  sourceQtyInCart: number;
-  suggestedQty: number;
-};
-
-type MergedSuggestionRow = CartRelatedSuggestion & {
-  sources: MergedSource[];
-  totalSuggestedQty: number;
-};
+import {
+  mergeByTarget,
+  type CartRelatedSuggestion,
+  type CartRelatedSuggestionGroup,
+} from "@/app/cart/cart-related-shared";
+import { CatalogRelatedDrum } from "@/app/catalog/CatalogRelatedDrum";
 
 type Props = {
   cartScope?: string;
@@ -149,58 +123,6 @@ function limitGroups(
   }
 
   return { groups: limited, hiddenCount };
-}
-
-function mergeByTarget(
-  groups: CartRelatedSuggestionGroup[],
-  kind: CartRelatedSuggestion["kind"],
-): MergedSuggestionRow[] {
-  const map = new Map<string, MergedSuggestionRow>();
-
-  for (const group of groups) {
-    for (const suggestion of group.suggestions) {
-      if (suggestion.kind !== kind) continue;
-
-      const source: MergedSource = {
-        sourceItemId: group.sourceItemId,
-        sourceItemName: group.sourceItemName,
-        sourcePhoto1Key: group.sourcePhoto1Key,
-        sourceQtyInCart: group.sourceQtyInCart,
-        suggestedQty: suggestion.suggestedQty,
-      };
-
-      const prev = map.get(suggestion.relatedItemId);
-      if (!prev) {
-        map.set(suggestion.relatedItemId, {
-          ...suggestion,
-          sources: [source],
-          totalSuggestedQty: suggestion.suggestedQty,
-        });
-        continue;
-      }
-
-      prev.sources.push(source);
-      prev.totalSuggestedQty += suggestion.suggestedQty;
-    }
-  }
-
-  return [...map.values()];
-}
-
-function limitMergedRows(
-  rows: MergedSuggestionRow[],
-  limit: number,
-): { rows: MergedSuggestionRow[]; hiddenCount: number } {
-  if (rows.length <= limit) return { rows, hiddenCount: 0 };
-  return { rows: rows.slice(0, limit), hiddenCount: rows.length - limit };
-}
-
-function formatSourceNamesRu(names: string[]): string {
-  const unique = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
-  if (unique.length === 0) return "";
-  if (unique.length === 1) return unique[0]!;
-  if (unique.length === 2) return `${unique[0]} и ${unique[1]}`;
-  return `${unique.slice(0, -1).join(", ")} и ${unique[unique.length - 1]}`;
 }
 
 function renderThumb(itemId: string, photo1Key: string | null, size: number, className?: string) {
@@ -341,23 +263,47 @@ export function CartRelatedSuggestions({
     () => mergeByTarget(visibleGroups, "RECOMMENDED"),
     [visibleGroups],
   );
-  const { rows: shownMergedRequired, hiddenCount: hiddenMergedRequired } = expanded
-    ? { rows: mergedRequiredAll, hiddenCount: 0 }
-    : limitMergedRows(mergedRequiredAll, FLAT_LIMIT);
-  const mergedRecommendedLimit = Math.max(0, FLAT_LIMIT - shownMergedRequired.length);
-  const { rows: shownMergedRecommended, hiddenCount: hiddenMergedRecommended } = expanded
-    ? { rows: mergedRecommendedAll, hiddenCount: 0 }
-    : limitMergedRows(mergedRecommendedAll, mergedRecommendedLimit);
-  const hiddenMergedCount = hiddenMergedRequired + hiddenMergedRecommended;
+  const drumRows = React.useMemo(
+    () => [...mergedRequiredAll, ...mergedRecommendedAll],
+    [mergedRequiredAll, mergedRecommendedAll],
+  );
 
   const isCatalog = variant === "catalog";
 
   if (disabled || itemIds.length === 0) return null;
 
+  if (isCatalog) {
+    if (visibleCount === 0) {
+      if (loading) {
+        return (
+          <div className="cart-related cart-related--catalog">
+            <section className="catalog-related-drum" aria-label="Рекомендуем добавить">
+              <h2 className="catalog-related-drum-title">Рекомендуем добавить</h2>
+              <p className="cart-related-loading catalog-related-drum-loading">Подбираем рекомендации…</p>
+            </section>
+          </div>
+        );
+      }
+      return null;
+    }
+
+    return (
+      <div className="cart-related cart-related--catalog">
+        <CatalogRelatedDrum
+          rows={drumRows}
+          cartScope={cartScope}
+          displayMultiplier={displayMultiplier}
+          onAdd={onAdd}
+          onDismiss={setDismissed}
+        />
+      </div>
+    );
+  }
+
   if (visibleCount === 0) {
     if (loading) {
       return (
-        <div className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}>
+        <div className="cart-related">
           <p className="cart-related-loading">Подбираем рекомендации…</p>
         </div>
       );
@@ -365,8 +311,8 @@ export function CartRelatedSuggestions({
     return null;
   }
 
-  const thumbSize = isCatalog ? 40 : 56;
-  const sourceThumbSize = isCatalog ? 36 : 48;
+  const thumbSize = 56;
+  const sourceThumbSize = 48;
 
   function renderTarget(s: CartRelatedSuggestion, groupKey: string) {
     const availability = s.availability ?? { availableNow: 0 };
@@ -437,116 +383,6 @@ export function CartRelatedSuggestions({
     );
   }
 
-  function renderMergedRow(row: MergedSuggestionRow, kind: CartRelatedSuggestion["kind"]) {
-    const availability = row.availability ?? { availableNow: 0 };
-    const maxAvail = availability.availableForDates ?? availability.availableNow ?? 0;
-    const qty = Math.min(row.totalSuggestedQty, maxAvail > 0 ? maxAvail : row.totalSuggestedQty);
-    const canAdd = maxAvail > 0;
-    const price = row.pricePerDay * displayMultiplier;
-    const singleSource = row.sources.length === 1 ? row.sources[0]! : null;
-
-    return (
-      <li key={`${kind}-merged-${row.relatedItemId}`} className="cart-related-group cart-related-group--merged">
-        <div className="cart-related-group-source">
-          {singleSource ? (
-            <>
-              <div className="cart-related-sourceVisual">
-                {renderThumb(
-                  singleSource.sourceItemId,
-                  singleSource.sourcePhoto1Key,
-                  sourceThumbSize,
-                  "cart-related-source-thumb",
-                )}
-              </div>
-              <div className="cart-related-group-sourceText">
-                <div className="cart-related-group-sourceName">{singleSource.sourceItemName}</div>
-                {singleSource.sourceQtyInCart > 1 ? (
-                  <div className="cart-related-group-sourceQty">× {singleSource.sourceQtyInCart} в корзине</div>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="cart-related-sourceVisual">
-                <div className="cart-related-mergedThumbs" aria-hidden="true">
-                  {row.sources.slice(0, 3).map((source) => (
-                    <div key={source.sourceItemId} className="cart-related-mergedThumb">
-                      {renderThumb(source.sourceItemId, source.sourcePhoto1Key, 28, "cart-related-source-thumb")}
-                    </div>
-                  ))}
-                  {row.sources.length > 3 ? (
-                    <div className="cart-related-mergedThumb cart-related-mergedThumb-more">+{row.sources.length - 3}</div>
-                  ) : null}
-                </div>
-              </div>
-              <div className="cart-related-group-sourceText">
-                <div
-                  className="cart-related-group-sourceName"
-                  title={row.sources.map((source) => source.sourceItemName).join(", ")}
-                >
-                  {formatSourceNamesRu(row.sources.map((source) => source.sourceItemName))}
-                </div>
-                <div className="cart-related-group-sourceQty">к {row.sources.length} позициям в корзине</div>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="cart-related-group-connector" aria-hidden="true">
-          →
-        </div>
-        <ul className="cart-related-group-targets">
-          <li className="cart-related-target">
-            <div className="cart-related-target-main">
-              {renderThumb(row.relatedItemId, row.photo1Key, thumbSize, "cart-related-target-thumb")}
-              <div className="cart-related-text">
-                <div className="cart-related-name">{row.name}</div>
-                {row.note ? <div className="cart-related-note">{row.note}</div> : null}
-                <div className="cart-related-meta">
-                  {maxAvail > 0 ? (
-                    <span>
-                      доступно {maxAvail} · {price.toFixed(0)} р/сут
-                      {row.totalSuggestedQty > 1 ? ` · рекомендуем ${row.totalSuggestedQty}` : ""}
-                    </span>
-                  ) : (
-                    <span className="cart-related-unavailable">нет на выбранные даты</span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="cart-related-actions">
-              <button
-                type="button"
-                className="cart-related-add"
-                disabled={!canAdd}
-                onClick={() => onAdd(row.relatedItemId, qty, row.pricePerDay, maxAvail)}
-              >
-                {canAdd ? `+ ${qty}` : "—"}
-              </button>
-              <button
-                type="button"
-                className="cart-related-dismiss"
-                onClick={() => setDismissed(dismissRelatedSuggestion(cartScope, row.relatedItemId))}
-              >
-                Не нужно
-              </button>
-            </div>
-          </li>
-        </ul>
-      </li>
-    );
-  }
-
-  function renderMergedSection(title: string, rows: MergedSuggestionRow[], kind: CartRelatedSuggestion["kind"]) {
-    if (rows.length === 0) return null;
-
-    return (
-      <div className="cart-related-section">
-        <h2 className="cart-related-title">{title}</h2>
-        <ul className="cart-related-list">{rows.map((row) => renderMergedRow(row, kind))}</ul>
-      </div>
-    );
-  }
-
   function renderSection(title: string, sectionGroups: CartRelatedSuggestionGroup[], kind: CartRelatedSuggestion["kind"]) {
     const rows = sectionGroups
       .map((group) => renderGroupRow(group, kind))
@@ -561,33 +397,15 @@ export function CartRelatedSuggestions({
     );
   }
 
-  function renderContent() {
-    const hiddenCount = isCatalog ? hiddenMergedCount : hiddenGroupCount;
-
-    return (
-      <section
-        className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
-        aria-label="Рекомендации к корзине"
-      >
-        {isCatalog ? (
-          <>
-            {renderMergedSection("Обычно нужно вместе", shownMergedRequired, "REQUIRED")}
-            {renderMergedSection("Может пригодиться", shownMergedRecommended, "RECOMMENDED")}
-          </>
-        ) : (
-          <>
-            {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
-            {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
-          </>
-        )}
-        {!expanded && hiddenCount > 0 ? (
-          <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
-            Ещё {hiddenCount}…
-          </button>
-        ) : null}
-      </section>
-    );
-  }
-
-  return renderContent();
+  return (
+    <section className="cart-related" aria-label="Рекомендации к корзине">
+      {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
+      {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
+      {!expanded && hiddenGroupCount > 0 ? (
+        <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
+          Ещё {hiddenGroupCount}…
+        </button>
+      ) : null}
+    </section>
+  );
 }

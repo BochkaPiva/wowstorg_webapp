@@ -672,24 +672,34 @@ export default function CatalogPage() {
     [],
   );
 
+  const cartRelatedInputs = React.useMemo(
+    () => ({
+      itemIds: cart.map((l) => l.itemId),
+      qtys: cart.map((l) => l.qty),
+    }),
+    [cart],
+  );
+
   const showCatalogRelated =
     cart.length > 0 &&
     !isProjectDemoCatalog &&
     (activeTab === "positions" || (activeTab === "categories" && categoryId));
 
   const catalogRelatedSuggestions = showCatalogRelated ? (
-    <CartRelatedSuggestions
-      variant="catalog"
-      cartScope={cartScope ?? "default"}
-      itemIds={cart.map((l) => l.itemId)}
-      qtys={cart.map((l) => l.qty)}
-      startDate={startDate}
-      endDate={endDate}
-      rentalStartPartOfDay={rentalStartPartOfDay}
-      rentalEndPartOfDay={rentalEndPartOfDay}
-      excludeOrderId={quickParentId}
-      onAdd={addRelatedToCart}
-    />
+    <div className="mk-relatedSticky">
+      <CartRelatedSuggestions
+        variant="catalog"
+        cartScope={cartScope ?? "default"}
+        itemIds={cartRelatedInputs.itemIds}
+        qtys={cartRelatedInputs.qtys}
+        startDate={startDate}
+        endDate={endDate}
+        rentalStartPartOfDay={rentalStartPartOfDay}
+        rentalEndPartOfDay={rentalEndPartOfDay}
+        excludeOrderId={quickParentId}
+        onAdd={addRelatedToCart}
+      />
+    </div>
   ) : null;
 
   const openDetail = React.useCallback((id: string) => setSelectedId(id), []);

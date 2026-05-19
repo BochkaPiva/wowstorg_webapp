@@ -73,15 +73,19 @@ export function CartRelatedSuggestions({
     [itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
   );
 
+  const flatRef = React.useRef(flat);
+  flatRef.current = flat;
+
   React.useEffect(() => {
     if (disabled || itemIds.length === 0) {
       setFlat([]);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      if (flatRef.current.length === 0) setLoading(true);
       try {
         const params = new URLSearchParams();
         params.set("itemIds", itemIds.join(","));
@@ -106,7 +110,7 @@ export function CartRelatedSuggestions({
     return () => {
       cancelled = true;
     };
-  }, [disabled, requestKey, itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
+  }, [disabled, requestKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
 
   const visible = React.useMemo(
     () => flat.filter((s) => !dismissed.has(s.relatedItemId)),
@@ -118,8 +122,11 @@ export function CartRelatedSuggestions({
   const shownRequired = shown.filter((s) => s.kind === "REQUIRED");
   const shownRecommended = shown.filter((s) => s.kind === "RECOMMENDED");
 
-  if (disabled || itemIds.length === 0 || loading) return null;
+  if (disabled || itemIds.length === 0) return null;
   if (visible.length === 0) return null;
+
+  const isCatalog = variant === "catalog";
+  const thumbSize = isCatalog ? 48 : 80;
 
   function renderRow(s: CartRelatedSuggestion) {
     const maxAvail = s.availability.availableForDates ?? s.availability.availableNow;
@@ -137,7 +144,7 @@ export function CartRelatedSuggestions({
           <div className="cart-thumbWrap cart-related-thumb" aria-hidden="true">
             {s.photo1Key ? (
               <img
-                src={`/api/inventory/positions/${s.relatedItemId}/photo?w=80`}
+                src={`/api/inventory/positions/${s.relatedItemId}/photo?w=${thumbSize}`}
                 alt=""
                 className="cart-thumb"
                 loading="lazy"
@@ -151,7 +158,7 @@ export function CartRelatedSuggestions({
           <div className="cart-related-text">
             <div className="cart-related-name">{s.name}</div>
             {s.note ? <div className="cart-related-note">{s.note}</div> : null}
-            {sourceLabel ? <div className="cart-related-source">{sourceLabel}</div> : null}
+            {!isCatalog && sourceLabel ? <div className="cart-related-source">{sourceLabel}</div> : null}
             <div className="cart-related-meta">
               {maxAvail > 0 ? (
                 <span>
@@ -186,12 +193,9 @@ export function CartRelatedSuggestions({
 
   return (
     <section
-      className={["cart-related", variant === "catalog" ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
+      className={["cart-related", isCatalog ? "cart-related--catalog" : ""].filter(Boolean).join(" ")}
       aria-label="Рекомендации к корзине"
     >
-      {variant === "catalog" ? (
-        <p className="cart-related-intro">Подобрали по позициям, которые уже в корзине</p>
-      ) : null}
       {shownRequired.length > 0 ? (
         <div className="cart-related-section">
           <h2 className="cart-related-title">Обычно нужно вместе</h2>

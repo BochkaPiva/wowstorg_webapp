@@ -331,7 +331,70 @@
 }
 
 .cart-related--catalog {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
+  padding: 0.55rem 0.7rem 0.5rem;
+  border-radius: 14px;
+  box-shadow:
+    0 8px 22px rgba(124, 58, 237, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.cart-related--catalog .cart-related-section + .cart-related-section {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+}
+
+.cart-related--catalog .cart-related-title {
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.cart-related--catalog .cart-related-list {
+  gap: 0.4rem;
+}
+
+.cart-related--catalog .cart-related-row {
+  gap: 0.45rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 10px;
+}
+
+.cart-related--catalog .cart-related-main {
+  gap: 0.5rem;
+}
+
+.cart-related--catalog .cart-related-thumb {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+
+.cart-related--catalog .cart-related-name {
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.cart-related--catalog .cart-related-note,
+.cart-related--catalog .cart-related-meta {
+  margin-top: 0.08rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.cart-related--catalog .cart-related-add {
+  min-width: 2.5rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.cart-related--catalog .cart-related-dismiss {
+  font-size: 0.72rem;
+}
+
+.cart-related--catalog .cart-related-more {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
 }
 
 .cart-related-intro {

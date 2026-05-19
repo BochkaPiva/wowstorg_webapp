@@ -66,6 +66,17 @@
   z-index: 1;
 }
 
+.mk-relatedSticky {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 35;
+  margin-bottom: 0.75rem;
+}
+
+.mk-relatedSticky:empty {
+  display: none;
+}
+
 .mk-title {
   letter-spacing: 0.01em;
   font-size: clamp(1.7rem, 1.45rem + 0.8vw, 2.2rem);

@@ -315,8 +315,8 @@ export function CartRelatedSuggestions({
     return null;
   }
 
-  const thumbSize = 56;
-  const sourceThumbSize = 48;
+  const thumbSize = 48;
+  const sourceThumbSize = 40;
 
   function renderTarget(s: CartRelatedSuggestion, groupKey: string) {
     const availability = s.availability ?? { availableNow: 0 };
@@ -332,15 +332,16 @@ export function CartRelatedSuggestions({
           <div className="cart-related-text">
             <div className="cart-related-name">{s.name}</div>
             {s.note ? <div className="cart-related-note">{s.note}</div> : null}
-            <div className="cart-related-meta">
-              {maxAvail > 0 ? (
-                <span>
-                  доступно {maxAvail} · {price.toFixed(0)} р/сут
-                </span>
-              ) : (
+            {maxAvail > 0 ? (
+              <div className="cart-related-pricing">
+                <div className="cart-related-price">{price.toFixed(0)} ₽/сут</div>
+                <div className="cart-related-meta">доступно {maxAvail}</div>
+              </div>
+            ) : (
+              <div className="cart-related-meta">
                 <span className="cart-related-unavailable">нет на выбранные даты</span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="cart-related-actions">

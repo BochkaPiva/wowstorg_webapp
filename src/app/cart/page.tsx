@@ -1074,7 +1074,7 @@ export default function CartPage() {
             </ul>
 
             <CartRelatedSuggestions
-              cartScope={cartScope ?? "default"}
+              cartScope={cartScope}
               itemIds={cart.map((l) => l.itemId)}
               qtys={cart.map((l) => l.qty)}
               startDate={startDate}

@@ -1,3 +1,5 @@
+import { clearDismissedRelated } from "@/lib/cart-related-dismiss";
+
 export type CartLine = { itemId: string; qty: number; pricePerDay?: number };
 
 function cartStorageKey(scope?: string): string {
@@ -28,10 +30,16 @@ export function loadCart(scope?: string): CartLine[] {
 
 export function saveCart(lines: CartLine[], scope?: string) {
   if (typeof window === "undefined") return;
+  if (lines.length === 0) {
+    localStorage.removeItem(cartStorageKey(scope));
+    clearDismissedRelated(scope);
+    return;
+  }
   localStorage.setItem(cartStorageKey(scope), JSON.stringify(lines));
 }
 
 export function clearCart(scope?: string) {
   if (typeof window === "undefined") return;
   localStorage.removeItem(cartStorageKey(scope));
+  clearDismissedRelated(scope);
 }

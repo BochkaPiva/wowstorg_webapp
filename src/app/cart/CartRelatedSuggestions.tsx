@@ -3,6 +3,7 @@
 import React from "react";
 
 import {
+  clearDismissedRelated,
   dismissRelatedSuggestion,
   loadDismissedRelatedIds,
 } from "@/lib/cart-related-dismiss";
@@ -20,7 +21,7 @@ export type CartRelatedSuggestion = {
 };
 
 type Props = {
-  cartScope: string;
+  cartScope?: string;
   itemIds: string[];
   qtys: number[];
   startDate: string | null;
@@ -58,6 +59,20 @@ export function CartRelatedSuggestions({
   React.useEffect(() => {
     setDismissed(loadDismissedRelatedIds(cartScope));
   }, [cartScope]);
+
+  const prevItemCountRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    const count = itemIds.length;
+    if (prevItemCountRef.current === null) {
+      prevItemCountRef.current = count;
+      return;
+    }
+    if (prevItemCountRef.current === 0 && count > 0) {
+      clearDismissedRelated(cartScope);
+      setDismissed(new Set());
+    }
+    prevItemCountRef.current = count;
+  }, [itemIds.length, cartScope]);
 
   const requestKey = React.useMemo(
     () =>

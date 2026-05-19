@@ -689,7 +689,7 @@ export default function CatalogPage() {
     <div className="mk-relatedSticky">
       <CartRelatedSuggestions
         variant="catalog"
-        cartScope={cartScope ?? "default"}
+        cartScope={cartScope}
         itemIds={cartRelatedInputs.itemIds}
         qtys={cartRelatedInputs.qtys}
         startDate={startDate}
@@ -948,15 +948,30 @@ export default function CatalogPage() {
           )}
 
           <div className="mk-toolbar">
-            <input
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="mk-search"
-              placeholder="Поиск по каталогу…"
-            />
+            <div className="mk-searchWrap">
+              <input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="mk-search"
+                placeholder="Поиск по каталогу…"
+              />
+              {query ? (
+                <button
+                  type="button"
+                  className="mk-searchClear"
+                  aria-label="Очистить поиск"
+                  onClick={() => {
+                    setQuery("");
+                    setCurrentPage(1);
+                  }}
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2 justify-between md:justify-end">
               <Link href={cartHref} className="mk-cartPill">
                 {isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}: <strong>{cartTotalQty}</strong>

@@ -1,11 +1,11 @@
 "use client";
 
 import React from "react";
+import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
-import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
 import {
@@ -22,6 +22,11 @@ import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
+
+const CartRelatedSuggestions = dynamic(
+  () => import("@/app/cart/CartRelatedSuggestions").then((m) => m.CartRelatedSuggestions),
+  { ssr: false },
+);
 
 type CatalogTab = "positions" | "categories" | "kits";
 

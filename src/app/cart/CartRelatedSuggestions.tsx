@@ -8,7 +8,7 @@ import {
   loadDismissedRelatedIds,
 } from "@/lib/cart-related-dismiss";
 
-import { CatalogRelatedStickyShell } from "@/app/catalog/CatalogRelatedStickyShell";
+import { CatalogRelatedStickyShell } from "@/app/_ui/CatalogRelatedStickyShell";
 
 export type CartRelatedSuggestion = {
   relatedItemId: string;
@@ -186,7 +186,17 @@ export function CartRelatedSuggestions({
         if (excludeOrderId) params.set("excludeOrderId", excludeOrderId);
         const res = await fetch(`/api/catalog/related?${params.toString()}`, { cache: "no-store" });
         const data = (await res.json().catch(() => null)) as { groups?: CartRelatedSuggestionGroup[] } | null;
-        if (!cancelled) setGroups(data?.groups ?? []);
+        if (!cancelled) {
+          const rawGroups = data?.groups;
+          setGroups(
+            Array.isArray(rawGroups)
+              ? rawGroups.map((group) => ({
+                  ...group,
+                  suggestions: Array.isArray(group.suggestions) ? group.suggestions : [],
+                }))
+              : [],
+          );
+        }
       } catch {
         if (!cancelled) setGroups([]);
       } finally {

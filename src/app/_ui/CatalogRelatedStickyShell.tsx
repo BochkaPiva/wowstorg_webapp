@@ -2,14 +2,17 @@
 
 import React from "react";
 
+import "./catalog-related-sticky.css";
+
 function relatedCountLabel(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} рекомендация к корзине`;
+  const safe = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  const mod10 = safe % 10;
+  const mod100 = safe % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${safe} рекомендация к корзине`;
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} рекомендации к корзине`;
+    return `${safe} рекомендации к корзине`;
   }
-  return `${count} рекомендаций к корзине`;
+  return `${safe} рекомендаций к корзине`;
 }
 
 type Props = {
@@ -24,7 +27,7 @@ export function CatalogRelatedStickyShell({ suggestionCount, children }: Props) 
 
   React.useEffect(() => {
     const node = sentinelRef.current;
-    if (!node) return;
+    if (!node || typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {

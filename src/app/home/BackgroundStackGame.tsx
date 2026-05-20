@@ -7,6 +7,41 @@ import * as THREE from "three";
 
 type GameState = "ready" | "playing" | "ended" | "resetting";
 
+/** Должно совпадать с Tailwind у fixed-контейнера игры. */
+const GAME_BOTTOM_OFFSET_PX = 38;
+const GAME_HEIGHT_MIN_PX = 240;
+const GAME_HEIGHT_MAX_PX = 400;
+const GAME_HEIGHT_VH = 0.36;
+const GAME_OVERLAP_BUFFER_PX = 40;
+const HOME_MAIN_CONTENT_SELECTOR = "[data-home-main-content]";
+
+function getGameZoneTop(viewportHeight: number): number {
+  const height = Math.min(
+    Math.max(viewportHeight * GAME_HEIGHT_VH, GAME_HEIGHT_MIN_PX),
+    GAME_HEIGHT_MAX_PX,
+  );
+  return viewportHeight + GAME_BOTTOM_OFFSET_PX - height;
+}
+
+function shouldShowBackgroundGame(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const desktopMedia = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (!desktopMedia || window.innerWidth < 1024) return false;
+
+  const viewportHeight = window.innerHeight;
+  const gameZoneTop = getGameZoneTop(viewportHeight);
+  const anchor = document.querySelector(HOME_MAIN_CONTENT_SELECTOR);
+  if (anchor) {
+    const contentBottom = anchor.getBoundingClientRect().bottom;
+    if (contentBottom > gameZoneTop - GAME_OVERLAP_BUFFER_PX) return false;
+  } else if (viewportHeight < 720) {
+    return false;
+  }
+
+  return true;
+}
+
 type BlockState = "active" | "stopped" | "missed";
 
 class Stage {
@@ -240,7 +275,7 @@ export function BackgroundStackGame() {
   const gameRef = React.useRef<HTMLDivElement | null>(null);
   const gameStateRef = React.useRef<GameState>("ready");
   const [mounted, setMounted] = React.useState(false);
-  const [isDesktop, setIsDesktop] = React.useState(false);
+  const [showGame, setShowGame] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [showHud, setShowHud] = React.useState(false);
   const [isGameActive, setIsGameActive] = React.useState(false);
@@ -252,17 +287,31 @@ export function BackgroundStackGame() {
 
   React.useEffect(() => {
     if (!mounted) return;
-    const apply = () => {
-      const desktopMedia = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-      setIsDesktop(desktopMedia && window.innerWidth >= 1024);
+
+    const evaluate = () => {
+      setShowGame(shouldShowBackgroundGame());
     };
-    apply();
-    window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
+
+    evaluate();
+    window.addEventListener("resize", evaluate);
+    window.addEventListener("scroll", evaluate, { passive: true });
+
+    let ro: ResizeObserver | undefined;
+    const anchor = document.querySelector(HOME_MAIN_CONTENT_SELECTOR);
+    if (anchor && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(evaluate);
+      ro.observe(anchor);
+    }
+
+    return () => {
+      window.removeEventListener("resize", evaluate);
+      window.removeEventListener("scroll", evaluate);
+      ro?.disconnect();
+    };
   }, [mounted]);
 
   React.useEffect(() => {
-    if (!mounted || !isDesktop) return;
+    if (!mounted || !showGame) return;
     const gameEl = gameRef.current;
     if (!gameEl) return;
 
@@ -460,9 +509,9 @@ export function BackgroundStackGame() {
       if (raf) window.cancelAnimationFrame(raf);
       stage.destroy();
     };
-  }, [mounted, isDesktop]);
+  }, [mounted, showGame]);
 
-  if (!mounted || !isDesktop) return null;
+  if (!mounted || !showGame) return null;
   return createPortal(
     <>
       <div className="fixed inset-x-0 bottom-[-38px] z-[29] h-[36vh] min-h-[240px] max-h-[400px] pointer-events-none">

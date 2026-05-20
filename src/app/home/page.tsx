@@ -1215,7 +1215,7 @@ export default function HomeDashboardPage() {
       <div className="relative space-y-6">
         {showGlobalStars ? <RelaxZone /> : null}
         {showBackgroundGame ? <BackgroundStackGame /> : null}
-        <div className="relative z-10 space-y-6">
+        <div className="relative z-10 space-y-6" data-home-main-content>
         {isGreenwich ? (
           <div className={DASH_SECTION_SHELL}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">

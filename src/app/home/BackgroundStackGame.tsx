@@ -13,7 +13,9 @@ const GAME_HEIGHT_MIN_PX = 240;
 const GAME_HEIGHT_MAX_PX = 400;
 const GAME_HEIGHT_VH = 0.36;
 const GAME_OVERLAP_BUFFER_PX = 40;
-const HOME_MAIN_CONTENT_SELECTOR = "[data-home-main-content]";
+/** Ниже этой высоты окна проверяем пересечение карточек навигации с зоной игры. */
+const MIN_VIEWPORT_HEIGHT_FOR_GAME = 860;
+const HOME_NAV_CARDS_SELECTOR = "[data-home-nav-cards]";
 
 function getGameZoneTop(viewportHeight: number): number {
   const height = Math.min(
@@ -30,16 +32,14 @@ function shouldShowBackgroundGame(): boolean {
   if (!desktopMedia || window.innerWidth < 1024) return false;
 
   const viewportHeight = window.innerHeight;
-  const gameZoneTop = getGameZoneTop(viewportHeight);
-  const anchor = document.querySelector(HOME_MAIN_CONTENT_SELECTOR);
-  if (anchor) {
-    const contentBottom = anchor.getBoundingClientRect().bottom;
-    if (contentBottom > gameZoneTop - GAME_OVERLAP_BUFFER_PX) return false;
-  } else if (viewportHeight < 720) {
-    return false;
-  }
+  if (viewportHeight >= MIN_VIEWPORT_HEIGHT_FOR_GAME) return true;
 
-  return true;
+  const navCards = document.querySelector(HOME_NAV_CARDS_SELECTOR);
+  if (!navCards) return false;
+
+  const gameZoneTop = getGameZoneTop(viewportHeight);
+  const cardsBottom = navCards.getBoundingClientRect().bottom;
+  return cardsBottom <= gameZoneTop - GAME_OVERLAP_BUFFER_PX;
 }
 
 type BlockState = "active" | "stopped" | "missed";
@@ -297,7 +297,7 @@ export function BackgroundStackGame() {
     window.addEventListener("scroll", evaluate, { passive: true });
 
     let ro: ResizeObserver | undefined;
-    const anchor = document.querySelector(HOME_MAIN_CONTENT_SELECTOR);
+    const anchor = document.querySelector(HOME_NAV_CARDS_SELECTOR);
     if (anchor && typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(evaluate);
       ro.observe(anchor);

@@ -1215,7 +1215,7 @@ export default function HomeDashboardPage() {
       <div className="relative space-y-6">
         {showGlobalStars ? <RelaxZone /> : null}
         {showBackgroundGame ? <BackgroundStackGame /> : null}
-        <div className="relative z-10 space-y-6" data-home-main-content>
+        <div className="relative z-10 space-y-6">
         {isGreenwich ? (
           <div className={DASH_SECTION_SHELL}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1254,7 +1254,7 @@ export default function HomeDashboardPage() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="relative z-[35] grid grid-cols-1 gap-3 md:grid-cols-2" data-home-nav-cards>
           <CardLink
             href="/catalog"
             title="Каталог"

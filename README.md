@@ -4,6 +4,24 @@
 
 ---
 
+## Tests
+
+Быстрые unit-тесты бизнес-логики запускаются через Vitest:
+
+```bash
+npm test
+```
+
+Для разработки с перезапуском при изменениях:
+
+```bash
+npm run test:watch
+```
+
+Сейчас тестами покрыты расчёты периода аренды, цены заявки, проектной сметы, складских остатков и обязательных цен доп. услуг.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -134,6 +134,7 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
 
   React.useEffect(() => {
     pauseUntilRef.current = Date.now() + PAUSE_AFTER_ROWS_CHANGE_MS;
+    countRef.current = count;
     if (count === 0) return;
     const clamped = Math.min(logicalIndexRef.current, count - 1);
     logicalIndexRef.current = clamped;
@@ -142,8 +143,6 @@ export function CatalogRelatedDrum({ rows, cartScope, displayMultiplier = 1, onA
     setTransitionEnabled(false);
     requestAnimationFrame(() => setTransitionEnabled(true));
   }, [rowIdsKey, count]);
-
-  countRef.current = count;
 
   const finishSlide = React.useCallback((direction: 1 | -1) => {
     const nextLogical = mod(logicalIndexRef.current + direction, countRef.current);

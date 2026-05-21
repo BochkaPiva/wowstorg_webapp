@@ -663,13 +663,38 @@ function TasksPageContent() {
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
+  const boardRef = React.useRef<BoardDetail | null>(null);
+  const moveRequestIdRef = React.useRef(0);
+  const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
+  const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
-  const loadBoard = React.useCallback(async (id: string) => {
+  const applyBoard = React.useCallback((nextBoard: BoardDetail | null) => {
+    boardRef.current = nextBoard;
+    setBoard(nextBoard);
+  }, []);
+
+  const updateBoard = React.useCallback((updater: (current: BoardDetail | null) => BoardDetail | null) => {
+    setBoard((current) => {
+      const nextBoard = updater(boardRef.current ?? current);
+      boardRef.current = nextBoard;
+      return nextBoard;
+    });
+  }, []);
+
+  const fetchBoardDetail = React.useCallback(async (id: string) => {
     if (!id) return;
     const data = await readApi<{ board: BoardDetail }>(await fetch(`/api/tasks/boards/${id}`, { cache: "no-store" }));
-    setBoard(data.board);
+    return data.board;
   }, []);
+
+  const loadBoard = React.useCallback(
+    async (id: string) => {
+      const nextBoard = await fetchBoardDetail(id);
+      if (nextBoard) applyBoard(nextBoard);
+    },
+    [applyBoard, fetchBoardDetail],
+  );
 
   const refresh = React.useCallback(async () => {
     if (!isWowstorg) return;
@@ -703,7 +728,7 @@ function TasksPageContent() {
           const detail = await readApi<{ board: BoardDetail }>(
             await fetch(`/api/tasks/boards/${firstBoardId}`, { cache: "no-store" }),
           );
-          if (!cancelled) setBoard(detail.board);
+          if (!cancelled) applyBoard(detail.board);
         }
       })
       .catch((e) => {
@@ -715,7 +740,7 @@ function TasksPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [boardId, isWowstorg]);
+  }, [applyBoard, boardId, isWowstorg]);
 
   React.useEffect(() => {
     if (boardId) void loadBoard(boardId);
@@ -780,35 +805,67 @@ function TasksPageContent() {
   }
 
   async function moveTaskToColumn(taskId: string, targetColumnId: string) {
-    if (!board) return;
-    const nextColumn = board.columns.find((column) => column.id === targetColumnId);
+    const currentBoard = boardRef.current;
+    if (!currentBoard) return;
+    const nextColumn = currentBoard.columns.find((column) => column.id === targetColumnId);
     if (!nextColumn) return;
-    const previousBoard = board;
-    const movingTask = board.columns.flatMap((column) => column.tasks).find((task) => task.id === taskId);
-    if (movingTask) {
-      setBoard({
-        ...board,
-        columns: board.columns.map((column) => {
-          if (column.id === targetColumnId) {
-            return { ...column, tasks: [...column.tasks, movingTask] };
-          }
-          return { ...column, tasks: column.tasks.filter((task) => task.id !== taskId) };
-        }),
-      });
-    }
-    try {
-      await readApi(
-        await fetch(`/api/tasks/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ columnId: nextColumn.id, completed: nextColumn.isDone }),
-        }),
-      );
-      await loadBoard(board.id);
-    } catch (e) {
-      setBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось переместить задачу");
-    }
+    const sourceColumn = currentBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId));
+    if (!sourceColumn || sourceColumn.id === targetColumnId) return;
+    const movingTask = sourceColumn.tasks.find((task) => task.id === taskId);
+    if (!movingTask) return;
+
+    const previousBoard = currentBoard;
+    const moveRequestId = moveRequestIdRef.current + 1;
+    moveRequestIdRef.current = moveRequestId;
+    latestMoveByTaskRef.current.set(taskId, moveRequestId);
+    setError(null);
+
+    const movedTask: BoardTask = {
+      ...movingTask,
+      completedAt: nextColumn.isDone ? (movingTask.completedAt ?? new Date().toISOString()) : null,
+    };
+    applyBoard({
+      ...currentBoard,
+      columns: currentBoard.columns.map((column) => {
+        const tasksWithoutMoving = column.tasks.filter((task) => task.id !== taskId);
+        if (column.id === targetColumnId) {
+          return { ...column, tasks: [...tasksWithoutMoving, movedTask] };
+        }
+        return { ...column, tasks: tasksWithoutMoving };
+      }),
+    });
+
+    const sendMove = async () => {
+      try {
+        await readApi(
+          await fetch(`/api/tasks/tasks/${taskId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ columnId: nextColumn.id, completed: nextColumn.isDone }),
+          }),
+        );
+        const freshBoard = await fetchBoardDetail(currentBoard.id);
+        if (latestMoveByTaskRef.current.get(taskId) === moveRequestId) {
+          latestMoveByTaskRef.current.delete(taskId);
+          if (freshBoard) applyBoard(freshBoard);
+        }
+      } catch (e) {
+        if (latestMoveByTaskRef.current.get(taskId) === moveRequestId) {
+          latestMoveByTaskRef.current.delete(taskId);
+          applyBoard(previousBoard);
+          setError(e instanceof Error ? e.message : "Не удалось переместить задачу");
+        }
+      }
+    };
+
+    const previousMove = moveQueueByTaskRef.current.get(taskId) ?? Promise.resolve();
+    const queuedMove = previousMove.catch(() => undefined).then(sendMove);
+    moveQueueByTaskRef.current.set(taskId, queuedMove);
+    void queuedMove.finally(() => {
+      if (moveQueueByTaskRef.current.get(taskId) === queuedMove) {
+        moveQueueByTaskRef.current.delete(taskId);
+      }
+    });
   }
 
   function toggleTaskExpanded(taskId: string) {
@@ -908,7 +965,7 @@ function TasksPageContent() {
                     value={column.title}
                     onChange={(event) => {
                       const next = event.target.value;
-                      setBoard((current) =>
+                      updateBoard((current) =>
                         current
                           ? {
                               ...current,

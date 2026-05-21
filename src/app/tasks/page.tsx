@@ -100,24 +100,49 @@ async function readApi<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+function cardTextColor(color: string | null): string {
+  if (!color) return "text-slate-100";
+  return "text-white";
+}
+
 function TaskCard({
   task,
   column,
   onOpen,
-  onMove,
+  expanded,
+  onToggleExpanded,
+  onToggleChecklistItem,
+  onDragStart,
+  onDragEnd,
 }: {
   task: BoardTask;
   column: BoardColumn;
   onOpen: (task: BoardTask) => void;
-  onMove: (taskId: string, direction: "left" | "right") => void;
+  expanded: boolean;
+  onToggleExpanded: (taskId: string) => void;
+  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onDragStart: (taskId: string, fromColumnId: string) => void;
+  onDragEnd: () => void;
 }) {
   const progressPct =
     task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
+  const textTone = cardTextColor(task.color);
 
   return (
     <article
-      className="group overflow-hidden rounded-lg border border-black/25 bg-slate-700 text-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", task.id);
+        onDragStart(task.id, column.id);
+      }}
+      onDragEnd={onDragEnd}
+      className={[
+        "group overflow-hidden rounded-xl border border-black/10 bg-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.18)]",
+        "cursor-grab transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(15,23,42,0.22)] active:cursor-grabbing",
+        textTone,
+      ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
     >
       <button
@@ -166,34 +191,96 @@ function TaskCard({
 
       {task.checklistTotal > 0 ? (
         <div className="border-t border-black/15 bg-black/12 px-3 py-2">
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleExpanded(task.id);
+            }}
+            className="flex w-full items-center gap-2 rounded-md text-left transition hover:bg-white/5"
+          >
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-900/30">
               <div className="h-full rounded-full bg-emerald-400" style={{ width: `${progressPct}%` }} />
             </div>
             <div className="w-10 text-right text-xs text-slate-200/80">
               {task.checklistDone}/{task.checklistTotal}
             </div>
-          </div>
+            <span className="text-xs text-slate-200/75">{expanded ? "Свернуть" : "Открыть"}</span>
+          </button>
+          {expanded ? (
+            <div className="mt-2 space-y-1.5">
+              {task.checklistItems.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex items-start gap-2 rounded-lg bg-white/10 px-2 py-1.5 text-xs text-slate-100/90"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.isDone}
+                    onChange={(event) => onToggleChecklistItem(item.id, event.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                  />
+                  <span className={item.isDone ? "line-through opacity-55" : ""}>{item.title}</span>
+                </label>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
-
-      <div className="flex border-t border-black/15 bg-black/10 text-xs text-slate-200/70">
-        <button
-          type="button"
-          onClick={() => onMove(task.id, "left")}
-          className="flex-1 px-3 py-1.5 transition hover:bg-white/10"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          onClick={() => onMove(task.id, "right")}
-          className="flex-1 px-3 py-1.5 transition hover:bg-white/10"
-        >
-          →
-        </button>
-      </div>
     </article>
+  );
+}
+
+function ChecklistEditorItem({
+  item,
+  onToggle,
+  onRename,
+  onDelete,
+}: {
+  item: TaskChecklistItem;
+  onToggle: (itemId: string, isDone: boolean) => void;
+  onRename: (itemId: string, title: string) => void;
+  onDelete: (itemId: string) => void;
+}) {
+  const [title, setTitle] = React.useState(item.title);
+
+  React.useEffect(() => {
+    setTitle(item.title);
+  }, [item.title]);
+
+  return (
+    <div className="group flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <input
+        type="checkbox"
+        checked={item.isDone}
+        onChange={(event) => onToggle(item.id, event.target.checked)}
+        className="h-4 w-4 shrink-0 accent-violet-600"
+      />
+      <input
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        onBlur={() => {
+          const next = title.trim();
+          if (next && next !== item.title) onRename(item.id, next);
+          if (!next) setTitle(item.title);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+        className={[
+          "min-w-0 flex-1 bg-transparent text-sm outline-none",
+          item.isDone ? "text-zinc-400 line-through" : "text-zinc-900",
+        ].join(" ")}
+      />
+      <button
+        type="button"
+        onClick={() => onDelete(item.id)}
+        className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-700 group-hover:opacity-100"
+      >
+        удалить
+      </button>
+    </div>
   );
 }
 
@@ -348,15 +435,15 @@ function TaskEditor({
 
   return (
     <div className="fixed inset-0 z-30">
-      <button className="absolute inset-0 bg-black/45" onClick={onClose} aria-label="Закрыть" />
-      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-slate-950 text-slate-100 shadow-2xl">
-        <div className="border-b border-white/10 px-5 py-4">
+      <button className="absolute inset-0 bg-zinc-950/35 backdrop-blur-[2px]" onClick={onClose} aria-label="Закрыть" />
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] text-zinc-950 shadow-2xl">
+        <div className="border-b border-violet-100 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="text-lg font-bold">{isNew ? "Новая задача" : "Задача"}</div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/10"
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-700 shadow-sm hover:bg-violet-50"
             >
               Закрыть
             </button>
@@ -364,35 +451,35 @@ function TaskEditor({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          {error ? <div className="rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
+          {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div> : null}
 
           <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Название</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Название</span>
             <textarea
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               rows={3}
-              className="mt-1 w-full resize-none rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-base font-semibold text-slate-100 outline-none focus:border-blue-400"
+              className="mt-1 w-full resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-base font-semibold text-zinc-950 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
             />
           </label>
 
           <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Описание</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Описание</span>
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={5}
-              className="mt-1 w-full resize-y rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              className="mt-1 w-full resize-y rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
             />
           </label>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Колонка</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Колонка</span>
               <select
                 value={targetColumnId}
                 onChange={(event) => setTargetColumnId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 {columns.map((column) => (
                   <option key={column.id} value={column.id}>
@@ -402,11 +489,11 @@ function TaskEditor({
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Исполнитель</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Исполнитель</span>
               <select
                 value={assigneeUserId}
                 onChange={(event) => setAssigneeUserId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 <option value="">Не назначен</option>
                 {meta?.users.map((user) => (
@@ -417,20 +504,20 @@ function TaskEditor({
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Дедлайн</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Дедлайн</span>
               <input
                 type="date"
                 value={dueDate}
                 onChange={(event) => setDueDate(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               />
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Приоритет</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Приоритет</span>
               <select
                 value={priority}
                 onChange={(event) => setPriority(event.target.value as Priority)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 {(Object.keys(PRIORITY_LABEL) as Priority[]).map((key) => (
                   <option key={key} value={key}>
@@ -442,7 +529,7 @@ function TaskEditor({
           </div>
 
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Цвет карточки</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Цвет карточки</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {TASK_COLORS.map((c) => (
                 <button
@@ -462,11 +549,11 @@ function TaskEditor({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Проект</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Проект</span>
               <select
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 <option value="">Без проекта</option>
                 {meta?.projects.map((project) => (
@@ -477,11 +564,11 @@ function TaskEditor({
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Заявка</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Заявка</span>
               <select
                 value={orderId}
                 onChange={(event) => setOrderId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 <option value="">Без заявки</option>
                 {meta?.orders.map((order) => (
@@ -494,38 +581,22 @@ function TaskEditor({
           </div>
 
           {!isNew ? (
-            <section className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
+            <section className="rounded-2xl border border-violet-100 bg-violet-50/60 p-3">
               <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-bold">Подзадачи</div>
-                <div className="text-xs text-slate-400">
+                <div className="text-sm font-bold text-zinc-950">Подзадачи</div>
+                <div className="text-xs font-semibold text-violet-700">
                   {task.checklistDone}/{task.checklistTotal}
                 </div>
               </div>
               <div className="space-y-2">
                 {task.checklistItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 rounded-lg bg-slate-800 px-2 py-2">
-                    <input
-                      type="checkbox"
-                      checked={item.isDone}
-                      onChange={(event) => void patchChecklistItem(item.id, { isDone: event.target.checked })}
-                      className="h-4 w-4"
-                    />
-                    <input
-                      value={item.title}
-                      onChange={(event) => void patchChecklistItem(item.id, { title: event.target.value })}
-                      className={[
-                        "min-w-0 flex-1 bg-transparent text-sm outline-none",
-                        item.isDone ? "text-slate-500 line-through" : "text-slate-100",
-                      ].join(" ")}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void deleteChecklistItem(item.id)}
-                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-white/10 hover:text-slate-100"
-                    >
-                      удалить
-                    </button>
-                  </div>
+                  <ChecklistEditorItem
+                    key={item.id}
+                    item={item}
+                    onToggle={(itemId, isDone) => void patchChecklistItem(itemId, { isDone })}
+                    onRename={(itemId, nextTitle) => void patchChecklistItem(itemId, { title: nextTitle })}
+                    onDelete={(itemId) => void deleteChecklistItem(itemId)}
+                  />
                 ))}
               </div>
               <div className="mt-3 flex gap-2">
@@ -536,28 +607,28 @@ function TaskEditor({
                     if (event.key === "Enter") void addChecklistItem();
                   }}
                   placeholder="Новая подзадача"
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                  className="min-w-0 flex-1 rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                 />
                 <button
                   type="button"
                   onClick={() => void addChecklistItem()}
-                  className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400"
+                  className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-500"
                 >
-                  +
+                  Добавить
                 </button>
               </div>
             </section>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-t border-violet-100 bg-white/80 px-5 py-4">
           <div>
             {!isNew ? (
               <button
                 type="button"
                 onClick={() => void remove()}
                 disabled={busy}
-                className="rounded-lg border border-rose-400/30 px-3 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-50 disabled:opacity-50"
               >
                 Удалить
               </button>
@@ -567,7 +638,7 @@ function TaskEditor({
             type="button"
             onClick={() => void save()}
             disabled={busy}
-            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-950/30 hover:bg-blue-400 disabled:cursor-wait disabled:opacity-60"
+            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-violet-200 hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60"
           >
             {busy ? "Сохраняю..." : "Сохранить"}
           </button>
@@ -588,6 +659,10 @@ function TasksPageContent() {
   const [newColumnTitle, setNewColumnTitle] = React.useState("");
   const [newColumnColor, setNewColumnColor] = React.useState(COLUMN_COLORS[0]!);
   const [editor, setEditor] = React.useState<{ task: BoardTask | null; columnId: string | null } | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
+  const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
+  const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
   const loadBoard = React.useCallback(async (id: string) => {
@@ -689,11 +764,38 @@ function TasksPageContent() {
     }
   }
 
-  async function moveTask(taskId: string, fromColumnId: string, direction: "left" | "right") {
+  async function patchChecklistItem(itemId: string, body: object) {
+    try {
+      await readApi(
+        await fetch(`/api/tasks/checklist/${itemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      if (board) await loadBoard(board.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
+    }
+  }
+
+  async function moveTaskToColumn(taskId: string, targetColumnId: string) {
     if (!board) return;
-    const index = board.columns.findIndex((column) => column.id === fromColumnId);
-    const nextColumn = board.columns[index + (direction === "right" ? 1 : -1)];
+    const nextColumn = board.columns.find((column) => column.id === targetColumnId);
     if (!nextColumn) return;
+    const previousBoard = board;
+    const movingTask = board.columns.flatMap((column) => column.tasks).find((task) => task.id === taskId);
+    if (movingTask) {
+      setBoard({
+        ...board,
+        columns: board.columns.map((column) => {
+          if (column.id === targetColumnId) {
+            return { ...column, tasks: [...column.tasks, movingTask] };
+          }
+          return { ...column, tasks: column.tasks.filter((task) => task.id !== taskId) };
+        }),
+      });
+    }
     try {
       await readApi(
         await fetch(`/api/tasks/tasks/${taskId}`, {
@@ -704,8 +806,18 @@ function TasksPageContent() {
       );
       await loadBoard(board.id);
     } catch (e) {
+      setBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось переместить задачу");
     }
+  }
+
+  function toggleTaskExpanded(taskId: string) {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
   }
 
   if (state.status === "authenticated" && !isWowstorg) {
@@ -713,13 +825,13 @@ function TasksPageContent() {
   }
 
   return (
-    <div className="min-h-[72vh] overflow-hidden rounded-xl bg-[#1b1f22] text-slate-100">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+    <div className="rounded-3xl border border-violet-100 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.92))] p-4 shadow-[0_24px_70px_rgba(109,40,217,0.12)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
           <select
             value={boardId}
             onChange={(event) => setBoardId(event.target.value)}
-            className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-100 outline-none"
+            className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm outline-none focus:border-violet-300"
           >
             {boards.map((item) => (
               <option key={item.id} value={item.id}>
@@ -727,7 +839,7 @@ function TasksPageContent() {
               </option>
             ))}
           </select>
-          <Link href="/home" className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/10">
+          <Link href="/home" className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 shadow-sm hover:bg-violet-50">
             Дашборд
           </Link>
         </div>
@@ -739,12 +851,12 @@ function TasksPageContent() {
               if (event.key === "Enter") void addColumn();
             }}
             placeholder="Новая колонка"
-            className="w-44 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+            className="w-44 rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-violet-300"
           />
           <select
             value={newColumnColor}
             onChange={(event) => setNewColumnColor(event.target.value)}
-            className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none"
+            className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-violet-300"
           >
             {COLUMN_COLORS.map((c) => (
               <option key={c} value={c}>
@@ -755,21 +867,42 @@ function TasksPageContent() {
           <button
             type="button"
             onClick={() => void addColumn()}
-            className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400"
+            className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-500"
           >
             + Колонка
           </button>
         </div>
       </div>
 
-      {loading ? <div className="px-4 py-6 text-sm text-slate-300">Загрузка...</div> : null}
-      {error ? <div className="mx-4 mt-4 rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
+      {loading ? <div className="px-4 py-6 text-sm text-zinc-600">Загрузка...</div> : null}
+      {error ? <div className="mx-1 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div> : null}
 
       {!loading && board ? (
-        <div className="flex gap-3 overflow-x-auto px-4 py-4">
+        <div className="mt-4 overflow-x-auto pb-3">
+        <div className="flex min-h-[calc(100vh-280px)] gap-4 px-1 pb-2">
           {board.columns.map((column, columnIndex) => (
-            <section key={column.id} className="flex max-h-[calc(100vh-220px)] w-[320px] shrink-0 flex-col rounded-xl bg-black/18">
-              <div className="rounded-t-xl px-3 py-3" style={{ backgroundColor: column.color ?? "#334155" }}>
+            <section
+              key={column.id}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDragOverColumnId(column.id);
+              }}
+              onDragLeave={() => {
+                if (dragOverColumnId === column.id) setDragOverColumnId(null);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const taskId = event.dataTransfer.getData("text/plain") || draggingTaskId;
+                setDragOverColumnId(null);
+                if (taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
+              }}
+              className={[
+                "flex w-[320px] shrink-0 flex-col rounded-2xl border bg-white/85 shadow-sm backdrop-blur transition",
+                dragOverColumnId === column.id ? "border-violet-300 ring-4 ring-violet-100" : "border-white/80",
+              ].join(" ")}
+            >
+              <div className="rounded-t-2xl px-3 py-3" style={{ backgroundColor: column.color ?? "#334155" }}>
                 <div className="flex items-start justify-between gap-2">
                   <input
                     value={column.title}
@@ -785,12 +918,12 @@ function TasksPageContent() {
                       );
                     }}
                     onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
-                    className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-100 outline-none placeholder:text-slate-300"
+                    className="min-w-0 flex-1 bg-transparent text-base font-bold text-white outline-none placeholder:text-white/70"
                   />
                   <button
                     type="button"
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
-                    className="rounded-md border border-white/20 px-2 py-1 text-xs text-white/90 hover:bg-white/10"
+                    className="rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs text-white/90 hover:bg-white/20"
                     title="Колонка завершения"
                   >
                     {column.isDone ? "✓" : "○"}
@@ -800,7 +933,7 @@ function TasksPageContent() {
                   <button
                     type="button"
                     onClick={() => setEditor({ task: null, columnId: column.id })}
-                    className="text-sm font-medium text-blue-300 hover:text-blue-200"
+                    className="text-sm font-semibold text-white/90 hover:text-white"
                   >
                     + Добавить задачу
                   </button>
@@ -808,7 +941,7 @@ function TasksPageContent() {
                     <button
                       type="button"
                       onClick={() => void deleteColumn(column.id)}
-                      className="ml-auto text-xs text-slate-300/90 hover:text-white"
+                      className="ml-auto text-xs font-medium text-white/75 hover:text-white"
                     >
                       удалить
                     </button>
@@ -816,24 +949,36 @@ function TasksPageContent() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+              <div className="min-h-[15rem] flex-1 space-y-3 px-3 py-3">
                 {column.tasks.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
                     column={column}
                     onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}
-                    onMove={(taskId, direction) => void moveTask(taskId, column.id, direction)}
+                    expanded={expandedTaskIds.has(task.id)}
+                    onToggleExpanded={toggleTaskExpanded}
+                    onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(itemId, { isDone })}
+                    onDragStart={(taskId, fromColumnId) => {
+                      setDraggingTaskId(taskId);
+                      setDraggingFromColumnId(fromColumnId);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingTaskId(null);
+                      setDraggingFromColumnId(null);
+                      setDragOverColumnId(null);
+                    }}
                   />
                 ))}
                 {column.tasks.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-sm text-zinc-500">
                     {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
                   </div>
                 ) : null}
               </div>
             </section>
           ))}
+        </div>
         </div>
       ) : null}
 

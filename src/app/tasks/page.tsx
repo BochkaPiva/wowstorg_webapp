@@ -187,25 +187,12 @@ function RoundCheckbox({
   );
 }
 
-function ChecklistTreeBranch({ variant = "card" }: { variant?: "card" | "action" }) {
-  const top = variant === "action" ? "0.42rem" : "0.72rem";
-
+function ChecklistTreeElbow() {
   return (
-    <svg
+    <span
       aria-hidden
-      className="pointer-events-none absolute left-[10px] z-[1] h-[18px] w-[18px] text-sky-400/90"
-      style={{ top }}
-      viewBox="0 0 18 18"
-      fill="none"
-    >
-      <path
-        d="M1 0V8.5C1 12.2 1.8 13 5.5 13H18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      className="pointer-events-none absolute left-[11px] top-1/2 box-border h-3 w-[17px] -translate-y-1/2 rounded-bl-[10px] border-b border-l border-sky-500/70"
+    />
   );
 }
 
@@ -229,67 +216,59 @@ function ChecklistTreeSection({
   onCancelAdding: () => void;
 }) {
   return (
-    <div className="relative mx-3 mb-2 ml-3 pb-1 pl-[18px]">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-[11px] top-0 w-[2px] rounded-full bg-sky-400/90"
-        style={{ height: "calc(100% - 0.7rem)" }}
-      />
+    <div className="relative mx-3 mb-2 pb-1">
+      <div aria-hidden className="pointer-events-none absolute bottom-2 left-[11px] top-0 w-px bg-sky-500/70" />
 
       {items.map((item, index) => (
-        <div key={item.id} className={index > 0 ? "mt-2" : ""}>
-          <div className="relative">
-            <ChecklistTreeBranch />
-            <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
-              <RoundCheckbox
-                size="sm"
-                checked={item.isDone}
-                onChange={(checked) => onToggleChecklistItem(item.id, checked)}
-              />
-              <span
-                className={[
-                  "min-w-0 flex-1 text-xs leading-snug",
-                  item.isDone ? "text-slate-400 line-through opacity-70" : "text-slate-100",
-                ].join(" ")}
-              >
-                {item.title}
-              </span>
-            </div>
+        <div key={item.id} className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}>
+          <ChecklistTreeElbow />
+          <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
+            <RoundCheckbox
+              size="sm"
+              checked={item.isDone}
+              onChange={(checked) => onToggleChecklistItem(item.id, checked)}
+            />
+            <span
+              className={[
+                "min-w-0 flex-1 text-xs leading-snug",
+                item.isDone ? "text-slate-400 line-through opacity-70" : "text-slate-100",
+              ].join(" ")}
+            >
+              {item.title}
+            </span>
           </div>
         </div>
       ))}
 
-      <div className={items.length > 0 ? "mt-2" : ""}>
-        <div className="relative min-h-[1.75rem]">
-          <ChecklistTreeBranch variant="action" />
-          {adding ? (
-            <input
-              autoFocus
-              value={newChecklistTitle}
-              onChange={(event) => onNewChecklistTitleChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") onSubmitNewItem();
-                if (event.key === "Escape") onCancelAdding();
-              }}
-              onBlur={() => {
-                if (newChecklistTitle.trim()) onSubmitNewItem();
-                else onCancelAdding();
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-              placeholder="Название подзадачи"
-              className="w-full rounded-lg border border-white/10 bg-[#323d50] px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-400 focus:border-sky-400/50"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={onAddClick}
-              onMouseDown={(event) => event.stopPropagation()}
-              className="py-1 text-xs font-medium text-sky-400 transition hover:text-sky-300"
-            >
-              + Создать подзадачу
-            </button>
-          )}
-        </div>
+      <div className={`relative pl-5 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}>
+        <ChecklistTreeElbow />
+        {adding ? (
+          <input
+            autoFocus
+            value={newChecklistTitle}
+            onChange={(event) => onNewChecklistTitleChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onSubmitNewItem();
+              if (event.key === "Escape") onCancelAdding();
+            }}
+            onBlur={() => {
+              if (newChecklistTitle.trim()) onSubmitNewItem();
+              else onCancelAdding();
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            placeholder="Название подзадачи"
+            className="w-full rounded-lg border border-white/10 bg-[#323d50] px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-400 focus:border-sky-400/50"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onAddClick}
+            onMouseDown={(event) => event.stopPropagation()}
+            className="py-0.5 text-xs font-medium text-sky-400 transition hover:text-sky-300"
+          >
+            + Создать подзадачу
+          </button>
+        )}
       </div>
     </div>
   );

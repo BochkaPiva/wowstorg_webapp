@@ -190,6 +190,8 @@ function TaskCard({
   expanded,
   onToggleExpanded,
   onToggleChecklistItem,
+  descriptionExpanded,
+  onDescriptionExpand,
   onDragStart,
   onDragEnd,
 }: {
@@ -201,22 +203,50 @@ function TaskCard({
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  descriptionExpanded: boolean;
+  onDescriptionExpand: (taskId: string) => void;
   onDragStart: (taskId: string, fromColumnId: string) => void;
   onDragEnd: () => void;
 }) {
   const [title, setTitle] = React.useState(task.title);
   const [description, setDescription] = React.useState(task.description ?? "");
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
+  const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
+  const descriptionExpandedRef = React.useRef(descriptionExpanded);
   const progressPct =
     task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
   const visibleChecklistItems = expanded ? task.checklistItems : [];
+  const descriptionPreview = description.trim();
 
   React.useEffect(() => {
     setTitle(task.title);
     setDescription(task.description ?? "");
   }, [task.description, task.title]);
+
+  const syncDescriptionHeight = React.useCallback(() => {
+    const el = descriptionRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  React.useEffect(() => {
+    if (descriptionExpanded) {
+      syncDescriptionHeight();
+      descriptionRef.current?.focus({ preventScroll: true });
+    }
+  }, [descriptionExpanded, description, syncDescriptionHeight]);
+
+  React.useEffect(() => {
+    if (descriptionExpandedRef.current && !descriptionExpanded) {
+      const next = description.trim();
+      const current = task.description ?? "";
+      if (next !== current) onPatchTask(task.id, { description: next || null });
+    }
+    descriptionExpandedRef.current = descriptionExpanded;
+  }, [descriptionExpanded, description, onPatchTask, task.description, task.id]);
 
   function commitTitle() {
     const next = title.trim();
@@ -242,6 +272,7 @@ function TaskCard({
 
   return (
     <article
+      data-task-card-id={task.id}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
@@ -278,21 +309,45 @@ function TaskCard({
               ].join(" ")}
             />
             <TaskCardContext task={task} />
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              onBlur={commitDescription}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setDescription(task.description ?? "");
-                  event.currentTarget.blur();
-                }
-                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
-              }}
-              placeholder="Описание"
-              rows={description ? 2 : 1}
-              className="mt-1 block w-full resize-none rounded-md bg-transparent px-1 py-0.5 text-xs leading-snug text-slate-100/80 outline-none transition placeholder:text-slate-100/45 hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
-            />
+            {descriptionExpanded ? (
+              <textarea
+                ref={descriptionRef}
+                value={description}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  requestAnimationFrame(syncDescriptionHeight);
+                }}
+                onBlur={commitDescription}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setDescription(task.description ?? "");
+                    event.currentTarget.blur();
+                  }
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                placeholder="Описание"
+                rows={1}
+                className="mt-1 block w-full resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-xs leading-snug text-slate-100/80 outline-none transition placeholder:text-slate-100/45 hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDescriptionExpand(task.id);
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                className={[
+                  "mt-1 block w-full rounded-md px-1 py-0.5 text-left text-xs leading-snug outline-none transition",
+                  descriptionPreview
+                    ? "line-clamp-3 whitespace-pre-wrap text-slate-100/80 hover:bg-white/10"
+                    : "text-slate-100/45 hover:bg-white/10 hover:text-slate-100/60",
+                ].join(" ")}
+              >
+                {descriptionPreview || "Описание"}
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -833,6 +888,7 @@ function TasksPageContent() {
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
+  const [expandedDescriptionTaskId, setExpandedDescriptionTaskId] = React.useState<string | null>(null);
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
   const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
@@ -915,6 +971,18 @@ function TasksPageContent() {
   React.useEffect(() => {
     if (boardId) void loadBoard(boardId);
   }, [boardId, loadBoard]);
+
+  React.useEffect(() => {
+    if (!expandedDescriptionTaskId) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      const card = document.querySelector(`[data-task-card-id="${expandedDescriptionTaskId}"]`);
+      if (card && !card.contains(target)) setExpandedDescriptionTaskId(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [expandedDescriptionTaskId]);
 
   async function addColumn() {
     if (!board) return;
@@ -1221,6 +1289,8 @@ function TasksPageContent() {
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
                     onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(itemId, { isDone })}
+                    descriptionExpanded={expandedDescriptionTaskId === task.id}
+                    onDescriptionExpand={setExpandedDescriptionTaskId}
                     onDragStart={(taskId, fromColumnId) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);

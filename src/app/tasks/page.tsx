@@ -264,12 +264,12 @@ function TaskEditor({
         color,
         projectId: projectId || null,
         orderId: orderId || null,
-        columnId: targetColumnId,
       };
+      const payload = isNew ? body : { ...body, columnId: targetColumnId };
       const res = await fetch(isNew ? `/api/tasks/columns/${targetColumnId}/tasks` : `/api/tasks/tasks/${task.id}`, {
         method: isNew ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
       await readApi(res);
       onSaved();

@@ -189,6 +189,7 @@ function RoundCheckbox({
 
 const CHECKLIST_TREE_TRUNK_X = 11.5;
 const CHECKLIST_TREE_BRANCH_END_X = 28;
+const CHECKLIST_TREE_ACTION_BRANCH_END_X = 17;
 const CHECKLIST_TREE_CORNER_R = 7;
 
 function buildChecklistTreePath(centers: number[]): string {
@@ -198,9 +199,11 @@ function buildChecklistTreePath(centers: number[]): string {
   for (let i = 0; i < centers.length; i++) {
     const y = centers[i]!;
     const startY = i === 0 ? 0 : centers[i - 1]!;
+    const branchEndX =
+      i === centers.length - 1 ? CHECKLIST_TREE_ACTION_BRANCH_END_X : CHECKLIST_TREE_BRANCH_END_X;
     parts.push(`M ${CHECKLIST_TREE_TRUNK_X} ${startY} V ${y - CHECKLIST_TREE_CORNER_R}`);
     parts.push(
-      `Q ${CHECKLIST_TREE_TRUNK_X} ${y} ${CHECKLIST_TREE_TRUNK_X + CHECKLIST_TREE_CORNER_R} ${y} H ${CHECKLIST_TREE_BRANCH_END_X}`,
+      `Q ${CHECKLIST_TREE_TRUNK_X} ${y} ${CHECKLIST_TREE_TRUNK_X + CHECKLIST_TREE_CORNER_R} ${y} H ${branchEndX}`,
     );
   }
   return parts.join(" ");
@@ -310,7 +313,7 @@ function ChecklistTreeSection({
         ref={(node) => {
           rowRefs.current[items.length] = node;
         }}
-        className={`relative pl-5 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}
+        className={`relative pl-6 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}
       >
         {adding ? (
           <input

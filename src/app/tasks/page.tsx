@@ -102,6 +102,39 @@ function fmtDate(iso: string | null): string {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
+function orderContextLabel(order: NonNullable<BoardTask["order"]>): string {
+  return order.eventName ? `${order.customer.name} · ${order.eventName}` : order.customer.name;
+}
+
+function TaskCardContext({ task }: { task: BoardTask }) {
+  if (!task.project && !task.order) return null;
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      {task.project ? (
+        <a
+          href={`/projects/${task.project.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="block truncate text-[11px] leading-snug text-slate-100/75 underline-offset-2 transition hover:text-white hover:underline"
+          title={task.project.title}
+        >
+          <span className="font-semibold text-slate-100/50">Проект ·</span> {task.project.title}
+        </a>
+      ) : null}
+      {task.order ? (
+        <a
+          href={`/orders/${task.order.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="block truncate text-[11px] leading-snug text-slate-100/75 underline-offset-2 transition hover:text-white hover:underline"
+          title={orderContextLabel(task.order)}
+        >
+          <span className="font-semibold text-slate-100/50">Заявка ·</span> {orderContextLabel(task.order)}
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
 async function readApi<T>(res: Response): Promise<T> {
   const data = (await res.json().catch(() => null)) as T | { error?: { message?: string } } | null;
   if (!res.ok) {
@@ -244,6 +277,7 @@ function TaskCard({
                 column.isDone ? "opacity-60 line-through" : "",
               ].join(" ")}
             />
+            <TaskCardContext task={task} />
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -271,11 +305,6 @@ function TaskCard({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
-          {task.project ? (
-            <span className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
-              {task.project.title}
-            </span>
-          ) : null}
           {task.dueDate ? (
             <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
               {fmtDate(task.dueDate)}

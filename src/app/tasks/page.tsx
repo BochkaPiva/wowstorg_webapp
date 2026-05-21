@@ -153,12 +153,16 @@ function cardTextColor(color: string | null): string {
 function RoundCheckbox({
   checked,
   onChange,
+  size = "md",
   className = "",
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  size?: "md" | "sm";
   className?: string;
 }) {
+  const dim = size === "sm" ? "h-4 w-4 text-[9px]" : "h-5 w-5 text-[11px]";
+
   return (
     <button
       type="button"
@@ -166,11 +170,13 @@ function RoundCheckbox({
         event.stopPropagation();
         onChange(!checked);
       }}
+      onMouseDown={(event) => event.stopPropagation()}
       className={[
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold transition",
+        "inline-flex shrink-0 items-center justify-center rounded-full border font-bold transition",
+        dim,
         checked
-          ? "border-emerald-300 bg-emerald-400 text-emerald-950 shadow-sm shadow-emerald-950/10"
-          : "border-white/50 bg-white/10 text-transparent hover:border-white hover:bg-white/20",
+          ? "border-emerald-400 bg-emerald-500 text-white shadow-sm shadow-emerald-950/20"
+          : "border-white/40 bg-white/15 text-white/50 hover:border-white/55 hover:bg-white/22 hover:text-white/70",
         className,
       ].join(" ")}
       aria-pressed={checked}
@@ -178,6 +184,148 @@ function RoundCheckbox({
     >
       ✓
     </button>
+  );
+}
+
+function TaskChecklistPanel({
+  task,
+  expanded,
+  newChecklistTitle,
+  onToggleExpanded,
+  onToggleChecklistItem,
+  onNewChecklistTitleChange,
+  onAddChecklistItem,
+}: {
+  task: BoardTask;
+  expanded: boolean;
+  newChecklistTitle: string;
+  onToggleExpanded: (taskId: string) => void;
+  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onNewChecklistTitleChange: (value: string) => void;
+  onAddChecklistItem: (title: string) => void;
+}) {
+  const [adding, setAdding] = React.useState(false);
+  const progressPct = task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
+  const hasChecklist = task.checklistTotal > 0;
+
+  function submitNewItem() {
+    const next = newChecklistTitle.trim();
+    if (!next) return;
+    onAddChecklistItem(next);
+    onNewChecklistTitleChange("");
+    setAdding(false);
+  }
+
+  function startAdding(event: React.MouseEvent) {
+    event.stopPropagation();
+    if (hasChecklist && !expanded) onToggleExpanded(task.id);
+    setAdding(true);
+  }
+
+  if (!hasChecklist && !adding) {
+    return (
+      <div className="border-t border-black/25 bg-[#283040] px-3 py-2.5">
+        <button
+          type="button"
+          onClick={startAdding}
+          onMouseDown={(event) => event.stopPropagation()}
+          className="text-xs font-medium text-sky-400 transition hover:text-sky-300"
+        >
+          + Создать подзадачу
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-black/25 bg-[#283040]">
+      {hasChecklist ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded(task.id);
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-white/5"
+        >
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
+            <div
+              className={[
+                "h-full rounded-full transition-all duration-200",
+                progressPct === 100 ? "bg-emerald-400" : "bg-white/45",
+              ].join(" ")}
+              style={{ width: `${progressPct > 0 ? Math.max(progressPct, 6) : 0}%` }}
+            />
+          </div>
+          <span className="shrink-0 text-[11px] tabular-nums text-slate-300/90">
+            {task.checklistDone}/{task.checklistTotal}
+          </span>
+          <span className="shrink-0 text-[10px] text-slate-400/90">{expanded ? "▴" : "▾"}</span>
+        </button>
+      ) : null}
+
+      {expanded && task.checklistItems.length > 0 ? (
+        <div className="relative mx-3 mb-2 ml-7 border-l border-sky-400/55 pl-4">
+          {task.checklistItems.map((item, index) => (
+            <div key={item.id} className={index > 0 ? "mt-2" : ""}>
+              <div className="relative before:absolute before:-left-4 before:top-[1.125rem] before:h-px before:w-4 before:bg-sky-400/55">
+                <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
+                  <RoundCheckbox
+                    size="sm"
+                    checked={item.isDone}
+                    onChange={(checked) => onToggleChecklistItem(item.id, checked)}
+                  />
+                  <span
+                    className={[
+                      "min-w-0 flex-1 text-xs leading-snug",
+                      item.isDone ? "text-slate-400 line-through opacity-70" : "text-slate-100",
+                    ].join(" ")}
+                  >
+                    {item.title}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {expanded || !hasChecklist ? (
+        <div className="px-3 pb-3">
+          {adding ? (
+            <input
+              autoFocus
+              value={newChecklistTitle}
+              onChange={(event) => onNewChecklistTitleChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitNewItem();
+                if (event.key === "Escape") {
+                  onNewChecklistTitleChange("");
+                  setAdding(false);
+                }
+              }}
+              onBlur={() => {
+                if (newChecklistTitle.trim()) submitNewItem();
+                else setAdding(false);
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              placeholder="Название подзадачи"
+              className="w-full rounded-lg border border-white/10 bg-[#323d50] px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-400 focus:border-sky-400/50"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={startAdding}
+              onMouseDown={(event) => event.stopPropagation()}
+              className="text-xs font-medium text-sky-400 transition hover:text-sky-300"
+            >
+              + Создать подзадачу
+            </button>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -190,8 +338,6 @@ function TaskCard({
   expanded,
   onToggleExpanded,
   onToggleChecklistItem,
-  descriptionExpanded,
-  onDescriptionExpand,
   onDragStart,
   onDragEnd,
 }: {
@@ -203,8 +349,6 @@ function TaskCard({
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
-  descriptionExpanded: boolean;
-  onDescriptionExpand: (taskId: string) => void;
   onDragStart: (taskId: string, fromColumnId: string) => void;
   onDragEnd: () => void;
 }) {
@@ -212,13 +356,9 @@ function TaskCard({
   const [description, setDescription] = React.useState(task.description ?? "");
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
   const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
-  const descriptionExpandedRef = React.useRef(descriptionExpanded);
-  const progressPct =
-    task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
-  const visibleChecklistItems = expanded ? task.checklistItems : [];
-  const descriptionPreview = description.trim();
+  const taskDone = Boolean(task.completedAt);
 
   React.useEffect(() => {
     setTitle(task.title);
@@ -228,25 +368,13 @@ function TaskCard({
   const syncDescriptionHeight = React.useCallback(() => {
     const el = descriptionRef.current;
     if (!el) return;
-    el.style.height = "0px";
+    el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, []);
 
   React.useEffect(() => {
-    if (descriptionExpanded) {
-      syncDescriptionHeight();
-      descriptionRef.current?.focus({ preventScroll: true });
-    }
-  }, [descriptionExpanded, description, syncDescriptionHeight]);
-
-  React.useEffect(() => {
-    if (descriptionExpandedRef.current && !descriptionExpanded) {
-      const next = description.trim();
-      const current = task.description ?? "";
-      if (next !== current) onPatchTask(task.id, { description: next || null });
-    }
-    descriptionExpandedRef.current = descriptionExpanded;
-  }, [descriptionExpanded, description, onPatchTask, task.description, task.id]);
+    syncDescriptionHeight();
+  }, [description, syncDescriptionHeight]);
 
   function commitTitle() {
     const next = title.trim();
@@ -261,13 +389,6 @@ function TaskCard({
     const next = description.trim();
     const current = task.description ?? "";
     if (next !== current) onPatchTask(task.id, { description: next || null });
-  }
-
-  function addChecklistItem() {
-    const next = newChecklistTitle.trim();
-    if (!next) return;
-    setNewChecklistTitle("");
-    onAddChecklistItem(task.id, next);
   }
 
   return (
@@ -289,7 +410,7 @@ function TaskCard({
     >
       <div className="px-3 py-3">
         <div className="flex items-start gap-2">
-          <RoundCheckbox checked={column.isDone} onChange={() => onPatchTask(task.id, { completed: !column.isDone })} />
+          <RoundCheckbox checked={taskDone} onChange={() => onPatchTask(task.id, { completed: !taskDone })} />
           <div className="min-w-0 flex-1">
             <input
               value={title}
@@ -305,49 +426,30 @@ function TaskCard({
               className={[
                 "block w-full rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold leading-snug outline-none transition",
                 "hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20",
-                column.isDone ? "opacity-60 line-through" : "",
+                taskDone ? "opacity-60 line-through" : "",
               ].join(" ")}
             />
             <TaskCardContext task={task} />
-            {descriptionExpanded ? (
-              <textarea
-                ref={descriptionRef}
-                value={description}
-                onChange={(event) => {
-                  setDescription(event.target.value);
-                  requestAnimationFrame(syncDescriptionHeight);
-                }}
-                onBlur={commitDescription}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setDescription(task.description ?? "");
-                    event.currentTarget.blur();
-                  }
-                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                placeholder="Описание"
-                rows={1}
-                className="mt-1 block w-full resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-xs leading-snug text-slate-100/80 outline-none transition placeholder:text-slate-100/45 hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDescriptionExpand(task.id);
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                className={[
-                  "mt-1 block w-full rounded-md px-1 py-0.5 text-left text-xs leading-snug outline-none transition",
-                  descriptionPreview
-                    ? "line-clamp-3 whitespace-pre-wrap text-slate-100/80 hover:bg-white/10"
-                    : "text-slate-100/45 hover:bg-white/10 hover:text-slate-100/60",
-                ].join(" ")}
-              >
-                {descriptionPreview || "Описание"}
-              </button>
-            )}
+            <textarea
+              ref={descriptionRef}
+              value={description}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                requestAnimationFrame(syncDescriptionHeight);
+              }}
+              onBlur={commitDescription}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDescription(task.description ?? "");
+                  event.currentTarget.blur();
+                }
+                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              placeholder="Описание"
+              rows={1}
+              className="mt-1 block w-full resize-none overflow-hidden rounded-md bg-transparent px-1 py-0.5 text-xs leading-snug text-slate-100/80 outline-none transition placeholder:text-slate-100/45 hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
+            />
           </div>
           <button
             type="button"
@@ -378,84 +480,15 @@ function TaskCard({
         </div>
       </div>
 
-      {task.checklistTotal > 0 ? (
-        <div className="border-t border-black/15 bg-black/12 px-3 py-2">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleExpanded(task.id);
-            }}
-            className="flex w-full items-center gap-2 rounded-md text-left transition hover:bg-white/5"
-          >
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-900/30">
-              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${progressPct}%` }} />
-            </div>
-            <div className="w-10 text-right text-xs text-slate-200/80">
-              {task.checklistDone}/{task.checklistTotal}
-            </div>
-            <span className="text-xs text-slate-200/75">{expanded ? "Свернуть" : "Открыть"}</span>
-          </button>
-          {expanded ? (
-            <>
-              {visibleChecklistItems.length > 0 ? (
-                <div className="mt-2 space-y-1.5">
-                  {visibleChecklistItems.map((item) => (
-                    <label
-                      key={item.id}
-                      className="flex items-start gap-2 rounded-lg bg-white/10 px-2 py-1.5 text-xs text-slate-100/90"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <RoundCheckbox
-                        checked={item.isDone}
-                        onChange={(checked) => onToggleChecklistItem(item.id, checked)}
-                        className="mt-0.5 h-4 w-4 text-[9px]"
-                      />
-                      <span className={item.isDone ? "line-through opacity-55" : ""}>{item.title}</span>
-                    </label>
-                  ))}
-                </div>
-              ) : null}
-              <div className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
-                <span className="text-sm font-semibold text-slate-100/70">+</span>
-                <input
-                  value={newChecklistTitle}
-                  onChange={(event) => setNewChecklistTitle(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") addChecklistItem();
-                    if (event.key === "Escape") setNewChecklistTitle("");
-                  }}
-                  onBlur={() => {
-                    if (newChecklistTitle.trim()) addChecklistItem();
-                  }}
-                  placeholder="Подзадача"
-                  className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
-                />
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {task.checklistTotal === 0 ? (
-        <div className="border-t border-black/15 bg-black/12 px-3 py-2">
-          <div className="flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
-            <span className="text-sm font-semibold text-slate-100/70">+</span>
-            <input
-              value={newChecklistTitle}
-              onChange={(event) => setNewChecklistTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") addChecklistItem();
-                if (event.key === "Escape") setNewChecklistTitle("");
-              }}
-              onBlur={() => {
-                if (newChecklistTitle.trim()) addChecklistItem();
-              }}
-              placeholder="Подзадача"
-              className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
-            />
-          </div>
-        </div>
-      ) : null}
+      <TaskChecklistPanel
+        task={task}
+        expanded={expanded}
+        newChecklistTitle={newChecklistTitle}
+        onToggleExpanded={onToggleExpanded}
+        onToggleChecklistItem={onToggleChecklistItem}
+        onNewChecklistTitleChange={setNewChecklistTitle}
+        onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
+      />
     </article>
   );
 }
@@ -482,7 +515,11 @@ function ChecklistEditorItem({
       <RoundCheckbox
         checked={item.isDone}
         onChange={(checked) => onToggle(item.id, checked)}
-        className="border-zinc-300 bg-white text-[10px]"
+        className={
+          item.isDone
+            ? undefined
+            : "border-zinc-300 bg-zinc-100 text-zinc-400 hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-500"
+        }
       />
       <input
         value={title}
@@ -888,7 +925,6 @@ function TasksPageContent() {
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
-  const [expandedDescriptionTaskId, setExpandedDescriptionTaskId] = React.useState<string | null>(null);
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
   const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
@@ -972,18 +1008,6 @@ function TasksPageContent() {
     if (boardId) void loadBoard(boardId);
   }, [boardId, loadBoard]);
 
-  React.useEffect(() => {
-    if (!expandedDescriptionTaskId) return;
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      const card = document.querySelector(`[data-task-card-id="${expandedDescriptionTaskId}"]`);
-      if (card && !card.contains(target)) setExpandedDescriptionTaskId(null);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [expandedDescriptionTaskId]);
-
   async function addColumn() {
     if (!board) return;
     setError(null);
@@ -1026,7 +1050,31 @@ function TasksPageContent() {
     }
   }
 
-  async function patchChecklistItem(itemId: string, body: object) {
+  async function patchChecklistItem(taskId: string, itemId: string, body: { isDone?: boolean; title?: string }) {
+    const previousBoard = boardRef.current;
+    if (body.isDone !== undefined) {
+      updateBoard((current) =>
+        current
+          ? {
+              ...current,
+              columns: current.columns.map((column) => ({
+                ...column,
+                tasks: column.tasks.map((task) => {
+                  if (task.id !== taskId) return task;
+                  const checklistItems = task.checklistItems.map((item) =>
+                    item.id === itemId ? { ...item, isDone: body.isDone! } : item,
+                  );
+                  return {
+                    ...task,
+                    checklistItems,
+                    checklistDone: checklistItems.filter((item) => item.isDone).length,
+                  };
+                }),
+              })),
+            }
+          : current,
+      );
+    }
     try {
       await readApi(
         await fetch(`/api/tasks/checklist/${itemId}`, {
@@ -1035,8 +1083,8 @@ function TasksPageContent() {
           body: JSON.stringify(body),
         }),
       );
-      if (board) await loadBoard(board.id);
     } catch (e) {
+      applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
     }
   }
@@ -1071,7 +1119,12 @@ function TasksPageContent() {
           body: JSON.stringify(body),
         }),
       );
-      if (boardRef.current) await loadBoard(boardRef.current.id);
+      const needsBoardReload =
+        body.columnId !== undefined ||
+        body.assigneeUserId !== undefined ||
+        body.projectId !== undefined ||
+        body.orderId !== undefined;
+      if (needsBoardReload && boardRef.current) await loadBoard(boardRef.current.id);
     } catch (e) {
       applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось обновить задачу");
@@ -1288,9 +1341,7 @@ function TasksPageContent() {
                     onAddChecklistItem={(taskId, title) => void addChecklistItemInline(taskId, title)}
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
-                    onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(itemId, { isDone })}
-                    descriptionExpanded={expandedDescriptionTaskId === task.id}
-                    onDescriptionExpand={setExpandedDescriptionTaskId}
+                    onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(task.id, itemId, { isDone })}
                     onDragStart={(taskId, fromColumnId) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);

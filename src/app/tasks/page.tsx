@@ -187,13 +187,23 @@ function RoundCheckbox({
   );
 }
 
-function ChecklistTreeElbow() {
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute left-[11px] top-1/2 box-border h-3 w-[17px] -translate-y-1/2 rounded-bl-[10px] border-b border-l border-sky-500/70"
-    />
-  );
+const CHECKLIST_TREE_TRUNK_X = 11.5;
+const CHECKLIST_TREE_BRANCH_END_X = 28;
+const CHECKLIST_TREE_CORNER_R = 7;
+
+function buildChecklistTreePath(centers: number[]): string {
+  if (centers.length === 0) return "";
+
+  const parts: string[] = [];
+  for (let i = 0; i < centers.length; i++) {
+    const y = centers[i]!;
+    const startY = i === 0 ? 0 : centers[i - 1]!;
+    parts.push(`M ${CHECKLIST_TREE_TRUNK_X} ${startY} V ${y - CHECKLIST_TREE_CORNER_R}`);
+    parts.push(
+      `Q ${CHECKLIST_TREE_TRUNK_X} ${y} ${CHECKLIST_TREE_TRUNK_X + CHECKLIST_TREE_CORNER_R} ${y} H ${CHECKLIST_TREE_BRANCH_END_X}`,
+    );
+  }
+  return parts.join(" ");
 }
 
 function ChecklistTreeSection({
@@ -215,13 +225,69 @@ function ChecklistTreeSection({
   onSubmitNewItem: () => void;
   onCancelAdding: () => void;
 }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const rowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
+  const [treePath, setTreePath] = React.useState("");
+
+  const syncTreePath = React.useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const containerTop = container.getBoundingClientRect().top;
+    const centers = rowRefs.current
+      .filter((row): row is HTMLDivElement => row != null)
+      .map((row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.top - containerTop + rect.height / 2;
+      });
+
+    setTreePath(buildChecklistTreePath(centers));
+  }, []);
+
+  React.useLayoutEffect(() => {
+    rowRefs.current.length = items.length + 1;
+    syncTreePath();
+  }, [adding, items, newChecklistTitle, syncTreePath]);
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => syncTreePath());
+    observer.observe(container);
+    window.addEventListener("resize", syncTreePath);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncTreePath);
+    };
+  }, [syncTreePath]);
+
   return (
-    <div className="relative mx-3 mb-2 pb-1">
-      <div aria-hidden className="pointer-events-none absolute bottom-2 left-[11px] top-0 w-px bg-sky-500/70" />
+    <div ref={containerRef} className="relative mx-3 mb-2 pb-1">
+      {treePath ? (
+        <svg
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full overflow-visible text-sky-500/75"
+        >
+          <path
+            d={treePath}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
 
       {items.map((item, index) => (
-        <div key={item.id} className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}>
-          <ChecklistTreeElbow />
+        <div
+          key={item.id}
+          ref={(node) => {
+            rowRefs.current[index] = node;
+          }}
+          className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}
+        >
           <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
             <RoundCheckbox
               size="sm"
@@ -240,8 +306,12 @@ function ChecklistTreeSection({
         </div>
       ))}
 
-      <div className={`relative pl-5 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}>
-        <ChecklistTreeElbow />
+      <div
+        ref={(node) => {
+          rowRefs.current[items.length] = node;
+        }}
+        className={`relative pl-5 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}
+      >
         {adding ? (
           <input
             autoFocus

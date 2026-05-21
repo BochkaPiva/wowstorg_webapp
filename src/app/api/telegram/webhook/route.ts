@@ -12,6 +12,7 @@ const UpdateSchema = z.object({
   message: z
     .object({
       text: z.string().optional(),
+      message_thread_id: z.number().optional(),
       chat: z.object({
         id: z.union([z.string(), z.number()]),
         type: z.string().optional(),
@@ -93,7 +94,29 @@ export async function POST(req: Request) {
   const update = parsed.data;
   const text = update.message?.text?.trim() ?? "";
   const chatId = update.message?.chat?.id != null ? chatIdToString(update.message.chat.id) : "";
-  if (!chatId || !text.startsWith("/start")) {
+  if (!chatId) {
+    return jsonOk({ ok: true, ignored: "no_chat_id" });
+  }
+
+  if (text.startsWith("/topic")) {
+    const topicId = update.message?.message_thread_id;
+    const message = [
+      "<b>Telegram topic ID</b>",
+      "",
+      `Chat ID: <code>${escapeTelegramHtml(chatId)}</code>`,
+      `Topic ID: <code>${topicId != null ? String(topicId) : "нет message_thread_id"}</code>`,
+      "",
+      "Для задач на Vercel добавьте:",
+      `TELEGRAM_NOTIFICATION_CHAT_ID=${escapeTelegramHtml(chatId)}`,
+      `TELEGRAM_TASKS_TOPIC_ID=${topicId != null ? String(topicId) : ""}`,
+    ].join("\n");
+    const result = await sendTelegramMessageDetailed(chatId, message, {
+      messageThreadId: topicId,
+    });
+    return jsonOk({ ok: result.ok, chatId, topicId: topicId ?? null, error: result.ok ? undefined : result.error });
+  }
+
+  if (!text.startsWith("/start")) {
     return jsonOk({ ok: true, ignored: "not_start" });
   }
 

@@ -5,6 +5,8 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { notifyWorkTaskAssigned } from "@/server/work-task-notifications";
 import { nextTaskSortOrder } from "@/server/work-tasks";
 
 const CreateTaskSchema = z
@@ -62,6 +64,9 @@ export async function POST(
     select: { id: true },
   });
 
+  scheduleAfterResponse("notifyWorkTaskAssigned", async () => {
+    await notifyWorkTaskAssigned({ taskId: task.id, actorUserId: auth.user.id });
+  });
+
   return jsonOk({ task });
 }
-

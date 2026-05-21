@@ -64,6 +64,19 @@ type TasksMeta = {
   orders: Array<{ id: string; label: string; readyByDate: string }>;
 };
 
+type TaskPatchBody = Partial<{
+  title: string;
+  description: string | null;
+  assigneeUserId: string | null;
+  dueDate: string | null;
+  priority: Priority;
+  color: string | null;
+  projectId: string | null;
+  orderId: string | null;
+  columnId: string;
+  completed: boolean;
+}>;
+
 const PRIORITY_LABEL: Record<Priority, string> = {
   LOW: "Низкий",
   NORMAL: "Обычный",
@@ -105,10 +118,43 @@ function cardTextColor(color: string | null): string {
   return "text-white";
 }
 
+function RoundCheckbox({
+  checked,
+  onChange,
+  className = "",
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onChange(!checked);
+      }}
+      className={[
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold transition",
+        checked
+          ? "border-emerald-300 bg-emerald-400 text-emerald-950 shadow-sm shadow-emerald-950/10"
+          : "border-white/50 bg-white/10 text-transparent hover:border-white hover:bg-white/20",
+        className,
+      ].join(" ")}
+      aria-pressed={checked}
+      aria-label={checked ? "Отметить невыполненной" : "Отметить выполненной"}
+    >
+      ✓
+    </button>
+  );
+}
+
 function TaskCard({
   task,
   column,
   onOpen,
+  onPatchTask,
+  onAddChecklistItem,
   expanded,
   onToggleExpanded,
   onToggleChecklistItem,
@@ -118,16 +164,49 @@ function TaskCard({
   task: BoardTask;
   column: BoardColumn;
   onOpen: (task: BoardTask) => void;
+  onPatchTask: (taskId: string, body: TaskPatchBody) => void;
+  onAddChecklistItem: (taskId: string, title: string) => void;
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
   onDragStart: (taskId: string, fromColumnId: string) => void;
   onDragEnd: () => void;
 }) {
+  const [title, setTitle] = React.useState(task.title);
+  const [description, setDescription] = React.useState(task.description ?? "");
+  const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
   const progressPct =
     task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
+  const visibleChecklistItems = expanded ? task.checklistItems : task.checklistItems.slice(0, 2);
+
+  React.useEffect(() => {
+    setTitle(task.title);
+    setDescription(task.description ?? "");
+  }, [task.description, task.title]);
+
+  function commitTitle() {
+    const next = title.trim();
+    if (!next) {
+      setTitle(task.title);
+      return;
+    }
+    if (next !== task.title) onPatchTask(task.id, { title: next });
+  }
+
+  function commitDescription() {
+    const next = description.trim();
+    const current = task.description ?? "";
+    if (next !== current) onPatchTask(task.id, { description: next || null });
+  }
+
+  function addChecklistItem() {
+    const next = newChecklistTitle.trim();
+    if (!next) return;
+    setNewChecklistTitle("");
+    onAddChecklistItem(task.id, next);
+  }
 
   return (
     <article
@@ -145,24 +224,51 @@ function TaskCard({
       ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
     >
-      <button
-        type="button"
-        onClick={() => onOpen(task)}
-        className="block w-full px-3 py-3 text-left"
-      >
+      <div className="px-3 py-3">
         <div className="flex items-start gap-2">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300/80 text-xs text-slate-200">
-            {column.isDone ? "✓" : ""}
-          </span>
+          <RoundCheckbox checked={column.isDone} onChange={() => onPatchTask(task.id, { completed: !column.isDone })} />
           <div className="min-w-0 flex-1">
-            <div className={["text-sm font-semibold leading-snug", column.isDone ? "opacity-55 line-through" : ""].join(" ")}>
-              {task.title}
-            </div>
-            {task.description ? (
-              <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-200/75">{task.description}</div>
-            ) : null}
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") {
+                  setTitle(task.title);
+                  event.currentTarget.blur();
+                }
+              }}
+              className={[
+                "block w-full rounded-md bg-transparent px-1 py-0.5 text-sm font-semibold leading-snug outline-none transition",
+                "hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20",
+                column.isDone ? "opacity-60 line-through" : "",
+              ].join(" ")}
+            />
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              onBlur={commitDescription}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDescription(task.description ?? "");
+                  event.currentTarget.blur();
+                }
+                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
+              }}
+              placeholder="Описание"
+              rows={description ? 2 : 1}
+              className="mt-1 block w-full resize-none rounded-md bg-transparent px-1 py-0.5 text-xs leading-snug text-slate-100/80 outline-none transition placeholder:text-slate-100/45 hover:bg-white/10 focus:bg-white/15 focus:ring-2 focus:ring-white/20"
+            />
           </div>
-          <span className="text-slate-300 opacity-80">⋮</span>
+          <button
+            type="button"
+            onClick={() => onOpen(task)}
+            className="rounded-lg px-1.5 py-1 text-slate-100/70 transition hover:bg-white/10 hover:text-white"
+            title="Открыть полное редактирование"
+          >
+            ⋮
+          </button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
@@ -187,7 +293,7 @@ function TaskCard({
             </span>
           ) : null}
         </div>
-      </button>
+      </div>
 
       {task.checklistTotal > 0 ? (
         <div className="border-t border-black/15 bg-black/12 px-3 py-2">
@@ -207,25 +313,69 @@ function TaskCard({
             </div>
             <span className="text-xs text-slate-200/75">{expanded ? "Свернуть" : "Открыть"}</span>
           </button>
-          {expanded ? (
+          {visibleChecklistItems.length > 0 ? (
             <div className="mt-2 space-y-1.5">
-              {task.checklistItems.map((item) => (
+              {visibleChecklistItems.map((item) => (
                 <label
                   key={item.id}
                   className="flex items-start gap-2 rounded-lg bg-white/10 px-2 py-1.5 text-xs text-slate-100/90"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <input
-                    type="checkbox"
+                  <RoundCheckbox
                     checked={item.isDone}
-                    onChange={(event) => onToggleChecklistItem(item.id, event.target.checked)}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                    onChange={(checked) => onToggleChecklistItem(item.id, checked)}
+                    className="mt-0.5 h-4 w-4 text-[9px]"
                   />
                   <span className={item.isDone ? "line-through opacity-55" : ""}>{item.title}</span>
                 </label>
               ))}
+              {!expanded && task.checklistItems.length > visibleChecklistItems.length ? (
+                <button
+                  type="button"
+                  onClick={() => onToggleExpanded(task.id)}
+                  className="w-full rounded-lg px-2 py-1 text-left text-xs font-semibold text-slate-100/75 hover:bg-white/10 hover:text-white"
+                >
+                  Еще {task.checklistItems.length - visibleChecklistItems.length}
+                </button>
+              ) : null}
             </div>
           ) : null}
+          <div className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
+            <span className="text-sm font-semibold text-slate-100/70">+</span>
+            <input
+              value={newChecklistTitle}
+              onChange={(event) => setNewChecklistTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") addChecklistItem();
+                if (event.key === "Escape") setNewChecklistTitle("");
+              }}
+              onBlur={() => {
+                if (newChecklistTitle.trim()) addChecklistItem();
+              }}
+              placeholder="Подзадача"
+              className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
+            />
+          </div>
+        </div>
+      ) : null}
+      {task.checklistTotal === 0 ? (
+        <div className="border-t border-black/15 bg-black/12 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
+            <span className="text-sm font-semibold text-slate-100/70">+</span>
+            <input
+              value={newChecklistTitle}
+              onChange={(event) => setNewChecklistTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") addChecklistItem();
+                if (event.key === "Escape") setNewChecklistTitle("");
+              }}
+              onBlur={() => {
+                if (newChecklistTitle.trim()) addChecklistItem();
+              }}
+              placeholder="Подзадача"
+              className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
+            />
+          </div>
         </div>
       ) : null}
     </article>
@@ -251,11 +401,10 @@ function ChecklistEditorItem({
 
   return (
     <div className="group flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-      <input
-        type="checkbox"
+      <RoundCheckbox
         checked={item.isDone}
-        onChange={(event) => onToggle(item.id, event.target.checked)}
-        className="h-4 w-4 shrink-0 accent-violet-600"
+        onChange={(checked) => onToggle(item.id, checked)}
+        className="border-zinc-300 bg-white text-[10px]"
       />
       <input
         value={title}
@@ -804,6 +953,59 @@ function TasksPageContent() {
     }
   }
 
+  function updateTaskInBoard(taskId: string, updater: (task: BoardTask) => BoardTask) {
+    updateBoard((current) =>
+      current
+        ? {
+            ...current,
+            columns: current.columns.map((column) => ({
+              ...column,
+              tasks: column.tasks.map((task) => (task.id === taskId ? updater(task) : task)),
+            })),
+          }
+        : current,
+    );
+  }
+
+  async function patchTaskInline(taskId: string, body: TaskPatchBody) {
+    const previousBoard = boardRef.current;
+    updateTaskInBoard(taskId, (task) => ({
+      ...task,
+      ...(body.title !== undefined ? { title: body.title } : {}),
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.completed !== undefined ? { completedAt: body.completed ? new Date().toISOString() : null } : {}),
+    }));
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      if (boardRef.current) await loadBoard(boardRef.current.id);
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось обновить задачу");
+    }
+  }
+
+  async function addChecklistItemInline(taskId: string, title: string) {
+    setExpandedTaskIds((current) => new Set(current).add(taskId));
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        }),
+      );
+      if (boardRef.current) await loadBoard(boardRef.current.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
+    }
+  }
+
   async function moveTaskToColumn(taskId: string, targetColumnId: string) {
     const currentBoard = boardRef.current;
     if (!currentBoard) return;
@@ -1013,6 +1215,8 @@ function TasksPageContent() {
                     task={task}
                     column={column}
                     onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}
+                    onPatchTask={(taskId, body) => void patchTaskInline(taskId, body)}
+                    onAddChecklistItem={(taskId, title) => void addChecklistItemInline(taskId, title)}
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
                     onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(itemId, { isDone })}

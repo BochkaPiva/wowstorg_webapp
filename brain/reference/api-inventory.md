@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-05-21T19:29:55.297Z  
+> **Сгенерировано:** 2026-05-21T20:22:25.762Z  
 > **Файлов route.ts:** 108  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  

@@ -9,10 +9,11 @@ import {
   isTelegramConfigured,
   sendTelegramMessage,
 } from "@/server/telegram";
+import { sendWorkTaskDeadlineReminder } from "@/server/work-task-notifications";
 
 const OMSK_TZ = "Asia/Omsk";
 
-type ReminderType = "WAREHOUSE_PREP" | "GREENWICH_RETURN";
+type ReminderType = "WAREHOUSE_PREP" | "GREENWICH_RETURN" | "WORK_TASK_DUE_24H";
 
 /** Подготовка: всё, кроме отмены и закрытых (страховка от «застряла в смете»). */
 const WAREHOUSE_PREP_EXCLUDED_STATUSES: OrderStatus[] = ["CANCELLED", "CLOSED"];
@@ -100,14 +101,15 @@ export async function runDailyReminders(now = new Date()): Promise<{
   warehousePrepSent: number;
   greenwichReturnSent: number;
   warehouseReturnSent: number;
+  workTaskDeadlineSent: number;
 }> {
   if (!isTelegramConfigured()) {
-    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0 };
+    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0, workTaskDeadlineSent: 0 };
   }
 
   const warehouseChatId = getWarehouseChatId();
   if (!warehouseChatId) {
-    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0 };
+    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0, workTaskDeadlineSent: 0 };
   }
   const topicId = getWarehouseTopicId();
   const warehouseOpts = warehouseTopicOptions(topicId);
@@ -340,5 +342,42 @@ export async function runDailyReminders(now = new Date()): Promise<{
     warehouseReturnSent += 1;
   }
 
-  return { warehousePrepSent, greenwichReturnSent, warehouseReturnSent };
+  const workTasksDueTomorrow = await prisma.workTask.findMany({
+    where: {
+      completedAt: null,
+      dueDate: { gte: tomorrowStartUtc, lt: dayAfterTomorrowStartUtc },
+    },
+    select: { id: true, dueDate: true },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+  });
+
+  let workTaskDeadlineSent = 0;
+  for (const task of workTasksDueTomorrow) {
+    const ymd = omskTodayYmd;
+    const receiverKey = "tasks-topic";
+    if (
+      await alreadySent({
+        type: "WORK_TASK_DUE_24H",
+        orderId: task.id,
+        ymd,
+        receiverKey,
+      })
+    ) {
+      continue;
+    }
+
+    const ok = await sendWorkTaskDeadlineReminder(task.id);
+    if (!ok) continue;
+
+    await markSent({
+      type: "WORK_TASK_DUE_24H",
+      orderId: task.id,
+      ymd,
+      receiverKey,
+      receiverChatId: warehouseChatId,
+    });
+    workTaskDeadlineSent += 1;
+  }
+
+  return { warehousePrepSent, greenwichReturnSent, warehouseReturnSent, workTaskDeadlineSent };
 }

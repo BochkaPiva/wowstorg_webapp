@@ -5,6 +5,8 @@ import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { notifyWorkTaskAssigned, notifyWorkTaskStatusChanged } from "@/server/work-task-notifications";
 import { nextTaskSortOrder } from "@/server/work-tasks";
 
 const PatchTaskSchema = z
@@ -41,15 +43,26 @@ export async function PATCH(
   const parsed = PatchTaskSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
+  const previousTask = await prisma.workTask.findUnique({
+    where: { id },
+    select: {
+      assigneeUserId: true,
+      column: { select: { id: true, title: true } },
+    },
+  });
+  if (!previousTask) return jsonError(404, "Задача не найдена");
+
   let boardId: string | undefined;
+  let nextColumnTitle: string | undefined;
   let sortOrder = parsed.data.sortOrder;
   if (parsed.data.columnId) {
     const column = await prisma.workTaskColumn.findUnique({
       where: { id: parsed.data.columnId },
-      select: { id: true, boardId: true },
+      select: { id: true, boardId: true, title: true },
     });
     if (!column) return jsonError(404, "Колонка не найдена");
     boardId = column.boardId;
+    nextColumnTitle = column.title;
     if (sortOrder === undefined) sortOrder = await nextTaskSortOrder(prisma, column.id);
   }
 
@@ -72,6 +85,27 @@ export async function PATCH(
     select: { id: true },
   });
 
+  if (
+    parsed.data.assigneeUserId !== undefined &&
+    parsed.data.assigneeUserId &&
+    parsed.data.assigneeUserId !== previousTask.assigneeUserId
+  ) {
+    scheduleAfterResponse("notifyWorkTaskAssigned", async () => {
+      await notifyWorkTaskAssigned({ taskId: task.id, actorUserId: auth.user.id });
+    });
+  }
+
+  if (parsed.data.columnId && parsed.data.columnId !== previousTask.column.id && nextColumnTitle) {
+    scheduleAfterResponse("notifyWorkTaskStatusChanged", async () => {
+      await notifyWorkTaskStatusChanged({
+        taskId: task.id,
+        actorUserId: auth.user.id,
+        fromColumnTitle: previousTask.column.title,
+        toColumnTitle: nextColumnTitle,
+      });
+    });
+  }
+
   return jsonOk({ task });
 }
 
@@ -86,4 +120,3 @@ export async function DELETE(
   await prisma.workTask.delete({ where: { id } });
   return jsonOk({ ok: true });
 }
-

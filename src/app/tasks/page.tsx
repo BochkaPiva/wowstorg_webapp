@@ -187,6 +187,114 @@ function RoundCheckbox({
   );
 }
 
+function ChecklistTreeBranch({ variant = "card" }: { variant?: "card" | "action" }) {
+  const top = variant === "action" ? "0.42rem" : "0.72rem";
+
+  return (
+    <svg
+      aria-hidden
+      className="pointer-events-none absolute left-[10px] z-[1] h-[18px] w-[18px] text-sky-400/90"
+      style={{ top }}
+      viewBox="0 0 18 18"
+      fill="none"
+    >
+      <path
+        d="M1 0V8.5C1 12.2 1.8 13 5.5 13H18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChecklistTreeSection({
+  items,
+  adding,
+  newChecklistTitle,
+  onNewChecklistTitleChange,
+  onToggleChecklistItem,
+  onAddClick,
+  onSubmitNewItem,
+  onCancelAdding,
+}: {
+  items: TaskChecklistItem[];
+  adding: boolean;
+  newChecklistTitle: string;
+  onNewChecklistTitleChange: (value: string) => void;
+  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onAddClick: (event: React.MouseEvent) => void;
+  onSubmitNewItem: () => void;
+  onCancelAdding: () => void;
+}) {
+  return (
+    <div className="relative mx-3 mb-2 ml-3 pb-1 pl-[18px]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-[11px] top-0 w-[2px] rounded-full bg-sky-400/90"
+        style={{ height: "calc(100% - 0.7rem)" }}
+      />
+
+      {items.map((item, index) => (
+        <div key={item.id} className={index > 0 ? "mt-2" : ""}>
+          <div className="relative">
+            <ChecklistTreeBranch />
+            <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
+              <RoundCheckbox
+                size="sm"
+                checked={item.isDone}
+                onChange={(checked) => onToggleChecklistItem(item.id, checked)}
+              />
+              <span
+                className={[
+                  "min-w-0 flex-1 text-xs leading-snug",
+                  item.isDone ? "text-slate-400 line-through opacity-70" : "text-slate-100",
+                ].join(" ")}
+              >
+                {item.title}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div className={items.length > 0 ? "mt-2" : ""}>
+        <div className="relative min-h-[1.75rem]">
+          <ChecklistTreeBranch variant="action" />
+          {adding ? (
+            <input
+              autoFocus
+              value={newChecklistTitle}
+              onChange={(event) => onNewChecklistTitleChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onSubmitNewItem();
+                if (event.key === "Escape") onCancelAdding();
+              }}
+              onBlur={() => {
+                if (newChecklistTitle.trim()) onSubmitNewItem();
+                else onCancelAdding();
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              placeholder="Название подзадачи"
+              className="w-full rounded-lg border border-white/10 bg-[#323d50] px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-400 focus:border-sky-400/50"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={onAddClick}
+              onMouseDown={(event) => event.stopPropagation()}
+              className="py-1 text-xs font-medium text-sky-400 transition hover:text-sky-300"
+            >
+              + Создать подзадачу
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskChecklistPanel({
   task,
   expanded,
@@ -207,6 +315,7 @@ function TaskChecklistPanel({
   const [adding, setAdding] = React.useState(false);
   const progressPct = task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const hasChecklist = task.checklistTotal > 0;
+  const showTree = expanded || !hasChecklist;
 
   function submitNewItem() {
     const next = newChecklistTitle.trim();
@@ -265,65 +374,20 @@ function TaskChecklistPanel({
         </button>
       ) : null}
 
-      {expanded && task.checklistItems.length > 0 ? (
-        <div className="relative mx-3 mb-2 ml-7 border-l border-sky-400/55 pl-4">
-          {task.checklistItems.map((item, index) => (
-            <div key={item.id} className={index > 0 ? "mt-2" : ""}>
-              <div className="relative before:absolute before:-left-4 before:top-[1.125rem] before:h-px before:w-4 before:bg-sky-400/55">
-                <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
-                  <RoundCheckbox
-                    size="sm"
-                    checked={item.isDone}
-                    onChange={(checked) => onToggleChecklistItem(item.id, checked)}
-                  />
-                  <span
-                    className={[
-                      "min-w-0 flex-1 text-xs leading-snug",
-                      item.isDone ? "text-slate-400 line-through opacity-70" : "text-slate-100",
-                    ].join(" ")}
-                  >
-                    {item.title}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {expanded || !hasChecklist ? (
-        <div className="px-3 pb-3">
-          {adding ? (
-            <input
-              autoFocus
-              value={newChecklistTitle}
-              onChange={(event) => onNewChecklistTitleChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submitNewItem();
-                if (event.key === "Escape") {
-                  onNewChecklistTitleChange("");
-                  setAdding(false);
-                }
-              }}
-              onBlur={() => {
-                if (newChecklistTitle.trim()) submitNewItem();
-                else setAdding(false);
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-              placeholder="Название подзадачи"
-              className="w-full rounded-lg border border-white/10 bg-[#323d50] px-2.5 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-400 focus:border-sky-400/50"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={startAdding}
-              onMouseDown={(event) => event.stopPropagation()}
-              className="text-xs font-medium text-sky-400 transition hover:text-sky-300"
-            >
-              + Создать подзадачу
-            </button>
-          )}
-        </div>
+      {showTree ? (
+        <ChecklistTreeSection
+          items={task.checklistItems}
+          adding={adding}
+          newChecklistTitle={newChecklistTitle}
+          onNewChecklistTitleChange={onNewChecklistTitleChange}
+          onToggleChecklistItem={onToggleChecklistItem}
+          onAddClick={startAdding}
+          onSubmitNewItem={submitNewItem}
+          onCancelAdding={() => {
+            onNewChecklistTitleChange("");
+            setAdding(false);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -1132,17 +1196,40 @@ function TasksPageContent() {
   }
 
   async function addChecklistItemInline(taskId: string, title: string) {
+    const previousBoard = boardRef.current;
+    const tempId = `temp-checklist-${Date.now()}`;
     setExpandedTaskIds((current) => new Set(current).add(taskId));
+
+    updateTaskInBoard(taskId, (task) => {
+      const nextSortOrder = task.checklistItems.reduce((max, item) => Math.max(max, item.sortOrder), 0) + 1000;
+      const checklistItems = [
+        ...task.checklistItems,
+        { id: tempId, title, isDone: false, sortOrder: nextSortOrder },
+      ];
+      return {
+        ...task,
+        checklistItems,
+        checklistTotal: checklistItems.length,
+        checklistDone: checklistItems.filter((item) => item.isDone).length,
+      };
+    });
+
     try {
-      await readApi(
+      const data = await readApi<{ item: { id: string } }>(
         await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title }),
         }),
       );
-      if (boardRef.current) await loadBoard(boardRef.current.id);
+      updateTaskInBoard(taskId, (task) => ({
+        ...task,
+        checklistItems: task.checklistItems.map((item) =>
+          item.id === tempId ? { ...item, id: data.item.id } : item,
+        ),
+      }));
     } catch (e) {
+      applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
     }
   }

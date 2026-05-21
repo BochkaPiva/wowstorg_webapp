@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -179,7 +178,7 @@ function TaskCard({
     task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
-  const visibleChecklistItems = expanded ? task.checklistItems : task.checklistItems.slice(0, 2);
+  const visibleChecklistItems = expanded ? task.checklistItems : [];
 
   React.useEffect(() => {
     setTitle(task.title);
@@ -313,49 +312,44 @@ function TaskCard({
             </div>
             <span className="text-xs text-slate-200/75">{expanded ? "Свернуть" : "Открыть"}</span>
           </button>
-          {visibleChecklistItems.length > 0 ? (
-            <div className="mt-2 space-y-1.5">
-              {visibleChecklistItems.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex items-start gap-2 rounded-lg bg-white/10 px-2 py-1.5 text-xs text-slate-100/90"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <RoundCheckbox
-                    checked={item.isDone}
-                    onChange={(checked) => onToggleChecklistItem(item.id, checked)}
-                    className="mt-0.5 h-4 w-4 text-[9px]"
-                  />
-                  <span className={item.isDone ? "line-through opacity-55" : ""}>{item.title}</span>
-                </label>
-              ))}
-              {!expanded && task.checklistItems.length > visibleChecklistItems.length ? (
-                <button
-                  type="button"
-                  onClick={() => onToggleExpanded(task.id)}
-                  className="w-full rounded-lg px-2 py-1 text-left text-xs font-semibold text-slate-100/75 hover:bg-white/10 hover:text-white"
-                >
-                  Еще {task.checklistItems.length - visibleChecklistItems.length}
-                </button>
+          {expanded ? (
+            <>
+              {visibleChecklistItems.length > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {visibleChecklistItems.map((item) => (
+                    <label
+                      key={item.id}
+                      className="flex items-start gap-2 rounded-lg bg-white/10 px-2 py-1.5 text-xs text-slate-100/90"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <RoundCheckbox
+                        checked={item.isDone}
+                        onChange={(checked) => onToggleChecklistItem(item.id, checked)}
+                        className="mt-0.5 h-4 w-4 text-[9px]"
+                      />
+                      <span className={item.isDone ? "line-through opacity-55" : ""}>{item.title}</span>
+                    </label>
+                  ))}
+                </div>
               ) : null}
-            </div>
+              <div className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
+                <span className="text-sm font-semibold text-slate-100/70">+</span>
+                <input
+                  value={newChecklistTitle}
+                  onChange={(event) => setNewChecklistTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") addChecklistItem();
+                    if (event.key === "Escape") setNewChecklistTitle("");
+                  }}
+                  onBlur={() => {
+                    if (newChecklistTitle.trim()) addChecklistItem();
+                  }}
+                  placeholder="Подзадача"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
+                />
+              </div>
+            </>
           ) : null}
-          <div className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 px-2 py-1.5">
-            <span className="text-sm font-semibold text-slate-100/70">+</span>
-            <input
-              value={newChecklistTitle}
-              onChange={(event) => setNewChecklistTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") addChecklistItem();
-                if (event.key === "Escape") setNewChecklistTitle("");
-              }}
-              onBlur={() => {
-                if (newChecklistTitle.trim()) addChecklistItem();
-              }}
-              placeholder="Подзадача"
-              className="min-w-0 flex-1 bg-transparent text-xs text-slate-100 outline-none placeholder:text-slate-100/45"
-            />
-          </div>
         </div>
       ) : null}
       {task.checklistTotal === 0 ? (
@@ -805,8 +799,6 @@ function TasksPageContent() {
   const [meta, setMeta] = React.useState<TasksMeta | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [newColumnTitle, setNewColumnTitle] = React.useState("");
-  const [newColumnColor, setNewColumnColor] = React.useState(COLUMN_COLORS[0]!);
   const [editor, setEditor] = React.useState<{ task: BoardTask | null; columnId: string | null } | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
@@ -896,17 +888,16 @@ function TasksPageContent() {
   }, [boardId, loadBoard]);
 
   async function addColumn() {
-    if (!board || !newColumnTitle.trim()) return;
+    if (!board) return;
     setError(null);
     try {
       await readApi(
         await fetch(`/api/tasks/boards/${board.id}/columns`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: newColumnTitle, color: newColumnColor }),
+          body: JSON.stringify({ title: "Новая колонка", color: COLUMN_COLORS[0] }),
         }),
       );
-      setNewColumnTitle("");
       await loadBoard(board.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось добавить колонку");
@@ -1087,42 +1078,23 @@ function TasksPageContent() {
     <div className="rounded-3xl border border-violet-100 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.92))] p-4 shadow-[0_24px_70px_rgba(109,40,217,0.12)]">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
-          <select
-            value={boardId}
-            onChange={(event) => setBoardId(event.target.value)}
-            className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm outline-none focus:border-violet-300"
-          >
-            {boards.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-          <Link href="/home" className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 shadow-sm hover:bg-violet-50">
-            Дашборд
-          </Link>
+          {boards.length > 1 ? (
+            <select
+              value={boardId}
+              onChange={(event) => setBoardId(event.target.value)}
+              className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm outline-none focus:border-violet-300"
+            >
+              {boards.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <h1 className="px-1 text-sm font-semibold text-zinc-900">{board?.title ?? boards[0]?.title ?? "Рабочая доска"}</h1>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={newColumnTitle}
-            onChange={(event) => setNewColumnTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void addColumn();
-            }}
-            placeholder="Новая колонка"
-            className="w-44 rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-violet-300"
-          />
-          <select
-            value={newColumnColor}
-            onChange={(event) => setNewColumnColor(event.target.value)}
-            className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none focus:border-violet-300"
-          >
-            {COLUMN_COLORS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
           <button
             type="button"
             onClick={() => void addColumn()}

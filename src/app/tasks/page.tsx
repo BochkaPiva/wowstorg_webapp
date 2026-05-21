@@ -215,6 +215,7 @@ function ChecklistTreeSection({
   newChecklistTitle,
   onNewChecklistTitleChange,
   onToggleChecklistItem,
+  onDeleteChecklistItem,
   onAddClick,
   onSubmitNewItem,
   onCancelAdding,
@@ -224,6 +225,7 @@ function ChecklistTreeSection({
   newChecklistTitle: string;
   onNewChecklistTitleChange: (value: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onDeleteChecklistItem: (itemId: string) => void;
   onAddClick: (event: React.MouseEvent) => void;
   onSubmitNewItem: () => void;
   onCancelAdding: () => void;
@@ -291,7 +293,7 @@ function ChecklistTreeSection({
           }}
           className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}
         >
-          <div className="flex items-center gap-2 rounded-lg bg-[#323d50] px-2.5 py-2">
+          <div className="flex items-center gap-1 rounded-lg bg-[#323d50] px-2.5 py-2">
             <RoundCheckbox
               size="sm"
               checked={item.isDone}
@@ -305,6 +307,20 @@ function ChecklistTreeSection({
             >
               {item.title}
             </span>
+            <div className="group/delete -mr-0.5 flex w-8 shrink-0 items-center justify-end pl-1">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDeleteChecklistItem(item.id);
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-slate-400 opacity-0 transition-opacity duration-200 hover:bg-white/10 hover:text-rose-300 group-hover/delete:opacity-100"
+                aria-label="Удалить подзадачу"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
       ))}
@@ -353,6 +369,7 @@ function TaskChecklistPanel({
   newChecklistTitle,
   onToggleExpanded,
   onToggleChecklistItem,
+  onDeleteChecklistItem,
   onNewChecklistTitleChange,
   onAddChecklistItem,
 }: {
@@ -361,6 +378,7 @@ function TaskChecklistPanel({
   newChecklistTitle: string;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onDeleteChecklistItem: (itemId: string) => void;
   onNewChecklistTitleChange: (value: string) => void;
   onAddChecklistItem: (title: string) => void;
 }) {
@@ -433,6 +451,7 @@ function TaskChecklistPanel({
           newChecklistTitle={newChecklistTitle}
           onNewChecklistTitleChange={onNewChecklistTitleChange}
           onToggleChecklistItem={onToggleChecklistItem}
+          onDeleteChecklistItem={onDeleteChecklistItem}
           onAddClick={startAdding}
           onSubmitNewItem={submitNewItem}
           onCancelAdding={() => {
@@ -454,6 +473,7 @@ function TaskCard({
   expanded,
   onToggleExpanded,
   onToggleChecklistItem,
+  onDeleteChecklistItem,
   onDragStart,
   onDragEnd,
 }: {
@@ -465,6 +485,7 @@ function TaskCard({
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onDeleteChecklistItem: (itemId: string) => void;
   onDragStart: (taskId: string, fromColumnId: string) => void;
   onDragEnd: () => void;
 }) {
@@ -602,6 +623,7 @@ function TaskCard({
         newChecklistTitle={newChecklistTitle}
         onToggleExpanded={onToggleExpanded}
         onToggleChecklistItem={onToggleChecklistItem}
+        onDeleteChecklistItem={onDeleteChecklistItem}
         onNewChecklistTitleChange={setNewChecklistTitle}
         onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
       />
@@ -1205,6 +1227,30 @@ function TasksPageContent() {
     }
   }
 
+  async function deleteChecklistItemInline(taskId: string, itemId: string) {
+    const previousBoard = boardRef.current;
+    const isPending = itemId.startsWith("temp-checklist-");
+
+    updateTaskInBoard(taskId, (task) => {
+      const checklistItems = task.checklistItems.filter((item) => item.id !== itemId);
+      return {
+        ...task,
+        checklistItems,
+        checklistTotal: checklistItems.length,
+        checklistDone: checklistItems.filter((item) => item.isDone).length,
+      };
+    });
+
+    if (isPending) return;
+
+    try {
+      await readApi(await fetch(`/api/tasks/checklist/${itemId}`, { method: "DELETE" }));
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
+    }
+  }
+
   function updateTaskInBoard(taskId: string, updater: (task: BoardTask) => BoardTask) {
     updateBoard((current) =>
       current
@@ -1481,6 +1527,7 @@ function TasksPageContent() {
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
                     onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(task.id, itemId, { isDone })}
+                    onDeleteChecklistItem={(itemId) => void deleteChecklistItemInline(task.id, itemId)}
                     onDragStart={(taskId, fromColumnId) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);

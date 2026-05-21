@@ -271,6 +271,9 @@ export function AppShell({
                   <NavLink href="/projects" onClick={() => setNavOpen(false)}>
                     Проекты
                   </NavLink>
+                  <NavLink href="/tasks" onClick={() => setNavOpen(false)}>
+                    Задачи
+                  </NavLink>
                   <NavLink
                     href="/warehouse/queue"
                     onClick={() => setNavOpen(false)}

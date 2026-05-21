@@ -809,6 +809,113 @@ type WowstorgDashboardData = {
   }>;
 };
 
+type MyWorkTask = {
+  id: string;
+  title: string;
+  priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+  dueDate: string | null;
+  column: { title: string; color: string | null };
+  board: { id: string; title: string };
+  project: { id: string; title: string } | null;
+  checklistDone: number;
+  checklistTotal: number;
+};
+
+function priorityRu(priority: MyWorkTask["priority"]) {
+  if (priority === "URGENT") return "Срочно";
+  if (priority === "HIGH") return "Важно";
+  if (priority === "LOW") return "Низкий";
+  return "Обычный";
+}
+
+function MyTasksBlock({ isWowstorg }: { isWowstorg: boolean }) {
+  const [tasks, setTasks] = React.useState<MyWorkTask[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isWowstorg) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void fetch("/api/tasks/my", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json: { tasks?: MyWorkTask[]; error?: { message?: string } }) => {
+        if (cancelled) return;
+        setTasks(json.tasks ?? []);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки задач");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isWowstorg]);
+
+  return (
+    <div className={DASH_CARD}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">Мои задачи</div>
+          <div className="mt-1 text-xs text-zinc-600">Назначенные на вас задачи без завершённых</div>
+        </div>
+        <Link href="/tasks" className={LINK_SUBTLE}>
+          Открыть доску
+        </Link>
+      </div>
+
+      {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка…</div> : null}
+      {error ? <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+
+      {!loading && !error ? (
+        tasks.length > 0 ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {tasks.slice(0, 8).map((task) => (
+              <Link
+                key={task.id}
+                href="/tasks"
+                className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{task.title}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-600">
+                      <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.column.title}</span>
+                      {task.dueDate ? (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-violet-800">
+                          {fmtDateRu(task.dueDate)}
+                        </span>
+                      ) : null}
+                      {task.priority !== "NORMAL" ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">
+                          {priorityRu(task.priority)}
+                        </span>
+                      ) : null}
+                    </div>
+                    {task.project ? <div className="mt-2 truncate text-xs text-zinc-500">{task.project.title}</div> : null}
+                  </div>
+                  {task.checklistTotal > 0 ? (
+                    <div className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+                      {task.checklistDone}/{task.checklistTotal}
+                    </div>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            На вас пока нет открытых задач.
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function ProjectAttentionBlock({
   items,
   onSnoozed,
@@ -950,6 +1057,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
   return (
     <div className="space-y-3">
+      <MyTasksBlock isWowstorg={isWowstorg} />
       <ProjectAttentionBlock
         items={data?.projectAttention ?? []}
         onSnoozed={dismissProjectAttention}
@@ -1268,6 +1376,11 @@ export default function HomeDashboardPage() {
                 href="/projects"
                 title="Управление проектами"
                 description="Активные и архивные проекты, создание карточек, сметы, файлы и заявки."
+              />
+              <CardLink
+                href="/tasks"
+                title="Задачи"
+                description="Доска команды: исполнители, дедлайны, подзадачи и проектные поручения."
               />
               <CardLink
                 href="/warehouse/queue"

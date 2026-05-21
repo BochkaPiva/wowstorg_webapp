@@ -174,39 +174,51 @@ enum InventoryAuditSeverity {
   FAILED
 }
 
+enum WorkTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 model User {
-  id             String   @id @default(cuid())
-  login          String   @unique
-  passwordHash   String
+  id              String    @id @default(cuid())
+  login           String    @unique
+  passwordHash    String
   /// Требуется установить личный пароль через flow "Первая авторизация".
-  mustSetPassword Boolean @default(false)
+  mustSetPassword Boolean   @default(false)
   /// Когда пользователь впервые установил личный пароль.
   passwordSetAt   DateTime?
-  role           Role
-  displayName    String   /// ФИО
-  telegramChatId String?  /// ID чата в Telegram для уведомлений
-  isActive       Boolean  @default(true)
+  role            Role
+  displayName     String /// ФИО
+  telegramChatId  String? /// ID чата в Telegram для уведомлений
+  isActive        Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ordersCreated   Order[]   @relation("order_created_by")
-  ordersGreenwich Order[]   @relation("order_greenwich_user")
-  greenwichRating GreenwichRating?
-  sessions        Session[]
-  achievementProgress AchievementProgress[]
-  achievementUnlocks  AchievementUnlock[]
-  towerStats          UserTowerStats?
-  inAppNotifications  InAppNotification[]
-  browserPushSubscriptions BrowserPushSubscription[]
-  inventoryAuditRuns  InventoryAuditRun[]
-  projectsOwned                 Project[]                   @relation("project_owner")
-  projectActivityLogs           ProjectActivityLog[]
-  projectCommunicationEntries   ProjectCommunicationEntry[]
-  projectFilesUploaded          ProjectFile[]
+  ordersCreated                  Order[]                     @relation("order_created_by")
+  ordersGreenwich                Order[]                     @relation("order_greenwich_user")
+  greenwichRating                GreenwichRating?
+  sessions                       Session[]
+  achievementProgress            AchievementProgress[]
+  achievementUnlocks             AchievementUnlock[]
+  towerStats                     UserTowerStats?
+  inAppNotifications             InAppNotification[]
+  browserPushSubscriptions       BrowserPushSubscription[]
+  inventoryAuditRuns             InventoryAuditRun[]
+  projectsOwned                  Project[]                   @relation("project_owner")
+  projectActivityLogs            ProjectActivityLog[]
+  projectCommunicationEntries    ProjectCommunicationEntry[]
+  projectFilesUploaded           ProjectFile[]
   projectEstimateVersionsCreated ProjectEstimateVersion[]
-  projectDraftOrdersCreated     ProjectDraftOrder[]         @relation("project_draft_order_created_by")
-  projectDraftOrdersUpdated     ProjectDraftOrder[]         @relation("project_draft_order_updated_by")
+  projectDraftOrdersCreated      ProjectDraftOrder[]         @relation("project_draft_order_created_by")
+  projectDraftOrdersUpdated      ProjectDraftOrder[]         @relation("project_draft_order_updated_by")
+  taskBoardsCreated              WorkTaskBoard[]             @relation("task_board_created_by")
+  taskColumnsCreated             WorkTaskColumn[]            @relation("task_column_created_by")
+  tasksCreated                   WorkTask[]                  @relation("task_created_by")
+  tasksAssigned                  WorkTask[]                  @relation("task_assigned_to")
+  taskChecklistItemsCreated      WorkTaskChecklistItem[]     @relation("task_checklist_created_by")
 
   @@index([role, isActive])
 }
@@ -215,11 +227,11 @@ model User {
 model GreenwichRating {
   userId String @id
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  score     Int      @default(100)
-  manualLocked Boolean @default(false)
-  updatedAt DateTime @updatedAt
+  score        Int      @default(100)
+  manualLocked Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
 }
 
 model Session {
@@ -267,7 +279,7 @@ model Customer {
 
 /// Проект мероприятия (WOWSTORG): заявки реквизита, смета, контакты — в следующих фазах.
 model Project {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   title      String
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -279,7 +291,7 @@ model Project {
   ball   ProjectBall   @default(CLIENT)
 
   /// Не null — проект в архиве (только просмотр в UI, без правок).
-  archivedAt DateTime?
+  archivedAt  DateTime?
   /// Комментарий при переводе в архив (виден в списке архива).
   archiveNote String?
 
@@ -293,15 +305,16 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders        Order[]
-  activityLogs  ProjectActivityLog[]
-  contacts      ProjectContact[]
-  draftOrders   ProjectDraftOrder[]
+  orders                Order[]
+  activityLogs          ProjectActivityLog[]
+  contacts              ProjectContact[]
+  draftOrders           ProjectDraftOrder[]
   notificationCooldowns ProjectNotificationCooldown[]
-  folders       ProjectFolder[]
-  projectFiles  ProjectFile[]
-  estimateVersions ProjectEstimateVersion[]
-  scheduleDays  ProjectScheduleDay[]
+  folders               ProjectFolder[]
+  projectFiles          ProjectFile[]
+  estimateVersions      ProjectEstimateVersion[]
+  scheduleDays          ProjectScheduleDay[]
+  tasks                 WorkTask[]
 
   @@index([customerId])
   @@index([ownerUserId])
@@ -310,9 +323,108 @@ model Project {
   @@index([updatedAt])
 }
 
+model WorkTaskBoard {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  isDefault   Boolean   @default(false)
+  archivedAt  DateTime?
+
+  createdById String
+  createdBy   User   @relation("task_board_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  columns WorkTaskColumn[]
+  tasks   WorkTask[]
+
+  @@index([archivedAt])
+  @@index([isDefault])
+}
+
+model WorkTaskColumn {
+  id      String        @id @default(cuid())
+  boardId String
+  board   WorkTaskBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  title     String
+  color     String?
+  sortOrder Int     @default(0)
+  isDone    Boolean @default(false)
+
+  createdById String
+  createdBy   User   @relation("task_column_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks WorkTask[]
+
+  @@index([boardId, sortOrder])
+}
+
+model WorkTask {
+  id       String         @id @default(cuid())
+  boardId  String
+  board    WorkTaskBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  columnId String
+  column   WorkTaskColumn @relation(fields: [columnId], references: [id], onDelete: Restrict)
+
+  title       String
+  description String?
+  priority    WorkTaskPriority @default(NORMAL)
+  color       String?
+  sortOrder   Int              @default(0)
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  createdById String
+  createdBy   User   @relation("task_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  assigneeUserId String?
+  assignee       User?   @relation("task_assigned_to", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checklistItems WorkTaskChecklistItem[]
+
+  @@index([boardId, columnId, sortOrder])
+  @@index([assigneeUserId, dueDate])
+  @@index([projectId])
+  @@index([orderId])
+  @@index([completedAt])
+}
+
+model WorkTaskChecklistItem {
+  id     String   @id @default(cuid())
+  taskId String
+  task   WorkTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  title       String
+  isDone      Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  completedAt DateTime?
+
+  createdById String
+  createdBy   User   @relation("task_checklist_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId, sortOrder])
+}
+
 /// Append-only журнал событий по проекту (склад).
 model ProjectActivityLog {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -354,9 +466,9 @@ model ProjectContact {
 
 /// Запись переговоров с контактом (append-only в API).
 model ProjectCommunicationEntry {
-  id           String         @id @default(cuid())
-  contactId    String
-  contact      ProjectContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id        String         @id @default(cuid())
+  contactId String
+  contact   ProjectContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   authorUserId String
   author       User   @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
@@ -400,7 +512,7 @@ model ProjectDraftOrder {
   createdBy   User   @relation("project_draft_order_created_by", fields: [createdById], references: [id], onDelete: Restrict)
 
   updatedById String?
-  updatedBy   User?  @relation("project_draft_order_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  updatedBy   User?   @relation("project_draft_order_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -413,20 +525,20 @@ model ProjectDraftOrder {
 }
 
 model ProjectDraftOrderLine {
-  id           String @id @default(cuid())
+  id           String            @id @default(cuid())
   draftOrderId String
   draftOrder   ProjectDraftOrder @relation(fields: [draftOrderId], references: [id], onDelete: Cascade)
 
-  sortOrder          Int     @default(0)
-  itemId             String
-  item               Item    @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  itemNameSnapshot   String
-  qty                Int
-  plannedDays        Int     @default(1)
-  comment            String?
-  periodGroup        String?
-  pricePerDaySnapshot Decimal? @db.Decimal(14, 2)
-  lastAvailableQty   Int?
+  sortOrder            Int      @default(0)
+  itemId               String
+  item                 Item     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemNameSnapshot     String
+  qty                  Int
+  plannedDays          Int      @default(1)
+  comment              String?
+  periodGroup          String?
+  pricePerDaySnapshot  Decimal? @db.Decimal(14, 2)
+  lastAvailableQty     Int?
   lastAvailabilityNote String?
 
   createdAt DateTime @default(now())
@@ -438,9 +550,9 @@ model ProjectDraftOrderLine {
 
 /// Папка в файловой зоне проекта (иерархия, корень = parentFolderId null).
 model ProjectFolder {
-  id             String  @id @default(cuid())
-  projectId      String
-  project        Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   parentFolderId String?
   parent         ProjectFolder?  @relation("ProjectFolderTree", fields: [parentFolderId], references: [id], onDelete: Restrict)
@@ -462,9 +574,9 @@ model ProjectFolder {
 
 /// Файл в Storage; ключ в бакете не совпадает с id (см. `storageKey`).
 model ProjectFile {
-  id           String @id @default(cuid())
-  projectId    String
-  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   folderId String
   folder   ProjectFolder @relation(fields: [folderId], references: [id], onDelete: Restrict)
@@ -485,9 +597,9 @@ model ProjectFile {
 
 /// Версия сметы проекта (конструктор); одна версия может быть явно назначена основной.
 model ProjectEstimateVersion {
-  id            String  @id @default(cuid())
-  projectId     String
-  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   versionNumber Int
   note          String?
@@ -507,17 +619,17 @@ model ProjectEstimateVersion {
 }
 
 model ProjectEstimateSection {
-  id        String @id @default(cuid())
+  id        String                 @id @default(cuid())
   versionId String
   version   ProjectEstimateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
-  sortOrder Int                     @default(0)
+  sortOrder Int                        @default(0)
   title     String
   kind      ProjectEstimateSectionKind
 
   /// Для kind = REQUISITE — одна заявка на раздел (блок реквизита).
   linkedOrderId String?
-  linkedOrder   Order? @relation(fields: [linkedOrderId], references: [id], onDelete: SetNull)
+  linkedOrder   Order?  @relation(fields: [linkedOrderId], references: [id], onDelete: SetNull)
 
   /// Локальные поля строк реквизита (ед. изм. и т.п.), ключ = id строки read-model (orderLineId или service key).
   lineLocalExtras Json?
@@ -530,24 +642,24 @@ model ProjectEstimateSection {
 
 /// Строка сметы (позиция клиента / внутренняя; при копии из заявки — orderLineId).
 model ProjectEstimateLine {
-  id        String @id @default(cuid())
+  id        String                 @id @default(cuid())
   sectionId String
   section   ProjectEstimateSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
-  position   Int    @default(0)
-  lineNumber Int    @default(0)
-  name       String
-  description String?
+  position     Int      @default(0)
+  lineNumber   Int      @default(0)
+  name         String
+  description  String?
   /// Произвольная метка типа строки (напр. RENTAL, SERVICE).
-  lineType      String  @default("OTHER")
-  costClient    Decimal? @db.Decimal(14, 2)
-  costInternal  Decimal? @db.Decimal(14, 2)
+  lineType     String   @default("OTHER")
+  costClient   Decimal? @db.Decimal(14, 2)
+  costInternal Decimal? @db.Decimal(14, 2)
 
   /// Ед. измерения (пусто/null — в UI подставляется «шт»).
-  unit             String?
-  qty              Decimal? @db.Decimal(14, 4)
+  unit            String?
+  qty             Decimal? @db.Decimal(14, 4)
   /// Клиентская цена за единицу (для LOCAL/CONTRACTOR).
-  unitPriceClient  Decimal? @db.Decimal(14, 2)
+  unitPriceClient Decimal? @db.Decimal(14, 2)
 
   paymentMethod        String? @db.VarChar(40)
   paymentStatus        String? @db.VarChar(120)
@@ -558,7 +670,7 @@ model ProjectEstimateLine {
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
   itemId String?
-  item   Item? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  item   Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([sectionId, position])
   @@index([orderLineId])
@@ -580,9 +692,9 @@ model ProjectScheduleDay {
 
 /// Слот тайминга: интервал + описание сценария.
 model ProjectScheduleSlot {
-  id          String @id @default(cuid())
-  dayId       String
-  day         ProjectScheduleDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  id    String             @id @default(cuid())
+  dayId String
+  day   ProjectScheduleDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
 
   sortOrder    Int    @default(0)
   intervalText String
@@ -611,7 +723,7 @@ model Item {
   isActive    Boolean  @default(true)
 
   /// Полная цена/сутки. Для Greenwich применяется коэффициент 0.76 на уровне заказа/сметы.
-  pricePerDay Decimal @db.Decimal(12, 2)
+  pricePerDay          Decimal  @db.Decimal(12, 2)
   /// Закупочная цена за 1 единицу (опционально, для расчета рентабельности).
   purchasePricePerUnit Decimal? @db.Decimal(12, 2)
 
@@ -630,13 +742,13 @@ model Item {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  categories  ItemCategory[]
-  collections CollectionItem[]
-  kitLines    KitLine[]
-  orderLines  OrderLine[]
-  lossRecords LossRecord[]
-  inventoryAuditResults InventoryAuditItemResult[]
-  projectEstimateLines ProjectEstimateLine[]
+  categories             ItemCategory[]
+  collections            CollectionItem[]
+  kitLines               KitLine[]
+  orderLines             OrderLine[]
+  lossRecords            LossRecord[]
+  inventoryAuditResults  InventoryAuditItemResult[]
+  projectEstimateLines   ProjectEstimateLine[]
   projectDraftOrderLines ProjectDraftOrderLine[]
 
   relatedFrom ItemRelatedItem[] @relation("ItemRelationsFrom")
@@ -683,7 +795,7 @@ model Collection {
 model CollectionItem {
   collectionId String
   itemId       String
-  position     Int @default(0)
+  position     Int    @default(0)
 
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   item       Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
@@ -818,11 +930,12 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  lines        OrderLine[]
-  returnSplits ReturnSplit[]
-  incidents    Incident[]
-  lossRecords  LossRecord[]
+  lines                   OrderLine[]
+  returnSplits            ReturnSplit[]
+  incidents               Incident[]
+  lossRecords             LossRecord[]
   projectEstimateSections ProjectEstimateSection[]
+  tasks                   WorkTask[]
 
   @@index([status, readyByDate])
   @@index([source, status])
@@ -860,9 +973,9 @@ model OrderLine {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  returnSplits ReturnSplit[]
-  incidents    Incident[]
-  lossRecords  LossRecord[]
+  returnSplits         ReturnSplit[]
+  incidents            Incident[]
+  lossRecords          LossRecord[]
   projectEstimateLines ProjectEstimateLine[]
 
   @@index([orderId, position])
@@ -898,15 +1011,15 @@ model Incident {
   orderLineId String
   orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
 
-  condition Condition
-  qty       Int
-  repairedQty Int @default(0)
-  utilizedQty Int @default(0)
-  status IncidentStatus @default(OPEN)
-  comment   String?
+  condition   Condition
+  qty         Int
+  repairedQty Int            @default(0)
+  utilizedQty Int            @default(0)
+  status      IncidentStatus @default(OPEN)
+  comment     String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   resolvedAt DateTime?
 
   @@index([status, condition])
@@ -926,11 +1039,11 @@ model LossRecord {
   orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
-  qty   Int
-  foundQty Int @default(0)
-  writtenOffQty Int @default(0)
-  notes String?
-  resolvedAt DateTime?
+  qty           Int
+  foundQty      Int       @default(0)
+  writtenOffQty Int       @default(0)
+  notes         String?
+  resolvedAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -940,12 +1053,12 @@ model LossRecord {
 }
 
 model AchievementProgress {
-  id    String @id @default(cuid())
+  id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   code  AchievementCode
-  value Int @default(0)
+  value Int              @default(0)
   level AchievementLevel @default(NONE)
 
   createdAt DateTime @default(now())
@@ -956,13 +1069,13 @@ model AchievementProgress {
 }
 
 model AchievementUnlock {
-  id    String @id @default(cuid())
+  id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   code       AchievementCode
   level      AchievementLevel
-  unlockedAt DateTime @default(now())
+  unlockedAt DateTime         @default(now())
 
   @@unique([userId, code, level])
   @@index([userId, unlockedAt])
@@ -984,11 +1097,11 @@ model InAppNotification {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type InAppNotificationType
-  title String
-  body  String
+  type        InAppNotificationType
+  title       String
+  body        String
   payloadJson Json?
-  isRead Boolean @default(false)
+  isRead      Boolean               @default(false)
 
   createdAt DateTime @default(now())
 
@@ -996,9 +1109,9 @@ model InAppNotification {
 }
 
 model BrowserPushSubscription {
-  id       String @id @default(cuid())
-  userId   String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   endpoint String @unique
   p256dh   String
@@ -1016,16 +1129,16 @@ model BrowserPushSubscription {
 }
 
 model InventoryAuditRun {
-  id        String @id @default(cuid())
-  kind      InventoryAuditRunKind
-  severity  InventoryAuditSeverity
-  startedAt DateTime @default(now())
-  finishedAt DateTime?
+  id          String                 @id @default(cuid())
+  kind        InventoryAuditRunKind
+  severity    InventoryAuditSeverity
+  startedAt   DateTime               @default(now())
+  finishedAt  DateTime?
   summaryJson Json?
-  errorText String?
+  errorText   String?
 
   createdByUserId String?
-  createdByUser   User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   itemResults InventoryAuditItemResult[]
 
@@ -1034,17 +1147,17 @@ model InventoryAuditRun {
 }
 
 model InventoryAuditItemResult {
-  id      String @id @default(cuid())
-  runId   String
-  run     InventoryAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id    String            @id @default(cuid())
+  runId String
+  run   InventoryAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  itemId  String
-  item    Item @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
-  severity InventoryAuditSeverity
-  expectedJson Json
-  actualJson   Json
-  deltaJson    Json
+  severity        InventoryAuditSeverity
+  expectedJson    Json
+  actualJson      Json
+  deltaJson       Json
   explanationJson Json?
 
   @@index([runId, severity])

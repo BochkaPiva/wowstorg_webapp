@@ -1,0 +1,861 @@
+"use client";
+
+import Link from "next/link";
+import React from "react";
+
+import { AppShell } from "@/app/_ui/AppShell";
+import { useAuth } from "@/app/providers";
+
+type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+
+type BoardListItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  isDefault: boolean;
+  _count: { tasks: number; columns: number };
+};
+
+type TaskChecklistItem = {
+  id: string;
+  title: string;
+  isDone: boolean;
+  sortOrder: number;
+};
+
+type BoardTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  priority: Priority;
+  color: string | null;
+  sortOrder: number;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  assignee: null | { id: string; displayName: string };
+  project: null | { id: string; title: string };
+  order: null | { id: string; eventName: string | null; customer: { name: string } };
+  checklistItems: TaskChecklistItem[];
+  checklistDone: number;
+  checklistTotal: number;
+};
+
+type BoardColumn = {
+  id: string;
+  title: string;
+  color: string | null;
+  sortOrder: number;
+  isDone: boolean;
+  tasks: BoardTask[];
+};
+
+type BoardDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  isDefault: boolean;
+  columns: BoardColumn[];
+};
+
+type TasksMeta = {
+  users: Array<{ id: string; displayName: string }>;
+  projects: Array<{ id: string; title: string; customerName: string }>;
+  orders: Array<{ id: string; label: string; readyByDate: string }>;
+};
+
+const PRIORITY_LABEL: Record<Priority, string> = {
+  LOW: "Низкий",
+  NORMAL: "Обычный",
+  HIGH: "Важно",
+  URGENT: "Срочно",
+};
+
+const TASK_COLORS = ["#334155", "#365a83", "#6d3b7d", "#7b6b2e", "#315f2f", "#7f2f5f"];
+const COLUMN_COLORS = ["#94a3b8", "#c084fc", "#facc15", "#5eead4", "#60a5fa", "#fb7185"];
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/u)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase("ru") ?? "")
+    .join("");
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+async function readApi<T>(res: Response): Promise<T> {
+  const data = (await res.json().catch(() => null)) as T | { error?: { message?: string } } | null;
+  if (!res.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data ? data.error?.message : undefined;
+    throw new Error(message ?? `HTTP ${res.status}`);
+  }
+  return data as T;
+}
+
+function TaskCard({
+  task,
+  column,
+  onOpen,
+  onMove,
+}: {
+  task: BoardTask;
+  column: BoardColumn;
+  onOpen: (task: BoardTask) => void;
+  onMove: (taskId: string, direction: "left" | "right") => void;
+}) {
+  const progressPct =
+    task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
+  const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
+
+  return (
+    <article
+      className="group overflow-hidden rounded-lg border border-black/25 bg-slate-700 text-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+      style={{ backgroundColor: task.color ?? "#334155" }}
+    >
+      <button
+        type="button"
+        onClick={() => onOpen(task)}
+        className="block w-full px-3 py-3 text-left"
+      >
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300/80 text-xs text-slate-200">
+            {column.isDone ? "✓" : ""}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={["text-sm font-semibold leading-snug", column.isDone ? "opacity-55 line-through" : ""].join(" ")}>
+              {task.title}
+            </div>
+            {task.description ? (
+              <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-200/75">{task.description}</div>
+            ) : null}
+          </div>
+          <span className="text-slate-300 opacity-80">⋮</span>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
+          {task.project ? (
+            <span className="rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+              {task.project.title}
+            </span>
+          ) : null}
+          {task.dueDate ? (
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+              {fmtDate(task.dueDate)}
+            </span>
+          ) : null}
+          {isUrgent ? (
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+              {PRIORITY_LABEL[task.priority]}
+            </span>
+          ) : null}
+          {task.assignee ? (
+            <span className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full bg-pink-600 text-[11px] font-bold text-white">
+              {initials(task.assignee.displayName)}
+            </span>
+          ) : null}
+        </div>
+      </button>
+
+      {task.checklistTotal > 0 ? (
+        <div className="border-t border-black/15 bg-black/12 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-900/30">
+              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${progressPct}%` }} />
+            </div>
+            <div className="w-10 text-right text-xs text-slate-200/80">
+              {task.checklistDone}/{task.checklistTotal}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex border-t border-black/15 bg-black/10 text-xs text-slate-200/70">
+        <button
+          type="button"
+          onClick={() => onMove(task.id, "left")}
+          className="flex-1 px-3 py-1.5 transition hover:bg-white/10"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          onClick={() => onMove(task.id, "right")}
+          className="flex-1 px-3 py-1.5 transition hover:bg-white/10"
+        >
+          →
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function TaskEditor({
+  task,
+  columnId,
+  columns,
+  meta,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  task: BoardTask | null;
+  columnId: string | null;
+  columns: BoardColumn[];
+  meta: TasksMeta | null;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const isNew = task == null;
+  const [title, setTitle] = React.useState(task?.title ?? "");
+  const [description, setDescription] = React.useState(task?.description ?? "");
+  const [assigneeUserId, setAssigneeUserId] = React.useState(task?.assignee?.id ?? "");
+  const [dueDate, setDueDate] = React.useState(task?.dueDate ?? "");
+  const [priority, setPriority] = React.useState<Priority>(task?.priority ?? "NORMAL");
+  const [color, setColor] = React.useState(task?.color ?? TASK_COLORS[0]!);
+  const [projectId, setProjectId] = React.useState(task?.project?.id ?? "");
+  const [orderId, setOrderId] = React.useState(task?.order?.id ?? "");
+  const [targetColumnId, setTargetColumnId] = React.useState(columnId ?? columns[0]?.id ?? "");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
+
+  React.useEffect(() => {
+    setTitle(task?.title ?? "");
+    setDescription(task?.description ?? "");
+    setAssigneeUserId(task?.assignee?.id ?? "");
+    setDueDate(task?.dueDate ?? "");
+    setPriority(task?.priority ?? "NORMAL");
+    setColor(task?.color ?? TASK_COLORS[0]!);
+    setProjectId(task?.project?.id ?? "");
+    setOrderId(task?.order?.id ?? "");
+    setTargetColumnId(columnId ?? columns[0]?.id ?? "");
+    setError(null);
+    setNewChecklistTitle("");
+  }, [columnId, columns, task]);
+
+  async function save() {
+    if (!title.trim()) {
+      setError("Название задачи обязательно");
+      return;
+    }
+    if (!targetColumnId) {
+      setError("Нет колонки для задачи");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      const body = {
+        title,
+        description: description || null,
+        assigneeUserId: assigneeUserId || null,
+        dueDate: dueDate || null,
+        priority,
+        color,
+        projectId: projectId || null,
+        orderId: orderId || null,
+        columnId: targetColumnId,
+      };
+      const res = await fetch(isNew ? `/api/tasks/columns/${targetColumnId}/tasks` : `/api/tasks/tasks/${task.id}`, {
+        method: isNew ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await readApi(res);
+      onSaved();
+      if (isNew) onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!task) return;
+    if (!window.confirm("Удалить задачу?")) return;
+    setBusy(true);
+    try {
+      await readApi(await fetch(`/api/tasks/tasks/${task.id}`, { method: "DELETE" }));
+      onDeleted();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addChecklistItem() {
+    if (!task || !newChecklistTitle.trim()) return;
+    setBusy(true);
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${task.id}/checklist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: newChecklistTitle }),
+        }),
+      );
+      setNewChecklistTitle("");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patchChecklistItem(itemId: string, body: object) {
+    setBusy(true);
+    try {
+      await readApi(
+        await fetch(`/api/tasks/checklist/${itemId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteChecklistItem(itemId: string) {
+    setBusy(true);
+    try {
+      await readApi(await fetch(`/api/tasks/checklist/${itemId}`, { method: "DELETE" }));
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-30">
+      <button className="absolute inset-0 bg-black/45" onClick={onClose} aria-label="Закрыть" />
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-slate-950 text-slate-100 shadow-2xl">
+        <div className="border-b border-white/10 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-lg font-bold">{isNew ? "Новая задача" : "Задача"}</div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/10"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {error ? <div className="rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Название</span>
+            <textarea
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              rows={3}
+              className="mt-1 w-full resize-none rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-base font-semibold text-slate-100 outline-none focus:border-blue-400"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Описание</span>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={5}
+              className="mt-1 w-full resize-y rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+            />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Колонка</span>
+              <select
+                value={targetColumnId}
+                onChange={(event) => setTargetColumnId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              >
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Исполнитель</span>
+              <select
+                value={assigneeUserId}
+                onChange={(event) => setAssigneeUserId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              >
+                <option value="">Не назначен</option>
+                {meta?.users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Дедлайн</span>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Приоритет</span>
+              <select
+                value={priority}
+                onChange={(event) => setPriority(event.target.value as Priority)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              >
+                {(Object.keys(PRIORITY_LABEL) as Priority[]).map((key) => (
+                  <option key={key} value={key}>
+                    {PRIORITY_LABEL[key]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Цвет карточки</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {TASK_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={[
+                    "h-8 w-8 rounded-full border transition",
+                    color === c ? "border-white ring-2 ring-blue-300" : "border-white/20",
+                  ].join(" ")}
+                  style={{ backgroundColor: c }}
+                  aria-label={c}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Проект</span>
+              <select
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              >
+                <option value="">Без проекта</option>
+                {meta?.projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title} · {project.customerName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Заявка</span>
+              <select
+                value={orderId}
+                onChange={(event) => setOrderId(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+              >
+                <option value="">Без заявки</option>
+                {meta?.orders.map((order) => (
+                  <option key={order.id} value={order.id}>
+                    {fmtDate(order.readyByDate)} · {order.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {!isNew ? (
+            <section className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-bold">Подзадачи</div>
+                <div className="text-xs text-slate-400">
+                  {task.checklistDone}/{task.checklistTotal}
+                </div>
+              </div>
+              <div className="space-y-2">
+                {task.checklistItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 rounded-lg bg-slate-800 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      checked={item.isDone}
+                      onChange={(event) => void patchChecklistItem(item.id, { isDone: event.target.checked })}
+                      className="h-4 w-4"
+                    />
+                    <input
+                      value={item.title}
+                      onChange={(event) => void patchChecklistItem(item.id, { title: event.target.value })}
+                      className={[
+                        "min-w-0 flex-1 bg-transparent text-sm outline-none",
+                        item.isDone ? "text-slate-500 line-through" : "text-slate-100",
+                      ].join(" ")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void deleteChecklistItem(item.id)}
+                      className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-white/10 hover:text-slate-100"
+                    >
+                      удалить
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={newChecklistTitle}
+                  onChange={(event) => setNewChecklistTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void addChecklistItem();
+                  }}
+                  placeholder="Новая подзадача"
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => void addChecklistItem()}
+                  className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400"
+                >
+                  +
+                </button>
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-4">
+          <div>
+            {!isNew ? (
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={busy}
+                className="rounded-lg border border-rose-400/30 px-3 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+              >
+                Удалить
+              </button>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy}
+            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-950/30 hover:bg-blue-400 disabled:cursor-wait disabled:opacity-60"
+          >
+            {busy ? "Сохраняю..." : "Сохранить"}
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function TasksPageContent() {
+  const { state } = useAuth();
+  const [boards, setBoards] = React.useState<BoardListItem[]>([]);
+  const [boardId, setBoardId] = React.useState("");
+  const [board, setBoard] = React.useState<BoardDetail | null>(null);
+  const [meta, setMeta] = React.useState<TasksMeta | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [newColumnTitle, setNewColumnTitle] = React.useState("");
+  const [newColumnColor, setNewColumnColor] = React.useState(COLUMN_COLORS[0]!);
+  const [editor, setEditor] = React.useState<{ task: BoardTask | null; columnId: string | null } | null>(null);
+  const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
+
+  const loadBoard = React.useCallback(async (id: string) => {
+    if (!id) return;
+    const data = await readApi<{ board: BoardDetail }>(await fetch(`/api/tasks/boards/${id}`, { cache: "no-store" }));
+    setBoard(data.board);
+  }, []);
+
+  const refresh = React.useCallback(async () => {
+    if (!isWowstorg) return;
+    setError(null);
+    const data = await readApi<{ boards: BoardListItem[] }>(await fetch("/api/tasks/boards", { cache: "no-store" }));
+    setBoards(data.boards);
+    const nextBoardId = boardId || data.boards[0]?.id || "";
+    setBoardId(nextBoardId);
+    if (nextBoardId) await loadBoard(nextBoardId);
+  }, [boardId, isWowstorg, loadBoard]);
+
+  React.useEffect(() => {
+    if (!isWowstorg) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      fetch("/api/tasks/boards", { cache: "no-store" }).then((res) => readApi<{ boards: BoardListItem[] }>(res)),
+      fetch("/api/tasks/meta", { cache: "no-store" }).then((res) => readApi<TasksMeta>(res)),
+    ])
+      .then(async ([boardsData, metaData]) => {
+        if (cancelled) return;
+        setBoards(boardsData.boards);
+        setMeta(metaData);
+        const firstBoardId = boardId || boardsData.boards[0]?.id || "";
+        setBoardId(firstBoardId);
+        if (firstBoardId) {
+          const detail = await readApi<{ board: BoardDetail }>(
+            await fetch(`/api/tasks/boards/${firstBoardId}`, { cache: "no-store" }),
+          );
+          if (!cancelled) setBoard(detail.board);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Не удалось загрузить доску");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [boardId, isWowstorg]);
+
+  React.useEffect(() => {
+    if (boardId) void loadBoard(boardId);
+  }, [boardId, loadBoard]);
+
+  async function addColumn() {
+    if (!board || !newColumnTitle.trim()) return;
+    setError(null);
+    try {
+      await readApi(
+        await fetch(`/api/tasks/boards/${board.id}/columns`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: newColumnTitle, color: newColumnColor }),
+        }),
+      );
+      setNewColumnTitle("");
+      await loadBoard(board.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось добавить колонку");
+    }
+  }
+
+  async function patchColumn(columnId: string, body: object) {
+    try {
+      await readApi(
+        await fetch(`/api/tasks/columns/${columnId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      if (board) await loadBoard(board.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось обновить колонку");
+    }
+  }
+
+  async function deleteColumn(columnId: string) {
+    if (!window.confirm("Удалить пустую колонку?")) return;
+    try {
+      await readApi(await fetch(`/api/tasks/columns/${columnId}`, { method: "DELETE" }));
+      if (board) await loadBoard(board.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить колонку");
+    }
+  }
+
+  async function moveTask(taskId: string, fromColumnId: string, direction: "left" | "right") {
+    if (!board) return;
+    const index = board.columns.findIndex((column) => column.id === fromColumnId);
+    const nextColumn = board.columns[index + (direction === "right" ? 1 : -1)];
+    if (!nextColumn) return;
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ columnId: nextColumn.id, completed: nextColumn.isDone }),
+        }),
+      );
+      await loadBoard(board.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось переместить задачу");
+    }
+  }
+
+  if (state.status === "authenticated" && !isWowstorg) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Раздел доступен только Wowstorg.</div>;
+  }
+
+  return (
+    <div className="min-h-[72vh] overflow-hidden rounded-xl bg-[#1b1f22] text-slate-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <select
+            value={boardId}
+            onChange={(event) => setBoardId(event.target.value)}
+            className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-100 outline-none"
+          >
+            {boards.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+          <Link href="/home" className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/10">
+            Дашборд
+          </Link>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={newColumnTitle}
+            onChange={(event) => setNewColumnTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void addColumn();
+            }}
+            placeholder="Новая колонка"
+            className="w-44 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-400"
+          />
+          <select
+            value={newColumnColor}
+            onChange={(event) => setNewColumnColor(event.target.value)}
+            className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none"
+          >
+            {COLUMN_COLORS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void addColumn()}
+            className="rounded-lg bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400"
+          >
+            + Колонка
+          </button>
+        </div>
+      </div>
+
+      {loading ? <div className="px-4 py-6 text-sm text-slate-300">Загрузка...</div> : null}
+      {error ? <div className="mx-4 mt-4 rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm text-rose-100">{error}</div> : null}
+
+      {!loading && board ? (
+        <div className="flex gap-3 overflow-x-auto px-4 py-4">
+          {board.columns.map((column, columnIndex) => (
+            <section key={column.id} className="flex max-h-[calc(100vh-220px)] w-[320px] shrink-0 flex-col rounded-xl bg-black/18">
+              <div className="rounded-t-xl px-3 py-3" style={{ backgroundColor: column.color ?? "#334155" }}>
+                <div className="flex items-start justify-between gap-2">
+                  <input
+                    value={column.title}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setBoard((current) =>
+                        current
+                          ? {
+                              ...current,
+                              columns: current.columns.map((col) => (col.id === column.id ? { ...col, title: next } : col)),
+                            }
+                          : current,
+                      );
+                    }}
+                    onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
+                    className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-100 outline-none placeholder:text-slate-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
+                    className="rounded-md border border-white/20 px-2 py-1 text-xs text-white/90 hover:bg-white/10"
+                    title="Колонка завершения"
+                  >
+                    {column.isDone ? "✓" : "○"}
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditor({ task: null, columnId: column.id })}
+                    className="text-sm font-medium text-blue-300 hover:text-blue-200"
+                  >
+                    + Добавить задачу
+                  </button>
+                  {column.tasks.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteColumn(column.id)}
+                      className="ml-auto text-xs text-slate-300/90 hover:text-white"
+                    >
+                      удалить
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+                {column.tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    column={column}
+                    onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}
+                    onMove={(taskId, direction) => void moveTask(taskId, column.id, direction)}
+                  />
+                ))}
+                {column.tasks.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-white/10 px-3 py-4 text-sm text-slate-500">
+                    {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      {editor ? (
+        <TaskEditor
+          task={editor.task}
+          columnId={editor.columnId}
+          columns={board?.columns ?? []}
+          meta={meta}
+          onClose={() => setEditor(null)}
+          onSaved={() => void refresh()}
+          onDeleted={() => void refresh()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <AppShell title="Задачи">
+      <TasksPageContent />
+    </AppShell>
+  );
+}

@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-05-19T15:28:46.678Z  
-> **Файлов route.ts:** 98  
+> **Сгенерировано:** 2026-05-21T19:29:55.297Z  
+> **Файлов route.ts:** 108  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -93,6 +93,16 @@
 | PATCH, DELETE | `/api/projects/[id]/schedule/slots/[slotId]` | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` |
 | GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
 | POST, GET | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
+| POST | `/api/tasks/boards/[id]/columns` | `src/app/api/tasks/boards/[id]/columns/route.ts` |
+| GET, PATCH | `/api/tasks/boards/[id]` | `src/app/api/tasks/boards/[id]/route.ts` |
+| GET, POST | `/api/tasks/boards` | `src/app/api/tasks/boards/route.ts` |
+| PATCH, DELETE | `/api/tasks/checklist/[id]` | `src/app/api/tasks/checklist/[id]/route.ts` |
+| PATCH, DELETE | `/api/tasks/columns/[id]` | `src/app/api/tasks/columns/[id]/route.ts` |
+| POST | `/api/tasks/columns/[id]/tasks` | `src/app/api/tasks/columns/[id]/tasks/route.ts` |
+| GET | `/api/tasks/meta` | `src/app/api/tasks/meta/route.ts` |
+| GET | `/api/tasks/my` | `src/app/api/tasks/my/route.ts` |
+| POST | `/api/tasks/tasks/[id]/checklist` | `src/app/api/tasks/tasks/[id]/checklist/route.ts` |
+| PATCH, DELETE | `/api/tasks/tasks/[id]` | `src/app/api/tasks/tasks/[id]/route.ts` |
 | POST | `/api/telegram/webhook` | `src/app/api/telegram/webhook/route.ts` |
 | GET | `/api/users/greenwich` | `src/app/api/users/greenwich/route.ts` |
 | GET | `/api/warehouse/archive` | `src/app/api/warehouse/archive/route.ts` |

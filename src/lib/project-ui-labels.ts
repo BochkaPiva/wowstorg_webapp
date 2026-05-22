@@ -90,13 +90,6 @@ export function projectStatusPickerLabel(status: ProjectStatus): string {
   return PROJECT_STATUS_PICKER_LABEL[status] ?? PROJECT_STATUS_LABEL[status];
 }
 
-export function projectStatusDisplayLabel(status: ProjectStatus): string {
-  const short = PROJECT_STATUS_PICKER_LABEL[status];
-  const full = PROJECT_STATUS_LABEL[status];
-  if (!short || short === full) return full;
-  return `${short} · ${full}`;
-}
-
 export const PROJECT_BALL_LABEL: Record<ProjectBall, string> = {
   CLIENT: "Клиент",
   WOWSTORG: "Wowstorg",

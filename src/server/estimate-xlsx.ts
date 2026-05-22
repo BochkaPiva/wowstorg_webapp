@@ -119,15 +119,15 @@ async function addLogo(ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) {
     const buffer = await fs.readFile(LOGO_PATH);
     const imageId = wb.addImage({ base64: buffer.toString("base64"), extension: "png" });
     ws.addImage(imageId, {
-      tl: { col: 0.35, row: 0.45 },
-      ext: { width: 225, height: 118 },
+      tl: { col: 0.35, row: 0.35 },
+      ext: { width: 180, height: 119 },
     });
   } catch {
     // The estimate should still be generated if the brand asset is missing.
   }
 }
 
-function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate, cols: number, days: number) {
+function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate, cols: number) {
   for (let row = 1; row <= 7; row += 1) {
     ws.getRow(row).height = row <= 5 ? 23 : 10;
   }
@@ -149,7 +149,7 @@ function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate, cols: number,
   const metaRows = [
     `Заказчик: ${order.customer.name}`,
     `Даты мероприятия: ${formatPeriod(order)}`,
-    `Дней в расчете: ${days} · Дата сметы: ${new Date().toLocaleDateString("ru-RU")}`,
+    "",
   ];
   for (let index = 0; index < metaRows.length; index += 1) {
     const cell = ws.getCell(3 + index, 4);
@@ -264,7 +264,7 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
 
   const cols = 8;
   const ws = wb.addWorksheet("Смета", {
-    views: [{ state: "frozen", ySplit: 8 }],
+    views: [{ state: "frozen", ySplit: 8, showGridLines: false }],
     pageSetup: {
       orientation: "landscape",
       fitToPage: true,
@@ -292,7 +292,7 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   ];
   ws.properties.defaultRowHeight = 22;
 
-  addHeader(ws, order, cols, pricing.days);
+  addHeader(ws, order, cols);
   await addLogo(ws, wb);
 
   ws.addRow(["№", "Услуга", "Описание", "Ед.", "Кол-во", "Дней", "Цена/ед.", "Итого"]);
@@ -369,11 +369,6 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     fill: COLORS.yellow,
     fontColor: COLORS.ink,
   });
-
-  ws.autoFilter = {
-    from: { row: headerRow, column: 1 },
-    to: { row: headerRow, column: cols },
-  };
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

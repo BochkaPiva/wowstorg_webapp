@@ -190,8 +190,8 @@ async function addLogo(ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) {
     const buffer = await fs.readFile(LOGO_PATH);
     const imageId = wb.addImage({ base64: buffer.toString("base64"), extension: "png" });
     ws.addImage(imageId, {
-      tl: { col: 0.4, row: 0.45 },
-      ext: { width: 225, height: 118 },
+      tl: { col: 0.35, row: 0.35 },
+      ext: { width: 180, height: 119 },
     });
   } catch {
     // The export must still work if the bundled brand asset is unavailable.
@@ -208,7 +208,6 @@ function addHeader(
     eventStartDate?: Date | string | null;
     eventEndDate?: Date | string | null;
     eventDateConfirmed?: boolean | null;
-    generatedAt: Date;
     colCount: number;
   },
 ) {
@@ -233,11 +232,10 @@ function addHeader(
   styleCell(project, { bold: true, size: 15, borderColor: COLORS.white });
 
   const eventDates = formatDateRange(args.eventStartDate, args.eventEndDate);
-  const confirmed = args.eventDateConfirmed ? "подтверждены" : "не подтверждены";
   const metaRows = [
     metaLine("Заказчик", args.customerName),
-    `${metaLine("Даты мероприятия", eventDates)}${eventDates ? ` (${confirmed})` : ""}`,
-    `Версия: v${args.versionNumber} · Дата сметы: ${formatDate(args.generatedAt)}`,
+    metaLine("Даты мероприятия", eventDates),
+    "",
   ];
   for (let index = 0; index < metaRows.length; index += 1) {
     const cell = ws.getCell(3 + index, 4);
@@ -343,7 +341,7 @@ function addClientSummary(ws: ExcelJS.Worksheet, colCount: number, totals: Retur
   const titleRow = ws.lastRow!.number + 1;
   ws.addRow([]);
   ws.mergeCells(titleRow, colCount - 2, titleRow, colCount);
-  ws.getCell(titleRow, colCount - 2).value = "Итоги для клиента";
+  ws.getCell(titleRow, colCount - 2).value = "Итого по смете";
   ws.getRow(titleRow).height = 28;
   for (let col = colCount - 2; col <= colCount; col += 1) {
     styleCell(ws.getCell(titleRow, col), {
@@ -398,7 +396,7 @@ export async function buildProjectEstimateXlsx(args: {
   wb.modified = new Date();
 
   const ws = wb.addWorksheet(isClient ? "Смета для клиента" : "Смета внутренняя", {
-    views: [{ state: "frozen", ySplit: 8 }],
+    views: [{ state: "frozen", ySplit: 8, showGridLines: false }],
     pageSetup: {
       orientation: "landscape",
       fitToPage: true,
@@ -426,7 +424,6 @@ export async function buildProjectEstimateXlsx(args: {
     eventStartDate: args.eventStartDate,
     eventEndDate: args.eventEndDate,
     eventDateConfirmed: args.eventDateConfirmed,
-    generatedAt: new Date(),
     colCount,
   });
   await addLogo(ws, wb);
@@ -583,10 +580,6 @@ export async function buildProjectEstimateXlsx(args: {
     }
   }
 
-  ws.autoFilter = {
-    from: { row: headerRow, column: 1 },
-    to: { row: headerRow, column: colCount },
-  };
   ws.eachRow((row) => {
     row.eachCell((cell) => {
       cell.protection = { locked: false };

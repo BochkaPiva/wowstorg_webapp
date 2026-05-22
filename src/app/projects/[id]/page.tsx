@@ -15,9 +15,13 @@ import {
 } from "@/lib/project-activity-ui";
 import {
   PROJECT_BALL_LABEL,
+  PROJECT_STATUS_GROUPS,
+  PROJECT_STATUS_GROUP_LABEL,
   PROJECT_STATUS_LABEL,
   PROJECT_TERMINAL_STATUSES,
   isProjectTerminalStatus,
+  projectStatusDisplayLabel,
+  projectStatusPickerLabel,
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { ProjectContactsPanel } from "./ProjectContactsPanel";
@@ -253,76 +257,111 @@ function HelpLegend({
   );
 }
 
-function InlineSelectMenu<T extends string>({
-  value,
-  options,
-  labelByValue,
-  onChange,
-  tone,
-  placeholderLabel,
+function ProjectStatusBallEditor({
+  status,
+  ball,
+  recommendedStatus,
+  saveBusy,
+  onStatusChange,
+  onBallChange,
+  onSave,
+  onCancel,
 }: {
-  value: T;
-  options: T[];
-  labelByValue: Record<T, string>;
-  onChange: (value: T) => void;
-  tone: (value: T) => string;
-  placeholderLabel: string;
+  status: ProjectStatus;
+  ball: ProjectBall;
+  recommendedStatus: ProjectStatus | null;
+  saveBusy: boolean;
+  onStatusChange: (status: ProjectStatus) => void;
+  onBallChange: (ball: ProjectBall) => void;
+  onSave: () => void;
+  onCancel: () => void;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const rootRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, []);
+  const ballOptions = Object.keys(PROJECT_BALL_LABEL) as ProjectBall[];
 
   return (
-    <div className="relative" ref={rootRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`inline-flex min-h-11 min-w-[14rem] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left shadow-sm ${tone(value)}`}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-      >
-        <span>
-          <span className="block text-[11px] font-semibold uppercase tracking-wide opacity-70">{placeholderLabel}</span>
-          <span className="block text-sm font-semibold">{labelByValue[value]}</span>
-        </span>
-        <svg viewBox="0 0 20 20" className={`h-4 w-4 transition ${open ? "rotate-180" : ""}`} aria-hidden>
-          <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
-        </svg>
-      </button>
-      {open ? (
-        <div
-          className="absolute left-0 top-full z-20 mt-2 w-full min-w-[14rem] overflow-hidden rounded-2xl border border-zinc-200 bg-white p-1 shadow-[0_18px_48px_rgba(24,24,27,0.14)]"
-          role="listbox"
-        >
-          {options.map((option) => (
+    <div className="mt-3 rounded-2xl border border-white/80 bg-white/95 p-3 shadow-sm">
+      {recommendedStatus ? (
+        <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Следующий логичный шаг</div>
+            <div className="mt-0.5 text-sm font-bold text-violet-950">{projectStatusDisplayLabel(recommendedStatus)}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onStatusChange(recommendedStatus)}
+            className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-700"
+          >
+            Выбрать
+          </button>
+        </div>
+      ) : null}
+
+      <div className="grid max-h-[min(28rem,calc(100vh-12rem))] gap-4 overflow-y-auto pr-1 md:grid-cols-3">
+        {PROJECT_STATUS_GROUPS.map((group) => (
+          <div key={group.id} className="rounded-2xl border border-zinc-100 bg-zinc-50/70 p-2.5">
+            <div className="px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              {PROJECT_STATUS_GROUP_LABEL[group.id]}
+            </div>
+            <div className="mt-2 space-y-1">
+              {group.items.map((option) => {
+                const selected = option === status;
+                const shortLabel = projectStatusPickerLabel(option);
+                const fullLabel = PROJECT_STATUS_LABEL[option];
+                const showFullHint = shortLabel !== fullLabel;
+
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => onStatusChange(option)}
+                    className={[
+                      "flex w-full flex-col rounded-xl border px-3 py-2 text-left transition",
+                      selected
+                        ? `${projectStatusTone(option)} shadow-sm`
+                        : "border-transparent bg-white text-zinc-800 hover:border-zinc-200 hover:bg-white",
+                    ].join(" ")}
+                    aria-pressed={selected}
+                  >
+                    <span className="text-sm font-semibold">{shortLabel}</span>
+                    {showFullHint ? <span className="mt-0.5 text-[11px] leading-snug opacity-75">{fullLabel}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 border-t border-zinc-100 pt-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Мяч</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {ballOptions.map((option) => (
             <button
               key={option}
               type="button"
-              role="option"
-              aria-selected={option === value}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${
-                option === value ? "bg-violet-50 text-violet-950" : "text-zinc-800 hover:bg-zinc-50"
-              }`}
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-              }}
+              onClick={() => onBallChange(option)}
+              className={[
+                "rounded-full border px-3 py-2 text-xs font-bold transition",
+                option === ball
+                  ? `${projectBallTone(option)} shadow-sm`
+                  : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
+              ].join(" ")}
+              aria-pressed={option === ball}
             >
-              <span>{labelByValue[option]}</span>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone(option)}`}>
-                {option === value ? "Выбрано" : "Выбрать"}
-              </span>
+              {PROJECT_BALL_LABEL[option]}
             </button>
           ))}
         </div>
-      ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <button type="button" disabled={saveBusy} onClick={onSave} className={`${primaryBtn} w-full sm:w-auto`}>
+          Сохранить
+        </button>
+        <button type="button" onClick={onCancel} className={`${secondaryBtn} w-full sm:w-auto`}>
+          Отмена
+        </button>
+      </div>
     </div>
   );
 }
@@ -755,8 +794,6 @@ export default function ProjectDetailPage() {
     }
   }
 
-  const statusOptions = Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[];
-  const ballOptions = Object.keys(PROJECT_BALL_LABEL) as ProjectBall[];
   const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
   return (
@@ -802,7 +839,7 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-[30px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.98),rgba(250,204,21,0.09))] shadow-sm">
+          <section className="rounded-[30px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.98),rgba(250,204,21,0.09))] shadow-sm">
             <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
@@ -849,96 +886,43 @@ export default function ProjectDetailPage() {
                       </button>
                     )}
                     <div className="mt-4 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
-                        disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                      <div
+                        className={`inline-flex min-h-[3rem] flex-col justify-center rounded-2xl border px-4 py-2.5 shadow-sm ${projectStatusTone(project.status)}`}
                       >
-                        Статус: {PROJECT_STATUS_LABEL[project.status]}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
-                        disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        <span className="text-[11px] font-semibold uppercase tracking-wide opacity-70">Статус</span>
+                        <span className="text-base font-bold">{projectStatusDisplayLabel(project.status)}</span>
+                      </div>
+                      <div
+                        className={`inline-flex min-h-[3rem] flex-col justify-center rounded-2xl border px-4 py-2.5 shadow-sm ${projectBallTone(project.ball)}`}
                       >
-                        Мяч: {PROJECT_BALL_LABEL[project.ball]}
-                      </button>
+                        <span className="text-[11px] font-semibold uppercase tracking-wide opacity-70">Мяч</span>
+                        <span className="text-base font-bold">{PROJECT_BALL_LABEL[project.ball]}</span>
+                      </div>
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingField((v) => (v === "status" ? null : "status"))}
+                          className="inline-flex min-h-[3rem] items-center rounded-2xl border border-violet-200 bg-white/90 px-4 py-2.5 text-sm font-bold text-violet-800 shadow-sm transition hover:bg-white"
+                        >
+                          {editingField === "status" ? "Свернуть" : "Изменить"}
+                        </button>
+                      ) : null}
                     </div>
                     {editingField === "status" && !readOnly ? (
-                      <div className="mt-3 rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm">
-                        {recommendedStatus ? (
-                          <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
-                                Следующий логичный шаг
-                              </div>
-                              <div className="mt-0.5 text-sm font-bold text-violet-950">
-                                {PROJECT_STATUS_LABEL[recommendedStatus]}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setStatus(recommendedStatus)}
-                              className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-700"
-                            >
-                              Выбрать
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="grid gap-3 xl:grid-cols-[minmax(14rem,1fr)_minmax(0,1.6fr)]">
-                          <InlineSelectMenu
-                            value={status}
-                            options={statusOptions}
-                            labelByValue={PROJECT_STATUS_LABEL}
-                            onChange={setStatus}
-                            tone={projectStatusTone}
-                            placeholderLabel="Статус"
-                          />
-                          <div>
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Мяч</div>
-                            <div className="flex flex-wrap gap-2">
-                              {ballOptions.map((option) => (
-                                <button
-                                  key={option}
-                                  type="button"
-                                  onClick={() => setBall(option)}
-                                  className={[
-                                    "rounded-full border px-3 py-2 text-xs font-bold transition",
-                                    option === ball
-                                      ? `${projectBallTone(option)} shadow-sm`
-                                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
-                                  ].join(" ")}
-                                >
-                                  {PROJECT_BALL_LABEL[option]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                          <button
-                            type="button"
-                            disabled={saveBusy}
-                            onClick={() => void patchField({ status, ball })}
-                            className={`${primaryBtn} w-full sm:w-auto`}
-                          >
-                            Сохранить
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStatus(project.status);
-                              setBall(project.ball);
-                              setEditingField(null);
-                            }}
-                            className={`${secondaryBtn} w-full sm:w-auto`}
-                          >
-                            Отмена
-                          </button>
-                        </div>
-                      </div>
+                      <ProjectStatusBallEditor
+                        status={status}
+                        ball={ball}
+                        recommendedStatus={recommendedStatus}
+                        saveBusy={saveBusy}
+                        onStatusChange={setStatus}
+                        onBallChange={setBall}
+                        onSave={() => void patchField({ status, ball })}
+                        onCancel={() => {
+                          setStatus(project.status);
+                          setBall(project.ball);
+                          setEditingField(null);
+                        }}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -1160,51 +1144,26 @@ export default function ProjectDetailPage() {
                     <div className="min-w-0">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Статус и ответственность</div>
                       {editingField === "status" && !readOnly ? (
-                        <div className="mt-3 space-y-3">
-                          <div className="grid gap-3 lg:grid-cols-2">
-                            <InlineSelectMenu
-                              value={status}
-                              options={statusOptions}
-                              labelByValue={PROJECT_STATUS_LABEL}
-                              onChange={setStatus}
-                              tone={projectStatusTone}
-                              placeholderLabel="Статус"
-                            />
-                            <InlineSelectMenu
-                              value={ball}
-                              options={ballOptions}
-                              labelByValue={PROJECT_BALL_LABEL}
-                              onChange={setBall}
-                              tone={projectBallTone}
-                              placeholderLabel="Мяч"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap">
-                            <button
-                              type="button"
-                              disabled={saveBusy}
-                              onClick={() => void patchField({ status, ball })}
-                              className={`${primaryBtn} w-full sm:w-auto`}
-                            >
-                              Сохранить
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStatus(project.status);
-                                setBall(project.ball);
-                                setEditingField(null);
-                              }}
-                              className={`${secondaryBtn} w-full sm:w-auto`}
-                            >
-                              Отмена
-                            </button>
-                          </div>
+                        <div className="mt-3">
+                          <ProjectStatusBallEditor
+                            status={status}
+                            ball={ball}
+                            recommendedStatus={recommendedStatus}
+                            saveBusy={saveBusy}
+                            onStatusChange={setStatus}
+                            onBallChange={setBall}
+                            onSave={() => void patchField({ status, ball })}
+                            onCancel={() => {
+                              setStatus(project.status);
+                              setBall(project.ball);
+                              setEditingField(null);
+                            }}
+                          />
                         </div>
                       ) : (
                         <div className="mt-2 flex flex-wrap gap-2 text-sm text-zinc-700">
                           <span className={`inline-flex items-center rounded-full border px-3 py-1.5 font-semibold ${projectStatusTone(project.status)}`}>
-                            {PROJECT_STATUS_LABEL[project.status]}
+                            {projectStatusDisplayLabel(project.status)}
                           </span>
                           <span className={`inline-flex items-center rounded-full border px-3 py-1.5 font-semibold ${projectBallTone(project.ball)}`}>
                             Мяч: {PROJECT_BALL_LABEL[project.ball]}

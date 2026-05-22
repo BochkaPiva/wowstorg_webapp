@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 
 const OMSK_TZ = "Asia/Omsk";
 const PROJECT_SIGNAL_BLOCK_KEY = "dashboard-attention";
+const ORDER_STALE_BLOCK_KEY = "dashboard-order-stale";
 
 const ACTIVE_ORDER_STATUSES = [
   "SUBMITTED",
@@ -15,6 +16,12 @@ const ACTIVE_ORDER_STATUSES = [
   "ISSUED",
   "RETURN_DECLARED",
 ] as const satisfies readonly OrderStatus[];
+
+const ORDER_STALE_WAREHOUSE_STATUSES = ["PICKING", "ISSUED", "RETURN_DECLARED"] as const satisfies readonly OrderStatus[];
+
+const UPCOMING_TIMELINE_DAYS = 5;
+const UPCOMING_TIMELINE_START_OFFSET = 1;
+const UPCOMING_TIMELINE_MAX_OFFSET = UPCOMING_TIMELINE_START_OFFSET + UPCOMING_TIMELINE_DAYS - 1;
 
 type Urgency = "normal" | "soon" | "today" | "overdue" | "critical";
 type SignalSeverity = "info" | "warning" | "critical";
@@ -67,6 +74,7 @@ export type DashboardSignal = {
   projectId?: string;
   orderId?: string;
   taskId?: string;
+  entityKind: "task" | "project" | "order";
   canSnooze: boolean;
 };
 
@@ -140,6 +148,44 @@ function eventRank(event: DashboardEvent): number {
     normal: 4,
   };
   return urgencyRank[event.urgency] ?? 9;
+}
+
+function evaluateOrderStaleSignal(input: {
+  status: OrderStatus;
+  updatedAt: Date;
+  readyByDate: Date;
+  startDate: Date;
+  today: string;
+  now: Date;
+}): { show: boolean; severity: SignalSeverity; staleDays: number; nearestDelta: number } {
+  const nearestDelta = Math.min(
+    daysBetween(input.today, dateOnly(input.readyByDate)!),
+    daysBetween(input.today, dateOnly(input.startDate)!),
+  );
+  const staleDays = Math.max(0, Math.floor((input.now.getTime() - input.updatedAt.getTime()) / 86_400_000));
+
+  if (nearestDelta < 0) {
+    return { show: false, severity: "warning", staleDays, nearestDelta };
+  }
+
+  if (ORDER_STALE_WAREHOUSE_STATUSES.includes(input.status as (typeof ORDER_STALE_WAREHOUSE_STATUSES)[number])) {
+    if (nearestDelta > 3 || staleDays < 2) {
+      return { show: false, severity: "warning", staleDays, nearestDelta };
+    }
+  } else if (input.status === "APPROVED_BY_GREENWICH") {
+    if (nearestDelta > 2 || staleDays < 3) {
+      return { show: false, severity: "warning", staleDays, nearestDelta };
+    }
+  } else {
+    return { show: false, severity: "warning", staleDays, nearestDelta };
+  }
+
+  return {
+    show: true,
+    severity: nearestDelta <= 1 ? "critical" : "warning",
+    staleDays,
+    nearestDelta,
+  };
 }
 
 function taskToDashboardTask(task: {
@@ -218,6 +264,10 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         startDate: true,
         endDate: true,
         updatedAt: true,
+        notificationCooldowns: {
+          where: { blockKey: ORDER_STALE_BLOCK_KEY, muteUntil: { gt: now } },
+          select: { muteUntil: true },
+        },
       },
     }),
     prisma.project.findMany({
@@ -278,6 +328,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         projectId: task.projectId ?? undefined,
         orderId: task.orderId ?? undefined,
         taskId: task.id,
+        entityKind: "task",
         canSnooze: false,
       });
       events.push({
@@ -295,7 +346,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       continue;
     }
 
-    if (delta >= 0 && delta <= 4) {
+    if (delta >= 0 && delta <= UPCOMING_TIMELINE_MAX_OFFSET) {
       events.push({
         id: `task-due:${task.id}`,
         kind: "task_due",
@@ -321,6 +372,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         projectId: task.projectId ?? undefined,
         orderId: task.orderId ?? undefined,
         taskId: task.id,
+        entityKind: "task",
         canSnooze: false,
       });
     }
@@ -336,7 +388,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
 
     for (const point of points) {
       const delta = daysBetween(today, point.date);
-      if (delta < 0 || delta > 4) continue;
+      if (delta < 0 || delta > UPCOMING_TIMELINE_MAX_OFFSET) continue;
       events.push({
         id: `${point.kind}:${order.id}:${point.date}`,
         kind: point.kind,
@@ -349,22 +401,29 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       });
     }
 
-    const nearestDelta = Math.min(
-      daysBetween(today, dateOnly(order.readyByDate)!),
-      daysBetween(today, dateOnly(order.startDate)!),
-    );
-    const staleDays = Math.max(0, Math.floor((now.getTime() - order.updatedAt.getTime()) / 86_400_000));
-    if (staleDays >= 3 && nearestDelta >= 0 && nearestDelta <= 7) {
-      signals.push({
-        id: `order-stale:${order.id}`,
-        type: "ORDER_STALE",
-        severity: nearestDelta <= 1 ? "critical" : "warning",
-        title: orderTitle,
-        reason: `Без обновлений ${staleDays} дн.`,
-        href: `/orders/${order.id}?from=dashboard`,
-        orderId: order.id,
-        canSnooze: false,
-      });
+    const staleSignal = evaluateOrderStaleSignal({
+      status: order.status,
+      updatedAt: order.updatedAt,
+      readyByDate: order.readyByDate,
+      startDate: order.startDate,
+      today,
+      now,
+    });
+    if (staleSignal.show) {
+      const hasMute = order.notificationCooldowns.length > 0;
+      if (!hasMute || staleSignal.severity === "critical") {
+        signals.push({
+          id: `order-stale:${order.id}`,
+          type: "ORDER_STALE",
+          severity: staleSignal.severity,
+          title: orderTitle,
+          reason: `Заявка без обновлений ${staleSignal.staleDays} дн.`,
+          href: `/orders/${order.id}?from=dashboard`,
+          orderId: order.id,
+          entityKind: "order",
+          canSnooze: staleSignal.severity !== "critical",
+        });
+      }
     }
   }
 
@@ -375,7 +434,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
 
     if (eventDate) {
       const delta = daysBetween(today, eventDate);
-      if (delta >= 0 && delta <= 4) {
+      if (delta >= 0 && delta <= UPCOMING_TIMELINE_MAX_OFFSET) {
         events.push({
           id: `project-event:${project.id}`,
           kind: "project_event",
@@ -397,6 +456,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
           reason: delta <= 3 ? "Скоро мероприятие, нет основной сметы" : "Нет основной сметы",
           href: `/projects/${project.id}`,
           projectId: project.id,
+          entityKind: "project",
           canSnooze: delta > 0,
         });
       }
@@ -412,6 +472,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         reason: blockers.length > 90 ? `${blockers.slice(0, 90)}...` : blockers,
         href: `/projects/${project.id}`,
         projectId: project.id,
+        entityKind: "project",
         canSnooze: !(delta >= 0 && delta <= 0),
       });
     }
@@ -429,7 +490,8 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
     noDueDate: dashboardTasks.filter((task) => task.dueDate == null).slice(0, 8),
   };
 
-  const upcomingDays = Array.from({ length: 5 }, (_, offset) => {
+  const upcomingDays = Array.from({ length: UPCOMING_TIMELINE_DAYS }, (_, index) => {
+    const offset = UPCOMING_TIMELINE_START_OFFSET + index;
     const date = addDaysYmd(today, offset);
     return {
       date,

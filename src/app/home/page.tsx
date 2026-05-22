@@ -758,6 +758,8 @@ type OperationsSignal = {
   reason: string;
   href: string;
   projectId?: string;
+  orderId?: string;
+  entityKind: "task" | "project" | "order";
   canSnooze: boolean;
 };
 
@@ -807,6 +809,12 @@ function signalClass(severity: OperationsSignal["severity"]) {
   if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-950";
   if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
   return "border-sky-200 bg-sky-50 text-sky-950";
+}
+
+function signalEntityLabel(kind: OperationsSignal["entityKind"]) {
+  if (kind === "order") return "Заявка";
+  if (kind === "project") return "Проект";
+  return "Задача";
 }
 
 function OperationEventCard({ event, compact = false }: { event: OperationsEvent; compact?: boolean }) {
@@ -902,14 +910,25 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   ] as const;
   const visibleTaskGroups = taskGroups.filter((group) => group.items.length > 0);
 
-  const snoozeProjectSignal = React.useCallback(async (signal: OperationsSignal) => {
-    if (!signal.projectId) return;
+  const snoozeSignal = React.useCallback(async (signal: OperationsSignal) => {
+    if (!signal.canSnooze) return;
     setSnoozingSignalId(signal.id);
     try {
-      const r = await fetch("/api/dashboard/wowstorg/project-attention", {
+      const endpoint = signal.orderId
+        ? "/api/dashboard/wowstorg/order-attention"
+        : signal.projectId
+          ? "/api/dashboard/wowstorg/project-attention"
+          : null;
+      if (!endpoint) return;
+
+      const body = signal.orderId
+        ? { orderId: signal.orderId, days: 7 }
+        : { projectId: signal.projectId, days: 7 };
+
+      const r = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: signal.projectId, days: 7 }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error("Не удалось отложить сигнал");
       setData((current) =>
@@ -977,7 +996,10 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         <div className={`${DASH_CARD} xl:col-span-5`}>
           <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
             <div className="text-sm font-semibold text-zinc-900">Сигналы</div>
-            <Link href="/projects" className={LINK_SUBTLE}>Проекты</Link>
+            <div className="flex items-center gap-3">
+              <Link href="/orders" className={LINK_SUBTLE}>Заявки</Link>
+              <Link href="/projects" className={LINK_SUBTLE}>Проекты</Link>
+            </div>
           </div>
           <div className="mt-3 space-y-2">
             {!loading && !error && data?.signals.length === 0 ? (
@@ -989,16 +1011,22 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
               <div key={signal.id} className={["rounded-2xl border px-3 py-2 shadow-sm transition hover:-translate-y-0.5", signalClass(signal.severity)].join(" ")}>
                 <div className="flex items-start justify-between gap-2">
                   <Link href={signal.href} className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-bold">{signal.title}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-current/15 bg-white/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                        {signalEntityLabel(signal.entityKind)}
+                      </span>
+                      <div className="truncate text-sm font-bold">{signal.title}</div>
+                    </div>
                     <div className="mt-0.5 line-clamp-2 text-xs opacity-80">{signal.reason}</div>
                   </Link>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {signal.canSnooze && signal.projectId ? (
+                    {signal.canSnooze && (signal.projectId || signal.orderId) ? (
                       <button
                         type="button"
-                        onClick={() => void snoozeProjectSignal(signal)}
+                        onClick={() => void snoozeSignal(signal)}
                         disabled={snoozingSignalId === signal.id}
                         className="rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-bold transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+                        title="Отложить на 7 дней"
                       >
                         {snoozingSignalId === signal.id ? "..." : "7д"}
                       </button>

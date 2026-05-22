@@ -496,6 +496,22 @@ model ProjectNotificationCooldown {
   @@index([projectId, muteUntil])
 }
 
+model OrderNotificationCooldown {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  blockKey  String
+  muteUntil DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, blockKey])
+  @@index([orderId])
+  @@index([orderId, muteUntil])
+}
+
 /// Demo/draft-заявка проекта до materialize в реальные заявки склада.
 model ProjectDraftOrder {
   id        String  @id @default(cuid())
@@ -936,6 +952,7 @@ model Order {
   lossRecords             LossRecord[]
   projectEstimateSections ProjectEstimateSection[]
   tasks                   WorkTask[]
+  notificationCooldowns   OrderNotificationCooldown[]
 
   @@index([status, readyByDate])
   @@index([source, status])

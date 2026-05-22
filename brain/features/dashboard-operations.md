@@ -33,7 +33,7 @@
 - `TASK_DUE_SOON`: моя незавершенная задача с дедлайном сегодня/завтра.
 - `PROJECT_EVENT_SOON_WITHOUT_ESTIMATE`: активный проект с подтвержденной датой в ближайшие 14 дней без основной сметы.
 - `PROJECT_BLOCKED`: активный проект с заполненным `openBlockers`.
-- `ORDER_STALE`: активная заявка рядом по датам, которая не обновлялась 3+ дня.
+- `ORDER_STALE`: активная заявка в рабочем статусе (`APPROVED_BY_GREENWICH` / `PICKING` / `ISSUED` / `RETURN_DECLARED`) рядом по датам, которая не обновлялась достаточно долго. Согласование и ранние статусы не сигналят. Отложение — через `OrderNotificationCooldown` (`POST /api/dashboard/wowstorg/order-attention`).
 
 Опционально после MVP:
 - `PROJECT_EVENT_SOON_WITHOUT_OPEN_TASKS`.

@@ -670,95 +670,6 @@ function InventoryAuditBadge() {
   );
 }
 
-function WowstorgAuditStatusCard() {
-  const { row, loading, error } = useInventoryAuditStatus();
-
-  return (
-    <div className={DASH_CARD}>
-      <style jsx>{`
-        @keyframes auditPulse {
-          0% {
-            transform: scale(1);
-            opacity: 0.9;
-          }
-          70% {
-            transform: scale(1.5);
-            opacity: 0;
-          }
-          100% {
-            transform: scale(1.5);
-            opacity: 0;
-          }
-        }
-        .auditDotPulse::after {
-          content: "";
-          position: absolute;
-          inset: -1px;
-          border-radius: 9999px;
-          background: currentColor;
-          opacity: 0.4;
-          animation: auditPulse 1.8s ease-out infinite;
-        }
-      `}</style>
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
-        <div className="text-sm font-semibold text-zinc-900">Статус аудита инвентаря</div>
-      </div>
-      {loading ? <div className="mt-2 text-sm text-zinc-600">Загрузка…</div> : null}
-      {error ? <div className="mt-2 text-sm text-red-700">{error}</div> : null}
-      {!loading && !error ? (
-        row ? (
-          <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-              <div className="relative grid h-11 w-11 place-items-center rounded-full bg-white shadow-inner">
-                <span
-                  className={[
-                    "auditDotPulse relative block h-5 w-5 rounded-full text-current",
-                    auditDotTone(row.severity),
-                  ].join(" ")}
-                />
-              </div>
-              <div className="min-w-0">
-                <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${auditTone(row.severity)}`}>
-                  {row.severity === "OK"
-                    ? "Все в норме"
-                    : row.severity === "WARNING"
-                      ? "Есть предупреждения"
-                      : row.severity === "CRITICAL"
-                        ? "Есть критичные расхождения"
-                        : "Проверка завершилась с ошибкой"}
-                </div>
-                <div className="mt-1 text-xs text-zinc-600">
-                  Последняя проверка: <span className="font-medium text-zinc-800">{fmtDateRu(row.startedAt)}</span> (
-                  {row.kind === "AUTO" ? "AUTO" : "MANUAL"})
-                </div>
-              </div>
-              </div>
-              <Link href="/admin/inventory-audit" className={BTN_ICON_ROUND} title="Открыть аудит" aria-label="Открыть аудит">
-                <svg
-                  className="h-4 w-4 transition group-hover:translate-x-0.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M5 12h14" />
-                  <path d="M13 6l6 6-6 6" />
-                </svg>
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-2 text-sm text-zinc-600">Пока не запускался.</div>
-        )
-      ) : null}
-    </div>
-  );
-}
-
 type WowstorgDashboardData = {
   activeCount: number;
   completedCount: number;
@@ -809,43 +720,171 @@ type WowstorgDashboardData = {
   }>;
 };
 
-type MyWorkTask = {
+type OperationsEvent = {
+  id: string;
+  kind:
+    | "task_due"
+    | "task_overdue"
+    | "order_ready"
+    | "order_start"
+    | "order_end"
+    | "project_event"
+    | "project_signal";
+  title: string;
+  subtitle?: string;
+  date: string;
+  urgency: "normal" | "soon" | "today" | "overdue" | "critical";
+  href: string;
+};
+
+type OperationsTask = {
   id: string;
   title: string;
   priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
   dueDate: string | null;
-  column: { title: string; color: string | null };
-  board: { id: string; title: string };
-  project: { id: string; title: string } | null;
+  columnTitle: string;
+  projectTitle: string | null;
+  orderTitle: string | null;
   checklistDone: number;
   checklistTotal: number;
+  href: string;
 };
 
-function priorityRu(priority: MyWorkTask["priority"]) {
+type OperationsSignal = {
+  id: string;
+  type: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  reason: string;
+  href: string;
+  projectId?: string;
+  canSnooze: boolean;
+};
+
+type OperationsDashboardData = {
+  today: OperationsEvent[];
+  upcomingDays: Array<{ date: string; label: string; events: OperationsEvent[] }>;
+  myTasks: {
+    overdue: OperationsTask[];
+    today: OperationsTask[];
+    soon: OperationsTask[];
+    noDueDate: OperationsTask[];
+  };
+  signals: OperationsSignal[];
+  summary: {
+    todayCount: number;
+    overdueCount: number;
+    signalCount: number;
+    nearestOrderTitle: string | null;
+  };
+};
+
+function priorityRu(priority: OperationsTask["priority"]) {
   if (priority === "URGENT") return "Срочно";
   if (priority === "HIGH") return "Важно";
   if (priority === "LOW") return "Низкий";
   return "Обычный";
 }
 
-function MyTasksBlock({ isWowstorg }: { isWowstorg: boolean }) {
-  const [tasks, setTasks] = React.useState<MyWorkTask[]>([]);
+function operationKindLabel(kind: OperationsEvent["kind"]): string {
+  if (kind === "task_overdue") return "Просрочено";
+  if (kind === "task_due") return "Задача";
+  if (kind === "order_ready") return "Готовность";
+  if (kind === "order_start") return "Выдача";
+  if (kind === "order_end") return "Возврат";
+  if (kind === "project_event") return "Проект";
+  return "Сигнал";
+}
+
+function operationPillClass(urgency: OperationsEvent["urgency"]) {
+  if (urgency === "critical" || urgency === "overdue") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (urgency === "today") return "border-violet-200 bg-violet-50 text-violet-800";
+  if (urgency === "soon") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-zinc-200 bg-zinc-50 text-zinc-700";
+}
+
+function signalClass(severity: OperationsSignal["severity"]) {
+  if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-950";
+  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-sky-200 bg-sky-50 text-sky-950";
+}
+
+function OperationEventCard({ event, compact = false }: { event: OperationsEvent; compact?: boolean }) {
+  return (
+    <Link
+      href={event.href}
+      className={[
+        "block rounded-xl border bg-white px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40",
+        event.urgency === "critical" || event.urgency === "overdue" ? "border-rose-200" : "border-zinc-200",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{event.title}</div>
+          {event.subtitle ? <div className="mt-0.5 truncate text-xs text-zinc-500">{event.subtitle}</div> : null}
+        </div>
+        <span className={["shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold", operationPillClass(event.urgency)].join(" ")}>
+          {operationKindLabel(event.kind)}
+        </span>
+      </div>
+      {!compact ? <div className="mt-2 text-xs font-medium text-zinc-500">{fmtDateRu(event.date)}</div> : null}
+    </Link>
+  );
+}
+
+function TaskMiniCard({ task }: { task: OperationsTask }) {
+  const meta = task.projectTitle ?? task.orderTitle ?? task.columnTitle;
+  return (
+    <Link href={task.href} className="block rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{task.title}</div>
+          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-600">
+            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.columnTitle}</span>
+            {task.dueDate ? (
+              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-violet-800">
+                {fmtDateRu(task.dueDate)}
+              </span>
+            ) : null}
+            {task.priority !== "NORMAL" ? (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">
+                {priorityRu(task.priority)}
+              </span>
+            ) : null}
+          </div>
+          {meta ? <div className="mt-1 truncate text-xs text-zinc-500">{meta}</div> : null}
+        </div>
+        {task.checklistTotal > 0 ? (
+          <div className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-700">
+            {task.checklistDone}/{task.checklistTotal}
+          </div>
+        ) : null}
+      </div>
+    </Link>
+  );
+}
+
+function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
+  const [data, setData] = React.useState<OperationsDashboardData | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [snoozingSignalId, setSnoozingSignalId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!isWowstorg) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void fetch("/api/tasks/my", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: { tasks?: MyWorkTask[]; error?: { message?: string } }) => {
-        if (cancelled) return;
-        setTasks(json.tasks ?? []);
+    void fetch("/api/dashboard/wowstorg/operations", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("Не удалось загрузить план");
+        return r.json() as Promise<OperationsDashboardData>;
+      })
+      .then((json) => {
+        if (!cancelled) setData(json);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки задач");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -855,163 +894,193 @@ function MyTasksBlock({ isWowstorg }: { isWowstorg: boolean }) {
     };
   }, [isWowstorg]);
 
+  const taskGroups = [
+    { key: "overdue", title: "Просрочено", items: data?.myTasks.overdue ?? [] },
+    { key: "today", title: "Сегодня", items: data?.myTasks.today ?? [] },
+    { key: "soon", title: "Скоро", items: data?.myTasks.soon ?? [] },
+    { key: "noDueDate", title: "Без срока", items: data?.myTasks.noDueDate ?? [] },
+  ] as const;
+  const visibleTaskGroups = taskGroups.filter((group) => group.items.length > 0);
+
+  const snoozeProjectSignal = React.useCallback(async (signal: OperationsSignal) => {
+    if (!signal.projectId) return;
+    setSnoozingSignalId(signal.id);
+    try {
+      const r = await fetch("/api/dashboard/wowstorg/project-attention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: signal.projectId, days: 7 }),
+      });
+      if (!r.ok) throw new Error("Не удалось отложить сигнал");
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              signals: current.signals.filter((item) => item.id !== signal.id),
+              summary: {
+                ...current.summary,
+                signalCount: Math.max(0, current.summary.signalCount - 1),
+              },
+            }
+          : current,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка обновления сигнала");
+    } finally {
+      setSnoozingSignalId(null);
+    }
+  }, []);
+
   return (
-    <div className={DASH_CARD}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3">
-        <div>
-          <div className="text-sm font-semibold text-zinc-900">Мои задачи</div>
-          <div className="mt-1 text-xs text-zinc-600">Назначенные на вас задачи без завершённых</div>
+    <div className="space-y-3">
+      <div className={DASH_CARD}>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
+            <div className="text-xs font-semibold text-violet-700">Сегодня</div>
+            <div className="mt-1 text-2xl font-black tabular-nums text-violet-950">{data?.summary.todayCount ?? 0}</div>
+          </div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <div className="text-xs font-semibold text-rose-700">Просрочено</div>
+            <div className="mt-1 text-2xl font-black tabular-nums text-rose-950">{data?.summary.overdueCount ?? 0}</div>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="text-xs font-semibold text-amber-800">Сигналы</div>
+            <div className="mt-1 text-2xl font-black tabular-nums text-amber-950">{data?.summary.signalCount ?? 0}</div>
+          </div>
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+            <div className="text-xs font-semibold text-zinc-600">Ближайшая заявка</div>
+            <div className="mt-1 truncate text-sm font-bold text-zinc-950">{data?.summary.nearestOrderTitle ?? "Нет активных"}</div>
+          </div>
         </div>
-        <Link href="/tasks" className={LINK_SUBTLE}>
-          Открыть доску
-        </Link>
+        {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка...</div> : null}
+        {error ? <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
       </div>
 
-      {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка…</div> : null}
-      {error ? <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
-
-      {!loading && !error ? (
-        tasks.length > 0 ? (
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
+        <div className={`${DASH_CARD} xl:col-span-7`}>
+          <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+            <div className="text-sm font-semibold text-zinc-900">Сегодня</div>
+            <Link href="/tasks" className={LINK_SUBTLE}>Доска</Link>
+          </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {tasks.slice(0, 8).map((task) => (
-              <Link
-                key={task.id}
-                href="/tasks"
-                className="rounded-2xl border border-zinc-200 bg-white px-3 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{task.title}</div>
-                    <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-600">
-                      <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.column.title}</span>
-                      {task.dueDate ? (
-                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-violet-800">
-                          {fmtDateRu(task.dueDate)}
-                        </span>
-                      ) : null}
-                      {task.priority !== "NORMAL" ? (
-                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">
-                          {priorityRu(task.priority)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {task.project ? <div className="mt-2 truncate text-xs text-zinc-500">{task.project.title}</div> : null}
-                  </div>
-                  {task.checklistTotal > 0 ? (
-                    <div className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-700">
-                      {task.checklistDone}/{task.checklistTotal}
-                    </div>
-                  ) : null}
-                </div>
-              </Link>
+            {!loading && !error && data?.today.length === 0 ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 md:col-span-2">
+                Сегодня спокойно.
+              </div>
+            ) : null}
+            {(data?.today ?? []).slice(0, 6).map((event) => (
+              <OperationEventCard key={event.id} event={event} />
             ))}
           </div>
-        ) : (
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            На вас пока нет открытых задач.
-          </div>
-        )
-      ) : null}
-    </div>
-  );
-}
-
-function ProjectAttentionBlock({
-  items,
-  onSnoozed,
-}: {
-  items: WowstorgDashboardData["projectAttention"];
-  onSnoozed: (projectId: string) => void;
-}) {
-  const [busyId, setBusyId] = React.useState<string | null>(null);
-
-  const snooze = React.useCallback(
-    async (projectId: string) => {
-      setBusyId(projectId);
-      try {
-        const r = await fetch("/api/dashboard/wowstorg/project-attention", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, days: 7 }),
-        });
-        if (!r.ok) throw new Error("Не удалось отложить сигнал");
-        onSnoozed(projectId);
-      } finally {
-        setBusyId(null);
-      }
-    },
-    [onSnoozed],
-  );
-
-  return (
-    <div className={DASH_CARD}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 pb-3">
-        <div>
-          <div className="text-sm font-semibold text-zinc-900">Что требует внимания</div>
-          <div className="mt-1 text-xs text-zinc-600">
-            Проектные сигналы склада. Если всё под контролем и вы просто ждёте дату, отложите сигнал на 7 дней.
-          </div>
         </div>
-        <Link href="/projects" className={LINK_SUBTLE}>
-          Все проекты
-        </Link>
-      </div>
 
-      {items.length === 0 ? (
-        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          По активным проектам нет срочных сигналов.
-        </div>
-      ) : (
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          {items.map((item) => (
-            <div
-              key={item.projectId}
-              className={[
-                "rounded-2xl border p-3 shadow-sm",
-                item.severity === "critical"
-                  ? "border-rose-200 bg-rose-50"
-                  : "border-amber-200 bg-[linear-gradient(135deg,rgba(254,252,232,1),rgba(255,251,235,0.78))]",
-              ].join(" ")}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-bold text-zinc-950">{item.title}</div>
-                  <div className="mt-1 text-xs font-semibold text-zinc-700">{item.primaryReason}</div>
-                  {item.reasons.length > 1 ? (
-                    <div className="mt-1 text-xs text-zinc-600">{item.reasons.slice(1).join(" · ")}</div>
-                  ) : null}
-                  <div className="mt-2 text-[11px] text-zinc-500">
-                    Статус: {item.status} · без активности {item.daysSinceActivity} дн.
+        <div className={`${DASH_CARD} xl:col-span-5`}>
+          <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+            <div className="text-sm font-semibold text-zinc-900">Сигналы</div>
+            <Link href="/projects" className={LINK_SUBTLE}>Проекты</Link>
+          </div>
+          <div className="mt-3 space-y-2">
+            {!loading && !error && data?.signals.length === 0 ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+                Критичных сигналов нет.
+              </div>
+            ) : null}
+            {(data?.signals ?? []).slice(0, 5).map((signal) => (
+              <div key={signal.id} className={["rounded-2xl border px-3 py-2 shadow-sm transition hover:-translate-y-0.5", signalClass(signal.severity)].join(" ")}>
+                <div className="flex items-start justify-between gap-2">
+                  <Link href={signal.href} className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-bold">{signal.title}</div>
+                    <div className="mt-0.5 line-clamp-2 text-xs opacity-80">{signal.reason}</div>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {signal.canSnooze && signal.projectId ? (
+                      <button
+                        type="button"
+                        onClick={() => void snoozeProjectSignal(signal)}
+                        disabled={snoozingSignalId === signal.id}
+                        className="rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-bold transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {snoozingSignalId === signal.id ? "..." : "7д"}
+                      </button>
+                    ) : null}
+                    <span className="rounded-full border border-current/20 bg-white/60 px-2 py-0.5 text-[10px] font-bold">
+                      {signal.severity === "critical" ? "важно" : signal.severity === "warning" ? "сигнал" : "инфо"}
+                    </span>
                   </div>
                 </div>
-                <span
-                  className={[
-                    "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold",
-                    item.severity === "critical"
-                      ? "border-rose-200 bg-white/70 text-rose-800"
-                      : "border-amber-200 bg-white/70 text-amber-900",
-                  ].join(" ")}
-                >
-                  {item.severity === "critical" ? "важно" : "сигнал"}
-                </span>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link href={`/projects/${item.projectId}`} className={BTN_PRIMARY}>
-                  Открыть проект
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void snooze(item.projectId)}
-                  disabled={busyId === item.projectId}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {busyId === item.projectId ? "Откладываю..." : "Отложить на 7 дней"}
-                </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className={DASH_CARD}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+          {(data?.upcomingDays ?? []).map((day) => (
+            <div key={day.date} className="min-h-[9rem] rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
+              <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
+                <div className="text-sm font-bold text-zinc-950">{day.label}</div>
+                <div className="text-[11px] text-zinc-500">{fmtDateRu(day.date)}</div>
+              </div>
+              <div className="space-y-1.5">
+                {day.events.length === 0 ? (
+                  <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">Пусто</div>
+                ) : (
+                  day.events.slice(0, 4).map((event) => <OperationEventCard key={event.id} event={event} compact />)
+                )}
               </div>
             </div>
           ))}
         </div>
-      )}
+      </div>
+
+      <div className={DASH_CARD}>
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+          <div className="text-sm font-semibold text-zinc-900">Мои задачи</div>
+          <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
+        </div>
+        {!loading && !error && visibleTaskGroups.length === 0 ? (
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+            Открытых задач нет.
+          </div>
+        ) : null}
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {visibleTaskGroups.map((group) => (
+            <div key={group.key} className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
+              <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-zinc-500">{group.title}</div>
+              <div className="space-y-1.5">
+                {group.items.slice(0, 4).map((task) => <TaskMiniCard key={task.id} task={task} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollapsibleIssuanceCalendar() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className={DASH_CARD}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-zinc-900">Календарь загрузки</div>
+          <div className="mt-1 text-xs text-zinc-500">Годовой heatmap выдачи реквизита</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className={LINK_SUBTLE}
+          aria-expanded={open}
+        >
+          {open ? "Свернуть" : "Развернуть"}
+        </button>
+      </div>
+      {open ? <IssuanceCalendar className="mt-3 border-violet-100/90 shadow-[0_6px_24px_rgba(124,58,237,0.08)]" /> : null}
     </div>
   );
 }
@@ -1044,24 +1113,8 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
     };
   }, [isWowstorg]);
 
-  const dismissProjectAttention = React.useCallback((projectId: string) => {
-    setData((current) =>
-      current
-        ? {
-            ...current,
-            projectAttention: current.projectAttention.filter((item) => item.projectId !== projectId),
-          }
-        : current,
-    );
-  }, []);
-
   return (
     <div className="space-y-3">
-      <MyTasksBlock isWowstorg={isWowstorg} />
-      <ProjectAttentionBlock
-        items={data?.projectAttention ?? []}
-        onSnoozed={dismissProjectAttention}
-      />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
       <div className={`${DASH_CARD} md:col-span-8`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
@@ -1354,11 +1407,13 @@ export default function HomeDashboardPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
                 <div className="text-sm font-semibold text-zinc-900">Дашборд</div>
-                <div className="mt-1 text-xs text-zinc-600">Статус заявок и реквизита на сегодня</div>
               </div>
             </div>
-            <IssuanceCalendar className="mb-3 border-violet-100/90 shadow-[0_6px_24px_rgba(124,58,237,0.08)]" />
-            <WowstorgDashboardBlock isWowstorg={isWowstorg} />
+            <div className="space-y-3">
+              <OperationsDashboardBlock isWowstorg={isWowstorg} />
+              <CollapsibleIssuanceCalendar />
+              <WowstorgDashboardBlock isWowstorg={isWowstorg} />
+            </div>
           </div>
         ) : null}
 

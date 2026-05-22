@@ -1326,7 +1326,7 @@ function TasksPageContent() {
 
   async function addChecklistItemInline(taskId: string, title: string) {
     const previousBoard = boardRef.current;
-    const tempId = `temp-checklist-${Date.now()}`;
+    const tempId = `temp-checklist-${crypto.randomUUID()}`;
     setExpandedTaskIds((current) => new Set(current).add(taskId));
 
     updateTaskInBoard(taskId, (task) => {

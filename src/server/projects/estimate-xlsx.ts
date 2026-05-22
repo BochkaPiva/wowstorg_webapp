@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import ExcelJS from "exceljs";
 
 import {
@@ -10,28 +13,77 @@ import {
 import type { ProjectEstimateReadLine, ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
 
 const COLORS = {
-  titleBg: "FF6D28D9",
-  titleText: "FFFFFFFF",
-  headerBg: "FFF5F3FF",
-  headerText: "FF312E81",
-  sectionReqBg: "FFEEE7FF",
-  sectionLocalBg: "FFF8FAFC",
-  sectionContractorBg: "FFFFF7ED",
-  totalBg: "FFEDE9FE",
-  totalText: "FF4C1D95",
-  sectionFooterBg: "FFF1F5F9",
-  border: "FFE4E4E7",
+  ink: "FF111827",
+  muted: "FF6B7280",
+  violet: "FF7C3AED",
+  violetDark: "FF4C1D95",
+  violetSoft: "FFF4F0FF",
+  violetSoft2: "FFEDE9FE",
+  yellow: "FFFFE500",
+  yellowSoft: "FFFFF7D6",
+  slateSoft: "FFF8FAFC",
+  orangeSoft: "FFFFF7ED",
+  greenSoft: "FFEFFDF5",
+  white: "FFFFFFFF",
+  border: "FFE5E7EB",
+  borderStrong: "FFC4B5FD",
 };
 
-function styleCell(cell: ExcelJS.Cell) {
-  cell.border = {
-    top: { style: "thin", color: { argb: COLORS.border } },
-    left: { style: "thin", color: { argb: COLORS.border } },
-    bottom: { style: "thin", color: { argb: COLORS.border } },
-    right: { style: "thin", color: { argb: COLORS.border } },
+const FONT = "Aptos";
+const LOGO_PATH = path.join(process.cwd(), "public", "brand", "wowstorg-estimate-logo.png");
+
+type CellValue = string | number;
+
+function baseBorder(color = COLORS.border): Partial<ExcelJS.Borders> {
+  return {
+    top: { style: "thin", color: { argb: color } },
+    left: { style: "thin", color: { argb: color } },
+    bottom: { style: "thin", color: { argb: color } },
+    right: { style: "thin", color: { argb: color } },
   };
-  cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-  cell.font = { name: "Calibri", size: 10 };
+}
+
+function styleCell(
+  cell: ExcelJS.Cell,
+  opts: {
+    fill?: string;
+    fontColor?: string;
+    bold?: boolean;
+    size?: number;
+    horizontal?: "left" | "center" | "right";
+    borderColor?: string;
+  } = {},
+) {
+  cell.border = baseBorder(opts.borderColor);
+  cell.alignment = {
+    vertical: "middle",
+    horizontal: opts.horizontal ?? "left",
+    wrapText: true,
+  };
+  cell.font = {
+    name: FONT,
+    size: opts.size ?? 10,
+    bold: opts.bold ?? false,
+    color: { argb: opts.fontColor ?? COLORS.ink },
+  };
+  if (opts.fill) {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: opts.fill } };
+  }
+}
+
+function styleRange(
+  ws: ExcelJS.Worksheet,
+  rowFrom: number,
+  rowTo: number,
+  colFrom: number,
+  colTo: number,
+  opts: Parameters<typeof styleCell>[1] = {},
+) {
+  for (let row = rowFrom; row <= rowTo; row += 1) {
+    for (let col = colFrom; col <= colTo; col += 1) {
+      styleCell(ws.getCell(row, col), opts);
+    }
+  }
 }
 
 function lineClient(line: ProjectEstimateReadLine): number {
@@ -73,9 +125,9 @@ function sectionTitle(section: ProjectEstimateReadSection): string {
 }
 
 function sectionBg(section: ProjectEstimateReadSection): string {
-  if (section.kind === "REQUISITE") return COLORS.sectionReqBg;
-  if (section.kind === "CONTRACTOR") return COLORS.sectionContractorBg;
-  return COLORS.sectionLocalBg;
+  if (section.kind === "REQUISITE") return COLORS.violetSoft;
+  if (section.kind === "CONTRACTOR") return COLORS.orangeSoft;
+  return COLORS.slateSoft;
 }
 
 function buildExportSections(sections: ProjectEstimateReadSection[]): ProjectEstimateReadSection[] {
@@ -113,13 +165,222 @@ function buildExportSections(sections: ProjectEstimateReadSection[]): ProjectEst
   return exportSections.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+function formatDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const raw = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+function formatDateRange(start: Date | string | null | undefined, end: Date | string | null | undefined): string | null {
+  const s = formatDate(start);
+  const e = formatDate(end);
+  if (s && e && s !== e) return `${s} — ${e}`;
+  return s ?? e;
+}
+
+function metaLine(label: string, value: string | null | undefined): string {
+  const v = value?.trim();
+  return v ? `${label}: ${v}` : `${label}: не указано`;
+}
+
+async function addLogo(ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) {
+  try {
+    const buffer = await fs.readFile(LOGO_PATH);
+    const imageId = wb.addImage({ base64: buffer.toString("base64"), extension: "png" });
+    ws.addImage(imageId, {
+      tl: { col: 0.4, row: 0.45 },
+      ext: { width: 225, height: 118 },
+    });
+  } catch {
+    // The export must still work if the bundled brand asset is unavailable.
+  }
+}
+
+function addHeader(
+  ws: ExcelJS.Worksheet,
+  args: {
+    projectTitle: string;
+    customerName?: string | null;
+    versionNumber: number;
+    variant: ProjectEstimateXlsxVariant;
+    eventStartDate?: Date | string | null;
+    eventEndDate?: Date | string | null;
+    eventDateConfirmed?: boolean | null;
+    generatedAt: Date;
+    colCount: number;
+  },
+) {
+  for (let row = 1; row <= 7; row += 1) {
+    ws.getRow(row).height = row <= 5 ? 23 : 10;
+  }
+
+  ws.mergeCells(1, 1, 5, 3);
+  ws.mergeCells(1, 4, 1, args.colCount);
+  ws.mergeCells(2, 4, 2, args.colCount);
+  ws.mergeCells(3, 4, 3, args.colCount);
+  ws.mergeCells(4, 4, 4, args.colCount);
+  ws.mergeCells(5, 4, 5, args.colCount);
+  styleRange(ws, 1, 5, 1, args.colCount, { fill: COLORS.white, borderColor: COLORS.white });
+
+  const title = ws.getCell(1, 4);
+  title.value = args.variant === "client" ? "Смета расходов" : "Внутренняя смета";
+  styleCell(title, { bold: true, size: 22, fontColor: COLORS.violetDark, borderColor: COLORS.white });
+
+  const project = ws.getCell(2, 4);
+  project.value = args.projectTitle;
+  styleCell(project, { bold: true, size: 15, borderColor: COLORS.white });
+
+  const eventDates = formatDateRange(args.eventStartDate, args.eventEndDate);
+  const confirmed = args.eventDateConfirmed ? "подтверждены" : "не подтверждены";
+  const metaRows = [
+    metaLine("Заказчик", args.customerName),
+    `${metaLine("Даты мероприятия", eventDates)}${eventDates ? ` (${confirmed})` : ""}`,
+    `Версия: v${args.versionNumber} · Дата сметы: ${formatDate(args.generatedAt)}`,
+  ];
+  for (let index = 0; index < metaRows.length; index += 1) {
+    const cell = ws.getCell(3 + index, 4);
+    cell.value = metaRows[index];
+    styleCell(cell, { size: 10, fontColor: COLORS.muted, borderColor: COLORS.white });
+  }
+
+  styleRange(ws, 6, 6, 1, args.colCount, { fill: COLORS.violet, borderColor: COLORS.violet });
+  ws.getRow(6).height = 5;
+}
+
+function styleHeaderRow(ws: ExcelJS.Worksheet, row: number, colCount: number) {
+  ws.getRow(row).height = 28;
+  for (let col = 1; col <= colCount; col += 1) {
+    styleCell(ws.getCell(row, col), {
+      fill: COLORS.violetDark,
+      fontColor: COLORS.white,
+      bold: true,
+      horizontal: col === 1 || col >= 4 ? "center" : "left",
+      borderColor: COLORS.violetDark,
+    });
+  }
+}
+
+function styleDataRow(ws: ExcelJS.Worksheet, row: number, colCount: number, isEven: boolean) {
+  ws.getRow(row).height = 42;
+  for (let col = 1; col <= colCount; col += 1) {
+    styleCell(ws.getCell(row, col), {
+      fill: isEven ? COLORS.slateSoft : COLORS.white,
+      horizontal: col === 1 || col >= 4 ? "center" : "left",
+    });
+  }
+}
+
+function setMoneyFormats(ws: ExcelJS.Worksheet, row: number, cols: number[]) {
+  for (const col of cols) {
+    ws.getCell(row, col).numFmt = '#,##0 "₽"';
+  }
+}
+
+function addClientSectionTotal(ws: ExcelJS.Worksheet, colCount: number, label: string, value: number) {
+  ws.addRow(["", "", "", "", "", "", label, value]);
+  const row = ws.lastRow!.number;
+  ws.mergeCells(row, 1, row, 6);
+  ws.getRow(row).height = 26;
+  for (let col = 1; col <= colCount; col += 1) {
+    styleCell(ws.getCell(row, col), {
+      fill: COLORS.violetSoft,
+      fontColor: COLORS.violetDark,
+      bold: col >= 7,
+      horizontal: col >= 7 ? "right" : "left",
+      borderColor: COLORS.borderStrong,
+    });
+  }
+  setMoneyFormats(ws, row, [8]);
+}
+
+function addInternalFooterRow(ws: ExcelJS.Worksheet, colCount: number, label: string, value: number) {
+  const cells: CellValue[] = [label, "", "", "", "", "", "", value];
+  while (cells.length < colCount) cells.push("");
+  ws.addRow(cells);
+  const row = ws.lastRow!.number;
+  ws.mergeCells(row, 1, row, 7);
+  ws.getRow(row).height = 24;
+  for (let col = 1; col <= colCount; col += 1) {
+    styleCell(ws.getCell(row, col), {
+      fill: COLORS.slateSoft,
+      fontColor: COLORS.violetDark,
+      bold: true,
+      horizontal: col === 8 ? "right" : "left",
+    });
+  }
+  setMoneyFormats(ws, row, [8]);
+}
+
+function addSummaryRow(
+  ws: ExcelJS.Worksheet,
+  colCount: number,
+  row: number,
+  label: string,
+  value: number,
+  opts: { emphasis?: boolean; fill?: string; fontColor?: string } = {},
+) {
+  ws.mergeCells(row, colCount - 2, row, colCount - 1);
+  ws.getCell(row, colCount - 2).value = label;
+  ws.getCell(row, colCount).value = value;
+  ws.getRow(row).height = opts.emphasis ? 30 : 25;
+  for (let col = colCount - 2; col <= colCount; col += 1) {
+    styleCell(ws.getCell(row, col), {
+      fill: opts.fill ?? COLORS.violetSoft,
+      fontColor: opts.fontColor ?? COLORS.violetDark,
+      bold: true,
+      size: opts.emphasis ? 12 : 10,
+      horizontal: col === colCount ? "right" : "left",
+      borderColor: COLORS.borderStrong,
+    });
+  }
+  setMoneyFormats(ws, row, [colCount]);
+}
+
+function addClientSummary(ws: ExcelJS.Worksheet, colCount: number, totals: ReturnType<typeof calcProjectEstimateTotals>, subtotal: number) {
+  ws.addRow([]);
+  const titleRow = ws.lastRow!.number + 1;
+  ws.addRow([]);
+  ws.mergeCells(titleRow, colCount - 2, titleRow, colCount);
+  ws.getCell(titleRow, colCount - 2).value = "Итоги для клиента";
+  ws.getRow(titleRow).height = 28;
+  for (let col = colCount - 2; col <= colCount; col += 1) {
+    styleCell(ws.getCell(titleRow, col), {
+      fill: COLORS.violetDark,
+      fontColor: COLORS.white,
+      bold: true,
+      size: 12,
+      borderColor: COLORS.violetDark,
+    });
+  }
+
+  addSummaryRow(ws, colCount, titleRow + 1, "Сумма по услугам", subtotal);
+  addSummaryRow(
+    ws,
+    colCount,
+    titleRow + 2,
+    `Комиссия агентства ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`,
+    totals.commission,
+  );
+  addSummaryRow(ws, colCount, titleRow + 3, "Всего по смете", totals.revenueTotal, {
+    emphasis: true,
+    fill: COLORS.yellow,
+    fontColor: COLORS.ink,
+  });
+}
+
 export type ProjectEstimateXlsxVariant = "internal" | "client";
 
 export async function buildProjectEstimateXlsx(args: {
   projectTitle: string;
   versionNumber: number;
   sections: ProjectEstimateReadSection[];
-  /** internal — все колонки и подытоги; client — только клиентские поля и итоги для клиента. */
+  customerName?: string | null;
+  eventStartDate?: Date | string | null;
+  eventEndDate?: Date | string | null;
+  eventDateConfirmed?: boolean | null;
+  /** internal — все колонки и подытоги; client — только клиентские поля и итог для отправки клиенту. */
   variant?: ProjectEstimateXlsxVariant;
 }) {
   const variant = args.variant ?? "internal";
@@ -128,71 +389,88 @@ export async function buildProjectEstimateXlsx(args: {
 
   const colCount = isClient ? 8 : 13;
   const widths = isClient
-    ? [6, 28, 32, 10, 10, 10, 14, 14]
-    : [6, 26, 28, 10, 10, 10, 12, 14, 12, 12, 14, 22, 18];
+    ? [6, 30, 34, 10, 10, 10, 16, 17]
+    : [6, 26, 30, 10, 10, 10, 14, 15, 13, 13, 15, 24, 20];
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Wowstorg";
   wb.created = new Date();
+  wb.modified = new Date();
 
-  const ws = wb.addWorksheet(isClient ? "Смета (клиент)" : "Смета (внутр.)");
+  const ws = wb.addWorksheet(isClient ? "Смета для клиента" : "Смета внутренняя", {
+    views: [{ state: "frozen", ySplit: 8 }],
+    pageSetup: {
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: {
+        left: 0.25,
+        right: 0.25,
+        top: 0.35,
+        bottom: 0.35,
+        header: 0.15,
+        footer: 0.15,
+      },
+    },
+  });
   ws.columns = widths.map((w) => ({ width: w }));
+  ws.properties.defaultRowHeight = 22;
+  ws.properties.outlineLevelRow = 1;
 
-  ws.addRow([
-    isClient ? `Смета для клиента · v${args.versionNumber}` : `Смета проекта (внутр.) · v${args.versionNumber}`,
-  ]);
-  ws.mergeCells(1, 1, 1, colCount);
-  const title = ws.getCell(1, 1);
-  styleCell(title);
-  title.font = { name: "Calibri", size: 15, bold: true, color: { argb: COLORS.titleText } };
-  title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.titleBg } };
-
-  ws.addRow(["Проект", args.projectTitle]);
-  ws.mergeCells(2, 2, 2, colCount);
-  for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(2, col));
-
-  ws.addRow([]);
+  addHeader(ws, {
+    projectTitle: args.projectTitle,
+    customerName: args.customerName,
+    versionNumber: args.versionNumber,
+    variant,
+    eventStartDate: args.eventStartDate,
+    eventEndDate: args.eventEndDate,
+    eventDateConfirmed: args.eventDateConfirmed,
+    generatedAt: new Date(),
+    colCount,
+  });
+  await addLogo(ws, wb);
 
   const headerCells = isClient
-    ? ["№", "Позиция", "Описание", "Ед. изм.", "Кол-во", "Дней", "Цена за ед., ₽", "Сумма, ₽"]
+    ? ["№", "Услуга", "Описание", "Ед.", "Кол-во", "Дней", "Цена/ед.", "Итого"]
     : [
         "№",
         "Позиция",
         "Описание",
-        "Ед. изм.",
+        "Ед.",
         "Кол-во",
         "Дней",
-        "Цена за ед., ₽",
-        "Сумма, ₽",
-        "Внутр., ₽",
+        "Цена/ед.",
+        "Сумма",
+        "Внутр.",
         "Оплата",
         "Статус оплаты",
-        "Коммент. подрядчику",
+        "Комментарий подрядчику",
         "Реквизиты",
       ];
   ws.addRow(headerCells);
   const headerRow = ws.lastRow!.number;
-  for (let col = 1; col <= colCount; col++) {
-    const cell = ws.getCell(headerRow, col);
-    styleCell(cell);
-    cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: COLORS.headerText } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.headerBg } };
-  }
+  styleHeaderRow(ws, headerRow, colCount);
 
   let clientSubtotal = 0;
   let internalSubtotal = 0;
+  let dataRowIndex = 0;
 
   for (const section of exportSections) {
-    const rowVals: (string | number)[] = ["", sectionTitle(section)];
+    const rowVals: CellValue[] = ["", sectionTitle(section)];
     while (rowVals.length < colCount) rowVals.push("");
     ws.addRow(rowVals);
     const sectionRow = ws.lastRow!.number;
     ws.mergeCells(sectionRow, 2, sectionRow, colCount);
-    for (let col = 1; col <= colCount; col++) {
-      const cell = ws.getCell(sectionRow, col);
-      styleCell(cell);
-      cell.font = { name: "Calibri", size: 10, bold: true };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: sectionBg(section) } };
+    ws.getRow(sectionRow).height = 30;
+    for (let col = 1; col <= colCount; col += 1) {
+      styleCell(ws.getCell(sectionRow, col), {
+        fill: sectionBg(section),
+        fontColor: COLORS.violetDark,
+        bold: true,
+        size: 11,
+        borderColor: COLORS.borderStrong,
+      });
     }
 
     let sectionClient = 0;
@@ -205,6 +483,7 @@ export async function buildProjectEstimateXlsx(args: {
       sectionInternal += internal;
       clientSubtotal += client;
       internalSubtotal += internal;
+      dataRowIndex += 1;
 
       if (isClient) {
         ws.addRow([
@@ -235,56 +514,35 @@ export async function buildProjectEstimateXlsx(args: {
           isContractor ? (line.contractorRequisites ?? "") : "",
         ]);
       }
+
       const row = ws.lastRow!.number;
-      for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(row, col));
+      styleDataRow(ws, row, colCount, dataRowIndex % 2 === 0);
+      ws.getCell(row, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
       if (isClient) {
-        ws.getCell(row, 7).numFmt = "#,##0.00";
-        ws.getCell(row, 8).numFmt = "#,##0.00";
+        setMoneyFormats(ws, row, [7, 8]);
       } else {
-        ws.getCell(row, 7).numFmt = "#,##0.00";
-        ws.getCell(row, 8).numFmt = "#,##0.00";
-        ws.getCell(row, 9).numFmt = "#,##0.00";
+        setMoneyFormats(ws, row, [7, 8, 9]);
       }
     }
 
     if (isClient) {
-      ws.addRow(["", "", "", "", "", "", "Итого по разделу", sectionClient]);
-      const sr = ws.lastRow!.number;
-      ws.mergeCells(sr, 1, sr, 6);
-      for (let col = 1; col <= colCount; col++) {
-        const cell = ws.getCell(sr, col);
-        styleCell(cell);
-        cell.font = { name: "Calibri", size: 10, bold: true };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
-      }
-      ws.getCell(sr, 8).numFmt = "#,##0.00";
+      addClientSectionTotal(ws, colCount, "Итого по разделу", sectionClient);
     } else {
       const sectionTotals = calcProjectEstimateTotals({
         clientSubtotal: sectionClient,
         internalSubtotal: sectionInternal,
       });
       const footerRows: [string, number][] = [
-        ["Выручка (клиент), раздел", sectionClient],
+        ["Выручка клиента, раздел", sectionClient],
         [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, раздел`, sectionTotals.commission],
-        ["Выручка с комиссией, раздел", sectionTotals.revenueTotal],
-        ["Внутр., раздел", sectionInternal],
+        ["Итого клиент с комиссией, раздел", sectionTotals.revenueTotal],
+        ["Себестоимость, раздел", sectionInternal],
         ["Валовая маржа, раздел", sectionTotals.grossMargin],
-        [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}% (от выручки раздела с комиссией)`, sectionTotals.tax],
-        ["Маржа после условного налога, раздел", sectionTotals.marginAfterTax],
+        [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}%, раздел`, sectionTotals.tax],
+        ["Маржа после налога, раздел", sectionTotals.marginAfterTax],
       ];
       for (const [label, value] of footerRows) {
-        const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
-        while (cells.length < colCount) cells.push("");
-        ws.addRow(cells);
-        const fr = ws.lastRow!.number;
-        ws.mergeCells(fr, 1, fr, 7);
-        for (let col = 1; col <= colCount; col++) {
-          const cell = ws.getCell(fr, col);
-          styleCell(cell);
-          cell.font = { name: "Calibri", size: 9, bold: true, color: { argb: COLORS.totalText } };
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.sectionFooterBg } };
-        }
-        ws.getCell(fr, 8).numFmt = "#,##0.00";
+        addInternalFooterRow(ws, colCount, label, value);
       }
     }
 
@@ -294,50 +552,46 @@ export async function buildProjectEstimateXlsx(args: {
   const projectTotals = calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
 
   if (isClient) {
-    const tail: [string, number][] = [
-      ["Сумма по смете (клиент)", clientSubtotal],
-      [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`, projectTotals.commission],
-      ["Итого с комиссией", projectTotals.revenueTotal],
-    ];
-    for (const [label, value] of tail) {
-      const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
-      ws.addRow(cells);
-      const row = ws.lastRow!.number;
-      ws.mergeCells(row, 1, row, 7);
-      for (let col = 1; col <= colCount; col++) {
-        const cell = ws.getCell(row, col);
-        styleCell(cell);
-        cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.totalText } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
-      }
-      ws.getCell(row, 8).numFmt = "#,##0.00";
-    }
+    addClientSummary(ws, colCount, projectTotals, clientSubtotal);
   } else {
+    ws.addRow([]);
+    const titleRow = ws.lastRow!.number + 1;
+    ws.addRow([]);
+    ws.mergeCells(titleRow, 1, titleRow, 8);
+    ws.getCell(titleRow, 1).value = "Итоги проекта";
+    for (let col = 1; col <= 8; col += 1) {
+      styleCell(ws.getCell(titleRow, col), {
+        fill: COLORS.violetDark,
+        fontColor: COLORS.white,
+        bold: true,
+        size: 12,
+        borderColor: COLORS.violetDark,
+      });
+    }
+
     const tail: [string, number][] = [
-      ["Сумма клиентских строк (проект)", clientSubtotal],
+      ["Сумма клиентских строк", clientSubtotal],
       [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`, projectTotals.commission],
-      ["Итого клиент (с комиссией)", projectTotals.revenueTotal],
-      ["Себестоимость (проект)", internalSubtotal],
-      ["Валовая маржа (проект)", projectTotals.grossMargin],
-      [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}% (от выручки проекта с комиссией)`, projectTotals.tax],
-      ["Маржа после условного налога (проект)", projectTotals.marginAfterTax],
+      ["Итого клиент с комиссией", projectTotals.revenueTotal],
+      ["Себестоимость проекта", internalSubtotal],
+      ["Валовая маржа проекта", projectTotals.grossMargin],
+      [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}%`, projectTotals.tax],
+      ["Маржа после налога", projectTotals.marginAfterTax],
     ];
     for (const [label, value] of tail) {
-      const cells: (string | number)[] = [label, "", "", "", "", "", "", value];
-      while (cells.length < colCount) cells.push("");
-      ws.addRow(cells);
-      const row = ws.lastRow!.number;
-      ws.mergeCells(row, 1, row, 7);
-      for (let col = 1; col <= colCount; col++) {
-        const cell = ws.getCell(row, col);
-        styleCell(cell);
-        cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: COLORS.totalText } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.totalBg } };
-      }
-      ws.getCell(row, 8).numFmt = "#,##0.00";
+      addInternalFooterRow(ws, colCount, label, value);
     }
   }
 
-  ws.views = [{ state: "frozen", ySplit: 4 }];
+  ws.autoFilter = {
+    from: { row: headerRow, column: 1 },
+    to: { row: headerRow, column: colCount },
+  };
+  ws.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.protection = { locked: false };
+    });
+  });
+
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

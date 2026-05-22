@@ -46,6 +46,10 @@ export async function GET(
 
   const xlsxBytes = await buildProjectEstimateXlsx({
     projectTitle: model.projectTitle,
+    customerName: projectMeta?.customer.name ?? null,
+    eventStartDate: projectMeta?.eventStartDate ?? null,
+    eventEndDate: projectMeta?.eventEndDate ?? null,
+    eventDateConfirmed: projectMeta?.eventDateConfirmed ?? false,
     versionNumber: model.current.versionNumber,
     sections: model.current.sections,
     variant,

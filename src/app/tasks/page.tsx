@@ -691,6 +691,8 @@ function TaskEditor({
   columnId,
   columns,
   meta,
+  defaultProjectId,
+  projectLocked,
   onClose,
   onSaved,
   onDeleted,
@@ -699,6 +701,8 @@ function TaskEditor({
   columnId: string | null;
   columns: BoardColumn[];
   meta: TasksMeta | null;
+  defaultProjectId?: string | null;
+  projectLocked?: boolean;
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -710,7 +714,7 @@ function TaskEditor({
   const [dueDate, setDueDate] = React.useState(task?.dueDate ?? "");
   const [priority, setPriority] = React.useState<Priority>(task?.priority ?? "NORMAL");
   const [color, setColor] = React.useState(task?.color ?? TASK_COLORS[0]!);
-  const [projectId, setProjectId] = React.useState(task?.project?.id ?? "");
+  const [projectId, setProjectId] = React.useState(task?.project?.id ?? defaultProjectId ?? "");
   const [orderId, setOrderId] = React.useState(task?.order?.id ?? "");
   const [targetColumnId, setTargetColumnId] = React.useState(columnId ?? columns[0]?.id ?? "");
   const [busy, setBusy] = React.useState(false);
@@ -724,12 +728,12 @@ function TaskEditor({
     setDueDate(task?.dueDate ?? "");
     setPriority(task?.priority ?? "NORMAL");
     setColor(task?.color ?? TASK_COLORS[0]!);
-    setProjectId(task?.project?.id ?? "");
+    setProjectId(task?.project?.id ?? defaultProjectId ?? "");
     setOrderId(task?.order?.id ?? "");
     setTargetColumnId(columnId ?? columns[0]?.id ?? "");
     setError(null);
     setNewChecklistTitle("");
-  }, [columnId, columns, task]);
+  }, [columnId, columns, defaultProjectId, task]);
 
   async function save() {
     if (!title.trim()) {
@@ -955,6 +959,7 @@ function TaskEditor({
               <select
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
+                disabled={projectLocked}
                 className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               >
                 <option value="">Без проекта</option>
@@ -1052,6 +1057,17 @@ function TaskEditor({
 
 function TasksPageContent() {
   const { state } = useAuth();
+  const [viewParams] = React.useState(() => {
+    if (typeof window === "undefined") {
+      return { projectId: "", embedded: false, readOnly: false };
+    }
+    const params = new URLSearchParams(window.location.search);
+    return {
+      projectId: params.get("projectId")?.trim() || "",
+      embedded: params.get("embed") === "1",
+      readOnly: params.get("readOnly") === "1",
+    };
+  });
   const [boards, setBoards] = React.useState<BoardListItem[]>([]);
   const [boardId, setBoardId] = React.useState("");
   const [board, setBoard] = React.useState<BoardDetail | null>(null);
@@ -1084,9 +1100,17 @@ function TasksPageContent() {
 
   const fetchBoardDetail = React.useCallback(async (id: string) => {
     if (!id) return;
-    const data = await readApi<{ board: BoardDetail }>(await fetch(`/api/tasks/boards/${id}`, { cache: "no-store" }));
+    const params = new URLSearchParams();
+    if (viewParams.projectId) {
+      params.set("projectId", viewParams.projectId);
+      params.set("includeClosedProjectTasks", "1");
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const data = await readApi<{ board: BoardDetail }>(
+      await fetch(`/api/tasks/boards/${id}${suffix}`, { cache: "no-store" }),
+    );
     return data.board;
-  }, []);
+  }, [viewParams.projectId]);
 
   const loadBoard = React.useCallback(
     async (id: string) => {
@@ -1126,7 +1150,14 @@ function TasksPageContent() {
         setBoardId(firstBoardId);
         if (firstBoardId) {
           const detail = await readApi<{ board: BoardDetail }>(
-            await fetch(`/api/tasks/boards/${firstBoardId}`, { cache: "no-store" }),
+            await fetch(
+              `/api/tasks/boards/${firstBoardId}${
+                viewParams.projectId
+                  ? `?projectId=${encodeURIComponent(viewParams.projectId)}&includeClosedProjectTasks=1`
+                  : ""
+              }`,
+              { cache: "no-store" },
+            ),
           );
           if (!cancelled) applyBoard(detail.board);
         }
@@ -1140,7 +1171,7 @@ function TasksPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [applyBoard, boardId, isWowstorg]);
+  }, [applyBoard, boardId, isWowstorg, viewParams.projectId]);
 
   React.useEffect(() => {
     if (boardId) void loadBoard(boardId);
@@ -1410,9 +1441,19 @@ function TasksPageContent() {
   }
 
   return (
-    <div className="rounded-3xl border border-violet-100 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.92))] p-4 shadow-[0_24px_70px_rgba(109,40,217,0.12)]">
+    <div
+      className={[
+        "rounded-3xl border border-violet-100 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.92))] shadow-[0_24px_70px_rgba(109,40,217,0.12)]",
+        viewParams.embedded ? "p-3" : "p-4",
+      ].join(" ")}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
+          {viewParams.projectId ? (
+            <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">
+              Проектные задачи
+            </span>
+          ) : null}
           {boards.length > 1 ? (
             <select
               value={boardId}
@@ -1433,6 +1474,7 @@ function TasksPageContent() {
           <button
             type="button"
             onClick={() => void addColumn()}
+            disabled={viewParams.readOnly}
             className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-500"
           >
             + Колонка
@@ -1445,7 +1487,7 @@ function TasksPageContent() {
 
       {!loading && board ? (
         <div className="mt-4 overflow-x-auto pb-3">
-        <div className="flex min-h-[calc(100vh-280px)] gap-4 px-1 pb-2">
+        <div className={`${viewParams.embedded ? "min-h-[26rem]" : "min-h-[calc(100vh-280px)]"} flex gap-4 px-1 pb-2`}>
           {board.columns.map((column, columnIndex) => (
             <section
               key={column.id}
@@ -1461,7 +1503,7 @@ function TasksPageContent() {
                 event.preventDefault();
                 const taskId = event.dataTransfer.getData("text/plain") || draggingTaskId;
                 setDragOverColumnId(null);
-                if (taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
+                if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
                 "flex w-[320px] shrink-0 flex-col rounded-2xl border bg-white/85 shadow-sm backdrop-blur transition",
@@ -1484,11 +1526,13 @@ function TasksPageContent() {
                       );
                     }}
                     onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
+                    disabled={viewParams.readOnly}
                     className="min-w-0 flex-1 bg-transparent text-base font-bold text-white outline-none placeholder:text-white/70"
                   />
                   <button
                     type="button"
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
+                    disabled={viewParams.readOnly}
                     className="rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs text-white/90 hover:bg-white/20"
                     title="Колонка завершения"
                   >
@@ -1499,6 +1543,7 @@ function TasksPageContent() {
                   <button
                     type="button"
                     onClick={() => setEditor({ task: null, columnId: column.id })}
+                    disabled={viewParams.readOnly}
                     className="text-sm font-semibold text-white/90 hover:text-white"
                   >
                     + Добавить задачу
@@ -1557,6 +1602,8 @@ function TasksPageContent() {
           columnId={editor.columnId}
           columns={board?.columns ?? []}
           meta={meta}
+          defaultProjectId={viewParams.projectId || null}
+          projectLocked={Boolean(viewParams.projectId)}
           onClose={() => setEditor(null)}
           onSaved={() => void refresh()}
           onDeleted={() => void refresh()}
@@ -1567,6 +1614,15 @@ function TasksPageContent() {
 }
 
 export default function TasksPage() {
+  const [embedded] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("embed") === "1";
+  });
+
+  if (embedded) {
+    return <TasksPageContent />;
+  }
+
   return (
     <AppShell title="Задачи">
       <TasksPageContent />

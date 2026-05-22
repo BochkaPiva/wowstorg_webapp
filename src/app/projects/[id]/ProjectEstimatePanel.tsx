@@ -1622,41 +1622,55 @@ export function ProjectEstimatePanel({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-2 rounded-2xl border border-zinc-200 bg-white/80 p-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-                <div className="rounded-xl border border-violet-200 bg-violet-50/90 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-violet-900">Сумма (клиент)</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-violet-950">{money(totals.clientSubtotal)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-slate-800">Условный налог 6%</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-slate-900">{money(totals.tax6)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-violet-800">Комиссия 15%</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-violet-900">{money(totals.commission)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-violet-300 bg-violet-100/70 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-violet-900">Итого клиент</div>
-                  <div className="mt-1 text-base font-extrabold tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-zinc-800">Себестоимость</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.internalSubtotal)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-zinc-700">Валовая маржа</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-zinc-900">{money(totals.grossMargin)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold text-emerald-900">Маржа после налога</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">{money(totals.marginAfterTax)} ₽</div>
-                </div>
-                <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2">
-                  <div className="text-[11px] font-semibold text-emerald-900">Маржа после налога, %</div>
-                  <div className="mt-1 text-base font-bold tabular-nums text-emerald-950">
-                    {Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}
+              <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-white/85 p-3 xl:grid-cols-[1.15fr_0.95fr_1fr]">
+                <div className="rounded-2xl border border-violet-200 bg-violet-50/80 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Сумма</span>
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.clientSubtotal)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Налог 6%</span>
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.tax6)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Комиссия 15%</span>
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
+                      <span className="font-extrabold text-violet-950">Итого</span>
+                      <span className="font-black tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</span>
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-[10px] text-zinc-500">к итого клиент</div>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50/90 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Себестоимость</span>
+                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalSubtotal)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t border-zinc-200 pt-2">
+                      <span className="font-semibold text-zinc-700">Валовая маржа</span>
+                      <span className="font-extrabold tabular-nums text-zinc-950">{money(totals.grossMargin)} ₽</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Маржа</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    <div>
+                      <div className="text-xs font-semibold text-emerald-900">После налога</div>
+                      <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">{money(totals.marginAfterTax)} ₽</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-emerald-900">Процент к итогу клиента</div>
+                      <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">
+                        {Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 

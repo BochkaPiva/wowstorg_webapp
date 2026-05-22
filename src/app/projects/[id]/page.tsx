@@ -138,6 +138,24 @@ const workTabBtn = (active: boolean) =>
   ].join(" ");
 const heroStatCard = "rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm";
 
+const PROJECT_STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
+  LEAD: "BRIEFING",
+  BRIEFING: "INTERNAL_PREP",
+  INTERNAL_PREP: "PROPOSAL_SENT",
+  PROPOSAL_SENT: "CONTRACT_PREP",
+  PROPOSAL_REVISION: "CONTRACT_PREP",
+  CONTRACT_PREP: "CONTRACT_SENT",
+  CONTRACT_SENT: "CONTRACT_SIGNED",
+  CONTRACT_SIGNED: "PREPRODUCTION",
+  PREPRODUCTION: "READY_TO_RUN",
+  AWAITING_CLIENT_INPUT: "PROPOSAL_REVISION",
+  AWAITING_VENDOR: "PREPRODUCTION",
+  READY_TO_RUN: "LIVE",
+  LIVE: "WRAP_UP",
+  WRAP_UP: "COMPLETED",
+  ON_HOLD: "BRIEFING",
+};
+
 function projectStatusTone(status: ProjectStatus) {
   switch (status) {
     case "LIVE":
@@ -739,6 +757,7 @@ export default function ProjectDetailPage() {
 
   const statusOptions = Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[];
   const ballOptions = Object.keys(PROJECT_BALL_LABEL) as ProjectBall[];
+  const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
   return (
     <AppShell title={project?.title ?? "Проект"}>
@@ -789,9 +808,46 @@ export default function ProjectDetailPage() {
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
                 <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <h1 className="break-words text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl">
-                      {project.title}
-                    </h1>
+                    {editingField === "title" && !readOnly ? (
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <input
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          className={`${inputField} text-xl font-black sm:text-2xl`}
+                          maxLength={300}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          disabled={saveBusy || !title.trim()}
+                          onClick={() => void patchField({ title: title.trim() })}
+                          className={`${primaryBtn} sm:w-auto`}
+                        >
+                          Сохранить
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTitle(project.title);
+                            setEditingField(null);
+                          }}
+                          className={`${secondaryBtn} sm:w-auto`}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => !readOnly && setEditingField("title")}
+                        disabled={readOnly}
+                        className={`block break-words text-left text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl ${
+                          readOnly ? "cursor-default" : "rounded-2xl outline-none transition hover:text-violet-900 focus:ring-4 focus:ring-violet-100"
+                        }`}
+                      >
+                        {project.title}
+                      </button>
+                    )}
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -810,6 +866,80 @@ export default function ProjectDetailPage() {
                         Мяч: {PROJECT_BALL_LABEL[project.ball]}
                       </button>
                     </div>
+                    {editingField === "status" && !readOnly ? (
+                      <div className="mt-3 rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm">
+                        {recommendedStatus ? (
+                          <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">
+                                Следующий логичный шаг
+                              </div>
+                              <div className="mt-0.5 text-sm font-bold text-violet-950">
+                                {PROJECT_STATUS_LABEL[recommendedStatus]}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setStatus(recommendedStatus)}
+                              className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-700"
+                            >
+                              Выбрать
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="grid gap-3 xl:grid-cols-[minmax(14rem,1fr)_minmax(0,1.6fr)]">
+                          <InlineSelectMenu
+                            value={status}
+                            options={statusOptions}
+                            labelByValue={PROJECT_STATUS_LABEL}
+                            onChange={setStatus}
+                            tone={projectStatusTone}
+                            placeholderLabel="Статус"
+                          />
+                          <div>
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Мяч</div>
+                            <div className="flex flex-wrap gap-2">
+                              {ballOptions.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() => setBall(option)}
+                                  className={[
+                                    "rounded-full border px-3 py-2 text-xs font-bold transition",
+                                    option === ball
+                                      ? `${projectBallTone(option)} shadow-sm`
+                                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
+                                  ].join(" ")}
+                                >
+                                  {PROJECT_BALL_LABEL[option]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          <button
+                            type="button"
+                            disabled={saveBusy}
+                            onClick={() => void patchField({ status, ball })}
+                            className={`${primaryBtn} w-full sm:w-auto`}
+                          >
+                            Сохранить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStatus(project.status);
+                              setBall(project.ball);
+                              setEditingField(null);
+                            }}
+                            className={`${secondaryBtn} w-full sm:w-auto`}
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -823,13 +953,78 @@ export default function ProjectDetailPage() {
                     <div className="mt-1 text-sm font-semibold text-zinc-950">{project.owner.displayName}</div>
                   </div>
                   <div className={heroStatCard}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
+                          className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"
+                        >
+                          Изменить
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="mt-1 text-sm font-semibold text-zinc-950">
                       {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
                     </div>
                     <div className={`mt-1 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
                       {project.eventDateConfirmed ? "Дата подтверждена" : "Дата не подтверждена"}
                     </div>
+                    {editingField === "eventDates" && !readOnly ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                          <input
+                            type="date"
+                            value={eventStartDate}
+                            onChange={(e) => setEventStartDate(e.target.value)}
+                            className={inputField}
+                          />
+                          <input
+                            type="date"
+                            value={eventEndDate}
+                            onChange={(e) => setEventEndDate(e.target.value)}
+                            className={inputField}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-700">
+                          <input
+                            type="checkbox"
+                            checked={eventDateConfirmed}
+                            onChange={(e) => setEventDateConfirmed(e.target.checked)}
+                          />
+                          Дата подтверждена
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={saveBusy}
+                            onClick={() =>
+                              void patchField({
+                                eventStartDate: eventStartDate || null,
+                                eventEndDate: eventEndDate || null,
+                                eventDateConfirmed,
+                              })
+                            }
+                            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white"
+                          >
+                            Сохранить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEventStartDate(project.eventStartDate ?? "");
+                              setEventEndDate(project.eventEndDate ?? "");
+                              setEventDateConfirmed(project.eventDateConfirmed);
+                              setEditingField(null);
+                            }}
+                            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className={heroStatCard}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Прогресс</div>
@@ -879,8 +1074,32 @@ export default function ProjectDetailPage() {
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <section className={`${sectionShell} h-full p-0`}>
+          <section className={softShell}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-extrabold tracking-tight text-violet-900">Задачи проекта</div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Этот блок показывает те же задачи, что и общий YouGile, но только с привязкой к этому проекту.
+                </p>
+              </div>
+              <Link
+                href={`/tasks?projectId=${encodeURIComponent(id)}`}
+                className={`${secondaryBtn} w-full text-center sm:w-auto`}
+              >
+                Открыть в YouGile
+              </Link>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-violet-100 bg-white/70">
+              <iframe
+                title={`Задачи проекта ${project.title}`}
+                src={`/tasks?embed=1&projectId=${encodeURIComponent(id)}${readOnly ? "&readOnly=1" : ""}`}
+                className="h-[34rem] w-full border-0 bg-transparent"
+              />
+            </div>
+          </section>
+
+          <div className="grid gap-4">
+            <section className="hidden" aria-hidden="true">
               <div className="border-b border-zinc-100 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
                 <p className="mt-1 text-xs text-zinc-500">Главные поля проекта в одном цельном блоке.</p>
@@ -1105,7 +1324,7 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              <div className="mt-4 space-y-4">
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1115,7 +1334,7 @@ export default function ProjectDetailPage() {
                           <textarea
                             value={openBlockers}
                             onChange={(e) => setOpenBlockers(e.target.value)}
-                            rows={4}
+                            rows={3}
                             className={inputField}
                             placeholder="Что сейчас мешает движению проекта"
                           />
@@ -1169,7 +1388,7 @@ export default function ProjectDetailPage() {
                           <textarea
                             value={internalSummary}
                             onChange={(e) => setInternalSummary(e.target.value)}
-                            rows={5}
+                            rows={3}
                             className={inputField}
                             placeholder="Короткая суть проекта, важные договорённости, контекст"
                           />

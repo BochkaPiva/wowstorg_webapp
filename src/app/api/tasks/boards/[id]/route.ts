@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -14,13 +15,32 @@ const PatchBoardSchema = z
   .strict();
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireRole("WOWSTORG");
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
+  const searchParams = new URL(req.url).searchParams;
+  const projectId = searchParams.get("projectId")?.trim() || null;
+  const includeClosedProjectTasks = searchParams.get("includeClosedProjectTasks") === "1";
+  const taskWhere: Prisma.WorkTaskWhereInput = projectId
+    ? { projectId }
+    : includeClosedProjectTasks
+      ? {}
+      : {
+          OR: [
+            { projectId: null },
+            {
+              project: {
+                archivedAt: null,
+                status: { notIn: ["COMPLETED", "CANCELLED"] },
+              },
+            },
+          ],
+        };
+
   const board = await prisma.workTaskBoard.findUnique({
     where: { id },
     select: {
@@ -37,6 +57,7 @@ export async function GET(
           sortOrder: true,
           isDone: true,
           tasks: {
+            where: taskWhere,
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
             take: 200,
             select: {

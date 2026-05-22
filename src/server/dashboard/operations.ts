@@ -150,6 +150,25 @@ function eventRank(event: DashboardEvent): number {
   return urgencyRank[event.urgency] ?? 9;
 }
 
+async function getOrderStaleMutedIds(orderIds: string[], now: Date): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+
+  try {
+    const rows = await prisma.orderNotificationCooldown.findMany({
+      where: {
+        orderId: { in: orderIds },
+        blockKey: ORDER_STALE_BLOCK_KEY,
+        muteUntil: { gt: now },
+      },
+      select: { orderId: true },
+    });
+    return new Set(rows.map((row) => row.orderId));
+  } catch (error) {
+    console.error("[dashboard] OrderNotificationCooldown unavailable, stale mutes ignored", error);
+    return new Set();
+  }
+}
+
 function evaluateOrderStaleSignal(input: {
   status: OrderStatus;
   updatedAt: Date;
@@ -264,10 +283,6 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         startDate: true,
         endDate: true,
         updatedAt: true,
-        notificationCooldowns: {
-          where: { blockKey: ORDER_STALE_BLOCK_KEY, muteUntil: { gt: now } },
-          select: { muteUntil: true },
-        },
       },
     }),
     prisma.project.findMany({
@@ -300,6 +315,11 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       },
     }),
   ]);
+
+  const mutedOrderIds = await getOrderStaleMutedIds(
+    orders.map((order) => order.id),
+    now,
+  );
 
   const events: DashboardEvent[] = [];
   const signals: DashboardSignal[] = [];
@@ -410,7 +430,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       now,
     });
     if (staleSignal.show) {
-      const hasMute = order.notificationCooldowns.length > 0;
+      const hasMute = mutedOrderIds.has(order.id);
       if (!hasMute || staleSignal.severity === "critical") {
         signals.push({
           id: `order-stale:${order.id}`,

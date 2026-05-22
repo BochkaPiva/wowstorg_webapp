@@ -29,22 +29,27 @@ export async function POST(req: Request) {
   }
 
   const muteUntil = new Date(Date.now() + parsed.data.days * 24 * 60 * 60 * 1000);
-  await prisma.orderNotificationCooldown.upsert({
-    where: {
-      orderId_blockKey: {
+  try {
+    await prisma.orderNotificationCooldown.upsert({
+      where: {
+        orderId_blockKey: {
+          orderId: order.id,
+          blockKey: ORDER_STALE_BLOCK_KEY,
+        },
+      },
+      create: {
         orderId: order.id,
         blockKey: ORDER_STALE_BLOCK_KEY,
+        muteUntil,
       },
-    },
-    create: {
-      orderId: order.id,
-      blockKey: ORDER_STALE_BLOCK_KEY,
-      muteUntil,
-    },
-    update: {
-      muteUntil,
-    },
-  });
+      update: {
+        muteUntil,
+      },
+    });
+  } catch (error) {
+    console.error("[dashboard] Failed to persist order attention mute", error);
+    return jsonError(503, "Order snooze is temporarily unavailable");
+  }
 
   return jsonOk({ ok: true, muteUntil: muteUntil.toISOString() });
 }

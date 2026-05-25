@@ -11,7 +11,7 @@ import {
   PROJECT_ESTIMATE_COMMISSION_RATE,
   PROJECT_ESTIMATE_TAX_RATE,
 } from "@/lib/project-estimate-totals";
-import { calcOrderServicesInternalCosts } from "@/lib/order-service-internal-costs";
+import { calcCashInternalCostTaxAmount, calcOrderServicesInternalCosts, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
 import { prisma } from "@/server/db";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
@@ -573,6 +573,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                   costInternal: true,
                   qty: true,
                   unitPriceClient: true,
+                  paymentMethod: true,
                 },
               },
             },
@@ -588,6 +589,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   function versionFinancials(version: ProjectVersion | null, draftOrders: ProjectRow["draftOrders"]): ProjectFinancials {
     let clientSubtotal = 0;
     let internalSubtotal = 0;
+    let cashInternalCostTax = 0;
 
     if (version) {
       for (const section of version.sections) {
@@ -606,7 +608,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
             discount: order,
           });
           clientSubtotal += pricing.grandTotalBeforeTax;
-          internalSubtotal += calcOrderServicesInternalCosts({
+          const serviceCosts = calcOrderServicesInternalCosts({
             delivery: {
               enabled: order.deliveryEnabled,
               internalCost: order.deliveryInternalCost,
@@ -622,7 +624,9 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
               internalCost: order.demontageInternalCost,
               internalPaymentMethod: order.demontageInternalPaymentMethod,
             },
-          }).internalCostWithCashTax;
+          });
+          internalSubtotal += serviceCosts.internalCostTotal;
+          cashInternalCostTax += serviceCosts.cashInternalCostTax;
           continue;
         }
 
@@ -633,7 +637,11 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
               qty: line.qty != null ? Number(line.qty) : null,
               unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
             }) ?? 0;
-          internalSubtotal += getNumericAmount(line.costInternal);
+          const lineInternal = getNumericAmount(line.costInternal);
+          internalSubtotal += lineInternal;
+          if (isCashPaymentMethod(line.paymentMethod)) {
+            cashInternalCostTax += calcCashInternalCostTaxAmount(lineInternal);
+          }
         }
       }
     }
@@ -652,7 +660,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       }
     }
 
-    return calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
+    return calcProjectEstimateTotals({ clientSubtotal, internalSubtotal, cashInternalCostTax });
   }
 
   function statusAge(project: ProjectRow): number {

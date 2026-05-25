@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  calcCashInternalCostTaxAmount,
   calcOrderServicesInternalCosts,
+  calcWarehouseProfitEstimate,
   isCashPaymentMethod,
   normalizeOrderServicePaymentMethod,
 } from "@/lib/order-service-internal-costs";
 
 describe("order service internal costs", () => {
+  it("subtracts client tax, internal cost and cash tax from grand total", () => {
+    const estimate = calcWarehouseProfitEstimate({
+      clientGrandTotal: 24_719,
+      clientTaxAmount: 1_399,
+      delivery: { enabled: true, internalCost: 2_500, internalPaymentMethod: "CASH" },
+      montage: { enabled: true, internalCost: 0, internalPaymentMethod: "NON_CASH" },
+    });
+
+    expect(estimate.internalCostTotal).toBe(2_500);
+    expect(estimate.cashInternalCostTax).toBe(88);
+    expect(estimate.profitEstimate).toBe(20_732);
+  });
+
   it("adds 3.5% tax only to cash-paid internal service costs", () => {
     const totals = calcOrderServicesInternalCosts({
       delivery: { enabled: true, internalCost: 8_000, internalPaymentMethod: "CASH" },

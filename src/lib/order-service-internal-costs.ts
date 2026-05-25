@@ -23,6 +23,42 @@ export const ORDER_SERVICE_PAYMENT_METHOD_LABELS: Record<OrderServicePaymentMeth
 
 export const ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL = "Оплата";
 
+export function calcCashInternalCostTaxAmount(
+  cashInternalCostTotal: number,
+  cashTaxRate: number = ORDER_CASH_INTERNAL_COST_TAX_RATE,
+): number {
+  const base = Number(cashInternalCostTotal);
+  if (!Number.isFinite(base) || base <= 0) return 0;
+  return Math.round(base * cashTaxRate);
+}
+
+export function calcWarehouseProfitEstimate(input: {
+  clientGrandTotal: number;
+  clientTaxAmount: number;
+  delivery?: OrderServiceInternalCostInput;
+  montage?: OrderServiceInternalCostInput;
+  demontage?: OrderServiceInternalCostInput;
+}) {
+  const services = calcOrderServicesInternalCosts({
+    delivery: input.delivery,
+    montage: input.montage,
+    demontage: input.demontage,
+  });
+  const clientTaxAmount = Math.round(input.clientTaxAmount);
+  const profitEstimate = Math.round(
+    input.clientGrandTotal -
+      clientTaxAmount -
+      services.internalCostTotal -
+      services.cashInternalCostTax,
+  );
+
+  return {
+    ...services,
+    clientTaxAmount,
+    profitEstimate,
+  };
+}
+
 export function normalizeOrderServicePaymentMethod(
   value: OrderServicePaymentMethod | string | null | undefined,
 ): OrderServicePaymentMethod {
@@ -49,7 +85,7 @@ export function calcOrderServicesInternalCosts(input: {
     return sum + num(service.internalCost);
   }, 0);
   const cashTaxRate = input.cashTaxRate ?? ORDER_CASH_INTERNAL_COST_TAX_RATE;
-  const cashInternalCostTax = Math.round(cashInternalCostTotal * cashTaxRate);
+  const cashInternalCostTax = calcCashInternalCostTaxAmount(cashInternalCostTotal, cashTaxRate);
 
   return {
     internalCostTotal: Math.round(internalCostTotal),

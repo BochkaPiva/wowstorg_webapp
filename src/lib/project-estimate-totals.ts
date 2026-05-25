@@ -4,6 +4,7 @@ export const PROJECT_ESTIMATE_COMMISSION_RATE = 0.15;
 export type ProjectEstimateTotalsInput = {
   clientSubtotal: number;
   internalSubtotal: number;
+  cashInternalCostTax?: number;
   taxRate?: number;
   commissionRate?: number;
 };
@@ -11,6 +12,8 @@ export type ProjectEstimateTotalsInput = {
 export type ProjectEstimateTotals = {
   clientSubtotal: number;
   internalSubtotal: number;
+  cashInternalCostTax: number;
+  internalExpensesTotal: number;
   commission: number;
   revenueTotal: number;
   tax: number;
@@ -35,16 +38,20 @@ export function calcProjectEstimateTotals(
   const commissionRate = input.commissionRate ?? PROJECT_ESTIMATE_COMMISSION_RATE;
   const clientSubtotal = roundMoney(input.clientSubtotal);
   const internalSubtotal = roundMoney(input.internalSubtotal);
+  const cashInternalCostTax = roundMoney(input.cashInternalCostTax ?? 0);
+  const internalExpensesTotal = roundMoney(internalSubtotal + cashInternalCostTax);
   const commission = roundMoney(clientSubtotal * commissionRate);
   const revenueTotal = clientSubtotal + commission;
   const tax = roundMoney(revenueTotal * taxRate);
-  const grossMargin = roundMoney(revenueTotal - internalSubtotal);
+  const grossMargin = roundMoney(revenueTotal - internalSubtotal - cashInternalCostTax);
   const marginAfterTax = roundMoney(grossMargin - tax);
   const marginAfterTaxPct = revenueTotal > 0 ? (marginAfterTax / revenueTotal) * 100 : 0;
 
   return {
     clientSubtotal,
     internalSubtotal,
+    cashInternalCostTax,
+    internalExpensesTotal,
     commission,
     revenueTotal,
     tax,

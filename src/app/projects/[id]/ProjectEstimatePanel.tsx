@@ -23,6 +23,7 @@ import {
   normalizeProjectEstimateDays,
 } from "@/lib/project-estimate-requisite";
 import {
+  calcProjectEstimateTotals,
   PROJECT_ESTIMATE_COMMISSION_RATE,
   getNumericAmount,
   roundMoney,
@@ -1204,9 +1205,6 @@ export function ProjectEstimatePanel({
     }
     const roundedClientSubtotal = roundMoney(clientSubtotal);
     const roundedInternalSubtotal = roundMoney(internalSubtotal);
-    const tax6 = roundMoney(roundedClientSubtotal * ORDER_TAX_RATE);
-    const clientTotal = roundedClientSubtotal + tax6;
-    const commission = roundMoney(roundedClientSubtotal * PROJECT_ESTIMATE_COMMISSION_RATE);
     const cashInternalCostTax = calcOrderServicesInternalCosts({
       delivery: {
         enabled: true,
@@ -1214,23 +1212,27 @@ export function ProjectEstimatePanel({
         internalPaymentMethod: "CASH",
       },
     }).cashInternalCostTax;
-    const internalWithCashTax = roundedInternalSubtotal + cashInternalCostTax;
-    const grossMargin = roundMoney(roundedClientSubtotal - internalWithCashTax);
-    const marginAfterTax = grossMargin;
-    const marginAfterTaxPct = clientTotal > 0 ? (marginAfterTax / clientTotal) * 100 : 0;
+    const estimateTotals = calcProjectEstimateTotals({
+      clientSubtotal: roundedClientSubtotal,
+      internalSubtotal: roundedInternalSubtotal,
+      cashInternalCostTax,
+      commissionRate: 0,
+    });
+    const commission = roundMoney(roundedClientSubtotal * PROJECT_ESTIMATE_COMMISSION_RATE);
+    const clientTotal = roundedClientSubtotal + estimateTotals.tax;
 
     return {
       clientSubtotal: roundedClientSubtotal,
-      tax6,
+      tax6: estimateTotals.tax,
       commission,
       clientTotal,
       internalSubtotal: roundedInternalSubtotal,
       cashInternalSubtotal: roundMoney(cashInternalSubtotal),
       cashInternalCostTax,
-      internalWithCashTax,
-      grossMargin,
-      marginAfterTax,
-      marginAfterTaxPct,
+      internalWithCashTax: estimateTotals.internalExpensesTotal,
+      grossMargin: estimateTotals.grossMargin,
+      marginAfterTax: estimateTotals.marginAfterTax,
+      marginAfterTaxPct: clientTotal > 0 ? (estimateTotals.marginAfterTax / clientTotal) * 100 : 0,
     };
   }, [renderedSections]);
 

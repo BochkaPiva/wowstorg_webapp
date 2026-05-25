@@ -10,6 +10,7 @@ import {
   PROJECT_ESTIMATE_TAX_RATE,
   roundMoney,
 } from "@/lib/project-estimate-totals";
+import { calcCashInternalCostTaxAmount, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
 import type { ProjectEstimateReadLine, ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
 
 const COLORS = {
@@ -92,6 +93,11 @@ function lineClient(line: ProjectEstimateReadLine): number {
 
 function lineInternal(line: ProjectEstimateReadLine): number {
   return getNumericAmount(line.costInternal);
+}
+
+function lineCashInternalCostTax(line: ProjectEstimateReadLine): number {
+  if (!isCashPaymentMethod(line.paymentMethod)) return 0;
+  return calcCashInternalCostTaxAmount(lineInternal(line));
 }
 
 function unitLabel(line: ProjectEstimateReadLine): string {
@@ -451,6 +457,7 @@ export async function buildProjectEstimateXlsx(args: {
 
   let clientSubtotal = 0;
   let internalSubtotal = 0;
+  let cashInternalCostTax = 0;
   let dataRowIndex = 0;
 
   for (const section of exportSections) {
@@ -472,14 +479,18 @@ export async function buildProjectEstimateXlsx(args: {
 
     let sectionClient = 0;
     let sectionInternal = 0;
+    let sectionCashInternalCostTax = 0;
 
     for (const line of section.lines) {
       const client = lineClient(line);
       const internal = lineInternal(line);
+      const lineCashTax = lineCashInternalCostTax(line);
       sectionClient += client;
       sectionInternal += internal;
+      sectionCashInternalCostTax += lineCashTax;
       clientSubtotal += client;
       internalSubtotal += internal;
+      cashInternalCostTax += lineCashTax;
       dataRowIndex += 1;
 
       if (isClient) {
@@ -528,12 +539,17 @@ export async function buildProjectEstimateXlsx(args: {
       const sectionTotals = calcProjectEstimateTotals({
         clientSubtotal: sectionClient,
         internalSubtotal: sectionInternal,
+        cashInternalCostTax: sectionCashInternalCostTax,
       });
       const footerRows: [string, number][] = [
         ["Выручка клиента, раздел", sectionClient],
         [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, раздел`, sectionTotals.commission],
         ["Итого клиент с комиссией, раздел", sectionTotals.revenueTotal],
         ["Себестоимость, раздел", sectionInternal],
+        ...(sectionCashInternalCostTax > 0
+          ? ([["Налог на наличку 3.5%, раздел", sectionCashInternalCostTax]] as [string, number][])
+          : []),
+        ["Расходы всего, раздел", sectionTotals.internalExpensesTotal],
         ["Валовая маржа, раздел", sectionTotals.grossMargin],
         [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}%, раздел`, sectionTotals.tax],
         ["Маржа после налога, раздел", sectionTotals.marginAfterTax],
@@ -546,7 +562,11 @@ export async function buildProjectEstimateXlsx(args: {
     ws.addRow([]);
   }
 
-  const projectTotals = calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
+  const projectTotals = calcProjectEstimateTotals({
+    clientSubtotal,
+    internalSubtotal,
+    cashInternalCostTax,
+  });
 
   if (isClient) {
     addClientSummary(ws, colCount, projectTotals, clientSubtotal);
@@ -571,6 +591,10 @@ export async function buildProjectEstimateXlsx(args: {
       [`Комиссия ${roundMoney(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`, projectTotals.commission],
       ["Итого клиент с комиссией", projectTotals.revenueTotal],
       ["Себестоимость проекта", internalSubtotal],
+      ...(cashInternalCostTax > 0
+        ? ([["Налог на наличку 3.5%", cashInternalCostTax]] as [string, number][])
+        : []),
+      ["Расходы всего", projectTotals.internalExpensesTotal],
       ["Валовая маржа проекта", projectTotals.grossMargin],
       [`Условный налог ${roundMoney(PROJECT_ESTIMATE_TAX_RATE * 100)}%`, projectTotals.tax],
       ["Маржа после налога", projectTotals.marginAfterTax],

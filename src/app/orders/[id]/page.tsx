@@ -11,7 +11,7 @@ import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
-  calcOrderServicesInternalCosts,
+  calcWarehouseProfitEstimate,
   ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL,
   ORDER_SERVICE_PAYMENT_METHOD_LABELS,
   type OrderServicePaymentMethod,
@@ -242,7 +242,7 @@ function formatDiscountLabel(type: string | null | undefined, percent?: number |
   return "нет";
 }
 
-function orderServicesInternalTotal(order: {
+function orderServicesProfitEstimate(order: {
   deliveryEnabled: boolean;
   deliveryInternalCost?: number | null;
   deliveryInternalPaymentMethod?: OrderServicePaymentMethod;
@@ -252,8 +252,23 @@ function orderServicesInternalTotal(order: {
   demontageEnabled: boolean;
   demontageInternalCost?: number | null;
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
-}): number {
-  return calcOrderServicesInternalCosts({
+  lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
+  startDate: string;
+  endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
+  payMultiplier?: number | null;
+  deliveryPrice: number | null;
+  montagePrice: number | null;
+  demontagePrice: number | null;
+  rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
+  rentalDiscountPercent?: number | null;
+  rentalDiscountAmount?: number | null;
+}) {
+  const pricing = calcOrderPricingClient(order);
+  return calcWarehouseProfitEstimate({
+    clientGrandTotal: pricing.grandTotal,
+    clientTaxAmount: pricing.taxAmount,
     delivery: {
       enabled: order.deliveryEnabled,
       internalCost: order.deliveryInternalCost,
@@ -269,7 +284,7 @@ function orderServicesInternalTotal(order: {
       internalCost: order.demontageInternalCost,
       internalPaymentMethod: order.demontageInternalPaymentMethod,
     },
-  }).internalCostWithCashTax;
+  });
 }
 
 function lineIssuedQty(l: OrderLine): number {
@@ -785,6 +800,8 @@ export default function OrderDetailsPage() {
     [catalogItems],
   );
   const orderPricing = order ? calcOrderPricingClient(order) : null;
+  const warehouseProfitEstimate =
+    order && isWarehouse ? orderServicesProfitEstimate(order) : null;
   const editPricing = React.useMemo(() => {
     if (!order) return null;
     return calcOrderPricingClient({
@@ -1416,20 +1433,25 @@ export default function OrderDetailsPage() {
                   </span>
                 </p>
               ) : null}
-              {isWarehouse ? (
+              {warehouseProfitEstimate ? (
                 <p className="mt-1 text-xs text-zinc-600">
                   Себестоимость доп. услуг (внутр.):{" "}
                   <span className="font-semibold tabular-nums text-zinc-800">
-                    {orderServicesInternalTotal(order).toLocaleString("ru-RU")} ₽
+                    {warehouseProfitEstimate.internalCostTotal.toLocaleString("ru-RU")} ₽
                   </span>
+                  {warehouseProfitEstimate.cashInternalCostTax > 0 ? (
+                    <>
+                      {" · "}
+                      Налог на наличку 3.5%:{" "}
+                      <span className="font-semibold tabular-nums text-zinc-800">
+                        {warehouseProfitEstimate.cashInternalCostTax.toLocaleString("ru-RU")} ₽
+                      </span>
+                    </>
+                  ) : null}
                   {" · "}
                   оценка прибыли (без себестоимости аренды реквизита):{" "}
                   <span className="font-semibold tabular-nums text-emerald-800">
-                    {Math.max(
-                      0,
-                      orderTotal(order) - orderServicesInternalTotal(order),
-                    ).toLocaleString("ru-RU")}{" "}
-                    ₽
+                    {Math.max(0, warehouseProfitEstimate.profitEstimate).toLocaleString("ru-RU")} ₽
                   </span>
                 </p>
               ) : null}

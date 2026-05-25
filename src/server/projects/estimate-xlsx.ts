@@ -847,5 +847,5 @@ export async function buildProjectEstimateXlsx(args: {
     });
   });
 
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  return Buffer.from(await wb.xlsx.writeBuffer()) as unknown as Buffer;
 }

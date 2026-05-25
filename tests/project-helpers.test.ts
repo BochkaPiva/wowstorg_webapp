@@ -187,7 +187,8 @@ describe("project helpers", () => {
     });
 
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    type ExcelJsBuffer = Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0];
+    await workbook.xlsx.load(buffer as unknown as ExcelJsBuffer);
     const sheet = workbook.getWorksheet("Смета для клиента");
 
     expect(sheet).toBeTruthy();
@@ -200,8 +201,8 @@ describe("project helpers", () => {
     });
     expect(daysColumn).toBeGreaterThan(0);
 
-    const findRowByName = (name: string) => {
-      let found: ExcelJS.Row | null = null;
+    const findRowByName = (name: string): ExcelJS.Row | undefined => {
+      let found: ExcelJS.Row | undefined;
       sheet!.eachRow((row) => {
         if (row.getCell(2).value === name) found = row;
       });

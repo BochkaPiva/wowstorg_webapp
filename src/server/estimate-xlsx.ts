@@ -460,5 +460,5 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     });
   });
 
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  return Buffer.from(await wb.xlsx.writeBuffer()) as unknown as Buffer;
 }

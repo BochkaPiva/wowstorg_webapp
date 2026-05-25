@@ -1370,10 +1370,7 @@ export function ProjectEstimatePanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
-            Блоки реквизита читаются из живых заявок проекта, а разделы подрядчиков можно собирать черновиком и сохранить в БД одним
-            действием. В блоках реквизита цена за ед. показывается как ставка за 1 единицу в 1 день, а итог строки считается по
-            формуле количество × дней × ставка. У подрядчиков сумма клиенту — количество × цена за ед. Итог клиенту = сумма по услугам
-            + комиссия агентства (если включена). Налог 6% считается от этой суммы и участвует в марже.
+            Здесь собирается финансовая часть проекта. Заявки реквизита подтягиваются автоматически, а услуги подрядчиков можно добавить вручную. Для клиента важны названия, описания и итоговая цена. Для нас — себестоимость, способ оплаты и прибыль.
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1945,15 +1942,15 @@ function EstimateSectionBlock({
               ) : null}
               {sec.kind === "CONTRACTOR" ? (
                 <EstimateHelpLegend title="Раздел подрядчиков">
-                  Эти строки попадают в смету и финансовую модель проекта. Внутренние поля нужны для себестоимости, оплаты подрядчику и управленческого учета, но не попадают в клиентский XLSX.
+                  Добавляй сюда услуги, которые делает подрядчик или команда. Клиент увидит название, описание и цену. Внутренние поля нужны только нам: сколько реально стоит работа и как ее оплатили.
                 </EstimateHelpLegend>
               ) : sec.kind === "DRAFT_REQUISITE" ? (
                 <EstimateHelpLegend title="Demo-реквизит">
-                  Черновик без дат не резервирует склад. После подтверждения периодов его можно превратить в реальную заявку.
+                  Это предварительный список реквизита без дат. Он помогает посчитать смету заранее, но склад ничего не резервирует до создания реальной заявки.
                 </EstimateHelpLegend>
               ) : sec.kind === "LOCAL" ? (
                 <EstimateHelpLegend title="Универсальный раздел">
-                  Свободный раздел сметы без связи с заявкой. Подходит для услуг, подрядчиков и ручных позиций.
+                  Используй его для ручных строк сметы, которые не относятся к заявке реквизита: услуги, разовые расходы, нестандартные позиции.
                 </EstimateHelpLegend>
               ) : null}
             </div>
@@ -2000,18 +1997,18 @@ function EstimateSectionBlock({
                 </span>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2 group-open:hidden">
-              <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1.5 text-xs text-zinc-600 shadow-sm">
-                <span className="font-semibold text-zinc-500">Услуги</span>
-                <span className="font-extrabold tabular-nums text-violet-950">{formatMoneyRub(sectionClientSubtotal)} ₽</span>
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/85 px-3 py-1.5 text-xs text-zinc-600 shadow-sm">
-                <span className="font-semibold text-zinc-500">Себестоимость</span>
-                <span className="font-extrabold tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</span>
-              </span>
-            </div>
           </div>
-          <div className="flex items-center gap-2 self-start">
+          <div className="flex flex-wrap items-start justify-end gap-2 self-start">
+            <div className="flex w-full flex-wrap justify-end gap-2 group-open:hidden sm:w-auto">
+              <div className="min-w-[8.5rem] rounded-2xl border border-violet-200 bg-violet-50/80 px-3 py-2 text-right shadow-sm">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Услуги</div>
+                <div className="mt-0.5 text-sm font-black tabular-nums text-violet-950">{formatMoneyRub(sectionClientSubtotal)} ₽</div>
+              </div>
+              <div className="min-w-[8.5rem] rounded-2xl border border-zinc-200 bg-zinc-50/90 px-3 py-2 text-right shadow-sm">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Себестоимость</div>
+                <div className="mt-0.5 text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
+              </div>
+            </div>
             {!readOnly && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !editingTitle ? (
               <>
                 <button

@@ -1223,11 +1223,11 @@ export default function ProjectDetailPage() {
 
           <section className={softShell}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="flex items-center gap-2">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Задачи проекта</div>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Этот блок показывает те же задачи, что и общий YouGile, но только с привязкой к этому проекту.
-                </p>
+                <HelpLegend title="Задачи проекта">
+                  Здесь видны только задачи этого проекта. Новую задачу можно создать здесь или в общем YouGile, если указать этот проект в карточке задачи.
+                </HelpLegend>
               </div>
               <Link
                 href={`/tasks?projectId=${encodeURIComponent(id)}`}
@@ -1440,9 +1440,11 @@ export default function ProjectDetailPage() {
 
             <section className={`${softShell} h-full`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
+                <div className="flex items-center gap-2">
                   <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочие заметки</div>
-                  <p className="mt-1 text-xs text-zinc-500">Контекст проекта, риски и внутренние договорённости.</p>
+                  <HelpLegend title="Рабочие заметки">
+                    «Блокеры» — что мешает двигаться дальше. «Внутреннее резюме» — короткая памятка для команды: договоренности, риски, важные нюансы.
+                  </HelpLegend>
                 </div>
               </div>
 
@@ -1565,9 +1567,7 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-2">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
                 <HelpLegend title="Как работает блок заявок">
-                  `Каталог → реквизит` ведёт в demo-каталог или в обычный project-каталог с датами мероприятия.
-                  `Привязать существующую` позволяет выбрать активные заявки того же заказчика, которые ещё не
-                  привязаны к проекту. После привязки заявка появится здесь и в текущей версии сметы.
+                  Нажми «Каталог → реквизит», чтобы собрать новую заявку для проекта. Если даты еще не подтверждены, это будет черновик без резерва склада. «Привязать существующую» нужно, когда заявка уже создана отдельно и ее надо добавить в проект.
                 </HelpLegend>
               </div>
               {!readOnly ? (
@@ -1596,7 +1596,7 @@ export default function ProjectDetailPage() {
                 <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
                   Demo-заявка
                   <HelpLegend title="Что значит demo-заявка">
-                    Это черновой набор реквизита без складского резерва. Его можно править до подтверждения дат, а затем превратить в реальную заявку.
+                    Это предварительная корзина без дат. Она помогает посчитать смету заранее, но склад ничего не резервирует, пока ты не выберешь реальные даты.
                   </HelpLegend>
                 </span>
               ) : null}
@@ -1619,7 +1619,7 @@ export default function ProjectDetailPage() {
                                 {project.draftOrder.title?.trim() || "Без названия demo-набора"}
                               </span>
                               <HelpLegend title="Demo-режим">
-                                Черновик не резервирует склад. После подтверждения дат его можно перенести в реальную заявку с точными интервалами.
+                                Используй demo, когда клиент еще не подтвердил даты. Когда даты появятся, создай из него реальную заявку, и позиции попадут в работу склада.
                               </HelpLegend>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
@@ -1698,7 +1698,7 @@ export default function ProjectDetailPage() {
                             <div className="flex items-center gap-2">
                               <div className="text-sm font-semibold text-zinc-900">Действия</div>
                               <HelpLegend title="Что можно сделать">
-                                Открыть demo-каталог для правок, перейти к реальной заявке после подтверждения дат или удалить черновик.
+                                Открой demo-каталог, чтобы поменять состав. Когда даты известны, преврати demo в реальную заявку. Если черновик больше не нужен, удали его.
                               </HelpLegend>
                             </div>
                             {!readOnly ? (
@@ -1810,7 +1810,7 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-2">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочая зона</div>
                 <HelpLegend title="Рабочая зона проекта">
-                  Здесь собраны тяжелые операционные блоки проекта: смета, тайминг, файлы и журнал. Переключатель сверху меняет рабочий инструмент, не уводя со страницы проекта.
+                  Выбери, с чем сейчас работаешь: смета, тайминг, файлы или история изменений. Это вкладки одного проекта, поэтому можно переключаться и не терять контекст.
                 </HelpLegend>
               </div>
               <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-zinc-200 bg-white/75 p-1.5 shadow-inner sm:flex sm:w-auto sm:flex-wrap">

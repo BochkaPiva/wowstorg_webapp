@@ -1,10 +1,15 @@
 import { Prisma, ProjectActivityKind } from "@prisma/client";
 
+import { coerceRentalPartsForDates } from "@/lib/rental-days";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { CreateOrderError, createOrderInTransaction } from "@/server/orders/create-order";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
+
+export function resolveMaterializeRentalParts(startDate: string, endDate: string) {
+  return coerceRentalPartsForDates(startDate, endDate, "MORNING", "EVENING");
+}
 
 export type DraftOrderLineDto = {
   id: string;
@@ -173,12 +178,13 @@ export async function materializeProjectDraftOrder(args: {
 
       for (const period of args.periods) {
         const groupLines = period.lineIds.map((lineId) => draftLineById.get(lineId)!);
+        const rentalParts = resolveMaterializeRentalParts(period.startDate, period.endDate);
         const reserved = await getReservedQtyByItemId({
           db: tx,
           startDate: new Date(`${period.startDate}T00:00:00.000Z`),
           endDate: new Date(`${period.endDate}T00:00:00.000Z`),
-          rentalStartPartOfDay: "MORNING",
-          rentalEndPartOfDay: "EVENING",
+          rentalStartPartOfDay: rentalParts.rentalStartPartOfDay,
+          rentalEndPartOfDay: rentalParts.rentalEndPartOfDay,
         });
         const allocatedByItem = new Map<string, number>();
         const orderLines: Array<{ itemId: string; qty: number; comment?: string | null }> = [];
@@ -227,12 +233,19 @@ export async function materializeProjectDraftOrder(args: {
           readyByDate: period.readyByDate,
           startDate: period.startDate,
           endDate: period.endDate,
+          rentalStartPartOfDay: rentalParts.rentalStartPartOfDay,
+          rentalEndPartOfDay: rentalParts.rentalEndPartOfDay,
           eventName,
           comment: draft.comment ?? undefined,
           projectId: project.id,
           source: "WOWSTORG_EXTERNAL",
           targetEstimateVersionId,
           lines: orderLines,
+        }).catch((error: unknown) => {
+          if (error instanceof CreateOrderError) {
+            throw mapCreateOrderErrorToDraftError(error);
+          }
+          throw error;
         });
 
         createdOrders.push({

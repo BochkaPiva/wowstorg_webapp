@@ -10,6 +10,28 @@ import {
 } from "@/server/projects/draft-order";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
+function materializeErrorMessage(error: ProjectDraftOrderError): string {
+  if (error.message && error.message !== error.code) return error.message;
+  switch (error.code) {
+    case "INVALID_RENTAL_PARTS":
+      return "Для одного календарного дня аренда возможна только с утра до вечера";
+    case "DATE_IN_PAST":
+      return "Даты периода не могут быть в прошлом";
+    case "READY_AFTER_START":
+      return "Дата готовности не может быть позже даты начала аренды";
+    case "END_BEFORE_START":
+      return "Дата окончания не может быть раньше даты начала";
+    case "EXCEEDS_AVAILABILITY":
+      return "Недостаточно свободного остатка на выбранные даты";
+    case "ITEM_NOT_FOUND":
+      return "Одна из позиций demo-черновика недоступна в каталоге";
+    case "LINES_REQUIRED":
+      return "Не удалось собрать строки для создания заявки";
+    default:
+      return "Не удалось материализовать demo-черновик";
+  }
+}
+
 const PeriodSchema = z
   .object({
     key: z.string().trim().min(1).max(120),
@@ -95,7 +117,7 @@ export async function POST(
       if (error.code === "ESTIMATE_VERSION_NOT_FOUND") {
         return jsonError(400, "Выбранная версия сметы не найдена");
       }
-      return jsonError(400, "Не удалось материализовать demo-черновик", error.details);
+      return jsonError(400, materializeErrorMessage(error), error.details);
     }
     throw error;
   }

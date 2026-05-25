@@ -1971,6 +1971,38 @@ function EstimateSectionBlock({
             </div>
           </div>
           <div className="flex items-center gap-2 self-start">
+            {!readOnly && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !editingTitle ? (
+              <>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-zinc-500 shadow-sm hover:border-violet-200 hover:text-violet-700"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditingTitle(true);
+                  }}
+                  disabled={busy}
+                  title="Редактировать название раздела"
+                  aria-label="Редактировать название раздела"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-red-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void onDeleteSection(sec.id);
+                  }}
+                  disabled={busy}
+                >
+                  Удалить раздел
+                </button>
+              </>
+            ) : null}
             {summaryTrailing !== undefined ? (
               summaryTrailing
             ) : sec.linkedOrderId ? (
@@ -2022,7 +2054,7 @@ function EstimateSectionBlock({
               </button>
             </div>
           ) : sec.kind === "LOCAL" || sec.kind === "CONTRACTOR" ? (
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="hidden">
               <button
                 type="button"
                 className={btnGhostXs}
@@ -2115,6 +2147,182 @@ function LineEditor({
     "unitPriceClient" in line && line.unitPriceClient != null && line.unitPriceClient !== ""
       ? String(line.unitPriceClient)
       : "";
+
+  if (!readOnly && isContractor) {
+    const paymentMethodRaw = ("paymentMethod" in line ? line.paymentMethod : null)?.trim() || "";
+    const contractorNote = "contractorNote" in line ? (line.contractorNote ?? "") : "";
+    const contractorRequisites = "contractorRequisites" in line ? (line.contractorRequisites ?? "") : "";
+    const clientSum = displayLocalLineClientSum(line);
+
+    return (
+      <div
+        className={`relative rounded-2xl border p-3 text-xs shadow-sm transition ${
+          isDirty
+            ? "border-orange-300 bg-[linear-gradient(135deg,rgba(255,247,237,0.9),rgba(255,255,255,1))]"
+            : "border-zinc-200 bg-white"
+        }`}
+      >
+        <div className="mb-3 flex items-start justify-between gap-3 pr-9">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800">
+              {line.lineNumber}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-violet-700">Клиенту</div>
+              <div className="truncate text-sm font-semibold text-zinc-950">{line.name || "Новая позиция"}</div>
+            </div>
+          </div>
+          {isDirty ? (
+            <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700">
+              изменено
+            </span>
+          ) : null}
+        </div>
+
+        {!line.orderLineId ? (
+          <button
+            type="button"
+            disabled={busy}
+            className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg leading-none text-zinc-400 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+            onClick={() => void onDelete(sectionId, line.id)}
+            title="Удалить позицию"
+            aria-label="Удалить позицию"
+          >
+            ×
+          </button>
+        ) : null}
+
+        <div className="rounded-2xl border border-violet-100 bg-violet-50/35 p-3">
+          <div className={ESTIMATE_CLIENT_ROW_GRID}>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Позиция
+              <input
+                value={line.name}
+                onChange={(e) => onSave(sectionId, line.id, { name: e.target.value })}
+                className={`mt-1 w-full ${cellXs}`}
+              />
+            </label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Описание
+              <input
+                value={line.description ?? ""}
+                onChange={(e) => onSave(sectionId, line.id, { description: e.target.value })}
+                className={`mt-1 w-full ${cellXs}`}
+              />
+            </label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Ед.
+              <input
+                value={unitVal}
+                onChange={(e) => onSave(sectionId, line.id, { unit: e.target.value })}
+                className={`mt-1 w-full ${cellXs}`}
+                list={UNIT_DATALIST_ID}
+                placeholder="шт"
+              />
+            </label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Кол-во
+              <input
+                value={qtyStr}
+                onChange={(e) => onSave(sectionId, line.id, { qty: e.target.value })}
+                className={`mt-1 w-full ${cellXs} tabular-nums`}
+                inputMode="decimal"
+              />
+            </label>
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Цена/ед.
+              <input
+                value={upStr}
+                onChange={(e) => onSave(sectionId, line.id, { unitPriceClient: e.target.value })}
+                className={`mt-1 w-full ${cellXs} tabular-nums`}
+                inputMode="decimal"
+              />
+            </label>
+            <div className="rounded-xl border border-violet-200 bg-white/80 px-3 py-2">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Сумма</div>
+              <div className="mt-1 text-sm font-extrabold tabular-nums text-violet-950">
+                {clientSum}
+                {clientSum !== "—" ? <span className="ml-0.5 text-xs font-semibold text-violet-500">₽</span> : null}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-zinc-600">Внутреннее</div>
+          <div className="grid gap-2 xl:grid-cols-[6rem_10rem_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)]">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Внутр. ₽
+              <input
+                value={line.costInternal ?? ""}
+                onChange={(e) => onSave(sectionId, line.id, { costInternal: e.target.value })}
+                className={`mt-1 w-full ${cellXs} tabular-nums`}
+                inputMode="decimal"
+              />
+            </label>
+            <div className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Оплата
+              <div className="mt-1 grid grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
+                {[null, ...PAYMENT_METHOD_OPTIONS].map((opt) => {
+                  const value = opt ?? "";
+                  const active = paymentMethodRaw === value;
+                  return (
+                    <button
+                      key={value || "empty"}
+                      type="button"
+                      className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                        active ? "bg-violet-600 text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-50"
+                      }`}
+                      onClick={() => onSave(sectionId, line.id, { paymentMethod: value === "" ? null : value })}
+                    >
+                      {opt ?? "—"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Статус оплаты
+              <input
+                value={paymentStatusRaw ?? ""}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  onSave(sectionId, line.id, {
+                    paymentStatus: t.trim() === "" ? null : t,
+                  });
+                }}
+                list={paymentStatusDatalistId(line.id)}
+                placeholder="Выберите или введите"
+                autoComplete="off"
+                className={`mt-1 w-full min-w-0 ${cellXs} bg-white ${paymentStatusTextClass(paymentStatusRaw)}`}
+              />
+              <datalist id={paymentStatusDatalistId(line.id)}>
+                <option value={PAYMENT_STATUS_PAID} />
+                <option value={PAYMENT_STATUS_UNPAID} />
+              </datalist>
+            </label>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Коммент. подрядчику
+              <input
+                value={contractorNote}
+                onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}
+                className={`mt-1 w-full ${cellXs}`}
+              />
+            </label>
+            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Реквизиты / счёт
+              <input
+                value={contractorRequisites}
+                onChange={(e) => onSave(sectionId, line.id, { contractorRequisites: e.target.value })}
+                className={`mt-1 w-full ${cellXs}`}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`rounded-lg border p-2 text-xs shadow-sm ${

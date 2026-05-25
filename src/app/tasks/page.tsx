@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
@@ -772,6 +773,11 @@ function TaskEditor({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
+  const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    setPortalHost(document.body);
+  }, []);
 
   React.useEffect(() => {
     setTitle(task?.title ?? "");
@@ -824,6 +830,7 @@ function TaskEditor({
       }
       await request;
       onSaved();
+      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
     } finally {
@@ -896,8 +903,8 @@ function TaskEditor({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
+  const editorNode = (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-3 sm:p-6">
       <button className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[3px]" onClick={onClose} aria-label="Закрыть" />
       <section
         role="dialog"
@@ -1115,6 +1122,8 @@ function TaskEditor({
       </section>
     </div>
   );
+
+  return portalHost ? createPortal(editorNode, portalHost) : null;
 }
 
 function TasksPageContent() {

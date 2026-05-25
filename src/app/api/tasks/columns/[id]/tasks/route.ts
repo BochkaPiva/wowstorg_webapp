@@ -7,7 +7,7 @@ import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { notifyWorkTaskAssigned } from "@/server/work-task-notifications";
-import { nextTaskSortOrder } from "@/server/work-tasks";
+import { dateOnlyOrNull, nextTaskSortOrder } from "@/server/work-tasks";
 
 const CreateTaskSchema = z
   .object({
@@ -61,12 +61,43 @@ export async function POST(
       sortOrder: await nextTaskSortOrder(prisma, columnId),
       createdById: auth.user.id,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      priority: true,
+      color: true,
+      sortOrder: true,
+      dueDate: true,
+      completedAt: true,
+      createdAt: true,
+      assignee: { select: { id: true, displayName: true } },
+      project: { select: { id: true, title: true } },
+      order: { select: { id: true, eventName: true, customer: { select: { name: true } } } },
+      checklistItems: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          title: true,
+          isDone: true,
+          sortOrder: true,
+        },
+      },
+    },
   });
 
   scheduleAfterResponse("notifyWorkTaskAssigned", async () => {
     await notifyWorkTaskAssigned({ taskId: task.id, actorUserId: auth.user.id });
   });
 
-  return jsonOk({ task });
+  return jsonOk({
+    task: {
+      ...task,
+      dueDate: dateOnlyOrNull(task.dueDate),
+      createdAt: task.createdAt.toISOString(),
+      completedAt: task.completedAt?.toISOString() ?? null,
+      checklistDone: task.checklistItems.filter((item) => item.isDone).length,
+      checklistTotal: task.checklistItems.length,
+    },
+  });
 }

@@ -76,6 +76,19 @@ type TaskPatchBody = Partial<{
   completed: boolean;
 }>;
 
+type TaskCreateDraft = {
+  title: string;
+  description: string | null;
+  assigneeUserId: string | null;
+  dueDate: string | null;
+  priority: Priority;
+  color: string | null;
+  projectId: string | null;
+  orderId: string | null;
+};
+
+type TaskDropEdge = "before" | "after";
+
 const PRIORITY_LABEL: Record<Priority, string> = {
   LOW: "Низкий",
   NORMAL: "Обычный",
@@ -476,6 +489,9 @@ function TaskCard({
   onDeleteChecklistItem,
   onDragStart,
   onDragEnd,
+  onDragOverTask,
+  onDropOnTask,
+  dropEdge,
 }: {
   task: BoardTask;
   column: BoardColumn;
@@ -488,6 +504,9 @@ function TaskCard({
   onDeleteChecklistItem: (itemId: string) => void;
   onDragStart: (taskId: string, fromColumnId: string) => void;
   onDragEnd: () => void;
+  onDragOverTask: (taskId: string, columnId: string, edge: TaskDropEdge) => void;
+  onDropOnTask: (taskId: string, targetTaskId: string, targetColumnId: string, edge: TaskDropEdge) => void;
+  dropEdge: TaskDropEdge | null;
 }) {
   const [title, setTitle] = React.useState(task.title);
   const [description, setDescription] = React.useState(task.description ?? "");
@@ -529,6 +548,32 @@ function TaskCard({
   }
 
   return (
+    <div
+      className="relative"
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = event.currentTarget.getBoundingClientRect();
+        const edge: TaskDropEdge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+        onDragOverTask(task.id, column.id, edge);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const movedTaskId = event.dataTransfer.getData("text/plain");
+        const rect = event.currentTarget.getBoundingClientRect();
+        const edge: TaskDropEdge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+        if (movedTaskId) onDropOnTask(movedTaskId, task.id, column.id, edge);
+      }}
+    >
+      {dropEdge ? (
+        <div
+          className={[
+            "pointer-events-none absolute left-2 right-2 z-10 h-1 rounded-full bg-sky-400 shadow-[0_0_0_4px_rgba(14,165,233,0.16)]",
+            dropEdge === "before" ? "-top-2" : "-bottom-2",
+          ].join(" ")}
+        />
+      ) : null}
     <article
       data-task-card-id={task.id}
       draggable
@@ -628,6 +673,7 @@ function TaskCard({
         onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
       />
     </article>
+    </div>
   );
 }
 
@@ -695,6 +741,7 @@ function TaskEditor({
   projectLocked,
   onClose,
   onSaved,
+  onCreatedOptimistic,
   onDeleted,
 }: {
   task: BoardTask | null;
@@ -705,6 +752,11 @@ function TaskEditor({
   projectLocked?: boolean;
   onClose: () => void;
   onSaved: () => void;
+  onCreatedOptimistic: (
+    columnId: string,
+    draft: TaskCreateDraft,
+    request: Promise<{ task: BoardTask }>,
+  ) => void;
   onDeleted: () => void;
 }) {
   const isNew = task == null;
@@ -748,9 +800,9 @@ function TaskEditor({
     setBusy(true);
     setError(null);
     try {
-      const body = {
-        title,
-        description: description || null,
+      const body: TaskCreateDraft = {
+        title: title.trim(),
+        description: description.trim() || null,
         assigneeUserId: assigneeUserId || null,
         dueDate: dueDate || null,
         priority,
@@ -759,14 +811,19 @@ function TaskEditor({
         orderId: orderId || null,
       };
       const payload = isNew ? body : { ...body, columnId: targetColumnId };
-      const res = await fetch(isNew ? `/api/tasks/columns/${targetColumnId}/tasks` : `/api/tasks/tasks/${task.id}`, {
+      const endpoint = isNew ? `/api/tasks/columns/${targetColumnId}/tasks` : `/api/tasks/tasks/${task!.id}`;
+      const request = fetch(endpoint, {
         method: isNew ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
-      await readApi(res);
+      }).then((res) => readApi<{ task: BoardTask }>(res));
+      if (isNew) {
+        onCreatedOptimistic(targetColumnId, body, request);
+        onClose();
+        return;
+      }
+      await request;
       onSaved();
-      if (isNew) onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
     } finally {
@@ -840,12 +897,17 @@ function TaskEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-30">
-      <button className="absolute inset-0 bg-zinc-950/35 backdrop-blur-[2px]" onClick={onClose} aria-label="Закрыть" />
-      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] text-zinc-950 shadow-2xl">
-        <div className="border-b border-violet-100 px-5 py-4">
+    <div className="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-6">
+      <button className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[3px]" onClick={onClose} aria-label="Закрыть" />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-editor-title"
+        className="relative flex max-h-[min(780px,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] text-zinc-950 shadow-[0_28px_90px_rgba(15,23,42,0.34)]"
+      >
+        <div className="shrink-0 border-b border-violet-100 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-lg font-bold">{isNew ? "Новая задача" : "Задача"}</div>
+            <div id="task-editor-title" className="text-lg font-bold">{isNew ? "Новая задача" : "Задача"}</div>
             <button
               type="button"
               onClick={onClose}
@@ -1028,7 +1090,7 @@ function TaskEditor({
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-violet-100 bg-white/80 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-violet-100 bg-white/90 px-5 py-4">
           <div>
             {!isNew ? (
               <button
@@ -1050,7 +1112,7 @@ function TaskEditor({
             {busy ? "Сохраняю..." : "Сохранить"}
           </button>
         </div>
-      </aside>
+      </section>
     </div>
   );
 }
@@ -1078,6 +1140,11 @@ function TasksPageContent() {
   const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
+  const [dragOverTask, setDragOverTask] = React.useState<{
+    taskId: string;
+    columnId: string;
+    edge: TaskDropEdge;
+  } | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
@@ -1296,6 +1363,70 @@ function TasksPageContent() {
     );
   }
 
+  function addTaskOptimistically(
+    columnId: string,
+    draft: TaskCreateDraft,
+    request: Promise<{ task: BoardTask }>,
+  ) {
+    const previousBoard = boardRef.current;
+    const column = previousBoard?.columns.find((item) => item.id === columnId);
+    if (!previousBoard || !column) return;
+
+    const tempId = `temp-task-${crypto.randomUUID()}`;
+    const assignee = draft.assigneeUserId
+      ? meta?.users.find((user) => user.id === draft.assigneeUserId) ?? null
+      : null;
+    const project = draft.projectId
+      ? meta?.projects.find((item) => item.id === draft.projectId) ?? null
+      : null;
+    const orderMeta = draft.orderId
+      ? meta?.orders.find((item) => item.id === draft.orderId) ?? null
+      : null;
+    const optimisticTask: BoardTask = {
+      id: tempId,
+      title: draft.title,
+      description: draft.description,
+      priority: draft.priority,
+      color: draft.color,
+      sortOrder: column.tasks.reduce((max, task) => Math.max(max, task.sortOrder), 0) + 1000,
+      dueDate: draft.dueDate,
+      completedAt: column.isDone ? new Date().toISOString() : null,
+      createdAt: new Date().toISOString(),
+      assignee,
+      project: project ? { id: project.id, title: project.title } : null,
+      order: orderMeta ? { id: orderMeta.id, eventName: null, customer: { name: orderMeta.label } } : null,
+      checklistItems: [],
+      checklistDone: 0,
+      checklistTotal: 0,
+    };
+
+    applyBoard({
+      ...previousBoard,
+      columns: previousBoard.columns.map((item) =>
+        item.id === columnId ? { ...item, tasks: [...item.tasks, optimisticTask] } : item,
+      ),
+    });
+
+    void request
+      .then(({ task }) => {
+        updateBoard((current) =>
+          current
+            ? {
+                ...current,
+                columns: current.columns.map((item) => ({
+                  ...item,
+                  tasks: item.tasks.map((currentTask) => (currentTask.id === tempId ? task : currentTask)),
+                })),
+              }
+            : current,
+        );
+      })
+      .catch((e) => {
+        applyBoard(previousBoard);
+        setError(e instanceof Error ? e.message : "Не удалось создать задачу");
+      });
+  }
+
   async function patchTaskInline(taskId: string, body: TaskPatchBody) {
     const previousBoard = boardRef.current;
     updateTaskInBoard(taskId, (task) => ({
@@ -1360,6 +1491,65 @@ function TasksPageContent() {
     } catch (e) {
       applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
+    }
+  }
+
+  async function reorderTaskWithinColumn(taskId: string, targetTaskId: string, columnId: string, edge: TaskDropEdge) {
+    const currentBoard = boardRef.current;
+    if (!currentBoard || taskId === targetTaskId) return;
+    const column = currentBoard.columns.find((item) => item.id === columnId);
+    if (!column) return;
+    const movingTask = column.tasks.find((task) => task.id === taskId);
+    if (!movingTask) return;
+
+    const previousBoard = currentBoard;
+    const tasksWithoutMoving = column.tasks.filter((task) => task.id !== taskId);
+    const targetIndex = tasksWithoutMoving.findIndex((task) => task.id === targetTaskId);
+    if (targetIndex < 0) return;
+    const insertIndex = edge === "before" ? targetIndex : targetIndex + 1;
+    const reorderedTasks = [
+      ...tasksWithoutMoving.slice(0, insertIndex),
+      movingTask,
+      ...tasksWithoutMoving.slice(insertIndex),
+    ];
+    const unchanged = reorderedTasks.every((task, index) => task.id === column.tasks[index]?.id);
+    if (unchanged) return;
+
+    const movedIndex = reorderedTasks.findIndex((task) => task.id === taskId);
+    const prevTask = reorderedTasks[movedIndex - 1] ?? null;
+    const nextTask = reorderedTasks[movedIndex + 1] ?? null;
+    const nextSortOrder =
+      prevTask && nextTask
+        ? Math.floor((prevTask.sortOrder + nextTask.sortOrder) / 2)
+        : prevTask
+          ? prevTask.sortOrder + 1000
+          : nextTask
+            ? nextTask.sortOrder - 1000
+            : movingTask.sortOrder;
+
+    const optimisticTasks = reorderedTasks.map((task) =>
+      task.id === taskId ? { ...task, sortOrder: nextSortOrder } : task,
+    );
+    applyBoard({
+      ...currentBoard,
+      columns: currentBoard.columns.map((item) =>
+        item.id === columnId ? { ...item, tasks: optimisticTasks } : item,
+      ),
+    });
+
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: nextSortOrder }),
+        }),
+      );
+      const freshBoard = await fetchBoardDetail(currentBoard.id);
+      if (freshBoard) applyBoard(freshBoard);
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось изменить порядок задач");
     }
   }
 
@@ -1503,6 +1693,7 @@ function TasksPageContent() {
                 event.preventDefault();
                 const taskId = event.dataTransfer.getData("text/plain") || draggingTaskId;
                 setDragOverColumnId(null);
+                setDragOverTask(null);
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
@@ -1581,7 +1772,31 @@ function TasksPageContent() {
                       setDraggingTaskId(null);
                       setDraggingFromColumnId(null);
                       setDragOverColumnId(null);
+                      setDragOverTask(null);
                     }}
+                    onDragOverTask={(taskId, columnId, edge) => {
+                      if (viewParams.readOnly || !draggingTaskId || draggingTaskId === taskId) {
+                        setDragOverTask(null);
+                        return;
+                      }
+                      setDragOverColumnId(null);
+                      setDragOverTask({ taskId, columnId, edge });
+                    }}
+                    onDropOnTask={(taskId, targetTaskId, targetColumnId, edge) => {
+                      setDragOverTask(null);
+                      setDragOverColumnId(null);
+                      if (viewParams.readOnly) return;
+                      if (targetColumnId === draggingFromColumnId) {
+                        void reorderTaskWithinColumn(taskId, targetTaskId, targetColumnId, edge);
+                      } else {
+                        void moveTaskToColumn(taskId, targetColumnId);
+                      }
+                    }}
+                    dropEdge={
+                      dragOverTask?.taskId === task.id && dragOverTask.columnId === column.id
+                        ? dragOverTask.edge
+                        : null
+                    }
                   />
                 ))}
                 {column.tasks.length === 0 ? (
@@ -1606,6 +1821,7 @@ function TasksPageContent() {
           projectLocked={Boolean(viewParams.projectId)}
           onClose={() => setEditor(null)}
           onSaved={() => void refresh()}
+          onCreatedOptimistic={addTaskOptimistically}
           onDeleted={() => void refresh()}
         />
       ) : null}

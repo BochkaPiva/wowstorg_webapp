@@ -2153,6 +2153,18 @@ function LineEditor({
     const contractorNote = "contractorNote" in line ? (line.contractorNote ?? "") : "";
     const contractorRequisites = "contractorRequisites" in line ? (line.contractorRequisites ?? "") : "";
     const clientSum = displayLocalLineClientSum(line);
+    const contractorClientGrid =
+      "grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_5.5rem_5.5rem_6rem_7rem]";
+    const paymentMethodOptions = [
+      { value: "", label: "—" },
+      { value: PAYMENT_METHOD_OPTIONS[0], label: "Нал." },
+      { value: PAYMENT_METHOD_OPTIONS[1], label: "Безнал" },
+    ];
+    const paymentStatusOptions = [
+      { value: "", label: "—" },
+      { value: PAYMENT_STATUS_PAID, label: "Оплачено" },
+      { value: PAYMENT_STATUS_UNPAID, label: "Не оплачено" },
+    ];
 
     return (
       <div
@@ -2183,17 +2195,25 @@ function LineEditor({
           <button
             type="button"
             disabled={busy}
-            className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg leading-none text-zinc-400 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+            className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-400 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
             onClick={() => void onDelete(sectionId, line.id)}
             title="Удалить позицию"
             aria-label="Удалить позицию"
           >
-            ×
+            <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden>
+              <path
+                d="M5.75 5.75l8.5 8.5m0-8.5l-8.5 8.5"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="2"
+              />
+            </svg>
           </button>
         ) : null}
 
         <div className="rounded-2xl border border-violet-100 bg-violet-50/35 p-3">
-          <div className={ESTIMATE_CLIENT_ROW_GRID}>
+          <div className={contractorClientGrid}>
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Позиция
               <input
@@ -2250,7 +2270,7 @@ function LineEditor({
 
         <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
           <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-zinc-600">Внутреннее</div>
-          <div className="grid gap-2 xl:grid-cols-[6rem_10rem_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.1fr)]">
+          <div className="grid gap-2 xl:grid-cols-[6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Внутр. ₽
               <input
@@ -2262,45 +2282,59 @@ function LineEditor({
             </label>
             <div className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Оплата
-              <div className="mt-1 grid grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
-                {[null, ...PAYMENT_METHOD_OPTIONS].map((opt) => {
-                  const value = opt ?? "";
+              <div className="mt-1 grid min-h-8 grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
+                {paymentMethodOptions.map((opt) => {
+                  const value = opt.value;
                   const active = paymentMethodRaw === value;
                   return (
                     <button
                       key={value || "empty"}
                       type="button"
-                      className={`rounded-lg px-2 py-1.5 text-[11px] font-semibold transition ${
+                      className={`min-w-0 truncate rounded-lg px-1.5 py-1.5 text-[11px] font-semibold leading-none transition ${
                         active ? "bg-violet-600 text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-50"
                       }`}
                       onClick={() => onSave(sectionId, line.id, { paymentMethod: value === "" ? null : value })}
+                      title={opt.label}
                     >
-                      {opt ?? "—"}
+                      {opt.label}
                     </button>
                   );
                 })}
               </div>
             </div>
-            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            <div className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Статус оплаты
-              <input
-                value={paymentStatusRaw ?? ""}
-                onChange={(e) => {
-                  const t = e.target.value;
-                  onSave(sectionId, line.id, {
-                    paymentStatus: t.trim() === "" ? null : t,
-                  });
-                }}
-                list={paymentStatusDatalistId(line.id)}
-                placeholder="Выберите или введите"
-                autoComplete="off"
-                className={`mt-1 w-full min-w-0 ${cellXs} bg-white ${paymentStatusTextClass(paymentStatusRaw)}`}
-              />
-              <datalist id={paymentStatusDatalistId(line.id)}>
-                <option value={PAYMENT_STATUS_PAID} />
-                <option value={PAYMENT_STATUS_UNPAID} />
-              </datalist>
-            </label>
+              <div className="mt-1 grid min-h-8 grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
+                {paymentStatusOptions.map((opt) => {
+                  const active = (paymentStatusRaw ?? "") === opt.value;
+                  const paid = opt.value === PAYMENT_STATUS_PAID;
+                  const unpaid = opt.value === PAYMENT_STATUS_UNPAID;
+                  return (
+                    <button
+                      key={opt.value || "empty"}
+                      type="button"
+                      className={`min-w-0 truncate rounded-lg px-1.5 py-1.5 text-[11px] font-semibold leading-none transition ${
+                        active
+                          ? paid
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : unpaid
+                              ? "bg-rose-600 text-white shadow-sm"
+                              : "bg-zinc-700 text-white shadow-sm"
+                          : "text-zinc-600 hover:bg-zinc-50"
+                      }`}
+                      onClick={() =>
+                        onSave(sectionId, line.id, {
+                          paymentStatus: opt.value === "" ? null : opt.value,
+                        })
+                      }
+                      title={opt.label}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Коммент. подрядчику
               <input

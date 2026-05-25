@@ -202,7 +202,7 @@ const sectionTone = {
   requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
   draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
   local: "border-violet-100 bg-[linear-gradient(180deg,rgba(250,245,255,0.9),rgba(255,255,255,1))]",
-  contractor: "border-zinc-200 bg-[linear-gradient(180deg,rgba(244,244,245,0.65),rgba(255,255,255,1))]",
+  contractor: "border-zinc-300 bg-[linear-gradient(180deg,rgba(24,24,27,0.045),rgba(255,255,255,1))]",
 };
 const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 
@@ -292,10 +292,15 @@ function EstimateHelpLegend({ title, children }: { title: string; children: Reac
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-bold text-zinc-600 hover:bg-zinc-50"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-sm font-black text-violet-700 shadow-sm hover:bg-violet-100"
         aria-label={title}
       >
-        ?
+        !
       </button>
       {open ? (
         <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl sm:left-auto sm:right-0">
@@ -1359,9 +1364,9 @@ export function ProjectEstimatePanel({
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
+    <div className="space-y-4 rounded-[1.35rem] border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
       <UnitPresetDatalist />
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-[linear-gradient(135deg,rgba(237,233,254,0.75),rgba(255,255,255,0.96))] px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
@@ -1417,14 +1422,14 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-white/80 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
             <div className="space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Версия сметы</div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
-                    className="inline-flex min-h-11 min-w-[12rem] items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-left shadow-sm hover:border-violet-200 hover:bg-violet-50/60"
+                    className="inline-flex min-h-11 min-w-[12rem] items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-left shadow-sm hover:border-violet-200 hover:bg-violet-50/60"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
                       setActionsOpen(false);
@@ -1493,7 +1498,7 @@ export function ProjectEstimatePanel({
                 <button
                   type="button"
                   disabled={busy}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
                   onClick={() => {
                     setActionsOpen((v) => !v);
                     setVersionPickerOpen(false);
@@ -1593,7 +1598,7 @@ export function ProjectEstimatePanel({
           ) : (
             <>
               {!readOnly ? (
-                <div className="space-y-2 border-b border-zinc-200 pb-3">
+                <div className="space-y-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/65 p-3">
                   {importOpen ? (
                     <div className="rounded-xl border border-dashed border-violet-200 bg-violet-50/40 p-3 space-y-3">
                       <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -1660,10 +1665,10 @@ export function ProjectEstimatePanel({
                       value={newSectionTitle}
                       onChange={(e) => setNewSectionTitle(e.target.value)}
                       placeholder="Название раздела подрядчиков"
-                      className={`min-w-[12rem] flex-1 ${inputField}`}
+                      className={`min-w-[12rem] flex-1 ${inputField} bg-white`}
                       maxLength={200}
                     />
-                    <button type="submit" disabled={busy} className={btnPrimary}>
+                    <button type="submit" disabled={busy} className={`${btnPrimary} rounded-2xl`}>
                       Добавить раздел
                     </button>
                   </form>
@@ -1890,9 +1895,16 @@ function EstimateSectionBlock({
     void onPatchSection(sec.id, { title: t });
   }
 
+  const sectionClientSubtotal = roundMoney(
+    sec.lines.reduce((sum, line) => sum + getNumericAmount(line.costClient), 0),
+  );
+  const sectionInternalSubtotal = roundMoney(
+    sec.lines.reduce((sum, line) => sum + getNumericAmount(line.costInternal), 0),
+  );
+
   return (
     <details
-      className={`rounded-2xl border p-3 shadow-sm sm:p-4 ${
+      className={`group rounded-2xl border p-3 shadow-sm sm:p-4 ${
         sec.kind === "REQUISITE"
           ? sectionTone.requisite
           : sec.kind === "DRAFT_REQUISITE"
@@ -1931,6 +1943,19 @@ function EstimateSectionBlock({
                   {orderMeta.label}
                 </span>
               ) : null}
+              {sec.kind === "CONTRACTOR" ? (
+                <EstimateHelpLegend title="Раздел подрядчиков">
+                  Эти строки попадают в смету и финансовую модель проекта. Внутренние поля нужны для себестоимости, оплаты подрядчику и управленческого учета, но не попадают в клиентский XLSX.
+                </EstimateHelpLegend>
+              ) : sec.kind === "DRAFT_REQUISITE" ? (
+                <EstimateHelpLegend title="Demo-реквизит">
+                  Черновик без дат не резервирует склад. После подтверждения периодов его можно превратить в реальную заявку.
+                </EstimateHelpLegend>
+              ) : sec.kind === "LOCAL" ? (
+                <EstimateHelpLegend title="Универсальный раздел">
+                  Свободный раздел сметы без связи с заявкой. Подходит для услуг, подрядчиков и ручных позиций.
+                </EstimateHelpLegend>
+              ) : null}
             </div>
             <div
               className={`mt-2 text-lg font-semibold text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}
@@ -1962,12 +1987,28 @@ function EstimateSectionBlock({
                   ) : null}
                 </>
               ) : sec.kind === "DRAFT_REQUISITE" ? (
-                <span>Черновик проекта без дат. В очередь склада не попадает, пока не подтверждены периоды.</span>
+                <span className="rounded-full border border-fuchsia-100 bg-white/75 px-2 py-1">
+                  {sec.lines.length} поз. · demo без резерва
+                </span>
               ) : sec.kind === "CONTRACTOR" ? (
-                <span>Раздел подрядчиков: внутренние поля не попадают в клиентский XLSX.</span>
+                <span className="rounded-full border border-zinc-200 bg-white/75 px-2 py-1">
+                  {sec.lines.length} строк · подрядчики и услуги
+                </span>
               ) : (
-                <span>Универсальный раздел без связи с заявкой</span>
+                <span className="rounded-full border border-indigo-100 bg-white/75 px-2 py-1">
+                  {sec.lines.length} строк · ручной раздел
+                </span>
               )}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 group-open:hidden">
+              <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1.5 text-xs text-zinc-600 shadow-sm">
+                <span className="font-semibold text-zinc-500">Услуги</span>
+                <span className="font-extrabold tabular-nums text-violet-950">{formatMoneyRub(sectionClientSubtotal)} ₽</span>
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/85 px-3 py-1.5 text-xs text-zinc-600 shadow-sm">
+                <span className="font-semibold text-zinc-500">Себестоимость</span>
+                <span className="font-extrabold tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</span>
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start">

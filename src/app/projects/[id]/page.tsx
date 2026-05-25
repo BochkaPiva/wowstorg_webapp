@@ -147,10 +147,10 @@ const metaBadge =
   "inline-flex items-center rounded-full border border-zinc-200 bg-white/85 px-2.5 py-1 text-xs font-medium text-zinc-700";
 const workTabBtn = (active: boolean) =>
   [
-    "min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition",
+    "min-h-12 rounded-2xl px-4 py-2 text-sm font-extrabold transition",
     active
-      ? "border border-violet-300 bg-violet-600 text-white shadow-sm"
-      : "border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
+      ? "border border-violet-500 bg-zinc-950 text-white shadow-[0_12px_26px_rgba(24,24,27,0.18)]"
+      : "border border-zinc-200 bg-white/85 text-zinc-600 hover:border-violet-200 hover:bg-white hover:text-violet-900",
   ].join(" ");
 const heroStatCard = "rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm";
 
@@ -254,10 +254,15 @@ function HelpLegend({
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-bold text-zinc-600 hover:bg-zinc-50"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-sm font-black text-violet-700 shadow-sm hover:bg-violet-100"
         aria-label={title}
       >
-        ?
+        !
       </button>
       {open ? (
         <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl">
@@ -1580,7 +1585,7 @@ export default function ProjectDetailPage() {
                 </div>
               ) : null}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
               <span className={metaBadge}>
                 Версия сметы: {activeEstimateVersionNumber != null ? `v${activeEstimateVersionNumber}` : "будет создана автоматически"}
               </span>
@@ -1588,8 +1593,11 @@ export default function ProjectDetailPage() {
                 {projectHasConfirmedDates ? "Даты подтверждены: доступен обычный каталог" : "Даты не подтверждены: доступен demo-каталог"}
               </span>
               {hasDraftOrder ? (
-                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
-                  Есть demo-заявка без дат
+                <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+                  Demo-заявка
+                  <HelpLegend title="Что значит demo-заявка">
+                    Это черновой набор реквизита без складского резерва. Его можно править до подтверждения дат, а затем превратить в реальную заявку.
+                  </HelpLegend>
                 </span>
               ) : null}
             </div>
@@ -1605,11 +1613,14 @@ export default function ProjectDetailPage() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-violet-700">
-                                Демо-заявка без дат
+                                Demo
                               </span>
                               <span className="text-sm font-semibold text-zinc-900">
                                 {project.draftOrder.title?.trim() || "Без названия demo-набора"}
                               </span>
+                              <HelpLegend title="Demo-режим">
+                                Черновик не резервирует склад. После подтверждения дат его можно перенести в реальную заявку с точными интервалами.
+                              </HelpLegend>
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                               <span>{project.draftOrder.linesCount} поз.</span>
@@ -1684,9 +1695,11 @@ export default function ProjectDetailPage() {
                             </div>
                           </div>
                           <div className="rounded-2xl border border-violet-100 bg-white/90 p-3 shadow-sm">
-                            <div className="text-sm font-semibold text-zinc-900">Действия</div>
-                            <div className="mt-2 text-xs leading-5 text-zinc-600">
-                              Черновик проекта без дат. Состав и смету можно уточнять до подтверждения реальных интервалов.
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-zinc-900">Действия</div>
+                              <HelpLegend title="Что можно сделать">
+                                Открыть demo-каталог для правок, перейти к реальной заявке после подтверждения дат или удалить черновик.
+                              </HelpLegend>
                             </div>
                             {!readOnly ? (
                               <div className="mt-3 flex flex-col gap-2">
@@ -1792,13 +1805,15 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <section className={softShell}>
+          <section className="rounded-[1.35rem] border border-zinc-200 bg-[linear-gradient(180deg,rgba(24,24,27,0.035),rgba(255,255,255,0.96))] p-3 shadow-sm sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="flex items-center gap-2">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочая зона</div>
-                <p className="mt-1 text-xs text-zinc-500">Открывай только один большой рабочий блок за раз.</p>
+                <HelpLegend title="Рабочая зона проекта">
+                  Здесь собраны тяжелые операционные блоки проекта: смета, тайминг, файлы и журнал. Переключатель сверху меняет рабочий инструмент, не уводя со страницы проекта.
+                </HelpLegend>
               </div>
-              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+              <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-zinc-200 bg-white/75 p-1.5 shadow-inner sm:flex sm:w-auto sm:flex-wrap">
                 <button type="button" onClick={() => setActiveWorkTab("estimate")} className={workTabBtn(activeWorkTab === "estimate")}>
                   Смета
                 </button>

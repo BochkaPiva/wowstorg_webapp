@@ -41,6 +41,18 @@ type LinkedOrder = {
   createdAt: string;
 };
 
+type LinkableOrder = {
+  id: string;
+  status: OrderStatus;
+  source: "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL";
+  eventName: string | null;
+  readyByDate: string;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  linesCount: number;
+};
+
 type DraftOrderLinePreview = {
   id: string;
   itemId: string;
@@ -659,6 +671,12 @@ export default function ProjectDetailPage() {
   const [showAllLog, setShowAllLog] = React.useState(false);
   const [activeWorkTab, setActiveWorkTab] = React.useState<"estimate" | "schedule" | "files" | "journal">("estimate");
   const [catalogModeOpen, setCatalogModeOpen] = React.useState(false);
+  const [linkExistingOpen, setLinkExistingOpen] = React.useState(false);
+  const [linkableOrders, setLinkableOrders] = React.useState<LinkableOrder[]>([]);
+  const [linkableLoading, setLinkableLoading] = React.useState(false);
+  const [selectedLinkOrderIds, setSelectedLinkOrderIds] = React.useState<string[]>([]);
+  const [linkExistingBusy, setLinkExistingBusy] = React.useState(false);
+  const [linkExistingError, setLinkExistingError] = React.useState<string | null>(null);
   const [selectedEstimateVersionNumber, setSelectedEstimateVersionNumber] = React.useState<number | null>(null);
   const [resolvedEstimateVersion, setResolvedEstimateVersion] = React.useState<{ id: string; versionNumber: number } | null>(null);
 
@@ -746,6 +764,17 @@ export default function ProjectDetailPage() {
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [catalogModeOpen]);
+
+  React.useEffect(() => {
+    if (!linkExistingOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-link-existing-modal]")) return;
+      setLinkExistingOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [linkExistingOpen]);
 
   /** iframe с заявкой (`?embed=1`) шлёт событие — обновляем шапку/список заявок без перезагрузки */
   React.useEffect(() => {
@@ -849,6 +878,58 @@ export default function ProjectDetailPage() {
       return;
     }
     setCatalogModeOpen(true);
+  }
+
+  async function openLinkExistingModal() {
+    if (readOnly) return;
+    setLinkExistingError(null);
+    setSelectedLinkOrderIds([]);
+    setLinkExistingOpen(true);
+    setLinkableLoading(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/orders/linkable`, { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as
+        | { orders?: LinkableOrder[]; error?: { message?: string } }
+        | null;
+      if (!res.ok) {
+        setLinkableOrders([]);
+        setLinkExistingError(data?.error?.message ?? "Не удалось загрузить список заявок");
+        return;
+      }
+      setLinkableOrders(data?.orders ?? []);
+    } catch {
+      setLinkableOrders([]);
+      setLinkExistingError("Не удалось загрузить список заявок");
+    } finally {
+      setLinkableLoading(false);
+    }
+  }
+
+  async function linkExistingOrders() {
+    if (selectedLinkOrderIds.length === 0) return;
+    setLinkExistingBusy(true);
+    setLinkExistingError(null);
+    try {
+      const res = await fetch(`/api/projects/${id}/orders/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds: selectedLinkOrderIds,
+          ...(activeEstimateVersionId ? { targetEstimateVersionId: activeEstimateVersionId } : {}),
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!res.ok) {
+        setLinkExistingError(data?.error?.message ?? "Не удалось привязать заявки");
+        return;
+      }
+      setLinkExistingOpen(false);
+      setSelectedLinkOrderIds([]);
+      load();
+      window.dispatchEvent(new CustomEvent("project-activity-refresh"));
+    } finally {
+      setLinkExistingBusy(false);
+    }
   }
 
   async function deleteDraftOrder() {
@@ -1478,14 +1559,24 @@ export default function ProjectDetailPage() {
               <div className="flex items-center gap-2">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
                 <HelpLegend title="Как работает блок заявок">
-                  Один вход `Каталог → реквизит` ведёт либо в demo-каталог без дат, либо в обычный project-каталог с
-                  датами мероприятия. Реальные заявки попадают в выбранную версию сметы автоматически.
+                  `Каталог → реквизит` ведёт в demo-каталог или в обычный project-каталог с датами мероприятия.
+                  `Привязать существующую` позволяет выбрать активные заявки того же заказчика, которые ещё не
+                  привязаны к проекту. После привязки заявка появится здесь и в текущей версии сметы.
                 </HelpLegend>
               </div>
               {!readOnly ? (
-                <button type="button" onClick={openProjectCatalogEntry} className={`${primaryBtn} w-full sm:w-auto`}>
-                  Каталог → реквизит
-                </button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <button type="button" onClick={openProjectCatalogEntry} className={`${primaryBtn} w-full sm:w-auto`}>
+                    Каталог → реквизит
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openLinkExistingModal()}
+                    className={`${secondaryBtn} w-full sm:w-auto`}
+                  >
+                    Привязать существующую
+                  </button>
+                </div>
               ) : null}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1772,6 +1863,109 @@ export default function ProjectDetailPage() {
               ) : null}
             </div>
           </section>
+          {linkExistingOpen ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4">
+              <div
+                data-link-existing-modal
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xl font-extrabold tracking-tight text-zinc-950">Привязать существующие заявки</div>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Показаны активные заявки заказчика «{project?.customer.name ?? "—"}», которые ещё не привязаны к
+                      проекту. После привязки блок реквизита добавится в{" "}
+                      {activeEstimateVersionNumber != null ? `смету v${activeEstimateVersionNumber}` : "смету проекта"}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkExistingOpen(false);
+                      setLinkExistingError(null);
+                    }}
+                    className={secondaryBtn}
+                  >
+                    Закрыть
+                  </button>
+                </div>
+
+                {linkExistingError ? (
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                    {linkExistingError}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+                  {linkableLoading ? (
+                    <div className="text-sm text-zinc-600">Загружаем список заявок…</div>
+                  ) : linkableOrders.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-4 py-6 text-sm text-zinc-600">
+                      Нет доступных заявок для привязки. Показываются только активные заявки этого заказчика без
+                      привязки к другому проекту.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {linkableOrders.map((order) => (
+                        <label
+                          key={order.id}
+                          className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-800 shadow-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedLinkOrderIds.includes(order.id)}
+                            onChange={(e) =>
+                              setSelectedLinkOrderIds((prev) =>
+                                e.target.checked ? [...prev, order.id] : prev.filter((item) => item !== order.id),
+                              )
+                            }
+                            className="mt-1"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-semibold text-zinc-950">
+                              {order.eventName?.trim() ? order.eventName : `Заявка ${order.id.slice(0, 8)}…`}
+                            </span>
+                            <span className="mt-1 block text-xs text-zinc-500">
+                              {fmtDate(order.startDate)} — {fmtDate(order.endDate)} · готовность {fmtDate(order.readyByDate)}
+                            </span>
+                            <span className="mt-1 block text-xs text-zinc-500">
+                              {orderStatusLabelRu[order.status] ?? order.status} · {order.linesCount} поз. ·{" "}
+                              {order.source === "GREENWICH_INTERNAL" ? "Grinvich" : "Склад"}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-zinc-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkExistingOpen(false);
+                      setLinkExistingError(null);
+                    }}
+                    className={secondaryBtn}
+                    disabled={linkExistingBusy}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void linkExistingOrders()}
+                    disabled={linkExistingBusy || selectedLinkOrderIds.length === 0 || linkableLoading}
+                    className={primaryBtn}
+                  >
+                    {linkExistingBusy
+                      ? "Привязываем…"
+                      : `Привязать выбранные${selectedLinkOrderIds.length > 0 ? ` (${selectedLinkOrderIds.length})` : ""}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {catalogModeOpen ? (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4">
               <div

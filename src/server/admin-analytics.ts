@@ -11,7 +11,12 @@ import {
   PROJECT_ESTIMATE_COMMISSION_RATE,
   PROJECT_ESTIMATE_TAX_RATE,
 } from "@/lib/project-estimate-totals";
-import { calcCashInternalCostTaxAmount, calcOrderServicesInternalCosts, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
+import {
+  calcCashInternalCostTaxAmount,
+  calcOrderServicesInternalCosts,
+  calcWarehouseProfitEstimate,
+  isCashPaymentMethod,
+} from "@/lib/order-service-internal-costs";
 import { prisma } from "@/server/db";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
@@ -34,8 +39,11 @@ export type RequisiteAnalyticsData = {
     totalRevenue: number;
     itemsRevenue: number;
     servicesRevenue: number;
+    profitEstimate: number;
     averageOrderRevenue: number;
     averageRentalDays: number;
+    linkedOrdersExcluded: number;
+    linkedClosedOrdersExcluded: number;
   };
   breakdowns: {
     byStatus: Array<{ status: string; count: number }>;
@@ -132,6 +140,8 @@ export type ProjectAnalyticsData = {
     cancelRatePercent: number;
     forecastRevenueTotal: number;
     forecastMarginAfterTax: number;
+    actualRevenueTotal: number;
+    actualMarginAfterTax: number;
     averageForecastRevenue: number;
     averageMarginAfterTaxPercent: number;
     averageOrdersPerProject: number;
@@ -203,6 +213,32 @@ export type OverviewAnalyticsData = {
     lowMarginProjects: number;
     repeatCustomers: number;
   };
+  finance: {
+    fact: {
+      standaloneOrdersRevenue: number;
+      standaloneOrdersProfit: number;
+      completedProjectsRevenue: number;
+      completedProjectsProfit: number;
+      revenueTotal: number;
+      profitTotal: number;
+    };
+    forecast: {
+      activeProjectsRevenue: number;
+      activeProjectsProfit: number;
+    };
+    bonuses: {
+      ratePercent: number;
+      recipients: number;
+      factPool: number;
+      factPerPerson: number;
+      forecastPool: number;
+      forecastPerPerson: number;
+    };
+    ownership: {
+      linkedOrdersExcluded: number;
+      linkedClosedOrdersExcluded: number;
+    };
+  };
   attention: Array<{
     type: "stale" | "margin" | "estimate" | "order" | "date";
     severity: "warning" | "critical";
@@ -271,14 +307,16 @@ function hasStatusChange(payload: Prisma.JsonValue): boolean {
 
 async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAnalyticsData> {
   const orderPeriodWhere = periodWhere("endDate", scope);
+  const standaloneOrderWhere = { ...orderPeriodWhere, projectId: null };
+  const linkedOrderWhere = { ...orderPeriodWhere, projectId: { not: null } };
 
-  const [orders, closedOrders, trackedItems] = await Promise.all([
+  const [orders, closedOrders, linkedOrdersExcluded, linkedClosedOrdersExcluded, trackedItems] = await Promise.all([
     prisma.order.findMany({
-      where: orderPeriodWhere,
+      where: standaloneOrderWhere,
       select: { id: true, status: true, source: true },
     }),
     prisma.order.findMany({
-      where: { status: "CLOSED", ...orderPeriodWhere },
+      where: { status: "CLOSED", ...standaloneOrderWhere },
       select: {
         source: true,
         startDate: true,
@@ -286,9 +324,18 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         rentalStartPartOfDay: true,
         rentalEndPartOfDay: true,
         payMultiplier: true,
+        deliveryEnabled: true,
         deliveryPrice: true,
+        deliveryInternalCost: true,
+        deliveryInternalPaymentMethod: true,
+        montageEnabled: true,
         montagePrice: true,
+        montageInternalCost: true,
+        montageInternalPaymentMethod: true,
+        demontageEnabled: true,
         demontagePrice: true,
+        demontageInternalCost: true,
+        demontageInternalPaymentMethod: true,
         rentalDiscountType: true,
         rentalDiscountPercent: true,
         rentalDiscountAmount: true,
@@ -304,6 +351,12 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
           },
         },
       },
+    }),
+    prisma.order.count({
+      where: linkedOrderWhere,
+    }),
+    prisma.order.count({
+      where: { status: "CLOSED", ...linkedOrderWhere },
     }),
     prisma.item.findMany({
       where: { purchasePricePerUnit: { not: null } },
@@ -339,6 +392,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   let totalServiceRevenue = 0;
   let totalTaxAmount = 0;
   let totalRentalDays = 0;
+  let totalProfitEstimate = 0;
 
   for (const order of closedOrders) {
     const pricing = calcOrderPricing({
@@ -347,14 +401,34 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
-      deliveryPrice: order.deliveryPrice,
-      montagePrice: order.montagePrice,
-      demontagePrice: order.demontagePrice,
+      deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
+      montagePrice: order.montageEnabled ? order.montagePrice : 0,
+      demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
       lines: order.lines,
       discount: order,
       quantityMode: "issued",
     });
+    const profitEstimate = calcWarehouseProfitEstimate({
+      clientGrandTotal: pricing.grandTotal,
+      clientTaxAmount: pricing.taxAmount,
+      delivery: {
+        enabled: order.deliveryEnabled,
+        internalCost: order.deliveryInternalCost,
+        internalPaymentMethod: order.deliveryInternalPaymentMethod,
+      },
+      montage: {
+        enabled: order.montageEnabled,
+        internalCost: order.montageInternalCost,
+        internalPaymentMethod: order.montageInternalPaymentMethod,
+      },
+      demontage: {
+        enabled: order.demontageEnabled,
+        internalCost: order.demontageInternalCost,
+        internalPaymentMethod: order.demontageInternalPaymentMethod,
+      },
+    });
     totalRentalDays += pricing.days;
+    totalProfitEstimate += profitEstimate.profitEstimate;
     const orderItemsRevenue = pricing.rentalSubtotalAfterDiscount;
 
     for (const [idx, line] of order.lines.entries()) {
@@ -433,7 +507,6 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     })
     .sort((a, b) => b.revenue - a.revenue || (b.roiPercent ?? -Infinity) - (a.roiPercent ?? -Infinity));
 
-  const totalRevenue = Math.round(totalItemsRevenue + totalServiceRevenue);
   const totalRevenueWithTax = Math.round(totalItemsRevenue + totalServiceRevenue + totalTaxAmount);
   const totalProfitabilityRevenue = profitabilityRows.reduce((s, r) => s + r.revenue, 0);
   const totalPurchaseCost = profitabilityRows.reduce((s, r) => s + r.purchaseCost, 0);
@@ -449,8 +522,11 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       totalRevenue: totalRevenueWithTax,
       itemsRevenue: Math.round(totalItemsRevenue),
       servicesRevenue: Math.round(totalServiceRevenue),
+      profitEstimate: Math.round(totalProfitEstimate),
       averageOrderRevenue: closedOrders.length > 0 ? Math.round(totalRevenueWithTax / closedOrders.length) : 0,
       averageRentalDays: closedOrders.length > 0 ? round2(totalRentalDays / closedOrders.length) : 0,
+      linkedOrdersExcluded,
+      linkedClosedOrdersExcluded,
     },
     breakdowns: {
       byStatus: [...statusMap.entries()]
@@ -472,12 +548,12 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         .sort((a, b) => b.total - a.total),
     },
     services: {
-      deliveryRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.deliveryPrice != null ? Number(o.deliveryPrice) : 0), 0)),
-      montageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.montagePrice != null ? Number(o.montagePrice) : 0), 0)),
-      demontageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.demontagePrice != null ? Number(o.demontagePrice) : 0), 0)),
-      deliveryOrders: closedOrders.filter((o) => (o.deliveryPrice != null ? Number(o.deliveryPrice) : 0) > 0).length,
-      montageOrders: closedOrders.filter((o) => (o.montagePrice != null ? Number(o.montagePrice) : 0) > 0).length,
-      demontageOrders: closedOrders.filter((o) => (o.demontagePrice != null ? Number(o.demontagePrice) : 0) > 0).length,
+      deliveryRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.deliveryEnabled && o.deliveryPrice != null ? Number(o.deliveryPrice) : 0), 0)),
+      montageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.montageEnabled && o.montagePrice != null ? Number(o.montagePrice) : 0), 0)),
+      demontageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.demontageEnabled && o.demontagePrice != null ? Number(o.demontagePrice) : 0), 0)),
+      deliveryOrders: closedOrders.filter((o) => o.deliveryEnabled && (o.deliveryPrice != null ? Number(o.deliveryPrice) : 0) > 0).length,
+      montageOrders: closedOrders.filter((o) => o.montageEnabled && (o.montagePrice != null ? Number(o.montagePrice) : 0) > 0).length,
+      demontageOrders: closedOrders.filter((o) => o.demontageEnabled && (o.demontagePrice != null ? Number(o.demontagePrice) : 0) > 0).length,
     },
     profitability: {
       summary: {
@@ -734,12 +810,16 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   const completedProjects = rows.filter((p) => p.status === "COMPLETED").length;
   const cancelledProjects = rows.filter((p) => p.status === "CANCELLED").length;
   const financialRows = rows.filter((p) => p.status !== "CANCELLED");
+  const forecastRows = rows.filter((p) => !p.archived && p.status !== "COMPLETED" && p.status !== "CANCELLED");
+  const actualRows = rows.filter((p) => p.status === "COMPLETED");
   const archivedProjects = rows.filter((p) => p.archived).length;
   const withPrimaryEstimate = rows.filter((p) => p.hasPrimaryEstimate).length;
   const withLinkedOrder = rows.filter((p) => p.hasLinkedOrder).length;
   const confirmedDates = rows.filter((p) => p.eventDateConfirmed).length;
-  const forecastRevenueTotal = Math.round(financialRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
-  const forecastMarginAfterTax = Math.round(financialRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
+  const forecastRevenueTotal = Math.round(forecastRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
+  const forecastMarginAfterTax = Math.round(forecastRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
+  const actualRevenueTotal = Math.round(actualRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
+  const actualMarginAfterTax = Math.round(actualRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
   const marginRows = financialRows.filter((p) => p.financials.revenueTotal > 0);
   const averageMarginAfterTaxPercent =
     marginRows.length > 0 ? round2(marginRows.reduce((sum, p) => sum + p.financials.marginAfterTaxPct, 0) / marginRows.length) : 0;
@@ -785,7 +865,9 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       cancelRatePercent: total > 0 ? round2((cancelledProjects / total) * 100) : 0,
       forecastRevenueTotal,
       forecastMarginAfterTax,
-      averageForecastRevenue: financialRows.length > 0 ? Math.round(forecastRevenueTotal / financialRows.length) : 0,
+      actualRevenueTotal,
+      actualMarginAfterTax,
+      averageForecastRevenue: forecastRows.length > 0 ? Math.round(forecastRevenueTotal / forecastRows.length) : 0,
       averageMarginAfterTaxPercent,
       averageOrdersPerProject: total > 0 ? round2(rows.reduce((sum, p) => sum + p.ordersCount, 0) / total) : 0,
       averageEstimateVersions: total > 0 ? round2(rows.reduce((sum, p) => sum + p.estimateVersionsCount, 0) / total) : 0,
@@ -928,6 +1010,16 @@ function getOverviewAnalytics(
     projectTitle: project.title,
     message: project.risks.slice(0, 3).join(", "),
   }));
+  const bonusRate = 0.15;
+  const bonusRecipients = 2;
+  const standaloneOrdersRevenue = requisites.kpi.totalRevenue;
+  const standaloneOrdersProfit = requisites.kpi.profitEstimate;
+  const completedProjectsRevenue = projects.kpi.actualRevenueTotal;
+  const completedProjectsProfit = projects.kpi.actualMarginAfterTax;
+  const factRevenueTotal = standaloneOrdersRevenue + completedProjectsRevenue;
+  const factProfitTotal = standaloneOrdersProfit + completedProjectsProfit;
+  const factPool = Math.round(factProfitTotal * bonusRate);
+  const forecastPool = Math.round(projects.kpi.forecastMarginAfterTax * bonusRate);
 
   return {
     kpi: {
@@ -945,6 +1037,32 @@ function getOverviewAnalytics(
       staleProjects: projects.kpi.stale7Days,
       lowMarginProjects: projects.kpi.lowMarginProjects,
       repeatCustomers: customers.kpi.repeatCustomers,
+    },
+    finance: {
+      fact: {
+        standaloneOrdersRevenue,
+        standaloneOrdersProfit,
+        completedProjectsRevenue,
+        completedProjectsProfit,
+        revenueTotal: factRevenueTotal,
+        profitTotal: factProfitTotal,
+      },
+      forecast: {
+        activeProjectsRevenue: projects.kpi.forecastRevenueTotal,
+        activeProjectsProfit: projects.kpi.forecastMarginAfterTax,
+      },
+      bonuses: {
+        ratePercent: Math.round(bonusRate * 100),
+        recipients: bonusRecipients,
+        factPool,
+        factPerPerson: Math.round(factPool / bonusRecipients),
+        forecastPool,
+        forecastPerPerson: Math.round(forecastPool / bonusRecipients),
+      },
+      ownership: {
+        linkedOrdersExcluded: requisites.kpi.linkedOrdersExcluded,
+        linkedClosedOrdersExcluded: requisites.kpi.linkedClosedOrdersExcluded,
+      },
     },
     attention,
     topProjects: projects.topByRevenue.slice(0, 5),

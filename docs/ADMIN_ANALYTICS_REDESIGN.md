@@ -539,3 +539,11 @@ UI обязательно показывает tooltip:
 - Не делать прогноз будущих заявок по AI/эвристикам.
 - Не менять проектную смету ради аналитики.
 - Не вводить бухгалтерский учет налогов вместо текущего условного `6%`.
+
+## Update 2026-05-25: fact, forecast and anti-double-count
+
+- Standalone requisites analytics includes only orders with `projectId = null`.
+- Linked orders are financially owned by their project and are excluded from standalone order revenue, service totals, customer totals and profit signals.
+- Overview fact = standalone closed orders + completed projects.
+- Overview forecast = active non-archived projects.
+- Bonus block = 15% of profit, split between 2 people.

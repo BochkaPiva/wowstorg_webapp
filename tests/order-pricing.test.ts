@@ -30,8 +30,8 @@ describe("order pricing", () => {
     expect(pricing.rentalSubtotalAfterDiscount).toBe(756);
     expect(pricing.servicesTotal).toBe(1000);
     expect(pricing.grandTotalBeforeTax).toBe(1756);
-    expect(pricing.taxAmount).toBe(105);
-    expect(pricing.grandTotal).toBe(1861);
+    expect(pricing.taxAmount).toBe(105.36);
+    expect(pricing.grandTotal).toBe(1861.36);
     expect(pricing.lineAllocations).toEqual([
       {
         itemId: "chair",

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import Link from "next/link";
@@ -82,6 +82,32 @@ type AnalyticsPayload = {
       lowMarginProjects: number;
       repeatCustomers: number;
     };
+    finance: {
+      fact: {
+        standaloneOrdersRevenue: number;
+        standaloneOrdersProfit: number;
+        completedProjectsRevenue: number;
+        completedProjectsProfit: number;
+        revenueTotal: number;
+        profitTotal: number;
+      };
+      forecast: {
+        activeProjectsRevenue: number;
+        activeProjectsProfit: number;
+      };
+      bonuses: {
+        ratePercent: number;
+        recipients: number;
+        factPool: number;
+        factPerPerson: number;
+        forecastPool: number;
+        forecastPerPerson: number;
+      };
+      ownership: {
+        linkedOrdersExcluded: number;
+        linkedClosedOrdersExcluded: number;
+      };
+    };
     attention: Array<{
       type: string;
       severity: "warning" | "critical";
@@ -100,8 +126,11 @@ type AnalyticsPayload = {
       totalRevenue: number;
       itemsRevenue: number;
       servicesRevenue: number;
+      profitEstimate: number;
       averageOrderRevenue: number;
       averageRentalDays: number;
+      linkedOrdersExcluded: number;
+      linkedClosedOrdersExcluded: number;
     };
     breakdowns: {
       byStatus: Array<{ status: string; count: number }>;
@@ -160,6 +189,8 @@ type AnalyticsPayload = {
       cancelRatePercent: number;
       forecastRevenueTotal: number;
       forecastMarginAfterTax: number;
+      actualRevenueTotal: number;
+      actualMarginAfterTax: number;
       averageForecastRevenue: number;
       averageMarginAfterTaxPercent: number;
       averageOrdersPerProject: number;
@@ -418,22 +449,49 @@ export default function AdminAnalyticsPage() {
 
 function OverviewTab({ data }: { data: AnalyticsPayload }) {
   const k = data.overview.kpi;
+  const finance = data.overview.finance;
+  const riskCount = k.staleProjects + k.lowMarginProjects;
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Факт выручки" value={formatMoney(k.factRevenue)} tone="emerald" note="Закрытые заявки" />
-        <KpiCard label="Прогноз проектов" value={formatMoney(k.projectForecastRevenue)} tone="violet" note="Основные сметы" />
-        <KpiCard label="Маржа проектов" value={formatMoney(k.projectForecastMarginAfterTax)} tone={k.projectForecastMarginAfterTax >= 0 ? "emerald" : "rose"} />
-        <KpiCard label="Проекты с рисками" value={k.staleProjects + k.lowMarginProjects} tone={k.staleProjects + k.lowMarginProjects > 0 ? "amber" : "slate"} />
-      </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Закрытые заявки" value={k.ordersClosed} />
-        <KpiCard label="Средний чек" value={formatMoney(k.averageOrderRevenue)} />
-        <KpiCard label="Активные проекты" value={k.activeProjects} />
-        <KpiCard label="Повторные заказчики" value={k.repeatCustomers} />
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_0.9fr]">
+        <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 shadow-sm">
+          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Факт</div>
+          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.fact.profitTotal)}</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Прибыль за закрытые деньги периода</div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <KpiCard label="Самостоятельные заявки" value={formatMoney(finance.fact.standaloneOrdersProfit)} note={formatMoney(finance.fact.standaloneOrdersRevenue)} />
+            <KpiCard label="Завершенные проекты" value={formatMoney(finance.fact.completedProjectsProfit)} note={formatMoney(finance.fact.completedProjectsRevenue)} />
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 text-violet-950 shadow-sm">
+          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
+          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.activeProjectsProfit)}</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль активных проектов</div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <KpiCard label="Выручка проектов" value={formatMoney(finance.forecast.activeProjectsRevenue)} />
+            <KpiCard label="Активные проекты" value={k.activeProjects} />
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
+          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Бонусы {finance.bonuses.ratePercent}%</div>
+          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.bonuses.factPool)}</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Факт, пул на {finance.bonuses.recipients} человек</div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <KpiCard label="Факт на человека" value={formatMoney(finance.bonuses.factPerPerson)} />
+            <KpiCard label="Прогноз на человека" value={formatMoney(finance.bonuses.forecastPerPerson)} note={formatMoney(finance.bonuses.forecastPool)} />
+          </div>
+        </section>
       </div>
 
-      <SectionCard title="Что требует внимания">
+      <div className="grid gap-3 md:grid-cols-4">
+        <KpiCard label="Закрытые заявки" value={k.ordersClosed} note="Только без проекта" />
+        <KpiCard label="Заявки в проектах" value={finance.ownership.linkedClosedOrdersExcluded} note="Исключены из факта заявок" tone={finance.ownership.linkedClosedOrdersExcluded > 0 ? "violet" : "slate"} />
+        <KpiCard label="Проекты с рисками" value={riskCount} tone={riskCount > 0 ? "amber" : "slate"} />
+        <KpiCard label="Повторные заказчики" value={k.repeatCustomers} />
+      </div>
+<SectionCard title="Что требует внимания">
         {data.overview.attention.length === 0 ? (
           <p className="text-sm text-zinc-500">Критичных сигналов за период нет.</p>
         ) : (

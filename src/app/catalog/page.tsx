@@ -808,15 +808,20 @@ export default function CatalogPage() {
           <div
             className={`mb-4 rounded-xl px-4 py-3 text-sm ${
               isProjectDemoCatalog
-                ? "border border-red-200 bg-red-50/90 text-red-950"
+                ? "border border-violet-200 bg-[linear-gradient(135deg,rgba(250,245,255,0.96),rgba(255,251,235,0.86))] text-zinc-800 shadow-sm"
                 : "border border-violet-200 bg-violet-50/90 text-zinc-800"
             }`}
           >
-            <div className={`font-semibold ${isProjectDemoCatalog ? "text-red-950" : "text-violet-900"}`}>
+            <div className={`flex flex-wrap items-center gap-2 font-semibold ${isProjectDemoCatalog ? "text-violet-950" : "text-violet-900"}`}>
+              {isProjectDemoCatalog ? (
+                <span className="rounded-full border border-violet-200 bg-white/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-violet-700">
+                  DEMO
+                </span>
+              ) : null}
               {isProjectDemoCatalog ? "Demo-каталог проекта" : "Каталог для проекта"}
               {projectBannerTitle ? `: ${projectBannerTitle}` : "…"}
             </div>
-            <p className={`mt-1 ${isProjectDemoCatalog ? "text-red-900/80" : "text-zinc-600"}`}>
+            <p className={`mt-1 ${isProjectDemoCatalog ? "text-zinc-600" : "text-zinc-600"}`}>
               {projectBannerNote ??
                 (isProjectDemoCatalog
                   ? "Здесь нет дат и реальной заявки: ты просто собираешь demo-корзину без резервирования."
@@ -825,7 +830,7 @@ export default function CatalogPage() {
             <Link
               href={`/projects/${projectId}`}
               className={`mt-2 inline-block font-medium ${
-                isProjectDemoCatalog ? "text-red-700 hover:text-red-900" : "text-violet-700 hover:text-violet-900"
+                isProjectDemoCatalog ? "text-violet-700 hover:text-violet-900" : "text-violet-700 hover:text-violet-900"
               }`}
             >
               ← К карточке проекта
@@ -933,9 +938,9 @@ export default function CatalogPage() {
               ) : null}
             </div>
           ) : (
-            <div className="rounded-2xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-950">
+            <div className="rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(250,245,255,0.95),rgba(255,251,235,0.82))] px-4 py-3 text-sm text-zinc-700">
               <div className="font-semibold">Демо-режим без дат</div>
-              <div className="mt-1 text-red-900/80">
+              <div className="mt-1 text-zinc-600">
                 Доступность считается по остатку на сейчас, а итог ниже показывает предварительную сумму за 1 день для
                 ориентира.
               </div>

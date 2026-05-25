@@ -32,6 +32,8 @@ function materializeErrorMessage(error: ProjectDraftOrderError): string {
   }
 }
 
+const RentalPartSchema = z.enum(["MORNING", "EVENING"]);
+
 const PeriodSchema = z
   .object({
     key: z.string().trim().min(1).max(120),
@@ -39,6 +41,8 @@ const PeriodSchema = z
     readyByDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    rentalStartPartOfDay: RentalPartSchema.optional(),
+    rentalEndPartOfDay: RentalPartSchema.optional(),
     lineIds: z.array(z.string().trim().min(1)).min(1).max(1000),
   })
   .strict();

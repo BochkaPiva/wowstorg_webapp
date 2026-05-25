@@ -221,18 +221,6 @@ function addOverviewSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
     ],
     { currencyColumns: [1, 2, 3, 4] },
   );
-
-  addSectionTitle(ws, 19, "Контроль двойного учета", 11);
-  addTable(
-    ws,
-    20,
-    ["Метрика", "Значение", "Смысл"],
-    [
-      ["Заявки в проектах", data.overview.finance.ownership.linkedOrdersExcluded, "Не входят в самостоятельные заявки"],
-      ["Закрытые заявки в проектах", data.overview.finance.ownership.linkedClosedOrdersExcluded, "Финансы учитываются на стороне проекта"],
-      ["Закрытые самостоятельные заявки", data.overview.kpi.ordersClosed, "Факт заявок без projectId"],
-    ],
-  );
 }
 
 function addFactForecastSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
@@ -416,22 +404,53 @@ function addCustomersSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
 function addInventoryProfitabilitySheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Реквизит");
   styleSheet(ws);
-  setCols(ws, [34, 12, 16, 16, 16, 16, 14, 14]);
-  addReportHeader(ws, "Рентабельность реквизита", data, 8);
-  addTable(
+  setCols(ws, [34, 14, 16, 16, 4, 34, 12, 16, 16, 16]);
+  addReportHeader(ws, "Аналитика реквизита", data, 10);
+
+  addKpiCard(ws, 6, 1, "Выручка реквизита", data.requisites.kpi.itemsRevenue, `${data.requisites.tops.topByRevenue.length} позиций в топе`, "violet");
+  addKpiCard(ws, 6, 5, "Валовая прибыль", data.requisites.profitability.summary.totalGrossProfit, `${data.requisites.profitability.summary.itemsWithRevenue} позиций с выручкой`, "emerald");
+  addKpiCard(
     ws,
     6,
+    8,
+    "ROI реквизита",
+    data.requisites.profitability.summary.totalRoiPercent == null
+      ? "—"
+      : `${Math.round(data.requisites.profitability.summary.totalRoiPercent)}%`,
+    "Только позиции с ценой покупки",
+    "amber",
+  );
+
+  addSectionTitle(ws, 11, "Топ реквизита", 10);
+  addTable(
+    ws,
+    12,
+    ["Позиция", "Выручка", "Выдано, шт.", "Комментарий"],
+    data.requisites.tops.topByRevenue.map((item) => {
+      const issued = data.requisites.tops.topByIssued.find((row) => row.itemId === item.itemId)?.issuedQty ?? 0;
+      return [item.itemName, item.revenue, issued, issued > 0 ? "Есть выдачи за период" : ""];
+    }),
+    { currencyColumns: [1] },
+  );
+
+  const profitabilityStartRow = 15 + data.requisites.tops.topByRevenue.length;
+  addSectionTitle(ws, profitabilityStartRow, "Рентабельность реквизита с закупочной ценой", 10);
+  addTable(
+    ws,
+    profitabilityStartRow + 1,
     ["Позиция", "Кол-во", "Закуп/шт", "Закуп всего", "Выручка", "Валовая прибыль", "Окупаемость", "ROI %"],
-    data.requisites.profitability.rows.map((r) => [
-      r.itemName,
-      r.totalQty,
-      r.unitPurchasePrice,
-      r.purchaseCost,
-      r.revenue,
-      r.grossProfit,
-      r.paybackRatio ?? null,
-      r.roiPercent == null ? null : r.roiPercent / 100,
-    ]),
+    data.requisites.profitability.rows
+      .filter((r) => r.unitPurchasePrice > 0)
+      .map((r) => [
+        r.itemName,
+        r.totalQty,
+        r.unitPurchasePrice,
+        r.purchaseCost,
+        r.revenue,
+        r.grossProfit,
+        r.paybackRatio ?? null,
+        r.roiPercent == null ? null : r.roiPercent / 100,
+      ]),
     { currencyColumns: [2, 3, 4, 5], percentColumns: [7] },
   );
 }
@@ -466,6 +485,7 @@ export async function buildAdminAnalyticsXlsx(
     addFactForecastSheet(wb, data);
     addDynamicsSheet(wb, data);
     addRequisitesSheet(wb, data);
+    addInventoryProfitabilitySheet(wb, data);
     addProjectsSheet(wb, data);
     addCustomersSheet(wb, data);
     addMethodologySheet(wb, data);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
@@ -332,6 +333,8 @@ type DraftMaterializeAssignment = {
   lineId: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
 };
 
 function buildDraftMaterializeAssignments(args: {
@@ -343,15 +346,37 @@ function buildDraftMaterializeAssignments(args: {
     lineId,
     startDate: args.startDate,
     endDate: args.endDate,
+    rentalStartPartOfDay: "MORNING",
+    rentalEndPartOfDay: "EVENING",
   }));
 }
 
 function groupDraftMaterializeAssignments(
   assignments: DraftMaterializeAssignment[],
-): Array<{ key: string; title: string; readyByDate: string; startDate: string; endDate: string; lineIds: string[] }> {
-  const grouped = new Map<string, { startDate: string; endDate: string; lineIds: string[] }>();
+): Array<{
+  key: string;
+  title: string;
+  readyByDate: string;
+  startDate: string;
+  endDate: string;
+  rentalStartPartOfDay: RentalPartOfDay;
+  rentalEndPartOfDay: RentalPartOfDay;
+  lineIds: string[];
+}> {
+  const grouped = new Map<
+    string,
+    {
+      startDate: string;
+      endDate: string;
+      rentalStartPartOfDay: RentalPartOfDay;
+      rentalEndPartOfDay: RentalPartOfDay;
+      lineIds: string[];
+    }
+  >();
   for (const assignment of assignments) {
-    const key = `${assignment.startDate}__${assignment.endDate}`;
+    const rentalStartPartOfDay = assignment.startDate === assignment.endDate ? "MORNING" : assignment.rentalStartPartOfDay;
+    const rentalEndPartOfDay = assignment.startDate === assignment.endDate ? "EVENING" : assignment.rentalEndPartOfDay;
+    const key = `${assignment.startDate}__${rentalStartPartOfDay}__${assignment.endDate}__${rentalEndPartOfDay}`;
     const current = grouped.get(key);
     if (current) {
       current.lineIds.push(assignment.lineId);
@@ -360,6 +385,8 @@ function groupDraftMaterializeAssignments(
     grouped.set(key, {
       startDate: assignment.startDate,
       endDate: assignment.endDate,
+      rentalStartPartOfDay,
+      rentalEndPartOfDay,
       lineIds: [assignment.lineId],
     });
   }
@@ -373,6 +400,8 @@ function groupDraftMaterializeAssignments(
     readyByDate: value.startDate,
     startDate: value.startDate,
     endDate: value.endDate,
+    rentalStartPartOfDay: value.rentalStartPartOfDay,
+    rentalEndPartOfDay: value.rentalEndPartOfDay,
     lineIds: value.lineIds,
   }));
 }
@@ -3278,7 +3307,9 @@ function DraftRequisiteEditor({
 
   function updateMaterializeAssignment(
     lineId: string,
-    patch: Partial<Pick<DraftMaterializeAssignment, "startDate" | "endDate">>,
+    patch: Partial<
+      Pick<DraftMaterializeAssignment, "startDate" | "endDate" | "rentalStartPartOfDay" | "rentalEndPartOfDay">
+    >,
   ) {
     setMaterializeAssignments((prev) =>
       prev.map((assignment) =>
@@ -3390,7 +3421,7 @@ function DraftRequisiteEditor({
 
       {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
 
-      <p className="text-xs text-zinc-600">
+      <p className="hidden">
         Количество ограничено физическим остатком на складе (годные единицы по вёдрам: total − ремонт − брак − недостача), без учёта резерва по датам. При переводе в реальные заявки дополнительно проверяется доступность на выбранные периоды.
       </p>
 
@@ -3502,7 +3533,7 @@ function DraftRequisiteEditor({
         ? createPortal(
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/40 p-4">
               <div
-                className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
+                className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl border border-zinc-200 bg-white p-5 shadow-2xl"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="draft-materialize-title"
@@ -3539,14 +3570,32 @@ function DraftRequisiteEditor({
                     const assignment = materializeAssignments.find((item) => item.lineId === line.id);
                     return (
                       <div key={line.id} className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
-                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                        <div className="space-y-3">
                           <div>
                             <div className="text-sm font-semibold text-zinc-950">{line.name}</div>
+                            <div className="mt-4">
+                              <CatalogRentalPeriodPicker
+                                startDate={assignment?.startDate ?? draftMaterializeTodayISO()}
+                                endDate={assignment?.endDate ?? assignment?.startDate ?? draftMaterializeTodayISO()}
+                                minDate={draftMaterializeTodayISO()}
+                                rentalStartPartOfDay={assignment?.rentalStartPartOfDay ?? "MORNING"}
+                                rentalEndPartOfDay={assignment?.rentalEndPartOfDay ?? "EVENING"}
+                                onRangeChange={(startDate, endDate) =>
+                                  updateMaterializeAssignment(line.id, { startDate, endDate })
+                                }
+                                onStartPartChange={(rentalStartPartOfDay) =>
+                                  updateMaterializeAssignment(line.id, { rentalStartPartOfDay })
+                                }
+                                onEndPartChange={(rentalEndPartOfDay) =>
+                                  updateMaterializeAssignment(line.id, { rentalEndPartOfDay })
+                                }
+                              />
+                            </div>
                             <div className="mt-1 text-xs text-zinc-600">
                               {parseQtyDisplayInt(line.qty)} шт. · {parseQtyDisplayInt(line.plannedDays)} дн. в demo
                             </div>
                           </div>
-                          <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                          <label className="hidden">
                             Начало использования
                             <input
                               type="date"
@@ -3555,7 +3604,7 @@ function DraftRequisiteEditor({
                               className={`mt-1 w-full ${inputField}`}
                             />
                           </label>
-                          <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                          <label className="hidden">
                             Конец использования
                             <input
                               type="date"

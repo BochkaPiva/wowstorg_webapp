@@ -1,14 +1,19 @@
 import { Prisma, ProjectActivityKind } from "@prisma/client";
 
-import { coerceRentalPartsForDates } from "@/lib/rental-days";
+import { coerceRentalPartsForDates, type RentalPartOfDay } from "@/lib/rental-days";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { CreateOrderError, createOrderInTransaction } from "@/server/orders/create-order";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 
-export function resolveMaterializeRentalParts(startDate: string, endDate: string) {
-  return coerceRentalPartsForDates(startDate, endDate, "MORNING", "EVENING");
+export function resolveMaterializeRentalParts(
+  startDate: string,
+  endDate: string,
+  rentalStartPartOfDay: RentalPartOfDay = "MORNING",
+  rentalEndPartOfDay: RentalPartOfDay = "EVENING",
+) {
+  return coerceRentalPartsForDates(startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay);
 }
 
 export type DraftOrderLineDto = {
@@ -88,6 +93,8 @@ export type MaterializeDraftPeriodInput = {
   readyByDate: string;
   startDate: string;
   endDate: string;
+  rentalStartPartOfDay?: RentalPartOfDay;
+  rentalEndPartOfDay?: RentalPartOfDay;
   lineIds: string[];
 };
 
@@ -178,7 +185,12 @@ export async function materializeProjectDraftOrder(args: {
 
       for (const period of args.periods) {
         const groupLines = period.lineIds.map((lineId) => draftLineById.get(lineId)!);
-        const rentalParts = resolveMaterializeRentalParts(period.startDate, period.endDate);
+        const rentalParts = resolveMaterializeRentalParts(
+          period.startDate,
+          period.endDate,
+          period.rentalStartPartOfDay,
+          period.rentalEndPartOfDay,
+        );
         const reserved = await getReservedQtyByItemId({
           db: tx,
           startDate: new Date(`${period.startDate}T00:00:00.000Z`),

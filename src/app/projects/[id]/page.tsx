@@ -1863,12 +1863,13 @@ export default function ProjectDetailPage() {
               ) : null}
             </div>
           </section>
-          {linkExistingOpen ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4">
-              <div
-                data-link-existing-modal
-                className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
-              >
+          {linkExistingOpen && typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/45 p-4">
+                  <div
+                    data-link-existing-modal
+                    className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
+                  >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xl font-extrabold tracking-tight text-zinc-950">Привязать существующие заявки</div>
@@ -1962,16 +1963,19 @@ export default function ProjectDetailPage() {
                       : `Привязать выбранные${selectedLinkOrderIds.length > 0 ? ` (${selectedLinkOrderIds.length})` : ""}`}
                   </button>
                 </div>
-              </div>
-            </div>
-          ) : null}
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
 
-          {catalogModeOpen ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4">
-              <div
-                data-catalog-mode-modal
-                className="w-full max-w-2xl rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
-              >
+          {catalogModeOpen && typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/45 p-4">
+                  <div
+                    data-catalog-mode-modal
+                    className="w-full max-w-2xl rounded-3xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_rgba(24,24,27,0.26)]"
+                  >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xl font-extrabold tracking-tight text-zinc-950">Какой режим открыть?</div>
@@ -2021,9 +2025,11 @@ export default function ProjectDetailPage() {
                     </p>
                   </Link>
                 </div>
-              </div>
-            </div>
-          ) : null}
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
 
           {archiveModalOpen && typeof document !== "undefined"
             ? createPortal(

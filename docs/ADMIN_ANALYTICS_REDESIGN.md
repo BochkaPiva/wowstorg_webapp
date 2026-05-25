@@ -130,8 +130,8 @@ marginAfterTaxPct = marginAfterTax / revenueTotal * 100
 | Вкладка | Дата фильтра |
 |---|---|
 | `Реквизит` | `Order.endDate` |
-| `Проекты` | `Project.createdAt` |
-| `Заказчики` | проекты по `Project.createdAt`, заявки по `Order.endDate` в отдельных метриках |
+| `Проекты` | пересечение выбранного периода с `Project.eventStartDate` / `Project.eventEndDate` |
+| `Заказчики` | проекты по датам проведения, заявки по `Order.endDate` в отдельных метриках |
 | `Обзор` | смешанный источник, явно подписанный как `факт` и `прогноз` |
 
 ## Вкладка `Обзор`
@@ -371,7 +371,7 @@ UI обязательно показывает tooltip:
 На листе `Методология` указать:
 
 - `Реквизит`: факт по закрытым заявкам, период по `Order.endDate`.
-- `Проекты`: прогноз по основной версии сметы, период по `Project.createdAt`.
+- `Проекты`: прогноз по основной версии сметы, период по датам проведения проекта (`eventStartDate` / `eventEndDate`).
 - `Заказчики`: проектные метрики по проектам, фактические заявки отдельно.
 - `Проектная комиссия`: 15%.
 - `Условный налог`: 6%.
@@ -547,3 +547,10 @@ UI обязательно показывает tooltip:
 - Overview fact = standalone closed orders + completed projects.
 - Overview forecast = active non-archived projects.
 - Bonus block = 15% of profit, split between 2 people.
+
+## Update 2026-05-25: project period basis
+
+- Project analytics is now tied to event dates, not creation date.
+- A project is included in a period when its event interval intersects the selected period.
+- If only one event date is filled, that date is used as the financial period anchor.
+- Projects without event dates are excluded from period-based finance because there is no reliable month to assign them to.

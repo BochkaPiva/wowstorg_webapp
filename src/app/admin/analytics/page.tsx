@@ -16,6 +16,7 @@ type ProjectRow = {
   status: string;
   archived: boolean;
   eventStartDate: string | null;
+  eventEndDate: string | null;
   eventDateConfirmed: boolean;
   ordersCount: number;
   estimateVersionsCount: number;

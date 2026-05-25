@@ -49,3 +49,4 @@
 - If an order is linked to a project, its revenue, services, tax/profit signal and customer contribution belong to the project side and are excluded from standalone requisites analytics.
 - Overview separates fact from forecast: fact is standalone closed orders plus completed projects; forecast is active non-archived projects.
 - Bonuses in overview are calculated as 15% of profit and split between 2 people.
+- Project period filtering uses event dates (`eventStartDate` / `eventEndDate`) and includes projects whose event interval intersects the selected period.

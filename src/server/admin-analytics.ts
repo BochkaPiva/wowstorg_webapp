@@ -27,8 +27,8 @@ export type AnalyticsPeriod = {
   to: string | null;
   dateBasis: {
     requisites: "order.endDate";
-    projects: "project.createdAt";
-    customers: "project.createdAt + order.endDate";
+    projects: "project.eventStartDate/eventEndDate";
+    customers: "project.eventStartDate/eventEndDate + order.endDate";
   };
 };
 
@@ -112,6 +112,7 @@ export type ProjectAnalyticsRow = {
   createdAt: string;
   updatedAt: string;
   eventStartDate: string | null;
+  eventEndDate: string | null;
   eventDateConfirmed: boolean;
   ordersCount: number;
   estimateVersionsCount: number;
@@ -296,6 +297,44 @@ function periodWhere(field: "endDate" | "createdAt", scope: AnalyticsScope) {
         }
       : {};
   return where;
+}
+
+function dateRangeFilter(scope: AnalyticsScope) {
+  return {
+    ...(scope.from ? { gte: parseDateOnlyStart(scope.from) } : {}),
+    ...(scope.to ? { lt: parseDateOnlyEndExclusive(scope.to) } : {}),
+  };
+}
+
+function projectEventPeriodWhere(scope: AnalyticsScope): Prisma.ProjectWhereInput {
+  if (!scope.from && !scope.to) return {};
+
+  const from = scope.from ? parseDateOnlyStart(scope.from) : null;
+  const toExclusive = scope.to ? parseDateOnlyEndExclusive(scope.to) : null;
+  const singleDateFilter = dateRangeFilter(scope);
+
+  return {
+    OR: [
+      {
+        eventStartDate: {
+          not: null,
+          ...(toExclusive ? { lt: toExclusive } : {}),
+        },
+        eventEndDate: {
+          not: null,
+          ...(from ? { gte: from } : {}),
+        },
+      },
+      {
+        eventStartDate: singleDateFilter,
+        eventEndDate: null,
+      },
+      {
+        eventStartDate: null,
+        eventEndDate: singleDateFilter,
+      },
+    ],
+  };
 }
 
 function hasStatusChange(payload: Prisma.JsonValue): boolean {
@@ -573,14 +612,15 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
 async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyticsData> {
   const now = new Date();
   const projects = await prisma.project.findMany({
-    where: periodWhere("createdAt", scope),
-    orderBy: { createdAt: "desc" },
+    where: projectEventPeriodWhere(scope),
+    orderBy: [{ eventStartDate: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       title: true,
       status: true,
       archivedAt: true,
       eventStartDate: true,
+      eventEndDate: true,
       eventDateConfirmed: true,
       createdAt: true,
       updatedAt: true,
@@ -792,6 +832,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),
       eventStartDate: ymd(project.eventStartDate),
+      eventEndDate: ymd(project.eventEndDate),
       eventDateConfirmed: project.eventDateConfirmed,
       ordersCount: project.orders.length,
       estimateVersionsCount: project.estimateVersions.length,
@@ -1083,8 +1124,8 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
       to: scope.to ?? null,
       dateBasis: {
         requisites: "order.endDate",
-        projects: "project.createdAt",
-        customers: "project.createdAt + order.endDate",
+        projects: "project.eventStartDate/eventEndDate",
+        customers: "project.eventStartDate/eventEndDate + order.endDate",
       },
     },
     overview,

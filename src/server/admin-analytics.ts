@@ -11,6 +11,7 @@ import {
   PROJECT_ESTIMATE_COMMISSION_RATE,
   PROJECT_ESTIMATE_TAX_RATE,
 } from "@/lib/project-estimate-totals";
+import { calcOrderServicesInternalCosts } from "@/lib/order-service-internal-costs";
 import { prisma } from "@/server/db";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
@@ -545,12 +546,15 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                   deliveryEnabled: true,
                   deliveryPrice: true,
                   deliveryInternalCost: true,
+                  deliveryInternalPaymentMethod: true,
                   montageEnabled: true,
                   montagePrice: true,
                   montageInternalCost: true,
+                  montageInternalPaymentMethod: true,
                   demontageEnabled: true,
                   demontagePrice: true,
                   demontageInternalCost: true,
+                  demontageInternalPaymentMethod: true,
                   rentalDiscountType: true,
                   rentalDiscountPercent: true,
                   rentalDiscountAmount: true,
@@ -602,15 +606,23 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
             discount: order,
           });
           clientSubtotal += pricing.grandTotalBeforeTax;
-          if (order.deliveryEnabled) {
-            internalSubtotal += order.deliveryInternalCost != null ? Number(order.deliveryInternalCost) : 0;
-          }
-          if (order.montageEnabled) {
-            internalSubtotal += order.montageInternalCost != null ? Number(order.montageInternalCost) : 0;
-          }
-          if (order.demontageEnabled) {
-            internalSubtotal += order.demontageInternalCost != null ? Number(order.demontageInternalCost) : 0;
-          }
+          internalSubtotal += calcOrderServicesInternalCosts({
+            delivery: {
+              enabled: order.deliveryEnabled,
+              internalCost: order.deliveryInternalCost,
+              internalPaymentMethod: order.deliveryInternalPaymentMethod,
+            },
+            montage: {
+              enabled: order.montageEnabled,
+              internalCost: order.montageInternalCost,
+              internalPaymentMethod: order.montageInternalPaymentMethod,
+            },
+            demontage: {
+              enabled: order.demontageEnabled,
+              internalCost: order.demontageInternalCost,
+              internalPaymentMethod: order.demontageInternalPaymentMethod,
+            },
+          }).internalCostWithCashTax;
           continue;
         }
 

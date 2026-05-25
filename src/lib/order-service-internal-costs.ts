@@ -1,0 +1,54 @@
+import { ORDER_CASH_INTERNAL_COST_TAX_RATE } from "@/lib/constants";
+
+export const ORDER_SERVICE_PAYMENT_METHODS = ["NON_CASH", "CASH"] as const;
+
+export type OrderServicePaymentMethod = (typeof ORDER_SERVICE_PAYMENT_METHODS)[number];
+
+export type OrderServiceInternalCostInput = {
+  enabled?: boolean | null;
+  internalCost?: unknown;
+  internalPaymentMethod?: OrderServicePaymentMethod | string | null;
+};
+
+function num(value: unknown): number {
+  if (value == null) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function normalizeOrderServicePaymentMethod(
+  value: OrderServicePaymentMethod | string | null | undefined,
+): OrderServicePaymentMethod {
+  return value === "CASH" ? "CASH" : "NON_CASH";
+}
+
+export function isCashPaymentMethod(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toUpperCase();
+  return normalized === "CASH" || normalized === "НАЛИЧНЫЕ" || normalized === "НАЛИЧКА";
+}
+
+export function calcOrderServicesInternalCosts(input: {
+  delivery?: OrderServiceInternalCostInput;
+  montage?: OrderServiceInternalCostInput;
+  demontage?: OrderServiceInternalCostInput;
+  cashTaxRate?: number;
+}) {
+  const services = [input.delivery, input.montage, input.demontage].filter(
+    (service): service is OrderServiceInternalCostInput => Boolean(service?.enabled),
+  );
+  const internalCostTotal = services.reduce((sum, service) => sum + num(service.internalCost), 0);
+  const cashInternalCostTotal = services.reduce((sum, service) => {
+    if (normalizeOrderServicePaymentMethod(service.internalPaymentMethod) !== "CASH") return sum;
+    return sum + num(service.internalCost);
+  }, 0);
+  const cashTaxRate = input.cashTaxRate ?? ORDER_CASH_INTERNAL_COST_TAX_RATE;
+  const cashInternalCostTax = Math.round(cashInternalCostTotal * cashTaxRate);
+
+  return {
+    internalCostTotal: Math.round(internalCostTotal),
+    cashInternalCostTotal: Math.round(cashInternalCostTotal),
+    cashInternalCostTax,
+    internalCostWithCashTax: Math.round(internalCostTotal + cashInternalCostTax),
+    cashTaxRate,
+  };
+}

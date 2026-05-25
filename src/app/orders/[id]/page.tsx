@@ -11,6 +11,10 @@ import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
+  calcOrderServicesInternalCosts,
+  type OrderServicePaymentMethod,
+} from "@/lib/order-service-internal-costs";
+import {
   billableRentalDaysFromDateOnly,
   type RentalPartOfDay,
 } from "@/lib/rental-days";
@@ -65,14 +69,17 @@ type Order = {
   deliveryComment: string | null;
   deliveryPrice: number | null;
   deliveryInternalCost?: number | null;
+  deliveryInternalPaymentMethod?: OrderServicePaymentMethod;
   montageEnabled: boolean;
   montageComment: string | null;
   montagePrice: number | null;
   montageInternalCost?: number | null;
+  montageInternalPaymentMethod?: OrderServicePaymentMethod;
   demontageEnabled: boolean;
   demontageComment: string | null;
   demontagePrice: number | null;
   demontageInternalCost?: number | null;
+  demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   payMultiplier?: number | null;
   rentalDiscountType: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent: number | null;
@@ -236,22 +243,31 @@ function formatDiscountLabel(type: string | null | undefined, percent?: number |
 function orderServicesInternalTotal(order: {
   deliveryEnabled: boolean;
   deliveryInternalCost?: number | null;
+  deliveryInternalPaymentMethod?: OrderServicePaymentMethod;
   montageEnabled: boolean;
   montageInternalCost?: number | null;
+  montageInternalPaymentMethod?: OrderServicePaymentMethod;
   demontageEnabled: boolean;
   demontageInternalCost?: number | null;
+  demontageInternalPaymentMethod?: OrderServicePaymentMethod;
 }): number {
-  let s = 0;
-  if (order.deliveryEnabled && order.deliveryInternalCost != null) {
-    s += Number(order.deliveryInternalCost);
-  }
-  if (order.montageEnabled && order.montageInternalCost != null) {
-    s += Number(order.montageInternalCost);
-  }
-  if (order.demontageEnabled && order.demontageInternalCost != null) {
-    s += Number(order.demontageInternalCost);
-  }
-  return Math.round(s);
+  return calcOrderServicesInternalCosts({
+    delivery: {
+      enabled: order.deliveryEnabled,
+      internalCost: order.deliveryInternalCost,
+      internalPaymentMethod: order.deliveryInternalPaymentMethod,
+    },
+    montage: {
+      enabled: order.montageEnabled,
+      internalCost: order.montageInternalCost,
+      internalPaymentMethod: order.montageInternalPaymentMethod,
+    },
+    demontage: {
+      enabled: order.demontageEnabled,
+      internalCost: order.demontageInternalCost,
+      internalPaymentMethod: order.demontageInternalPaymentMethod,
+    },
+  }).internalCostWithCashTax;
 }
 
 function lineIssuedQty(l: OrderLine): number {
@@ -585,6 +601,8 @@ function ServiceEditRow({
   showInternalPrice,
   internalPrice,
   onInternalPriceChange,
+  internalPaymentMethod,
+  onInternalPaymentMethodChange,
 }: {
   label: string;
   enabled: boolean;
@@ -597,11 +615,13 @@ function ServiceEditRow({
   showInternalPrice?: boolean;
   internalPrice?: number | "";
   onInternalPriceChange?: (v: number | "") => void;
+  internalPaymentMethod?: OrderServicePaymentMethod;
+  onInternalPaymentMethodChange?: (v: OrderServicePaymentMethod) => void;
 }) {
   const priceMissing = enabled && !isEnabledServicePriceSpecified(price);
   const gridCols =
     showPrice && showInternalPrice
-      ? "sm:grid-cols-[1fr_auto_auto]"
+      ? "sm:grid-cols-[1fr_auto_auto_auto]"
       : showPrice
         ? "sm:grid-cols-[1fr_auto]"
         : "";
@@ -664,6 +684,19 @@ function ServiceEditRow({
               />
             </div>
           ) : null}
+          {showInternalPrice && internalPaymentMethod && onInternalPaymentMethodChange ? (
+            <div className="min-w-[130px]">
+              <label className="block text-xs font-medium text-zinc-500 mb-1">РћРїР»Р°С‚Р°</label>
+              <select
+                value={internalPaymentMethod}
+                onChange={(e) => onInternalPaymentMethodChange(e.target.value as OrderServicePaymentMethod)}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+              >
+                <option value="NON_CASH">Р‘РµР·РЅР°Р»</option>
+                <option value="CASH">РќР°Р»РёС‡РєР°</option>
+              </select>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -705,14 +738,20 @@ export default function OrderDetailsPage() {
   const [editDeliveryComment, setEditDeliveryComment] = React.useState("");
   const [editDeliveryPrice, setEditDeliveryPrice] = React.useState<number | "">("");
   const [editDeliveryInternalCost, setEditDeliveryInternalCost] = React.useState<number | "">("");
+  const [editDeliveryInternalPaymentMethod, setEditDeliveryInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [editMontageEnabled, setEditMontageEnabled] = React.useState(false);
   const [editMontageComment, setEditMontageComment] = React.useState("");
   const [editMontagePrice, setEditMontagePrice] = React.useState<number | "">("");
   const [editMontageInternalCost, setEditMontageInternalCost] = React.useState<number | "">("");
+  const [editMontageInternalPaymentMethod, setEditMontageInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [editDemontageEnabled, setEditDemontageEnabled] = React.useState(false);
   const [editDemontageComment, setEditDemontageComment] = React.useState("");
   const [editDemontagePrice, setEditDemontagePrice] = React.useState<number | "">("");
   const [editDemontageInternalCost, setEditDemontageInternalCost] = React.useState<number | "">("");
+  const [editDemontageInternalPaymentMethod, setEditDemontageInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [editRentalDiscountType, setEditRentalDiscountType] = React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
   const [editRentalDiscountPercent, setEditRentalDiscountPercent] = React.useState<number | "">("");
   const [editRentalDiscountAmount, setEditRentalDiscountAmount] = React.useState<number | "">("");
@@ -981,18 +1020,21 @@ export default function OrderDetailsPage() {
     setEditDeliveryInternalCost(
       order.deliveryInternalCost != null ? Number(order.deliveryInternalCost) : "",
     );
+    setEditDeliveryInternalPaymentMethod(order.deliveryInternalPaymentMethod ?? "NON_CASH");
     setEditMontageEnabled(order.montageEnabled);
     setEditMontageComment(order.montageComment ?? "");
     setEditMontagePrice(order.montagePrice ?? "");
     setEditMontageInternalCost(
       order.montageInternalCost != null ? Number(order.montageInternalCost) : "",
     );
+    setEditMontageInternalPaymentMethod(order.montageInternalPaymentMethod ?? "NON_CASH");
     setEditDemontageEnabled(order.demontageEnabled);
     setEditDemontageComment(order.demontageComment ?? "");
     setEditDemontagePrice(order.demontagePrice ?? "");
     setEditDemontageInternalCost(
       order.demontageInternalCost != null ? Number(order.demontageInternalCost) : "",
     );
+    setEditDemontageInternalPaymentMethod(order.demontageInternalPaymentMethod ?? "NON_CASH");
     setEditRentalDiscountType(order.rentalDiscountType ?? "NONE");
     setEditRentalDiscountPercent(order.rentalDiscountPercent ?? "");
     setEditRentalDiscountAmount(order.rentalDiscountAmount ?? "");
@@ -1068,6 +1110,9 @@ export default function OrderDetailsPage() {
                     ? null
                     : Number(editDeliveryInternalCost)
                   : null,
+                deliveryInternalPaymentMethod: editDeliveryEnabled
+                  ? editDeliveryInternalPaymentMethod
+                  : "NON_CASH",
               }
             : {}),
           montageEnabled: editMontageEnabled,
@@ -1080,6 +1125,9 @@ export default function OrderDetailsPage() {
                     ? null
                     : Number(editMontageInternalCost)
                   : null,
+                montageInternalPaymentMethod: editMontageEnabled
+                  ? editMontageInternalPaymentMethod
+                  : "NON_CASH",
               }
             : {}),
           demontageEnabled: editDemontageEnabled,
@@ -1092,6 +1140,9 @@ export default function OrderDetailsPage() {
                     ? null
                     : Number(editDemontageInternalCost)
                   : null,
+                demontageInternalPaymentMethod: editDemontageEnabled
+                  ? editDemontageInternalPaymentMethod
+                  : "NON_CASH",
               }
             : {}),
           ...(isWarehouse
@@ -1739,6 +1790,8 @@ export default function OrderDetailsPage() {
                   showInternalPrice={isWarehouse}
                   internalPrice={editDeliveryInternalCost}
                   onInternalPriceChange={setEditDeliveryInternalCost}
+                  internalPaymentMethod={editDeliveryInternalPaymentMethod}
+                  onInternalPaymentMethodChange={setEditDeliveryInternalPaymentMethod}
                 />
                 <ServiceEditRow
                   label="Монтаж"
@@ -1752,6 +1805,8 @@ export default function OrderDetailsPage() {
                   showInternalPrice={isWarehouse}
                   internalPrice={editMontageInternalCost}
                   onInternalPriceChange={setEditMontageInternalCost}
+                  internalPaymentMethod={editMontageInternalPaymentMethod}
+                  onInternalPaymentMethodChange={setEditMontageInternalPaymentMethod}
                 />
                 <ServiceEditRow
                   label="Демонтаж"
@@ -1765,6 +1820,8 @@ export default function OrderDetailsPage() {
                   showInternalPrice={isWarehouse}
                   internalPrice={editDemontageInternalCost}
                   onInternalPriceChange={setEditDemontageInternalCost}
+                  internalPaymentMethod={editDemontageInternalPaymentMethod}
+                  onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
               </div>
             </div>

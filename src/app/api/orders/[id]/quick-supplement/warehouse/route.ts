@@ -27,14 +27,17 @@ const BodySchema = z.object({
   deliveryComment: z.string().trim().max(2000).optional(),
   deliveryPrice: z.number().min(0).optional(),
   deliveryInternalCost: z.number().min(0).nullable().optional(),
+  deliveryInternalPaymentMethod: z.enum(["NON_CASH", "CASH"]).optional(),
   montageEnabled: z.boolean().optional(),
   montageComment: z.string().trim().max(2000).optional(),
   montagePrice: z.number().min(0).optional(),
   montageInternalCost: z.number().min(0).nullable().optional(),
+  montageInternalPaymentMethod: z.enum(["NON_CASH", "CASH"]).optional(),
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).optional(),
   demontagePrice: z.number().min(0).optional(),
   demontageInternalCost: z.number().min(0).nullable().optional(),
+  demontageInternalPaymentMethod: z.enum(["NON_CASH", "CASH"]).optional(),
 });
 
 function buildQuickWarehouseMessage(args: {
@@ -200,14 +203,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             deliveryComment: parsed.data.deliveryEnabled ? parsed.data.deliveryComment?.trim() || null : null,
             deliveryPrice: parsed.data.deliveryEnabled ? parsed.data.deliveryPrice : undefined,
             deliveryInternalCost: parsed.data.deliveryEnabled ? parsed.data.deliveryInternalCost : null,
+            deliveryInternalPaymentMethod: parsed.data.deliveryEnabled
+              ? (parsed.data.deliveryInternalPaymentMethod ?? "NON_CASH")
+              : "NON_CASH",
             montageEnabled: parsed.data.montageEnabled ?? false,
             montageComment: parsed.data.montageEnabled ? parsed.data.montageComment?.trim() || null : null,
             montagePrice: parsed.data.montageEnabled ? parsed.data.montagePrice : undefined,
             montageInternalCost: parsed.data.montageEnabled ? parsed.data.montageInternalCost : null,
+            montageInternalPaymentMethod: parsed.data.montageEnabled
+              ? (parsed.data.montageInternalPaymentMethod ?? "NON_CASH")
+              : "NON_CASH",
             demontageEnabled: parsed.data.demontageEnabled ?? false,
             demontageComment: parsed.data.demontageEnabled ? parsed.data.demontageComment?.trim() || null : null,
             demontagePrice: parsed.data.demontageEnabled ? parsed.data.demontagePrice : undefined,
             demontageInternalCost: parsed.data.demontageEnabled ? parsed.data.demontageInternalCost : null,
+            demontageInternalPaymentMethod: parsed.data.demontageEnabled
+              ? (parsed.data.demontageInternalPaymentMethod ?? "NON_CASH")
+              : "NON_CASH",
             lines: {
               create: parsed.data.lines.map((l, idx) => {
                 const item = itemById.get(l.itemId)!;

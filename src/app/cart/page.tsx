@@ -11,6 +11,7 @@ import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { catalogDatesFromStorage } from "@/lib/catalogDates";
 import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-costs";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./cart.css";
 import "../catalog/catalog.css";
@@ -167,14 +168,20 @@ export default function CartPage() {
   const [deliveryComment, setDeliveryComment] = React.useState("");
   const [deliveryPrice, setDeliveryPrice] = React.useState("");
   const [deliveryInternalCost, setDeliveryInternalCost] = React.useState("");
+  const [deliveryInternalPaymentMethod, setDeliveryInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [montageEnabled, setMontageEnabled] = React.useState(false);
   const [montageComment, setMontageComment] = React.useState("");
   const [montagePrice, setMontagePrice] = React.useState("");
   const [montageInternalCost, setMontageInternalCost] = React.useState("");
+  const [montageInternalPaymentMethod, setMontageInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [demontageEnabled, setDemontageEnabled] = React.useState(false);
   const [demontageComment, setDemontageComment] = React.useState("");
   const [demontagePrice, setDemontagePrice] = React.useState("");
   const [demontageInternalCost, setDemontageInternalCost] = React.useState("");
+  const [demontageInternalPaymentMethod, setDemontageInternalPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -762,6 +769,9 @@ export default function CartPage() {
                       : deliveryEnabled
                         ? null
                         : undefined,
+                  deliveryInternalPaymentMethod: deliveryEnabled
+                    ? deliveryInternalPaymentMethod
+                    : undefined,
                   montagePrice:
                     montageEnabled && montagePrice.trim()
                       ? Number(montagePrice.replace(",", "."))
@@ -772,6 +782,9 @@ export default function CartPage() {
                       : montageEnabled
                         ? null
                         : undefined,
+                  montageInternalPaymentMethod: montageEnabled
+                    ? montageInternalPaymentMethod
+                    : undefined,
                   demontagePrice:
                     demontageEnabled && demontagePrice.trim()
                       ? Number(demontagePrice.replace(",", "."))
@@ -782,6 +795,9 @@ export default function CartPage() {
                       : demontageEnabled
                         ? null
                         : undefined,
+                  demontageInternalPaymentMethod: demontageEnabled
+                    ? demontageInternalPaymentMethod
+                    : undefined,
                 }
               : {}),
           }),
@@ -849,8 +865,11 @@ export default function CartPage() {
         const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
         const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
         if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (deliveryEnabled) payload.deliveryInternalPaymentMethod = deliveryInternalPaymentMethod;
         if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (montageEnabled) payload.montageInternalPaymentMethod = montageInternalPaymentMethod;
         if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
+        if (demontageEnabled) payload.demontageInternalPaymentMethod = demontageInternalPaymentMethod;
         payload.source = orderType === "greenwich" ? "GREENWICH_INTERNAL" : "WOWSTORG_EXTERNAL";
         if (orderType === "greenwich" && greenwichUserId)
           payload.greenwichUserId = greenwichUserId;
@@ -866,8 +885,11 @@ export default function CartPage() {
         const mi = montageInternalCost.trim() ? Number(montageInternalCost.replace(",", ".")) : undefined;
         const dmi = demontageInternalCost.trim() ? Number(demontageInternalCost.replace(",", ".")) : undefined;
         if (di != null && !Number.isNaN(di)) payload.deliveryInternalCost = di;
+        if (deliveryEnabled) payload.deliveryInternalPaymentMethod = deliveryInternalPaymentMethod;
         if (mi != null && !Number.isNaN(mi)) payload.montageInternalCost = mi;
+        if (montageEnabled) payload.montageInternalPaymentMethod = montageInternalPaymentMethod;
         if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
+        if (demontageEnabled) payload.demontageInternalPaymentMethod = demontageInternalPaymentMethod;
       }
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -1369,6 +1391,17 @@ export default function CartPage() {
                                 placeholder="необяз."
                               />
                             </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Оплата</span>
+                              <select
+                                value={deliveryInternalPaymentMethod}
+                                onChange={(e) => setDeliveryInternalPaymentMethod(e.target.value as OrderServicePaymentMethod)}
+                                className="co-input co-input--price"
+                              >
+                                <option value="NON_CASH">Безнал</option>
+                                <option value="CASH">Наличка</option>
+                              </select>
+                            </label>
                           </div>
                         )}
                       </>
@@ -1409,6 +1442,17 @@ export default function CartPage() {
                                 placeholder="необяз."
                               />
                             </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Оплата</span>
+                              <select
+                                value={montageInternalPaymentMethod}
+                                onChange={(e) => setMontageInternalPaymentMethod(e.target.value as OrderServicePaymentMethod)}
+                                className="co-input co-input--price"
+                              >
+                                <option value="NON_CASH">Безнал</option>
+                                <option value="CASH">Наличка</option>
+                              </select>
+                            </label>
                           </div>
                         )}
                       </>
@@ -1448,6 +1492,17 @@ export default function CartPage() {
                                 className="co-input co-input--price"
                                 placeholder="необяз."
                               />
+                            </label>
+                            <label className="co-priceRow">
+                              <span className="co-priceLabel">Оплата</span>
+                              <select
+                                value={demontageInternalPaymentMethod}
+                                onChange={(e) => setDemontageInternalPaymentMethod(e.target.value as OrderServicePaymentMethod)}
+                                className="co-input co-input--price"
+                              >
+                                <option value="NON_CASH">Безнал</option>
+                                <option value="CASH">Наличка</option>
+                              </select>
                             </label>
                           </div>
                         )}

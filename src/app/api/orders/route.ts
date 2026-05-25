@@ -22,6 +22,7 @@ const LineSchema = z.object({
 const OrderSourceSchema = z.enum(["GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"]);
 const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 const RentalPartSchema = z.enum(["MORNING", "EVENING"]);
+const ServicePaymentMethodSchema = z.enum(["NON_CASH", "CASH"]);
 
 const BodySchema = z.object({
   customerId: z.string().trim().min(1).optional(),
@@ -44,8 +45,11 @@ const BodySchema = z.object({
   demontageComment: z.string().trim().max(2000).optional(),
   demontagePrice: z.number().min(0).optional(),
   deliveryInternalCost: z.number().min(0).nullable().optional(),
+  deliveryInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   montageInternalCost: z.number().min(0).nullable().optional(),
+  montageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   demontageInternalCost: z.number().min(0).nullable().optional(),
+  demontageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
 
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
@@ -146,8 +150,11 @@ export async function POST(req: Request) {
           ...(isWarehouse
             ? {
                 deliveryInternalCost: data.deliveryInternalCost,
+                deliveryInternalPaymentMethod: data.deliveryInternalPaymentMethod,
                 montageInternalCost: data.montageInternalCost,
+                montageInternalPaymentMethod: data.montageInternalPaymentMethod,
                 demontageInternalCost: data.demontageInternalCost,
+                demontageInternalPaymentMethod: data.demontageInternalPaymentMethod,
               }
             : {}),
           source: data.source,

@@ -6,6 +6,11 @@ import { createPortal } from "react-dom";
 
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import {
+  calcOrderServicesInternalCosts,
+  isCashPaymentMethod,
+  type OrderServicePaymentMethod,
+} from "@/lib/order-service-internal-costs";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import {
   normalizedLocalLineCostClientNumber,
@@ -17,7 +22,11 @@ import {
   calcProjectEstimateRequisiteUnitPricePerDay,
   normalizeProjectEstimateDays,
 } from "@/lib/project-estimate-requisite";
-import { calcProjectEstimateTotals, getNumericAmount } from "@/lib/project-estimate-totals";
+import {
+  PROJECT_ESTIMATE_COMMISSION_RATE,
+  getNumericAmount,
+  roundMoney,
+} from "@/lib/project-estimate-totals";
 
 type EstLine = {
   id: string;
@@ -76,14 +85,17 @@ type RequisiteOrder = {
   deliveryComment: string | null;
   deliveryPrice: number | null;
   deliveryInternalCost: number | null;
+  deliveryInternalPaymentMethod?: OrderServicePaymentMethod;
   montageEnabled: boolean;
   montageComment: string | null;
   montagePrice: number | null;
   montageInternalCost: number | null;
+  montageInternalPaymentMethod?: OrderServicePaymentMethod;
   demontageEnabled: boolean;
   demontageComment: string | null;
   demontagePrice: number | null;
   demontageInternalCost: number | null;
+  demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   payMultiplier?: number | null;
   lines: RequisiteOrderLine[];
 };
@@ -1179,22 +1191,46 @@ export function ProjectEstimatePanel({
     const sections = renderedSections;
     let clientSubtotal = 0;
     let internalSubtotal = 0;
+    let cashInternalSubtotal = 0;
     for (const s of sections) {
       for (const l of s.lines) {
         clientSubtotal += getNumericAmount(l.costClient);
-        internalSubtotal += getNumericAmount(l.costInternal);
+        const internalCost = getNumericAmount(l.costInternal);
+        internalSubtotal += internalCost;
+        if (isCashPaymentMethod(l.paymentMethod)) {
+          cashInternalSubtotal += internalCost;
+        }
       }
     }
-    const computed = calcProjectEstimateTotals({ clientSubtotal, internalSubtotal });
+    const roundedClientSubtotal = roundMoney(clientSubtotal);
+    const roundedInternalSubtotal = roundMoney(internalSubtotal);
+    const tax6 = roundMoney(roundedClientSubtotal * ORDER_TAX_RATE);
+    const clientTotal = roundedClientSubtotal + tax6;
+    const commission = roundMoney(roundedClientSubtotal * PROJECT_ESTIMATE_COMMISSION_RATE);
+    const cashInternalCostTax = calcOrderServicesInternalCosts({
+      delivery: {
+        enabled: true,
+        internalCost: cashInternalSubtotal,
+        internalPaymentMethod: "CASH",
+      },
+    }).cashInternalCostTax;
+    const internalWithCashTax = roundedInternalSubtotal + cashInternalCostTax;
+    const grossMargin = roundMoney(roundedClientSubtotal - internalWithCashTax);
+    const marginAfterTax = grossMargin;
+    const marginAfterTaxPct = clientTotal > 0 ? (marginAfterTax / clientTotal) * 100 : 0;
+
     return {
-      clientSubtotal: computed.clientSubtotal,
-      tax6: computed.tax,
-      commission: computed.commission,
-      clientTotal: computed.revenueTotal,
-      internalSubtotal: computed.internalSubtotal,
-      grossMargin: computed.grossMargin,
-      marginAfterTax: computed.marginAfterTax,
-      marginAfterTaxPct: computed.marginAfterTaxPct,
+      clientSubtotal: roundedClientSubtotal,
+      tax6,
+      commission,
+      clientTotal,
+      internalSubtotal: roundedInternalSubtotal,
+      cashInternalSubtotal: roundMoney(cashInternalSubtotal),
+      cashInternalCostTax,
+      internalWithCashTax,
+      grossMargin,
+      marginAfterTax,
+      marginAfterTaxPct,
     };
   }, [renderedSections]);
 
@@ -1213,7 +1249,7 @@ export function ProjectEstimatePanel({
             Блоки реквизита читаются из живых заявок проекта, а локальные разделы можно собирать черновиком и сохранить в БД одним
             действием. В блоках реквизита цена за ед. показывается как ставка за 1 единицу в 1 день, а итог строки считается по
             формуле количество × дней × ставка. В универсальных разделах и у подрядчиков сумма клиенту считается как количество × цена
-            за ед. Комиссия 15% входит в выручку, а условный налог 6% считается от выручки с комиссией, как и во внутреннем XLSX.
+            за ед. Клиентский итог считается как сумма клиенту + налог 6%, чтобы совпадать с итогом заявки. Комиссия 15% показывается отдельно как внутренняя справочная метрика.
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1634,10 +1670,6 @@ export function ProjectEstimatePanel({
                       <span className="text-zinc-600">Налог 6%</span>
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.tax6)} ₽</span>
                     </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Комиссия 15%</span>
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
-                    </div>
                     <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
                       <span className="font-extrabold text-violet-950">Итого</span>
                       <span className="font-black tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</span>
@@ -1650,6 +1682,20 @@ export function ProjectEstimatePanel({
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-600">Себестоимость</span>
                       <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalSubtotal)} ₽</span>
+                    </div>
+                    {totals.cashInternalCostTax > 0 ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-zinc-600">Налог на наличку 3.5%</span>
+                        <span className="font-bold tabular-nums text-zinc-950">{money(totals.cashInternalCostTax)} ₽</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Расходы всего</span>
+                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalWithCashTax)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-zinc-600">Комиссия 15% (справочно)</span>
+                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.commission)} ₽</span>
                     </div>
                     <div className="flex items-center justify-between gap-3 border-t border-zinc-200 pt-2">
                       <span className="font-semibold text-zinc-700">Валовая маржа</span>
@@ -2441,14 +2487,17 @@ function RequisiteSectionEditor({
     deliveryComment: "",
     deliveryPrice: "",
     deliveryInternalCost: "",
+    deliveryInternalPaymentMethod: "NON_CASH" as OrderServicePaymentMethod,
     montageEnabled: false,
     montageComment: "",
     montagePrice: "",
     montageInternalCost: "",
+    montageInternalPaymentMethod: "NON_CASH" as OrderServicePaymentMethod,
     demontageEnabled: false,
     demontageComment: "",
     demontagePrice: "",
     demontageInternalCost: "",
+    demontageInternalPaymentMethod: "NON_CASH" as OrderServicePaymentMethod,
   });
 
   const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>({});
@@ -2557,16 +2606,19 @@ function RequisiteSectionEditor({
         deliveryPrice: nextOrder.deliveryPrice != null ? String(nextOrder.deliveryPrice) : "",
         deliveryInternalCost:
           nextOrder.deliveryInternalCost != null ? String(nextOrder.deliveryInternalCost) : "",
+        deliveryInternalPaymentMethod: nextOrder.deliveryInternalPaymentMethod ?? "NON_CASH",
         montageEnabled: nextOrder.montageEnabled,
         montageComment: nextOrder.montageComment ?? "",
         montagePrice: nextOrder.montagePrice != null ? String(nextOrder.montagePrice) : "",
         montageInternalCost:
           nextOrder.montageInternalCost != null ? String(nextOrder.montageInternalCost) : "",
+        montageInternalPaymentMethod: nextOrder.montageInternalPaymentMethod ?? "NON_CASH",
         demontageEnabled: nextOrder.demontageEnabled,
         demontageComment: nextOrder.demontageComment ?? "",
         demontagePrice: nextOrder.demontagePrice != null ? String(nextOrder.demontagePrice) : "",
         demontageInternalCost:
           nextOrder.demontageInternalCost != null ? String(nextOrder.demontageInternalCost) : "",
+        demontageInternalPaymentMethod: nextOrder.demontageInternalPaymentMethod ?? "NON_CASH",
       });
 
       const start = nextOrder.startDate.slice(0, 10);
@@ -2699,8 +2751,17 @@ function RequisiteSectionEditor({
               : Number(services.demontagePrice.replace(",", "."))
             : 0,
           deliveryInternalCost: services.deliveryEnabled ? parseMoneyInputOrNull(services.deliveryInternalCost) : null,
+          deliveryInternalPaymentMethod: services.deliveryEnabled
+            ? services.deliveryInternalPaymentMethod
+            : "NON_CASH",
           montageInternalCost: services.montageEnabled ? parseMoneyInputOrNull(services.montageInternalCost) : null,
+          montageInternalPaymentMethod: services.montageEnabled
+            ? services.montageInternalPaymentMethod
+            : "NON_CASH",
           demontageInternalCost: services.demontageEnabled ? parseMoneyInputOrNull(services.demontageInternalCost) : null,
+          demontageInternalPaymentMethod: services.demontageEnabled
+            ? services.demontageInternalPaymentMethod
+            : "NON_CASH",
           lines: lines.map((line) => ({
             ...(line.id ? { id: line.id } : {}),
             itemId: line.itemId,
@@ -2967,12 +3028,14 @@ function RequisiteSectionEditor({
                 comment={services.deliveryComment}
                 clientPrice={services.deliveryPrice}
                 internalCost={services.deliveryInternalCost}
+                internalPaymentMethod={services.deliveryInternalPaymentMethod}
                 editable={editable}
                 showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("deliveryEnabled", value)}
                 onCommentChange={(value) => setServiceField("deliveryComment", value)}
                 onClientPriceChange={(value) => setServiceField("deliveryPrice", value)}
                 onInternalCostChange={(value) => setServiceField("deliveryInternalCost", value)}
+                onInternalPaymentMethodChange={(value) => setServiceField("deliveryInternalPaymentMethod", value)}
               />
               <OrderServiceCard
                 title="Монтаж"
@@ -2980,12 +3043,14 @@ function RequisiteSectionEditor({
                 comment={services.montageComment}
                 clientPrice={services.montagePrice}
                 internalCost={services.montageInternalCost}
+                internalPaymentMethod={services.montageInternalPaymentMethod}
                 editable={editable}
                 showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("montageEnabled", value)}
                 onCommentChange={(value) => setServiceField("montageComment", value)}
                 onClientPriceChange={(value) => setServiceField("montagePrice", value)}
                 onInternalCostChange={(value) => setServiceField("montageInternalCost", value)}
+                onInternalPaymentMethodChange={(value) => setServiceField("montageInternalPaymentMethod", value)}
               />
               <OrderServiceCard
                 title="Демонтаж"
@@ -2993,12 +3058,14 @@ function RequisiteSectionEditor({
                 comment={services.demontageComment}
                 clientPrice={services.demontagePrice}
                 internalCost={services.demontageInternalCost}
+                internalPaymentMethod={services.demontageInternalPaymentMethod}
                 editable={editable}
                 showClientPrice={order.source === "WOWSTORG_EXTERNAL"}
                 onEnabledChange={(value) => setServiceField("demontageEnabled", value)}
                 onCommentChange={(value) => setServiceField("demontageComment", value)}
                 onClientPriceChange={(value) => setServiceField("demontagePrice", value)}
                 onInternalCostChange={(value) => setServiceField("demontageInternalCost", value)}
+                onInternalPaymentMethodChange={(value) => setServiceField("demontageInternalPaymentMethod", value)}
               />
               {services.deliveryEnabled || services.montageEnabled || services.demontageEnabled ? (
                 <div className="mt-2 grid gap-2 border-t border-zinc-200 pt-2 sm:grid-cols-3">
@@ -3821,24 +3888,28 @@ function OrderServiceCard({
   comment,
   clientPrice,
   internalCost,
+  internalPaymentMethod,
   editable,
   showClientPrice,
   onEnabledChange,
   onCommentChange,
   onClientPriceChange,
   onInternalCostChange,
+  onInternalPaymentMethodChange,
 }: {
   title: string;
   enabled: boolean;
   comment: string;
   clientPrice: string;
   internalCost: string;
+  internalPaymentMethod: OrderServicePaymentMethod;
   editable: boolean;
   showClientPrice: boolean;
   onEnabledChange: (value: boolean) => void;
   onCommentChange: (value: string) => void;
   onClientPriceChange: (value: string) => void;
   onInternalCostChange: (value: string) => void;
+  onInternalPaymentMethodChange: (value: OrderServicePaymentMethod) => void;
 }) {
   return (
     <div className={`rounded-xl border bg-white/90 px-3 py-2 transition-all ${enabled ? "border-violet-200 shadow-sm" : "border-zinc-200"}`}>
@@ -3869,8 +3940,8 @@ function OrderServiceCard({
         <div
           className={`mt-2 grid items-end gap-1.5 ${
             showClientPrice
-              ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem_4.75rem]"
-              : "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem]"
+              ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem_4.75rem_6.5rem]"
+              : "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_4.75rem_6.5rem]"
           }`}
         >
           <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
@@ -3908,6 +3979,18 @@ function OrderServiceCard({
               inputMode="decimal"
               maxLength={12}
             />
+          </label>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Оплата
+            <select
+              value={internalPaymentMethod}
+              onChange={(e) => onInternalPaymentMethodChange(e.target.value as OrderServicePaymentMethod)}
+              className={`mt-0.5 w-full ${cellXs}`}
+              disabled={!editable}
+            >
+              <option value="NON_CASH">Безнал</option>
+              <option value="CASH">Наличка</option>
+            </select>
           </label>
         </div>
       ) : null}

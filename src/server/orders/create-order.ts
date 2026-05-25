@@ -5,6 +5,7 @@ import { validateRentalPartCombo, type RentalPartOfDay } from "@/lib/rental-days
 import { utcTodayDateOnlyString } from "@/server/dates";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 import { calcOrderPricing, validateOrderDiscount, type OrderDiscountType } from "@/server/orders/order-pricing";
+import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-costs";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
@@ -39,6 +40,9 @@ export type CreateOrderInput = {
   deliveryInternalCost?: number | null;
   montageInternalCost?: number | null;
   demontageInternalCost?: number | null;
+  deliveryInternalPaymentMethod?: OrderServicePaymentMethod;
+  montageInternalPaymentMethod?: OrderServicePaymentMethod;
+  demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   source?: OrderSource;
   greenwichUserId?: string | null;
   projectId?: string | null;
@@ -346,11 +350,20 @@ export async function createOrderInTransaction(
       ...(isWarehouse && input.deliveryInternalCost !== undefined
         ? { deliveryInternalCost: input.deliveryInternalCost }
         : {}),
+      ...(isWarehouse && input.deliveryInternalPaymentMethod !== undefined
+        ? { deliveryInternalPaymentMethod: input.deliveryInternalPaymentMethod }
+        : {}),
       ...(isWarehouse && input.montageInternalCost !== undefined
         ? { montageInternalCost: input.montageInternalCost }
         : {}),
+      ...(isWarehouse && input.montageInternalPaymentMethod !== undefined
+        ? { montageInternalPaymentMethod: input.montageInternalPaymentMethod }
+        : {}),
       ...(isWarehouse && input.demontageInternalCost !== undefined
         ? { demontageInternalCost: input.demontageInternalCost }
+        : {}),
+      ...(isWarehouse && input.demontageInternalPaymentMethod !== undefined
+        ? { demontageInternalPaymentMethod: input.demontageInternalPaymentMethod }
         : {}),
       payMultiplier,
       rentalDiscountType: actualDiscount.rentalDiscountType,

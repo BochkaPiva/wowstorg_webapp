@@ -101,24 +101,28 @@ export async function seedProjectEstimateFromOrder(
     enabled: boolean;
     price: Prisma.Decimal | null;
     internal: Prisma.Decimal | null;
+    paymentMethod: string;
   }> = [
     {
       label: "Доставка",
       enabled: order.deliveryEnabled,
       price: order.deliveryPrice,
       internal: order.deliveryInternalCost ?? null,
+      paymentMethod: order.deliveryInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
     },
     {
       label: "Монтаж",
       enabled: order.montageEnabled,
       price: order.montagePrice,
       internal: order.montageInternalCost ?? null,
+      paymentMethod: order.montageInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
     },
     {
       label: "Демонтаж",
       enabled: order.demontageEnabled,
       price: order.demontagePrice,
       internal: order.demontageInternalCost ?? null,
+      paymentMethod: order.demontageInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
     },
   ];
   const basePos = order.lines.length;
@@ -138,6 +142,7 @@ export async function seedProjectEstimateFromOrder(
         lineType: "SERVICE",
         costClient: p,
         costInternal: int,
+        paymentMethod: s.paymentMethod,
         orderLineId: null,
         itemId: null,
       },

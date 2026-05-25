@@ -97,14 +97,17 @@ export async function buildProjectEstimateReadModel(args: {
           deliveryComment: true,
           deliveryPrice: true,
           deliveryInternalCost: true,
+          deliveryInternalPaymentMethod: true,
           montageEnabled: true,
           montageComment: true,
           montagePrice: true,
           montageInternalCost: true,
+          montageInternalPaymentMethod: true,
           demontageEnabled: true,
           demontageComment: true,
           demontagePrice: true,
           demontageInternalCost: true,
+          demontageInternalPaymentMethod: true,
           rentalDiscountType: true,
           rentalDiscountPercent: true,
           rentalDiscountAmount: true,
@@ -287,6 +290,8 @@ export async function buildProjectEstimateReadModel(args: {
                           qty: 1,
                           plannedDays: null,
                           maxQtyPhysical: null,
+                          paymentMethod:
+                            linkedOrder.deliveryInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
                         };
                       })()
                     : null,
@@ -316,6 +321,8 @@ export async function buildProjectEstimateReadModel(args: {
                           qty: 1,
                           plannedDays: null,
                           maxQtyPhysical: null,
+                          paymentMethod:
+                            linkedOrder.montageInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
                         };
                       })()
                     : null,
@@ -345,6 +352,8 @@ export async function buildProjectEstimateReadModel(args: {
                           qty: 1,
                           plannedDays: null,
                           maxQtyPhysical: null,
+                          paymentMethod:
+                            linkedOrder.demontageInternalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
                         };
                       })()
                     : null,

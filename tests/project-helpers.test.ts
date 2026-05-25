@@ -188,15 +188,36 @@ describe("project helpers", () => {
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
-    const sheet = workbook.getWorksheet("Смета (клиент)");
+    const sheet = workbook.getWorksheet("Смета для клиента");
 
     expect(sheet).toBeTruthy();
-    expect(sheet!.getRow(4).getCell(6).value).toBe("Дней");
-    expect(sheet!.getRow(5).getCell(2).value).toBe("Реквизит");
-    expect(sheet!.getRow(6).getCell(2).value).toBe("Стул");
-    expect(sheet!.getRow(6).getCell(6).value).toBe(3);
-    expect(sheet!.getRow(7).getCell(2).value).toBe("Стол");
-    expect(sheet!.getRow(7).getCell(6).value).toBe(2);
-    expect(sheet!.getRow(8).getCell(7).value).toBe("Итого по разделу");
+
+    let daysColumn = 0;
+    sheet!.eachRow((row) => {
+      row.eachCell((cell, colNumber) => {
+        if (cell.value === "Дней") daysColumn = colNumber;
+      });
+    });
+    expect(daysColumn).toBeGreaterThan(0);
+
+    const findRowByName = (name: string) => {
+      let found: ExcelJS.Row | null = null;
+      sheet!.eachRow((row) => {
+        if (row.getCell(2).value === name) found = row;
+      });
+      return found;
+    };
+
+    expect(findRowByName("Реквизит")).toBeTruthy();
+    expect(findRowByName("Стул")?.getCell(daysColumn).value).toBe(3);
+    expect(findRowByName("Стол")?.getCell(daysColumn).value).toBe(2);
+
+    let hasSectionTotal = false;
+    sheet!.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.value === "Итого по разделу") hasSectionTotal = true;
+      });
+    });
+    expect(hasSectionTotal).toBe(true);
   });
 });

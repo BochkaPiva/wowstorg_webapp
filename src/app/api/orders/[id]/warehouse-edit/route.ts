@@ -15,6 +15,7 @@ const LineSchema = z.object({
   warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
 const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
+const ServicePaymentMethodSchema = z.enum(["NON_CASH", "CASH"]);
 
 const BodySchema = z.object({
   eventName: z.string().trim().max(200).nullable().optional(),
@@ -23,14 +24,17 @@ const BodySchema = z.object({
   deliveryComment: z.string().trim().max(2000).nullable().optional(),
   deliveryPrice: z.number().min(0).optional(),
   deliveryInternalCost: z.number().min(0).nullable().optional(),
+  deliveryInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   montageEnabled: z.boolean().optional(),
   montageComment: z.string().trim().max(2000).nullable().optional(),
   montagePrice: z.number().min(0).optional(),
   montageInternalCost: z.number().min(0).nullable().optional(),
+  montageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   demontageEnabled: z.boolean().optional(),
   demontageComment: z.string().trim().max(2000).nullable().optional(),
   demontagePrice: z.number().min(0).optional(),
   demontageInternalCost: z.number().min(0).nullable().optional(),
+  demontageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   rentalDiscountType: DiscountTypeSchema.optional(),
   rentalDiscountPercent: z.number().min(0).max(100).nullable().optional(),
   rentalDiscountAmount: z.number().min(0).nullable().optional(),
@@ -250,14 +254,23 @@ export async function PATCH(
             ...(data.deliveryComment !== undefined ? { deliveryComment: data.deliveryComment?.trim() || null } : {}),
             ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
             ...(data.deliveryInternalCost !== undefined ? { deliveryInternalCost: data.deliveryInternalCost } : {}),
+            ...(data.deliveryInternalPaymentMethod !== undefined
+              ? { deliveryInternalPaymentMethod: data.deliveryInternalPaymentMethod }
+              : {}),
             ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
             ...(data.montageComment !== undefined ? { montageComment: data.montageComment?.trim() || null } : {}),
             ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
             ...(data.montageInternalCost !== undefined ? { montageInternalCost: data.montageInternalCost } : {}),
+            ...(data.montageInternalPaymentMethod !== undefined
+              ? { montageInternalPaymentMethod: data.montageInternalPaymentMethod }
+              : {}),
             ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
             ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment?.trim() || null } : {}),
             ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
             ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
+            ...(data.demontageInternalPaymentMethod !== undefined
+              ? { demontageInternalPaymentMethod: data.demontageInternalPaymentMethod }
+              : {}),
             ...(hasDiscountInput
               ? {
                   rentalDiscountType: nextDiscount.rentalDiscountType,

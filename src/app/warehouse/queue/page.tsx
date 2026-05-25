@@ -25,6 +25,7 @@ type QueueOrder = {
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   warehouseInternalNote?: string | null;
   totalAmount?: number;
+  profitEstimate?: number;
   taxAmount?: number;
   discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
   project?: { id: string; title: string } | null;
@@ -79,6 +80,10 @@ function periodLineQueue(o: QueueOrder): string {
     rentalStartPartOfDay: o.rentalStartPartOfDay ?? undefined,
     rentalEndPartOfDay: o.rentalEndPartOfDay ?? undefined,
   });
+}
+
+function formatMoney(value: number): string {
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 }
 
 function statusHeaderClass(status: string): string {
@@ -305,7 +310,7 @@ function WarehouseQueueContent() {
           <div className="mt-2 text-sm text-zinc-600">
             Готовность: <span className="font-semibold">{fmtDateRu(o.readyByDate)}</span> · Период:{" "}
             <span className="font-semibold">{periodLineQueue(o)}</span>
-            {o.totalAmount != null ? (
+            {tab !== "archive" && o.totalAmount != null ? (
               <span className="ml-2 rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
                 · {o.totalAmount.toLocaleString("ru-RU")} ₽
               </span>
@@ -324,6 +329,43 @@ function WarehouseQueueContent() {
               </span>
             ) : null}
           </div>
+          {tab === "archive" && (o.totalAmount != null || o.profitEstimate != null) ? (
+            <div className="mt-3 grid gap-2 sm:max-w-md sm:grid-cols-2">
+              {o.totalAmount != null ? (
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Сумма</div>
+                  <div className="mt-0.5 text-base font-bold text-violet-950">{formatMoney(o.totalAmount)}</div>
+                </div>
+              ) : null}
+              {o.profitEstimate != null ? (
+                <div
+                  className={[
+                    "rounded-xl border px-3 py-2",
+                    o.profitEstimate < 0
+                      ? "border-red-200 bg-red-50"
+                      : "border-emerald-200 bg-emerald-50",
+                  ].join(" ")}
+                >
+                  <div
+                    className={[
+                      "text-[11px] font-semibold uppercase tracking-wide",
+                      o.profitEstimate < 0 ? "text-red-700" : "text-emerald-700",
+                    ].join(" ")}
+                  >
+                    Прибыль
+                  </div>
+                  <div
+                    className={[
+                      "mt-0.5 text-base font-bold",
+                      o.profitEstimate < 0 ? "text-red-950" : "text-emerald-950",
+                    ].join(" ")}
+                  >
+                    {formatMoney(o.profitEstimate)}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {o.warehouseInternalNote ? (
             <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
               <span className="font-semibold text-amber-800">Внутр. комментарий:</span>{" "}

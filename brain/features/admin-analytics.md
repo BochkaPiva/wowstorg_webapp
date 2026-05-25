@@ -47,6 +47,12 @@
 ## Update 2026-05-25: finance ownership
 - Standalone order finance in admin analytics means `Order.projectId = null`.
 - If an order is linked to a project, its revenue, services, tax/profit signal and customer contribution belong to the project side and are excluded from standalone requisites analytics.
-- Overview separates fact from forecast: fact is standalone closed orders plus completed projects; forecast is active non-archived projects.
+- Overview separates fact from forecast: fact is standalone closed orders plus completed projects; forecast is standalone active orders plus active non-archived projects.
 - Bonuses in overview are calculated as 15% of profit and split between 2 people.
 - Project period filtering uses event dates (`eventStartDate` / `eventEndDate`) and includes projects whose event interval intersects the selected period.
+
+## Update 2026-05-25: director XLSX
+- The global XLSX export is a finance report, not an operational signal dump.
+- Global export sheets: `Обзор`, `Факт и прогноз`, `Динамика`, `Заявки`, `Проекты`, `Заказчики`, `Методология`.
+- Project risk/status-aging sheets are intentionally excluded from the global report.
+- `Динамика` shows month-by-month fact and month-over-month comparison when the selected period contains several months.

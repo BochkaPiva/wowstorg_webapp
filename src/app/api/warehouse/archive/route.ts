@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { calcWarehouseProfitEstimate } from "@/lib/order-service-internal-costs";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const ARCHIVE_STATUSES = ["CLOSED", "CANCELLED"] as const;
 
@@ -108,6 +110,22 @@ export async function GET(req: Request) {
       rentalEndPartOfDay: true,
       createdAt: true,
       updatedAt: true,
+      payMultiplier: true,
+      deliveryEnabled: true,
+      deliveryPrice: true,
+      deliveryInternalCost: true,
+      deliveryInternalPaymentMethod: true,
+      montageEnabled: true,
+      montagePrice: true,
+      montageInternalCost: true,
+      montageInternalPaymentMethod: true,
+      demontageEnabled: true,
+      demontagePrice: true,
+      demontageInternalCost: true,
+      demontageInternalPaymentMethod: true,
+      rentalDiscountType: true,
+      rentalDiscountPercent: true,
+      rentalDiscountAmount: true,
       project: { select: { id: true, title: true } },
       customer: { select: { id: true, name: true } },
       greenwichUser: {
@@ -117,31 +135,71 @@ export async function GET(req: Request) {
           greenwichRating: { select: { score: true } },
         },
       },
+      lines: {
+        select: { requestedQty: true, issuedQty: true, pricePerDaySnapshot: true },
+      },
     },
   });
 
-  const serialized = orders.map((o) => ({
-    id: o.id,
-    parentOrderId: null as string | null,
-    status: o.status,
-    source: o.source,
-    readyByDate: o.readyByDate.toISOString(),
-    startDate: o.startDate.toISOString(),
-    endDate: o.endDate.toISOString(),
-    rentalStartPartOfDay: o.rentalStartPartOfDay,
-    rentalEndPartOfDay: o.rentalEndPartOfDay,
-    createdAt: o.createdAt.toISOString(),
-    updatedAt: o.updatedAt.toISOString(),
-    project: o.project,
-    customer: o.customer,
-    greenwichUser: o.greenwichUser
-      ? {
-          id: o.greenwichUser.id,
-          displayName: o.greenwichUser.displayName,
-          ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
-        }
-      : null,
-  }));
+  const serialized = orders.map((o) => {
+    const pricing = calcOrderPricing({
+      startDate: o.startDate,
+      endDate: o.endDate,
+      rentalStartPartOfDay: o.rentalStartPartOfDay,
+      rentalEndPartOfDay: o.rentalEndPartOfDay,
+      payMultiplier: o.payMultiplier,
+      deliveryPrice: o.deliveryEnabled ? o.deliveryPrice : 0,
+      montagePrice: o.montageEnabled ? o.montagePrice : 0,
+      demontagePrice: o.demontageEnabled ? o.demontagePrice : 0,
+      lines: o.lines,
+      discount: o,
+      quantityMode: "issued",
+    });
+    const profit = calcWarehouseProfitEstimate({
+      clientGrandTotal: pricing.grandTotal,
+      clientTaxAmount: pricing.taxAmount,
+      delivery: {
+        enabled: o.deliveryEnabled,
+        internalCost: o.deliveryInternalCost,
+        internalPaymentMethod: o.deliveryInternalPaymentMethod,
+      },
+      montage: {
+        enabled: o.montageEnabled,
+        internalCost: o.montageInternalCost,
+        internalPaymentMethod: o.montageInternalPaymentMethod,
+      },
+      demontage: {
+        enabled: o.demontageEnabled,
+        internalCost: o.demontageInternalCost,
+        internalPaymentMethod: o.demontageInternalPaymentMethod,
+      },
+    });
+
+    return {
+      id: o.id,
+      parentOrderId: null as string | null,
+      status: o.status,
+      source: o.source,
+      readyByDate: o.readyByDate.toISOString(),
+      startDate: o.startDate.toISOString(),
+      endDate: o.endDate.toISOString(),
+      rentalStartPartOfDay: o.rentalStartPartOfDay,
+      rentalEndPartOfDay: o.rentalEndPartOfDay,
+      createdAt: o.createdAt.toISOString(),
+      updatedAt: o.updatedAt.toISOString(),
+      totalAmount: pricing.grandTotal,
+      profitEstimate: profit.profitEstimate,
+      project: o.project,
+      customer: o.customer,
+      greenwichUser: o.greenwichUser
+        ? {
+            id: o.greenwichUser.id,
+            displayName: o.greenwichUser.displayName,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+          }
+        : null,
+    };
+  });
 
   const ids = serialized.map((o) => o.id);
   if (ids.length > 0) {

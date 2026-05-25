@@ -6,6 +6,18 @@ import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { ensureDefaultProjectFolders } from "@/server/projects/project-files";
+import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
+import {
+  calcProjectEstimateRequisiteTotal,
+  normalizeProjectEstimateDays,
+} from "@/lib/project-estimate-requisite";
+import { calcProjectEstimateTotals, getNumericAmount } from "@/lib/project-estimate-totals";
+import {
+  calcCashInternalCostTaxAmount,
+  calcOrderServicesInternalCosts,
+  isCashPaymentMethod,
+} from "@/lib/order-service-internal-costs";
+import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 const CreateSchema = z
   .object({
@@ -113,15 +125,191 @@ export async function GET(req: Request) {
       ball: true,
       archivedAt: true,
       archiveNote: true,
+      eventStartDate: true,
+      eventEndDate: true,
+      eventDateConfirmed: true,
       updatedAt: true,
       createdAt: true,
       customer: { select: { id: true, name: true } },
       owner: { select: { id: true, displayName: true } },
       _count: { select: { orders: true } },
+      draftOrders: {
+        select: {
+          lines: {
+            select: {
+              qty: true,
+              plannedDays: true,
+              pricePerDaySnapshot: true,
+            },
+          },
+        },
+      },
+      estimateVersions: {
+        orderBy: { versionNumber: "desc" },
+        select: {
+          id: true,
+          isPrimary: true,
+          versionNumber: true,
+          sections: {
+            select: {
+              kind: true,
+              linkedOrder: {
+                select: {
+                  startDate: true,
+                  endDate: true,
+                  rentalStartPartOfDay: true,
+                  rentalEndPartOfDay: true,
+                  payMultiplier: true,
+                  deliveryEnabled: true,
+                  deliveryPrice: true,
+                  deliveryInternalCost: true,
+                  deliveryInternalPaymentMethod: true,
+                  montageEnabled: true,
+                  montagePrice: true,
+                  montageInternalCost: true,
+                  montageInternalPaymentMethod: true,
+                  demontageEnabled: true,
+                  demontagePrice: true,
+                  demontageInternalCost: true,
+                  demontageInternalPaymentMethod: true,
+                  rentalDiscountType: true,
+                  rentalDiscountPercent: true,
+                  rentalDiscountAmount: true,
+                  lines: {
+                    select: {
+                      requestedQty: true,
+                      issuedQty: true,
+                      pricePerDaySnapshot: true,
+                    },
+                  },
+                },
+              },
+              lines: {
+                select: {
+                  costClient: true,
+                  costInternal: true,
+                  qty: true,
+                  unitPriceClient: true,
+                  paymentMethod: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
-  return jsonOk({ projects });
+  type ProjectRow = (typeof projects)[number];
+  type ProjectVersion = ProjectRow["estimateVersions"][number];
+
+  function versionFinancials(version: ProjectVersion | null, draftOrders: ProjectRow["draftOrders"]) {
+    let clientSubtotal = 0;
+    let internalSubtotal = 0;
+    let cashInternalCostTax = 0;
+
+    if (version) {
+      for (const section of version.sections) {
+        if (section.kind === "REQUISITE" && section.linkedOrder) {
+          const order = section.linkedOrder;
+          const pricing = calcOrderPricing({
+            startDate: order.startDate,
+            endDate: order.endDate,
+            rentalStartPartOfDay: order.rentalStartPartOfDay,
+            rentalEndPartOfDay: order.rentalEndPartOfDay,
+            payMultiplier: order.payMultiplier,
+            lines: order.lines,
+            deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
+            montagePrice: order.montageEnabled ? order.montagePrice : 0,
+            demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
+            discount: order,
+          });
+          clientSubtotal += pricing.grandTotalBeforeTax;
+          const serviceCosts = calcOrderServicesInternalCosts({
+            delivery: {
+              enabled: order.deliveryEnabled,
+              internalCost: order.deliveryInternalCost,
+              internalPaymentMethod: order.deliveryInternalPaymentMethod,
+            },
+            montage: {
+              enabled: order.montageEnabled,
+              internalCost: order.montageInternalCost,
+              internalPaymentMethod: order.montageInternalPaymentMethod,
+            },
+            demontage: {
+              enabled: order.demontageEnabled,
+              internalCost: order.demontageInternalCost,
+              internalPaymentMethod: order.demontageInternalPaymentMethod,
+            },
+          });
+          internalSubtotal += serviceCosts.internalCostTotal;
+          cashInternalCostTax += serviceCosts.cashInternalCostTax;
+          continue;
+        }
+
+        for (const line of section.lines) {
+          clientSubtotal +=
+            normalizedLocalLineCostClientNumber({
+              costClient: line.costClient != null ? Number(line.costClient) : null,
+              qty: line.qty != null ? Number(line.qty) : null,
+              unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
+            }) ?? 0;
+
+          const lineInternal = getNumericAmount(line.costInternal);
+          internalSubtotal += lineInternal;
+          if (isCashPaymentMethod(line.paymentMethod)) {
+            cashInternalCostTax += calcCashInternalCostTaxAmount(lineInternal);
+          }
+        }
+      }
+    }
+
+    for (const draft of draftOrders) {
+      for (const line of draft.lines) {
+        const days = normalizeProjectEstimateDays(line.plannedDays ?? 1) ?? 1;
+        clientSubtotal +=
+          line.pricePerDaySnapshot != null
+            ? calcProjectEstimateRequisiteTotal({
+                pricePerDay: line.pricePerDaySnapshot,
+                qty: line.qty,
+                plannedDays: days,
+              }) ?? 0
+            : 0;
+      }
+    }
+
+    return calcProjectEstimateTotals({ clientSubtotal, internalSubtotal, cashInternalCostTax });
+  }
+
+  const serialized = projects.map((project) => {
+    const primaryVersion = project.estimateVersions.find((version) => version.isPrimary) ?? null;
+    const financialVersion = primaryVersion ?? project.estimateVersions[0] ?? null;
+    const financials = versionFinancials(financialVersion, project.draftOrders);
+
+    return {
+      id: project.id,
+      title: project.title,
+      status: project.status,
+      ball: project.ball,
+      archivedAt: project.archivedAt?.toISOString() ?? null,
+      archiveNote: project.archiveNote,
+      eventStartDate: project.eventStartDate?.toISOString() ?? null,
+      eventEndDate: project.eventEndDate?.toISOString() ?? null,
+      eventDateConfirmed: project.eventDateConfirmed,
+      updatedAt: project.updatedAt.toISOString(),
+      createdAt: project.createdAt.toISOString(),
+      customer: project.customer,
+      owner: project.owner,
+      _count: project._count,
+      finance: {
+        revenueTotal: financials.revenueTotal,
+        marginAfterTax: financials.marginAfterTax,
+        marginAfterTaxPct: financials.marginAfterTaxPct,
+      },
+    };
+  });
+
+  return jsonOk({ projects: serialized });
 }
 
 export async function POST(req: Request) {

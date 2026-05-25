@@ -93,8 +93,13 @@ type AnalyticsPayload = {
         profitTotal: number;
       };
       forecast: {
+        standaloneOrdersRevenue: number;
+        standaloneOrdersProfit: number;
+        standaloneOrdersTotal: number;
         activeProjectsRevenue: number;
         activeProjectsProfit: number;
+        revenueTotal: number;
+        profitTotal: number;
       };
       bonuses: {
         ratePercent: number;
@@ -467,11 +472,11 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
 
         <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 text-violet-950 shadow-sm">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.activeProjectsProfit)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль активных проектов</div>
+          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.profitTotal)}</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль по активным заявкам и проектам</div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Выручка проектов" value={formatMoney(finance.forecast.activeProjectsRevenue)} />
-            <KpiCard label="Активные проекты" value={k.activeProjects} />
+            <KpiCard label="Заявки без проекта" value={formatMoney(finance.forecast.standaloneOrdersProfit)} note={`${finance.forecast.standaloneOrdersTotal} шт. · ${formatMoney(finance.forecast.standaloneOrdersRevenue)}`} />
+            <KpiCard label="Активные проекты" value={formatMoney(finance.forecast.activeProjectsProfit)} note={`${k.activeProjects} шт. · ${formatMoney(finance.forecast.activeProjectsRevenue)}`} />
           </div>
         </section>
 

@@ -16,11 +16,19 @@ type ProjectCard = {
   ball: ProjectBall;
   archivedAt: string | null;
   archiveNote: string | null;
+  eventStartDate: string | null;
+  eventEndDate: string | null;
+  eventDateConfirmed: boolean;
   updatedAt: string;
   createdAt: string;
   customer: { id: string; name: string };
   owner: { id: string; displayName: string };
   _count: { orders: number };
+  finance: {
+    revenueTotal: number;
+    marginAfterTax: number;
+    marginAfterTaxPct: number;
+  };
 };
 
 const PROJECT_SORT_OPTIONS = [
@@ -105,6 +113,18 @@ function fmtDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatMoney(value: number): string {
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+}
+
+function projectDateLine(project: ProjectCard): string | null {
+  if (!project.eventStartDate && !project.eventEndDate) return null;
+  if (project.eventStartDate && project.eventEndDate && project.eventStartDate.slice(0, 10) !== project.eventEndDate.slice(0, 10)) {
+    return `${fmtDate(project.eventStartDate)} — ${fmtDate(project.eventEndDate)}`;
+  }
+  return fmtDate(project.eventStartDate ?? project.eventEndDate ?? "");
 }
 
 function ProjectsContent() {
@@ -480,12 +500,59 @@ function ProjectsContent() {
                       <div className="font-semibold text-zinc-900">{p.title}</div>
                       <div className="text-xs text-zinc-500">обновл. {fmtDate(p.updatedAt)}</div>
                     </div>
-                    <div className="mt-1 text-sm text-zinc-600">{p.customer.name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                      <span>{p.customer.name}</span>
+                      {projectDateLine(p) ? (
+                        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                          {projectDateLine(p)}
+                          {p.eventDateConfirmed ? "" : " · не подтверждено"}
+                        </span>
+                      ) : null}
+                    </div>
                     {tab === "archive" && p.archiveNote?.trim() ? (
                       <p className="mt-2 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 text-sm text-zinc-700 whitespace-pre-wrap">
                         {p.archiveNote.trim()}
                       </p>
                     ) : null}
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:max-w-2xl">
+                      <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Выручка</div>
+                        <div className="mt-0.5 text-base font-bold text-violet-950">
+                          {formatMoney(p.finance.revenueTotal)}
+                        </div>
+                      </div>
+                      <div
+                        className={[
+                          "rounded-xl border px-3 py-2",
+                          p.finance.marginAfterTax < 0
+                            ? "border-red-200 bg-red-50"
+                            : "border-emerald-200 bg-emerald-50",
+                        ].join(" ")}
+                      >
+                        <div
+                          className={[
+                            "text-[11px] font-semibold uppercase tracking-wide",
+                            p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700",
+                          ].join(" ")}
+                        >
+                          Прибыль
+                        </div>
+                        <div
+                          className={[
+                            "mt-0.5 text-base font-bold",
+                            p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950",
+                          ].join(" ")}
+                        >
+                          {formatMoney(p.finance.marginAfterTax)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Маржа</div>
+                        <div className="mt-0.5 text-base font-bold text-zinc-900">
+                          {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
+                        </div>
+                      </div>
+                    </div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-medium text-zinc-700">
                         {PROJECT_STATUS_LABEL[p.status]}

@@ -1,315 +1,457 @@
 import ExcelJS from "exceljs";
 
-import type { AdminAnalyticsData } from "@/server/admin-analytics";
+import type { AdminAnalyticsData, ProjectAnalyticsRow } from "@/server/admin-analytics";
 
 export type AdminAnalyticsExportSection = "global" | "requisites" | "projects" | "customers";
 
 type RowValue = string | number | null;
+type SheetTheme = "violet" | "emerald" | "amber" | "slate";
 
 const COLORS = {
-  titleBg: "FF4F46E5",
-  titleText: "FFFFFFFF",
-  headerBg: "FFEDE9FE",
-  headerText: "FF312E81",
-  altBg: "FFF8FAFC",
-  border: "FFE2E8F0",
-  positiveBg: "FFDCFCE7",
-  positiveText: "FF166534",
-  negativeBg: "FFFEE2E2",
-  negativeText: "FF991B1B",
+  violet: "FF6D28D9",
+  violetDark: "FF2E1065",
+  violetSoft: "FFF3E8FF",
+  yellow: "FFFFE600",
+  ink: "FF111827",
+  muted: "FF6B7280",
+  border: "FFE5E7EB",
+  grid: "FFF3F4F6",
+  white: "FFFFFFFF",
+  emerald: "FF059669",
+  emeraldSoft: "FFECFDF5",
+  amber: "FFD97706",
+  amberSoft: "FFFFFBEB",
+  red: "FFB91C1C",
+  redSoft: "FFFEF2F2",
+  slate: "FF475569",
+  slateSoft: "FFF8FAFC",
 };
 
+function argb(hex: string) {
+  return { argb: hex };
+}
+
+function money(value: number) {
+  return Math.round(value);
+}
+
 function setCols(ws: ExcelJS.Worksheet, widths: number[]) {
-  ws.columns = widths.map((w) => ({ width: w }));
+  ws.columns = widths.map((width) => ({ width }));
 }
 
-function styleCellBase(cell: ExcelJS.Cell) {
-  cell.border = {
-    top: { style: "thin", color: { argb: COLORS.border } },
-    left: { style: "thin", color: { argb: COLORS.border } },
-    bottom: { style: "thin", color: { argb: COLORS.border } },
-    right: { style: "thin", color: { argb: COLORS.border } },
-  };
+function setWorkbookMeta(wb: ExcelJS.Workbook) {
+  wb.creator = "Wowstorg Analytics";
+  wb.created = new Date();
+  wb.modified = new Date();
+  wb.calcProperties.fullCalcOnLoad = true;
+}
+
+function baseCell(cell: ExcelJS.Cell) {
+  cell.font = { name: "Calibri", size: 11, color: argb(COLORS.ink) };
   cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-  cell.font = { name: "Calibri", size: 11 };
+  cell.border = {
+    top: { style: "thin", color: argb(COLORS.border) },
+    left: { style: "thin", color: argb(COLORS.border) },
+    bottom: { style: "thin", color: argb(COLORS.border) },
+    right: { style: "thin", color: argb(COLORS.border) },
+  };
 }
 
-function appendTitle(ws: ExcelJS.Worksheet, text: string, colSpan: number) {
-  ws.addRow([text]);
-  const row = ws.lastRow!;
-  ws.mergeCells(row.number, 1, row.number, colSpan);
-  const cell = ws.getCell(row.number, 1);
-  styleCellBase(cell);
-  cell.font = { name: "Calibri", size: 15, bold: true, color: { argb: COLORS.titleText } };
-  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.titleBg } };
-  row.height = 24;
+function styleSheet(ws: ExcelJS.Worksheet) {
+  ws.properties.defaultRowHeight = 22;
+  ws.views = [{ state: "frozen", ySplit: 5, showGridLines: false }];
 }
 
-function addPeriodRow(ws: ExcelJS.Worksheet, data: AdminAnalyticsData, colSpan: number) {
-  ws.addRow([`Период: ${data.period.from ?? "начало"} — ${data.period.to ?? "сейчас"}`]);
-  const row = ws.lastRow!;
-  ws.mergeCells(row.number, 1, row.number, colSpan);
-  const c = ws.getCell(row.number, 1);
-  styleCellBase(c);
-  c.font = { name: "Calibri", size: 10, italic: true, color: { argb: "FF334155" } };
+function periodLabel(data: AdminAnalyticsData) {
+  return `Период отчета: ${data.period.from ?? "начало"} - ${data.period.to ?? "сегодня"}`;
 }
 
-function addSpacer(ws: ExcelJS.Worksheet) {
-  ws.addRow([]);
-}
+function addReportHeader(ws: ExcelJS.Worksheet, title: string, data: AdminAnalyticsData, colSpan: number) {
+  ws.mergeCells(1, 1, 1, colSpan);
+  ws.mergeCells(2, 1, 2, colSpan);
+  ws.mergeCells(3, 1, 3, colSpan);
 
-function addDataTable(
-  ws: ExcelJS.Worksheet,
-  headers: string[],
-  rows: RowValue[][],
-  options?: { highlightNegativeColIdx?: number[]; highlightPositiveColIdx?: number[] },
-) {
-  ws.addRow(headers);
-  const headerRow = ws.lastRow!;
-  headerRow.height = 20;
-  for (let i = 1; i <= headers.length; i++) {
-    const c = ws.getCell(headerRow.number, i);
-    styleCellBase(c);
-    c.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.headerText } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.headerBg } };
-    c.alignment = { vertical: "middle", horizontal: i === 1 ? "left" : "center", wrapText: true };
+  ws.getCell(1, 1).value = "WOWSTORG";
+  ws.getCell(1, 1).font = { name: "Calibri", size: 14, bold: true, color: argb(COLORS.violetDark) };
+  ws.getCell(1, 1).alignment = { vertical: "middle", horizontal: "left" };
+
+  ws.getCell(2, 1).value = title;
+  ws.getCell(2, 1).font = { name: "Calibri", size: 24, bold: true, color: argb(COLORS.ink) };
+  ws.getCell(2, 1).alignment = { vertical: "middle", horizontal: "left" };
+  ws.getRow(2).height = 34;
+
+  ws.getCell(3, 1).value = periodLabel(data);
+  ws.getCell(3, 1).font = { name: "Calibri", size: 11, color: argb(COLORS.muted) };
+  ws.getCell(3, 1).alignment = { vertical: "middle", horizontal: "left" };
+
+  ws.getRow(4).height = 8;
+  for (let col = 1; col <= colSpan; col++) {
+    const cell = ws.getCell(4, col);
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: argb(col <= Math.ceil(colSpan / 2) ? COLORS.violet : COLORS.yellow) };
   }
-  for (const r of rows) {
-    ws.addRow(r);
-    const row = ws.lastRow!;
-    for (let i = 1; i <= headers.length; i++) {
-      const c = ws.getCell(row.number, i);
-      styleCellBase(c);
-      c.alignment = { vertical: "middle", horizontal: i === 1 ? "left" : "right", wrapText: true };
-      if (typeof r[i - 1] === "number") c.numFmt = "#,##0.00";
-      if (row.number % 2 === 0) {
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.altBg } };
-      }
-      const n = r[i - 1];
-      if (typeof n === "number" && options?.highlightNegativeColIdx?.includes(i - 1) && n < 0) {
-        c.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.negativeText } };
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.negativeBg } };
-      }
-      if (typeof n === "number" && options?.highlightPositiveColIdx?.includes(i - 1) && n > 0) {
-        c.font = { name: "Calibri", size: 11, bold: true, color: { argb: COLORS.positiveText } };
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: COLORS.positiveBg } };
-      }
+}
+
+function themeColors(theme: SheetTheme) {
+  if (theme === "emerald") return { bg: COLORS.emeraldSoft, accent: COLORS.emerald };
+  if (theme === "amber") return { bg: COLORS.amberSoft, accent: COLORS.amber };
+  if (theme === "slate") return { bg: COLORS.slateSoft, accent: COLORS.slate };
+  return { bg: COLORS.violetSoft, accent: COLORS.violet };
+}
+
+function addKpiCard(ws: ExcelJS.Worksheet, row: number, col: number, title: string, value: RowValue, note: string, theme: SheetTheme) {
+  const { bg, accent } = themeColors(theme);
+  ws.mergeCells(row, col, row, col + 2);
+  ws.mergeCells(row + 1, col, row + 1, col + 2);
+  ws.mergeCells(row + 2, col, row + 2, col + 2);
+
+  for (let r = row; r <= row + 2; r++) {
+    for (let c = col; c <= col + 2; c++) {
+      const cell = ws.getCell(r, c);
+      baseCell(cell);
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: argb(bg) };
     }
   }
+
+  const titleCell = ws.getCell(row, col);
+  titleCell.value = title.toUpperCase();
+  titleCell.font = { name: "Calibri", size: 10, bold: true, color: argb(accent) };
+
+  const valueCell = ws.getCell(row + 1, col);
+  valueCell.value = value;
+  valueCell.font = { name: "Calibri", size: 22, bold: true, color: argb(COLORS.ink) };
+  valueCell.numFmt = typeof value === "number" ? "#,##0 ₽" : "@";
+
+  const noteCell = ws.getCell(row + 2, col);
+  noteCell.value = note;
+  noteCell.font = { name: "Calibri", size: 10, color: argb(COLORS.muted) };
+
+  ws.getRow(row).height = 18;
+  ws.getRow(row + 1).height = 30;
+  ws.getRow(row + 2).height = 22;
 }
 
-function addOverview(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+function addSectionTitle(ws: ExcelJS.Worksheet, row: number, title: string, colSpan: number) {
+  ws.mergeCells(row, 1, row, colSpan);
+  const cell = ws.getCell(row, 1);
+  cell.value = title;
+  cell.font = { name: "Calibri", size: 16, bold: true, color: argb(COLORS.violetDark) };
+  cell.alignment = { vertical: "middle", horizontal: "left" };
+  ws.getRow(row).height = 28;
+}
+
+function addTable(
+  ws: ExcelJS.Worksheet,
+  startRow: number,
+  headers: string[],
+  rows: RowValue[][],
+  options?: { currencyColumns?: number[]; percentColumns?: number[]; negativeGoodColumns?: number[] },
+) {
+  const headerRow = ws.getRow(startRow);
+  headerRow.values = headers;
+  headerRow.height = 24;
+  headers.forEach((_, idx) => {
+    const cell = ws.getCell(startRow, idx + 1);
+    baseCell(cell);
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: argb(COLORS.violetDark) };
+    cell.font = { name: "Calibri", size: 11, bold: true, color: argb(COLORS.white) };
+    cell.alignment = { vertical: "middle", horizontal: idx === 0 ? "left" : "center", wrapText: true };
+  });
+
+  rows.forEach((values, rIdx) => {
+    const row = ws.getRow(startRow + 1 + rIdx);
+    row.values = values;
+    row.height = 23;
+    values.forEach((value, cIdx) => {
+      const cell = ws.getCell(startRow + 1 + rIdx, cIdx + 1);
+      baseCell(cell);
+      cell.alignment = { vertical: "middle", horizontal: cIdx === 0 ? "left" : "right", wrapText: true };
+      if (rIdx % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: argb(COLORS.slateSoft) };
+      if (typeof value === "number") {
+        cell.numFmt = options?.currencyColumns?.includes(cIdx) ? "#,##0 ₽" : "#,##0";
+        if (options?.percentColumns?.includes(cIdx)) cell.numFmt = "0.0%";
+        const badNegative = value < 0 && !options?.negativeGoodColumns?.includes(cIdx);
+        if (badNegative) cell.font = { name: "Calibri", size: 11, bold: true, color: argb(COLORS.red) };
+      }
+    });
+  });
+
+  return startRow + rows.length + 2;
+}
+
+function addOverviewSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Обзор");
-  setCols(ws, [46, 22]);
-  appendTitle(ws, "Обзор", 2);
-  addPeriodRow(ws, data, 2);
-  addSpacer(ws);
-  addDataTable(ws, ["Метрика", "Значение"], [
-    ["Факт выручки, ₽", data.overview.kpi.factRevenue],
-    ["Факт реквизита, ₽", data.overview.kpi.factItemsRevenue],
-    ["Факт услуг, ₽", data.overview.kpi.factServicesRevenue],
-    ["Факт валовой прибыли реквизита, ₽", data.overview.kpi.factGrossProfit],
-    ["Закрытые заявки", data.overview.kpi.ordersClosed],
-    ["Средний чек, ₽", data.overview.kpi.averageOrderRevenue],
-    ["Прогноз проектов, ₽", data.overview.kpi.projectForecastRevenue],
-    ["Прогноз маржи после налога, ₽", data.overview.kpi.projectForecastMarginAfterTax],
-    ["Активные проекты", data.overview.kpi.activeProjects],
-    ["Завершенные проекты", data.overview.kpi.completedProjects],
-    ["Отмененные проекты", data.overview.kpi.cancelledProjects],
-    ["Проекты без активности 7+ дней", data.overview.kpi.staleProjects],
-    ["Проекты с низкой маржой", data.overview.kpi.lowMarginProjects],
-    ["Повторные заказчики", data.overview.kpi.repeatCustomers],
-  ]);
-  addSpacer(ws);
-  addDataTable(
+  styleSheet(ws);
+  setCols(ws, [22, 16, 16, 4, 22, 16, 16, 4, 22, 16, 16]);
+  addReportHeader(ws, "Финансовый отчет", data, 11);
+
+  addKpiCard(ws, 6, 1, "Факт прибыль", data.overview.finance.fact.profitTotal, `Выручка ${money(data.overview.finance.fact.revenueTotal).toLocaleString("ru-RU")} ₽`, "emerald");
+  addKpiCard(ws, 6, 5, "Прогноз прибыль", data.overview.finance.forecast.profitTotal, `Выручка ${money(data.overview.finance.forecast.revenueTotal).toLocaleString("ru-RU")} ₽`, "violet");
+  addKpiCard(ws, 6, 9, "Бонусы 15%", data.overview.finance.bonuses.factPool, `${money(data.overview.finance.bonuses.factPerPerson).toLocaleString("ru-RU")} ₽ на человека`, "amber");
+
+  addSectionTitle(ws, 11, "Структура результата", 11);
+  addTable(
     ws,
-    ["Проект", "Риск"],
-    data.overview.attention.map((r) => [r.projectTitle, r.message]),
+    12,
+    ["Блок", "Факт прибыль", "Факт выручка", "Прогноз прибыль", "Прогноз выручка", "Комментарий"],
+    [
+      [
+        "Самостоятельные заявки",
+        data.overview.finance.fact.standaloneOrdersProfit,
+        data.overview.finance.fact.standaloneOrdersRevenue,
+        data.overview.finance.forecast.standaloneOrdersProfit,
+        data.overview.finance.forecast.standaloneOrdersRevenue,
+        `${data.overview.finance.forecast.standaloneOrdersTotal} активных заявок в прогнозе`,
+      ],
+      [
+        "Проекты",
+        data.overview.finance.fact.completedProjectsProfit,
+        data.overview.finance.fact.completedProjectsRevenue,
+        data.overview.finance.forecast.activeProjectsProfit,
+        data.overview.finance.forecast.activeProjectsRevenue,
+        `${data.overview.kpi.activeProjects} активных проектов в прогнозе`,
+      ],
+      [
+        "Итого",
+        data.overview.finance.fact.profitTotal,
+        data.overview.finance.fact.revenueTotal,
+        data.overview.finance.forecast.profitTotal,
+        data.overview.finance.forecast.revenueTotal,
+        "Заявки в проектах не дублируются в самостоятельных заявках",
+      ],
+    ],
+    { currencyColumns: [1, 2, 3, 4] },
+  );
+
+  addSectionTitle(ws, 19, "Контроль двойного учета", 11);
+  addTable(
+    ws,
+    20,
+    ["Метрика", "Значение", "Смысл"],
+    [
+      ["Заявки в проектах", data.overview.finance.ownership.linkedOrdersExcluded, "Не входят в самостоятельные заявки"],
+      ["Закрытые заявки в проектах", data.overview.finance.ownership.linkedClosedOrdersExcluded, "Финансы учитываются на стороне проекта"],
+      ["Закрытые самостоятельные заявки", data.overview.kpi.ordersClosed, "Факт заявок без projectId"],
+    ],
   );
 }
 
-function addRequisites(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
-  const req = data.requisites;
-  const kpi = wb.addWorksheet("Реквизит KPI");
-  setCols(kpi, [44, 22]);
-  appendTitle(kpi, "Реквизит KPI", 2);
-  addPeriodRow(kpi, data, 2);
-  addSpacer(kpi);
-  addDataTable(kpi, ["Метрика", "Значение"], [
-    ["Заявки (все статусы)", req.kpi.ordersTotal],
-    ["Закрытые заявки", req.kpi.ordersClosed],
-    ["Суммарная выручка, ₽", req.kpi.totalRevenue],
-    ["Выручка по реквизиту, ₽", req.kpi.itemsRevenue],
-    ["Выручка по услугам, ₽", req.kpi.servicesRevenue],
-    ["Средний чек, ₽", req.kpi.averageOrderRevenue],
-    ["Средняя длительность аренды, дней", req.kpi.averageRentalDays],
-  ]);
-  addSpacer(kpi);
-  addDataTable(kpi, ["Услуга", "Выручка, ₽", "Заявок"], [
-    ["Доставка", req.services.deliveryRevenue, req.services.deliveryOrders],
-    ["Монтаж", req.services.montageRevenue, req.services.montageOrders],
-    ["Демонтаж", req.services.demontageRevenue, req.services.demontageOrders],
-  ]);
+function addFactForecastSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Факт и прогноз");
+  styleSheet(ws);
+  setCols(ws, [28, 18, 18, 18, 18, 18]);
+  addReportHeader(ws, "Факт и прогноз", data, 6);
+  addTable(
+    ws,
+    6,
+    ["Направление", "Факт выручка", "Факт прибыль", "Прогноз выручка", "Прогноз прибыль", "Количество"],
+    [
+      [
+        "Самостоятельные заявки",
+        data.overview.finance.fact.standaloneOrdersRevenue,
+        data.overview.finance.fact.standaloneOrdersProfit,
+        data.overview.finance.forecast.standaloneOrdersRevenue,
+        data.overview.finance.forecast.standaloneOrdersProfit,
+        data.overview.finance.forecast.standaloneOrdersTotal,
+      ],
+      [
+        "Проекты",
+        data.overview.finance.fact.completedProjectsRevenue,
+        data.overview.finance.fact.completedProjectsProfit,
+        data.overview.finance.forecast.activeProjectsRevenue,
+        data.overview.finance.forecast.activeProjectsProfit,
+        data.overview.kpi.activeProjects,
+      ],
+      [
+        "Итого",
+        data.overview.finance.fact.revenueTotal,
+        data.overview.finance.fact.profitTotal,
+        data.overview.finance.forecast.revenueTotal,
+        data.overview.finance.forecast.profitTotal,
+        null,
+      ],
+    ],
+    { currencyColumns: [1, 2, 3, 4] },
+  );
+}
 
-  const tops = wb.addWorksheet("Реквизит топы");
-  setCols(tops, [6, 48, 18]);
-  appendTitle(tops, "Топы реквизита", 3);
-  addPeriodRow(tops, data, 3);
-  addSpacer(tops);
-  addDataTable(tops, ["#", "Позиция", "Выдано, шт"], req.tops.topByIssued.map((r, i) => [i + 1, r.itemName, r.issuedQty]));
-  addSpacer(tops);
-  addDataTable(tops, ["#", "Позиция", "Выручка, ₽"], req.tops.topByRevenue.map((r, i) => [i + 1, r.itemName, r.revenue]));
+function projectEventMonth(project: ProjectAnalyticsRow) {
+  return (project.eventStartDate ?? project.eventEndDate ?? project.createdAt).slice(0, 7);
+}
 
-  const profitability = wb.addWorksheet("Рентабельность");
-  setCols(profitability, [38, 10, 14, 14, 14, 14, 12, 10]);
-  appendTitle(profitability, "Рентабельность реквизита", 8);
-  addPeriodRow(profitability, data, 8);
-  addSpacer(profitability);
-  addDataTable(profitability, ["Показатель", "Значение"], [
-    ["Позиции с закупом", req.profitability.summary.trackedItems],
-    ["Позиции с выручкой", req.profitability.summary.itemsWithRevenue],
-    ["Выручка (tracked), ₽", req.profitability.summary.totalRevenue],
-    ["Закупочная стоимость, ₽", req.profitability.summary.totalPurchaseCost],
-    ["Валовая прибыль, ₽", req.profitability.summary.totalGrossProfit],
-    ["Окупаемость", req.profitability.summary.totalPaybackRatio ?? "—"],
-    ["ROI, %", req.profitability.summary.totalRoiPercent ?? "—"],
-  ]);
-  addSpacer(profitability);
-  addDataTable(
-    profitability,
-    ["Позиция", "Кол-во", "Закуп, ₽/шт", "Закуп всего, ₽", "Выручка, ₽", "Прибыль, ₽", "Окупаемость", "ROI, %"],
-    req.profitability.rows.map((r) => [
+function addDynamicsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Динамика");
+  styleSheet(ws);
+  setCols(ws, [14, 18, 18, 18, 18, 16, 16, 18]);
+  addReportHeader(ws, "Динамика по месяцам", data, 8);
+
+  const monthMap = new Map<string, { orderRevenue: number; orderCount: number; projectRevenue: number; projectProfit: number; projectCount: number }>();
+  for (const row of data.requisites.breakdowns.revenueByMonth) {
+    monthMap.set(row.month, {
+      ...(monthMap.get(row.month) ?? { orderRevenue: 0, orderCount: 0, projectRevenue: 0, projectProfit: 0, projectCount: 0 }),
+      orderRevenue: row.revenue,
+      orderCount: row.orders,
+    });
+  }
+  for (const project of data.projects.rows.filter((p) => p.status === "COMPLETED")) {
+    const month = projectEventMonth(project);
+    const prev = monthMap.get(month) ?? { orderRevenue: 0, orderCount: 0, projectRevenue: 0, projectProfit: 0, projectCount: 0 };
+    prev.projectRevenue += project.financials.revenueTotal;
+    prev.projectProfit += project.financials.marginAfterTax;
+    prev.projectCount += 1;
+    monthMap.set(month, prev);
+  }
+
+  const rows = [...monthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, value], idx, all) => {
+      const totalRevenue = value.orderRevenue + value.projectRevenue;
+      const prevTotal = idx > 0 ? all[idx - 1][1].orderRevenue + all[idx - 1][1].projectRevenue : 0;
+      const delta = prevTotal > 0 ? totalRevenue - prevTotal : 0;
+      const deltaPct = prevTotal > 0 ? delta / prevTotal : 0;
+      return [month, totalRevenue, delta, deltaPct, value.orderRevenue, value.projectRevenue, value.projectProfit, value.orderCount + value.projectCount];
+    });
+
+  addTable(ws, 6, ["Месяц", "Выручка факт", "К прошлому", "%", "Заявки", "Проекты", "Прибыль проектов", "Сделок"], rows, {
+    currencyColumns: [1, 2, 4, 5, 6],
+    percentColumns: [3],
+  });
+  if (rows.length > 0) {
+    const firstDataRow = 7;
+    const lastDataRow = firstDataRow + rows.length - 1;
+    ws.addConditionalFormatting({
+      ref: `B${firstDataRow}:B${lastDataRow}`,
+      rules: [{ type: "dataBar", priority: 1, showValue: true, cfvo: [{ type: "min" }, { type: "max" }] }],
+    });
+    ws.addConditionalFormatting({
+      ref: `G${firstDataRow}:G${lastDataRow}`,
+      rules: [{ type: "dataBar", priority: 2, showValue: true, cfvo: [{ type: "min" }, { type: "max" }] }],
+    });
+  }
+  ws.getCell(5, 1).value = rows.length > 1 ? "Сравнение строится к предыдущему месяцу внутри выбранного периода." : "Для сравнения с предыдущим месяцем выберите период от двух месяцев.";
+  ws.getCell(5, 1).font = { name: "Calibri", size: 10, color: argb(COLORS.muted) };
+}
+
+function addRequisitesSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Заявки");
+  styleSheet(ws);
+  setCols(ws, [30, 18, 18, 18, 18]);
+  addReportHeader(ws, "Финансы заявок", data, 5);
+  addTable(
+    ws,
+    6,
+    ["Метрика", "Факт", "Прогноз", "Комментарий", "Период"],
+    [
+      ["Выручка", data.requisites.kpi.totalRevenue, data.requisites.forecast.totalRevenue, "Только самостоятельные заявки", periodLabel(data)],
+      ["Прибыль", data.requisites.kpi.profitEstimate, data.requisites.forecast.profitEstimate, "После клиентского налога и внутренних расходов", periodLabel(data)],
+      ["Количество", data.requisites.kpi.ordersClosed, data.requisites.forecast.ordersTotal, "Факт = CLOSED, прогноз = не CLOSED/CANCELLED", periodLabel(data)],
+      ["Исключено заявок в проектах", data.requisites.kpi.linkedClosedOrdersExcluded, data.requisites.kpi.linkedOrdersExcluded, "Чтобы не было двойного счета", periodLabel(data)],
+    ],
+    { currencyColumns: [1, 2] },
+  );
+  addSectionTitle(ws, 13, "Услуги", 5);
+  addTable(
+    ws,
+    14,
+    ["Услуга", "Факт выручка", "Заявок", "Комментарий"],
+    [
+      ["Доставка", data.requisites.services.deliveryRevenue, data.requisites.services.deliveryOrders, ""],
+      ["Монтаж", data.requisites.services.montageRevenue, data.requisites.services.montageOrders, ""],
+      ["Демонтаж", data.requisites.services.demontageRevenue, data.requisites.services.demontageOrders, ""],
+    ],
+    { currencyColumns: [1] },
+  );
+}
+
+function addProjectsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Проекты");
+  styleSheet(ws);
+  setCols(ws, [30, 24, 18, 15, 15, 15, 15, 12, 16, 16]);
+  addReportHeader(ws, "Финансы проектов", data, 10);
+  addTable(
+    ws,
+    6,
+    ["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Комиссия", "Налог", "Прибыль", "Маржа %", "Дата"],
+    data.projects.rows
+      .filter((p) => p.status !== "CANCELLED")
+      .sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal)
+      .map((p) => [
+        p.title,
+        p.customerName,
+        p.status,
+        p.financials.revenueTotal,
+        p.financials.internalSubtotal,
+        p.financials.commission,
+        p.financials.tax,
+        p.financials.marginAfterTax,
+        p.financials.marginAfterTaxPct / 100,
+        p.eventStartDate ?? p.eventEndDate ?? "",
+      ]),
+    { currencyColumns: [3, 4, 5, 6, 7], percentColumns: [8] },
+  );
+}
+
+function addCustomersSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Заказчики");
+  styleSheet(ws);
+  setCols(ws, [30, 12, 14, 18, 18, 18, 16, 12]);
+  addReportHeader(ws, "Заказчики", data, 8);
+  addTable(
+    ws,
+    6,
+    ["Заказчик", "Проектов", "Активные", "Прогноз выручка", "Прогноз прибыль", "Факт заявок", "LTV", "Отмены %"],
+    data.customers.rows.map((r) => [
+      r.customerName,
+      r.projectsCount,
+      r.activeProjects,
+      r.forecastRevenue,
+      r.forecastMarginAfterTax,
+      r.closedOrdersFactRevenue,
+      r.ltvMixed,
+      r.cancelRatePercent / 100,
+    ]),
+    { currencyColumns: [3, 4, 5, 6], percentColumns: [7] },
+  );
+}
+
+function addInventoryProfitabilitySheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  const ws = wb.addWorksheet("Реквизит");
+  styleSheet(ws);
+  setCols(ws, [34, 12, 16, 16, 16, 16, 14, 14]);
+  addReportHeader(ws, "Рентабельность реквизита", data, 8);
+  addTable(
+    ws,
+    6,
+    ["Позиция", "Кол-во", "Закуп/шт", "Закуп всего", "Выручка", "Валовая прибыль", "Окупаемость", "ROI %"],
+    data.requisites.profitability.rows.map((r) => [
       r.itemName,
       r.totalQty,
       r.unitPurchasePrice,
       r.purchaseCost,
       r.revenue,
       r.grossProfit,
-      r.paybackRatio ?? "—",
-      r.roiPercent ?? "—",
+      r.paybackRatio ?? null,
+      r.roiPercent == null ? null : r.roiPercent / 100,
     ]),
-    { highlightNegativeColIdx: [5, 7], highlightPositiveColIdx: [5, 7] },
+    { currencyColumns: [2, 3, 4, 5], percentColumns: [7] },
   );
 }
 
-function addProjects(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
-  const projects = data.projects;
-  const financialRows = projects.rows.filter((p) => p.status !== "CANCELLED");
-  const kpi = wb.addWorksheet("Проекты KPI");
-  setCols(kpi, [48, 22]);
-  appendTitle(kpi, "Проекты KPI", 2);
-  addPeriodRow(kpi, data, 2);
-  addSpacer(kpi);
-  addDataTable(kpi, ["Метрика", "Значение"], [
-    ["Всего проектов", projects.kpi.projectsTotal],
-    ["Активные", projects.kpi.activeProjects],
-    ["Завершенные", projects.kpi.completedProjects],
-    ["Отмененные", projects.kpi.cancelledProjects],
-    ["Архивные", projects.kpi.archivedProjects],
-    ["С основной сметой", projects.kpi.withPrimaryEstimate],
-    ["Без основной сметы", projects.kpi.withoutPrimaryEstimate],
-    ["Со связанной заявкой", projects.kpi.withLinkedOrder],
-    ["Без связанной заявки", projects.kpi.withoutLinkedOrder],
-    ["Прогноз выручки, ₽", projects.kpi.forecastRevenueTotal],
-    ["Прогноз маржи после налога, ₽", projects.kpi.forecastMarginAfterTax],
-    ["Средняя маржинальность, %", projects.kpi.averageMarginAfterTaxPercent],
-    ["Проекты без активности 7+ дней", projects.kpi.stale7Days],
-    ["Проекты с низкой маржой", projects.kpi.lowMarginProjects],
-  ]);
-
-  const finances = wb.addWorksheet("Проекты финансы");
-  setCols(finances, [34, 26, 18, 16, 16, 16, 16, 14, 14, 14]);
-  appendTitle(finances, "Финансы проектов", 10);
-  addPeriodRow(finances, data, 10);
-  addSpacer(finances);
-  addDataTable(
-    finances,
-    ["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Комиссия", "Налог", "Маржа", "Маржа %", "Здоровье"],
-    financialRows.map((p) => [
-      p.title,
-      p.customerName,
-      p.status,
-      p.financials.revenueTotal,
-      p.financials.internalSubtotal,
-      p.financials.commission,
-      p.financials.tax,
-      p.financials.marginAfterTax,
-      p.financials.marginAfterTaxPct,
-      p.healthScore,
-    ]),
-    { highlightNegativeColIdx: [7, 8], highlightPositiveColIdx: [7, 8] },
-  );
-
-  const risks = wb.addWorksheet("Проекты риски");
-  setCols(risks, [34, 26, 18, 14, 14, 58]);
-  appendTitle(risks, "Риски проектов", 6);
-  addPeriodRow(risks, data, 6);
-  addSpacer(risks);
-  addDataTable(
-    risks,
-    ["Проект", "Заказчик", "Статус", "Дней без активности", "Здоровье", "Риски"],
-    projects.risks.map((p) => [p.title, p.customerName, p.status, p.daysSinceActivity, p.healthScore, p.risks.join("; ")]),
-  );
-
-  const statuses = wb.addWorksheet("Проекты статусы");
-  setCols(statuses, [28, 14, 22, 18]);
-  appendTitle(statuses, "Статусы проектов", 4);
-  addPeriodRow(statuses, data, 4);
-  addSpacer(statuses);
-  addDataTable(
-    statuses,
-    ["Статус", "Проектов", "Средний возраст статуса, дней", "Макс. возраст, дней"],
-    projects.statusAging.map((r) => [r.status, r.projects, r.averageCurrentAgeDays, r.maxCurrentAgeDays]),
-  );
-}
-
-function addCustomers(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
-  const customers = wb.addWorksheet("Заказчики");
-  setCols(customers, [32, 12, 12, 12, 12, 16, 16, 16, 16, 16, 12, 12]);
-  appendTitle(customers, "Заказчики", 12);
-  addPeriodRow(customers, data, 12);
-  addSpacer(customers);
-  addDataTable(
-    customers,
-    [
-      "Заказчик",
-      "Проектов",
-      "Активные",
-      "Заверш.",
-      "Отмен.",
-      "Прогноз выручки",
-      "Маржа",
-      "Факт заявок",
-      "LTV mixed",
-      "Средний проект",
-      "Маржа %",
-      "Отмены %",
-    ],
-    data.customers.rows.map((r) => [
-      r.customerName,
-      r.projectsCount,
-      r.activeProjects,
-      r.completedProjects,
-      r.cancelledProjects,
-      r.forecastRevenue,
-      r.forecastMarginAfterTax,
-      r.closedOrdersFactRevenue,
-      r.ltvMixed,
-      r.averageProjectRevenue,
-      r.averageMarginAfterTaxPercent,
-      r.cancelRatePercent,
-    ]),
-    { highlightNegativeColIdx: [6, 10], highlightPositiveColIdx: [6, 10] },
-  );
-}
-
-function addMethodology(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+function addMethodologySheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Методология");
-  setCols(ws, [24, 90]);
-  appendTitle(ws, "Методология расчета", 2);
-  addPeriodRow(ws, data, 2);
-  addSpacer(ws);
-  addDataTable(ws, ["Раздел", "Правило"], data.methodology.map((row) => [row.section, row.rule]));
+  styleSheet(ws);
+  setCols(ws, [24, 100]);
+  addReportHeader(ws, "Методология расчета", data, 2);
+  addTable(
+    ws,
+    6,
+    ["Раздел", "Правило"],
+    [
+      ...data.methodology.map((row) => [row.section, row.rule] as RowValue[]),
+      ["Факт", "Закрытые самостоятельные заявки + завершенные проекты в выбранном периоде."],
+      ["Прогноз", "Незакрытые самостоятельные заявки + активные проекты в выбранном периоде."],
+      ["Двойной счет", "Если заявка привязана к проекту, ее финансы не входят в самостоятельные заявки."],
+    ],
+  );
 }
 
 export async function buildAdminAnalyticsXlsx(
@@ -317,27 +459,28 @@ export async function buildAdminAnalyticsXlsx(
   section: AdminAnalyticsExportSection,
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Wowstorg Analytics";
-  wb.created = new Date();
+  setWorkbookMeta(wb);
 
   if (section === "global") {
-    addOverview(wb, data);
-    addRequisites(wb, data);
-    addProjects(wb, data);
-    addCustomers(wb, data);
-    addMethodology(wb, data);
+    addOverviewSheet(wb, data);
+    addFactForecastSheet(wb, data);
+    addDynamicsSheet(wb, data);
+    addRequisitesSheet(wb, data);
+    addProjectsSheet(wb, data);
+    addCustomersSheet(wb, data);
+    addMethodologySheet(wb, data);
   } else if (section === "requisites") {
-    addRequisites(wb, data);
+    addRequisitesSheet(wb, data);
+    addInventoryProfitabilitySheet(wb, data);
+    addMethodologySheet(wb, data);
   } else if (section === "projects") {
-    addProjects(wb, data);
+    addProjectsSheet(wb, data);
+    addMethodologySheet(wb, data);
   } else if (section === "customers") {
-    addCustomers(wb, data);
+    addCustomersSheet(wb, data);
+    addMethodologySheet(wb, data);
   }
 
-  for (const ws of wb.worksheets) {
-    ws.views = [{ state: "frozen", ySplit: 4 }];
-  }
-
-  const ab = await wb.xlsx.writeBuffer();
-  return Buffer.from(ab);
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }

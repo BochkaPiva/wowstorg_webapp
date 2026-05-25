@@ -1,4 +1,4 @@
-import { ProjectStatus, type Prisma } from "@prisma/client";
+import { OrderStatus, ProjectStatus, type Prisma } from "@prisma/client";
 
 import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
 import {
@@ -44,6 +44,11 @@ export type RequisiteAnalyticsData = {
     averageRentalDays: number;
     linkedOrdersExcluded: number;
     linkedClosedOrdersExcluded: number;
+  };
+  forecast: {
+    ordersTotal: number;
+    totalRevenue: number;
+    profitEstimate: number;
   };
   breakdowns: {
     byStatus: Array<{ status: string; count: number }>;
@@ -224,8 +229,13 @@ export type OverviewAnalyticsData = {
       profitTotal: number;
     };
     forecast: {
+      standaloneOrdersRevenue: number;
+      standaloneOrdersProfit: number;
+      standaloneOrdersTotal: number;
       activeProjectsRevenue: number;
       activeProjectsProfit: number;
+      revenueTotal: number;
+      profitTotal: number;
     };
     bonuses: {
       ratePercent: number;
@@ -337,6 +347,8 @@ function projectEventPeriodWhere(scope: AnalyticsScope): Prisma.ProjectWhereInpu
   };
 }
 
+const FORECAST_ORDER_EXCLUDED_STATUSES = [OrderStatus.CLOSED, OrderStatus.CANCELLED];
+
 function hasStatusChange(payload: Prisma.JsonValue): boolean {
   if (payload == null || typeof payload !== "object" || Array.isArray(payload)) return false;
   const changes = (payload as Record<string, unknown>).changes;
@@ -348,48 +360,58 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   const orderPeriodWhere = periodWhere("endDate", scope);
   const standaloneOrderWhere = { ...orderPeriodWhere, projectId: null };
   const linkedOrderWhere = { ...orderPeriodWhere, projectId: { not: null } };
+  const standaloneForecastOrderWhere = {
+    ...standaloneOrderWhere,
+    status: { notIn: FORECAST_ORDER_EXCLUDED_STATUSES },
+  };
 
-  const [orders, closedOrders, linkedOrdersExcluded, linkedClosedOrdersExcluded, trackedItems] = await Promise.all([
+  const orderMoneySelect = {
+    source: true,
+    startDate: true,
+    endDate: true,
+    rentalStartPartOfDay: true,
+    rentalEndPartOfDay: true,
+    payMultiplier: true,
+    deliveryEnabled: true,
+    deliveryPrice: true,
+    deliveryInternalCost: true,
+    deliveryInternalPaymentMethod: true,
+    montageEnabled: true,
+    montagePrice: true,
+    montageInternalCost: true,
+    montageInternalPaymentMethod: true,
+    demontageEnabled: true,
+    demontagePrice: true,
+    demontageInternalCost: true,
+    demontageInternalPaymentMethod: true,
+    rentalDiscountType: true,
+    rentalDiscountPercent: true,
+    rentalDiscountAmount: true,
+    customerId: true,
+    customer: { select: { name: true } },
+    lines: {
+      select: {
+        itemId: true,
+        item: { select: { name: true } },
+        requestedQty: true,
+        issuedQty: true,
+        pricePerDaySnapshot: true,
+      },
+    },
+  } satisfies Prisma.OrderSelect;
+
+  const [orders, closedOrders, forecastOrders, linkedOrdersExcluded, linkedClosedOrdersExcluded, trackedItems] = await Promise.all([
     prisma.order.findMany({
       where: standaloneOrderWhere,
       select: { id: true, status: true, source: true },
     }),
     prisma.order.findMany({
-      where: { status: "CLOSED", ...standaloneOrderWhere },
-      select: {
-        source: true,
-        startDate: true,
-        endDate: true,
-        rentalStartPartOfDay: true,
-        rentalEndPartOfDay: true,
-        payMultiplier: true,
-        deliveryEnabled: true,
-        deliveryPrice: true,
-        deliveryInternalCost: true,
-        deliveryInternalPaymentMethod: true,
-        montageEnabled: true,
-        montagePrice: true,
-        montageInternalCost: true,
-        montageInternalPaymentMethod: true,
-        demontageEnabled: true,
-        demontagePrice: true,
-        demontageInternalCost: true,
-        demontageInternalPaymentMethod: true,
-        rentalDiscountType: true,
-        rentalDiscountPercent: true,
-        rentalDiscountAmount: true,
-        customerId: true,
-        customer: { select: { name: true } },
-        lines: {
-          select: {
-            itemId: true,
-            item: { select: { name: true } },
-            requestedQty: true,
-            issuedQty: true,
-            pricePerDaySnapshot: true,
-          },
-        },
-      },
+      where: { status: OrderStatus.CLOSED, ...standaloneOrderWhere },
+      select: orderMoneySelect,
+    }),
+    prisma.order.findMany({
+      where: standaloneForecastOrderWhere,
+      select: orderMoneySelect,
     }),
     prisma.order.count({
       where: linkedOrderWhere,
@@ -432,6 +454,8 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   let totalTaxAmount = 0;
   let totalRentalDays = 0;
   let totalProfitEstimate = 0;
+  let forecastRevenue = 0;
+  let forecastProfitEstimate = 0;
 
   for (const order of closedOrders) {
     const pricing = calcOrderPricing({
@@ -508,6 +532,42 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     });
   }
 
+  for (const order of forecastOrders) {
+    const pricing = calcOrderPricing({
+      startDate: order.startDate,
+      endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
+      payMultiplier: order.payMultiplier,
+      deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
+      montagePrice: order.montageEnabled ? order.montagePrice : 0,
+      demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
+      lines: order.lines,
+      discount: order,
+    });
+    const profitEstimate = calcWarehouseProfitEstimate({
+      clientGrandTotal: pricing.grandTotal,
+      clientTaxAmount: pricing.taxAmount,
+      delivery: {
+        enabled: order.deliveryEnabled,
+        internalCost: order.deliveryInternalCost,
+        internalPaymentMethod: order.deliveryInternalPaymentMethod,
+      },
+      montage: {
+        enabled: order.montageEnabled,
+        internalCost: order.montageInternalCost,
+        internalPaymentMethod: order.montageInternalPaymentMethod,
+      },
+      demontage: {
+        enabled: order.demontageEnabled,
+        internalCost: order.demontageInternalCost,
+        internalPaymentMethod: order.demontageInternalPaymentMethod,
+      },
+    });
+    forecastRevenue += pricing.grandTotal;
+    forecastProfitEstimate += profitEstimate.profitEstimate;
+  }
+
   const topByIssued = [...itemIssued.entries()]
     .map(([itemId, qty]) => ({ itemId, itemName: itemRevenue.get(itemId)?.name ?? "—", issuedQty: qty }))
     .sort((a, b) => b.issuedQty - a.issuedQty)
@@ -566,6 +626,11 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       averageRentalDays: closedOrders.length > 0 ? round2(totalRentalDays / closedOrders.length) : 0,
       linkedOrdersExcluded,
       linkedClosedOrdersExcluded,
+    },
+    forecast: {
+      ordersTotal: forecastOrders.length,
+      totalRevenue: Math.round(forecastRevenue),
+      profitEstimate: Math.round(forecastProfitEstimate),
     },
     breakdowns: {
       byStatus: [...statusMap.entries()]
@@ -1059,8 +1124,12 @@ function getOverviewAnalytics(
   const completedProjectsProfit = projects.kpi.actualMarginAfterTax;
   const factRevenueTotal = standaloneOrdersRevenue + completedProjectsRevenue;
   const factProfitTotal = standaloneOrdersProfit + completedProjectsProfit;
+  const standaloneForecastOrdersRevenue = requisites.forecast.totalRevenue;
+  const standaloneForecastOrdersProfit = requisites.forecast.profitEstimate;
+  const forecastRevenueTotal = standaloneForecastOrdersRevenue + projects.kpi.forecastRevenueTotal;
+  const forecastProfitTotal = standaloneForecastOrdersProfit + projects.kpi.forecastMarginAfterTax;
   const factPool = Math.round(factProfitTotal * bonusRate);
-  const forecastPool = Math.round(projects.kpi.forecastMarginAfterTax * bonusRate);
+  const forecastPool = Math.round(forecastProfitTotal * bonusRate);
 
   return {
     kpi: {
@@ -1070,8 +1139,8 @@ function getOverviewAnalytics(
       factGrossProfit: requisites.profitability.summary.totalGrossProfit,
       ordersClosed: requisites.kpi.ordersClosed,
       averageOrderRevenue: requisites.kpi.averageOrderRevenue,
-      projectForecastRevenue: projects.kpi.forecastRevenueTotal,
-      projectForecastMarginAfterTax: projects.kpi.forecastMarginAfterTax,
+      projectForecastRevenue: forecastRevenueTotal,
+      projectForecastMarginAfterTax: forecastProfitTotal,
       activeProjects: projects.kpi.activeProjects,
       completedProjects: projects.kpi.completedProjects,
       cancelledProjects: projects.kpi.cancelledProjects,
@@ -1089,8 +1158,13 @@ function getOverviewAnalytics(
         profitTotal: factProfitTotal,
       },
       forecast: {
+        standaloneOrdersRevenue: standaloneForecastOrdersRevenue,
+        standaloneOrdersProfit: standaloneForecastOrdersProfit,
+        standaloneOrdersTotal: requisites.forecast.ordersTotal,
         activeProjectsRevenue: projects.kpi.forecastRevenueTotal,
         activeProjectsProfit: projects.kpi.forecastMarginAfterTax,
+        revenueTotal: forecastRevenueTotal,
+        profitTotal: forecastProfitTotal,
       },
       bonuses: {
         ratePercent: Math.round(bonusRate * 100),

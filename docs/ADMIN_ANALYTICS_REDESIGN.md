@@ -545,7 +545,7 @@ UI обязательно показывает tooltip:
 - Standalone requisites analytics includes only orders with `projectId = null`.
 - Linked orders are financially owned by their project and are excluded from standalone order revenue, service totals, customer totals and profit signals.
 - Overview fact = standalone closed orders + completed projects.
-- Overview forecast = active non-archived projects.
+- Overview forecast = standalone active orders + active non-archived projects.
 - Bonus block = 15% of profit, split between 2 people.
 
 ## Update 2026-05-25: project period basis
@@ -554,3 +554,11 @@ UI обязательно показывает tooltip:
 - A project is included in a period when its event interval intersects the selected period.
 - If only one event date is filled, that date is used as the financial period anchor.
 - Projects without event dates are excluded from period-based finance because there is no reliable month to assign them to.
+
+## Update 2026-05-25: director finance export
+
+- Global XLSX is now a clean financial report, not a full internal operations dump.
+- Global sheets: `Обзор`, `Факт и прогноз`, `Динамика`, `Заявки`, `Проекты`, `Заказчики`, `Методология`.
+- Sheets with project signals/risks/status aging are removed from the global export.
+- `Динамика` compares month-to-month fact inside the selected period; if the period has one month, it shows a note instead of pretending there is a trend.
+- Forecast in the report includes both standalone active orders and active projects, while linked orders remain owned by projects to avoid double counting.

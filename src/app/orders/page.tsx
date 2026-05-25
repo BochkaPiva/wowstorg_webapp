@@ -99,6 +99,10 @@ function periodLineOrders(o: OrderCard): string {
   });
 }
 
+function formatMoney(value: number): string {
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+}
+
 function norm(s: string): string {
   return s.trim().toLowerCase();
 }
@@ -310,7 +314,7 @@ export default function OrdersPage() {
             Готовность к: <span className="font-semibold">{fmtDate(o.readyByDate)}</span>
             {" · "}
             Период: <span className="font-semibold">{periodLineOrders(o)}</span>
-            {o.totalAmount != null ? (
+            {scopeFilter !== "DONE" && o.totalAmount != null ? (
               <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
                 {o.totalAmount.toLocaleString("ru-RU")} ₽
               </span>
@@ -329,6 +333,12 @@ export default function OrdersPage() {
               </span>
             ) : null}
           </div>
+          {scopeFilter === "DONE" && o.totalAmount != null ? (
+            <div className="mt-3 inline-flex items-baseline gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Сумма</span>
+              <span className="text-base font-bold text-violet-950">{formatMoney(o.totalAmount)}</span>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={`/orders/${o.id}`}

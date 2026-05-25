@@ -3,13 +3,28 @@ import { roundMoney } from "@/lib/money";
 export const PROJECT_ESTIMATE_TAX_RATE = 0.06;
 export const PROJECT_ESTIMATE_COMMISSION_RATE = 0.15;
 
+export type ProjectEstimateFinanceOptions = {
+  commissionEnabled?: boolean;
+  clientTaxEnabled?: boolean;
+};
+
 export type ProjectEstimateTotalsInput = {
   clientSubtotal: number;
   internalSubtotal: number;
   cashInternalCostTax?: number;
   taxRate?: number;
   commissionRate?: number;
+  commissionEnabled?: boolean;
+  clientTaxEnabled?: boolean;
 };
+
+export function resolveProjectEstimateRates(input: ProjectEstimateFinanceOptions = {}) {
+  return {
+    commissionRate:
+      input.commissionEnabled === false ? 0 : PROJECT_ESTIMATE_COMMISSION_RATE,
+    taxRate: input.clientTaxEnabled === false ? 0 : PROJECT_ESTIMATE_TAX_RATE,
+  };
+}
 
 export type ProjectEstimateTotals = {
   clientSubtotal: number;
@@ -34,8 +49,9 @@ export function getNumericAmount(value: unknown): number {
 export function calcProjectEstimateTotals(
   input: ProjectEstimateTotalsInput,
 ): ProjectEstimateTotals {
-  const taxRate = input.taxRate ?? PROJECT_ESTIMATE_TAX_RATE;
-  const commissionRate = input.commissionRate ?? PROJECT_ESTIMATE_COMMISSION_RATE;
+  const resolvedRates = resolveProjectEstimateRates(input);
+  const taxRate = input.taxRate ?? resolvedRates.taxRate;
+  const commissionRate = input.commissionRate ?? resolvedRates.commissionRate;
   const clientSubtotal = roundMoney(input.clientSubtotal);
   const internalSubtotal = roundMoney(input.internalSubtotal);
   const cashInternalCostTax = roundMoney(input.cashInternalCostTax ?? 0);

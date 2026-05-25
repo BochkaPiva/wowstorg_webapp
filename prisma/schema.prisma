@@ -625,6 +625,10 @@ model ProjectEstimateVersion {
   versionNumber Int
   note          String?
   isPrimary     Boolean @default(false)
+  /// Комиссия агентства 15% в итогах сметы (можно отключить для отдельных проектов).
+  commissionEnabled Boolean @default(true)
+  /// Условный налог 6% от суммы клиента с комиссией (можно отключить).
+  clientTaxEnabled  Boolean @default(true)
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)

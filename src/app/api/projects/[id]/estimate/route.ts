@@ -32,6 +32,8 @@ const PatchDraftSchema = z
   .object({
     versionNumber: z.number().int().positive(),
     allowDeleteAllLocalSections: z.boolean().optional(),
+    commissionEnabled: z.boolean().optional(),
+    clientTaxEnabled: z.boolean().optional(),
     localSections: z
       .array(
         z
@@ -93,7 +95,8 @@ export async function PATCH(
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  const { versionNumber, localSections, allowDeleteAllLocalSections } = parsed.data;
+  const { versionNumber, localSections, allowDeleteAllLocalSections, commissionEnabled, clientTaxEnabled } =
+    parsed.data;
 
   const version = await prisma.projectEstimateVersion.findFirst({
     where: { projectId, versionNumber },
@@ -140,9 +143,9 @@ export async function PATCH(
             : null;
 
         const sectionKind =
-          sectionDraft.kind === "CONTRACTOR"
-            ? ProjectEstimateSectionKind.CONTRACTOR
-            : ProjectEstimateSectionKind.LOCAL;
+          sectionDraft.kind === "LOCAL"
+            ? ProjectEstimateSectionKind.LOCAL
+            : ProjectEstimateSectionKind.CONTRACTOR;
 
         const savedSection = existingSection
           ? await tx.projectEstimateSection.update({
@@ -219,6 +222,16 @@ export async function PATCH(
             await tx.projectEstimateLine.create({ data });
           }
         }
+      }
+
+      if (commissionEnabled !== undefined || clientTaxEnabled !== undefined) {
+        await tx.projectEstimateVersion.update({
+          where: { id: version.id },
+          data: {
+            ...(commissionEnabled !== undefined ? { commissionEnabled } : {}),
+            ...(clientTaxEnabled !== undefined ? { clientTaxEnabled } : {}),
+          },
+        });
       }
     });
   } catch (e) {

@@ -216,6 +216,8 @@ export async function buildProjectEstimateReadModel(args: {
             versionNumber: versionRow.versionNumber,
             note: versionRow.note,
             createdAt: versionRow.createdAt.toISOString(),
+            commissionEnabled: versionRow.commissionEnabled,
+            clientTaxEnabled: versionRow.clientTaxEnabled,
             sections: [
               ...versionRow.sections.map<ProjectEstimateReadSection>((section) => {
               const linkedOrder =

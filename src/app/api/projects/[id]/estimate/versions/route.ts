@@ -87,6 +87,13 @@ export async function POST(
       if (!src) {
         throw new Error("SOURCE_VERSION_NOT_FOUND");
       }
+      await tx.projectEstimateVersion.update({
+        where: { id: v.id },
+        data: {
+          commissionEnabled: src.commissionEnabled,
+          clientTaxEnabled: src.clientTaxEnabled,
+        },
+      });
       for (const sec of src.sections) {
         const newSec = await tx.projectEstimateSection.create({
           data: {

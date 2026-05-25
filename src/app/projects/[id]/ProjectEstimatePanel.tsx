@@ -25,6 +25,7 @@ import {
 import {
   calcProjectEstimateTotals,
   PROJECT_ESTIMATE_COMMISSION_RATE,
+  PROJECT_ESTIMATE_TAX_RATE,
   getNumericAmount,
 } from "@/lib/project-estimate-totals";
 import { formatMoneyRub, roundMoney } from "@/lib/money";
@@ -145,6 +146,8 @@ type StoredEstimateDraft = {
   schemaVersion: number;
   versionNumber: number;
   sections: LocalDraftSection[];
+  commissionEnabled?: boolean;
+  clientTaxEnabled?: boolean;
 };
 
 type VersionMeta = {
@@ -171,6 +174,8 @@ type EstimatePayload = {
     versionNumber: number;
     note: string | null;
     createdAt: string;
+    commissionEnabled: boolean;
+    clientTaxEnabled: boolean;
     sections: EstSection[];
   } | null;
 };
@@ -240,6 +245,42 @@ function formatDateRu(dateOnly: string | null | undefined) {
 }
 
 /** Как `HelpLegend` на странице проекта — легенда по наведению на «?». */
+function EstimateFinanceToggle({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="inline-flex min-w-0 items-center gap-2 text-zinc-600">
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+          checked
+            ? "border-violet-400 bg-violet-600"
+            : "border-zinc-300 bg-zinc-200"
+        } disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+            checked ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
+    </label>
+  );
+}
+
 function EstimateHelpLegend({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -269,7 +310,7 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
-const ESTIMATE_DRAFT_SCHEMA_VERSION = 3;
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 4;
 
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -358,7 +399,7 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
       id: section.id,
       sortOrder: section.sortOrder,
       title: section.title,
-      kind: section.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL",
+      kind: "CONTRACTOR",
       linkedOrderId: null,
       lines: section.lines.map((line) => ({
         id: line.id,
@@ -583,7 +624,6 @@ export function ProjectEstimatePanel({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
-  const [newSectionKind, setNewSectionKind] = React.useState<"LOCAL" | "CONTRACTOR">("LOCAL");
   const [busy, setBusy] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
@@ -592,9 +632,9 @@ export function ProjectEstimatePanel({
   const versionPickerWrapRef = React.useRef<HTMLDivElement>(null);
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
+  const [commissionEnabled, setCommissionEnabled] = React.useState(true);
+  const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
-  /** Форма «новая строка» в LOCAL/CONTRACTOR свёрнута по умолчанию, чтобы не отвлекать при просмотре. */
-  const [addLineFormOpenBySection, setAddLineFormOpenBySection] = React.useState<Record<string, boolean>>({});
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -623,6 +663,8 @@ export function ProjectEstimatePanel({
             setData(j);
             const versionNumber = j.current?.versionNumber ?? null;
             const baseSections = j.current?.sections ? sortSectionsBySortOrder(cloneLocalSections(j.current.sections)) : [];
+            const baseCommissionEnabled = j.current?.commissionEnabled ?? true;
+            const baseClientTaxEnabled = j.current?.clientTaxEnabled ?? true;
             if (versionNumber != null) {
               const storageKey = draftEstimateStorageKey(projectId, versionNumber);
               const raw = window.localStorage.getItem(storageKey);
@@ -635,34 +677,50 @@ export function ProjectEstimatePanel({
                     Array.isArray(parsed.sections)
                   ) {
                     const storedSections = sortSectionsBySortOrder(parsed.sections);
+                    const storedCommissionEnabled = parsed.commissionEnabled ?? baseCommissionEnabled;
+                    const storedClientTaxEnabled = parsed.clientTaxEnabled ?? baseClientTaxEnabled;
                     const hasDestructiveEmptyDraft = storedSections.length === 0 && baseSections.length > 0;
                     const isSameAsServer =
                       JSON.stringify(normalizeLocalSectionsForCompare(storedSections)) ===
-                      JSON.stringify(normalizeLocalSectionsForCompare(baseSections));
+                        JSON.stringify(normalizeLocalSectionsForCompare(baseSections)) &&
+                      storedCommissionEnabled === baseCommissionEnabled &&
+                      storedClientTaxEnabled === baseClientTaxEnabled;
                     if (hasDestructiveEmptyDraft || isSameAsServer) {
                       window.localStorage.removeItem(storageKey);
                       setLocalSectionsDraft(baseSections);
+                      setCommissionEnabled(baseCommissionEnabled);
+                      setClientTaxEnabled(baseClientTaxEnabled);
                       setEstimateDraftDirty(false);
                     } else {
                       setLocalSectionsDraft(storedSections);
+                      setCommissionEnabled(storedCommissionEnabled);
+                      setClientTaxEnabled(storedClientTaxEnabled);
                       setEstimateDraftDirty(true);
                     }
                   } else {
                     window.localStorage.removeItem(storageKey);
                     setLocalSectionsDraft(baseSections);
+                    setCommissionEnabled(baseCommissionEnabled);
+                    setClientTaxEnabled(baseClientTaxEnabled);
                     setEstimateDraftDirty(false);
                   }
                 } catch {
                   window.localStorage.removeItem(storageKey);
                   setLocalSectionsDraft(baseSections);
+                  setCommissionEnabled(baseCommissionEnabled);
+                  setClientTaxEnabled(baseClientTaxEnabled);
                   setEstimateDraftDirty(false);
                 }
               } else {
                 setLocalSectionsDraft(baseSections);
+                setCommissionEnabled(baseCommissionEnabled);
+                setClientTaxEnabled(baseClientTaxEnabled);
                 setEstimateDraftDirty(false);
               }
             } else {
               setLocalSectionsDraft([]);
+              setCommissionEnabled(true);
+              setClientTaxEnabled(true);
               setEstimateDraftDirty(false);
             }
             setError(null);
@@ -734,9 +792,18 @@ export function ProjectEstimatePanel({
       schemaVersion: ESTIMATE_DRAFT_SCHEMA_VERSION,
       versionNumber: currentVersionNumber!,
       sections: localSectionsDraft,
+      commissionEnabled,
+      clientTaxEnabled,
     };
     window.localStorage.setItem(estimateDraftStorageKey, JSON.stringify(payload));
-  }, [currentVersionNumber, estimateDraftDirty, estimateDraftStorageKey, localSectionsDraft]);
+  }, [
+    clientTaxEnabled,
+    commissionEnabled,
+    currentVersionNumber,
+    estimateDraftDirty,
+    estimateDraftStorageKey,
+    localSectionsDraft,
+  ]);
 
   function mutateLocalSections(mutator: (prev: LocalDraftSection[]) => LocalDraftSection[]) {
     setLocalSectionsDraft((prev) => mutator(prev));
@@ -844,7 +911,7 @@ export function ProjectEstimatePanel({
         id: makeTempId("section"),
         sortOrder: nextSectionSortOrderAtTop(prev, data?.current?.sections),
         title: newSectionTitle.trim(),
-        kind: newSectionKind,
+        kind: "CONTRACTOR",
         linkedOrderId: null,
         lines: [],
       },
@@ -982,6 +1049,22 @@ export function ProjectEstimatePanel({
     );
   }
 
+  function addEmptyLine(sectionId: string) {
+    addLine(sectionId, {
+      name: "",
+      description: null,
+      unit: "шт",
+      qty: null,
+      unitPriceClient: null,
+      costClient: null,
+      costInternal: null,
+      paymentMethod: null,
+      paymentStatus: null,
+      contractorNote: null,
+      contractorRequisites: null,
+    });
+  }
+
   function addLine(
     sectionId: string,
     payload: {
@@ -1056,12 +1139,16 @@ export function ProjectEstimatePanel({
         body: JSON.stringify({
           versionNumber: currentVersionNumber,
           allowDeleteAllLocalSections: deletingAllLocalSections,
+          commissionEnabled,
+          clientTaxEnabled,
           localSections: sortSectionsBySortOrder(localSectionsDraft).map((section) => ({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
             sortOrder: section.sortOrder,
-            kind: section.kind,
-            lines: section.lines.map((line, lineIndex) => ({
+            kind: "CONTRACTOR" as const,
+            lines: section.lines
+              .filter((line) => line.name.trim())
+              .map((line, lineIndex) => ({
               id: line.id.startsWith("draft-") ? undefined : line.id,
               position: lineIndex,
               lineNumber: lineIndex + 1,
@@ -1106,6 +1193,8 @@ export function ProjectEstimatePanel({
     if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
     const baseSections = data?.current?.sections ? cloneLocalSections(data.current.sections) : [];
     setLocalSectionsDraft(baseSections);
+    setCommissionEnabled(data?.current?.commissionEnabled ?? true);
+    setClientTaxEnabled(data?.current?.clientTaxEnabled ?? true);
     setEstimateDraftDirty(false);
   }
 
@@ -1216,25 +1305,25 @@ export function ProjectEstimatePanel({
       clientSubtotal: roundedClientSubtotal,
       internalSubtotal: roundedInternalSubtotal,
       cashInternalCostTax,
-      commissionRate: 0,
+      commissionEnabled,
+      clientTaxEnabled,
     });
-    const commission = roundMoney(roundedClientSubtotal * PROJECT_ESTIMATE_COMMISSION_RATE);
-    const clientTotal = roundedClientSubtotal + estimateTotals.tax;
 
     return {
-      clientSubtotal: roundedClientSubtotal,
+      clientSubtotal: estimateTotals.clientSubtotal,
+      commission: estimateTotals.commission,
+      revenueTotal: estimateTotals.revenueTotal,
       tax6: estimateTotals.tax,
-      commission,
-      clientTotal,
-      internalSubtotal: roundedInternalSubtotal,
+      internalSubtotal: estimateTotals.internalSubtotal,
       cashInternalSubtotal: roundMoney(cashInternalSubtotal),
-      cashInternalCostTax,
+      cashInternalCostTax: estimateTotals.cashInternalCostTax,
       internalWithCashTax: estimateTotals.internalExpensesTotal,
+      totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax),
       grossMargin: estimateTotals.grossMargin,
       marginAfterTax: estimateTotals.marginAfterTax,
-      marginAfterTaxPct: clientTotal > 0 ? (estimateTotals.marginAfterTax / clientTotal) * 100 : 0,
+      marginAfterTaxPct: estimateTotals.marginAfterTaxPct,
     };
-  }, [renderedSections]);
+  }, [renderedSections, commissionEnabled, clientTaxEnabled]);
 
   function money(n: number) {
     return formatMoneyRub(n);
@@ -1247,10 +1336,10 @@ export function ProjectEstimatePanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-lg font-extrabold tracking-tight text-violet-900">Смета проекта</div>
           <EstimateHelpLegend title="Как устроена смета проекта">
-            Блоки реквизита читаются из живых заявок проекта, а локальные разделы можно собирать черновиком и сохранить в БД одним
+            Блоки реквизита читаются из живых заявок проекта, а разделы подрядчиков можно собирать черновиком и сохранить в БД одним
             действием. В блоках реквизита цена за ед. показывается как ставка за 1 единицу в 1 день, а итог строки считается по
-            формуле количество × дней × ставка. В универсальных разделах и у подрядчиков сумма клиенту считается как количество × цена
-            за ед. Клиентский итог считается как сумма клиенту + налог 6%, чтобы совпадать с итогом заявки. Комиссия 15% показывается отдельно как внутренняя справочная метрика.
+            формуле количество × дней × ставка. У подрядчиков сумма клиенту — количество × цена за ед. Итог клиенту = сумма по услугам
+            + комиссия агентства (если включена). Налог 6% считается от этой суммы и участвует в марже.
           </EstimateHelpLegend>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1536,21 +1625,12 @@ export function ProjectEstimatePanel({
                   ) : null}
                   <form
                     onSubmit={addSection}
-                    className="grid gap-2 sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto]"
+                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
-                    <select
-                      value={newSectionKind}
-                      onChange={(e) => setNewSectionKind(e.target.value as "LOCAL" | "CONTRACTOR")}
-                      className={`min-w-[8rem] ${inputField}`}
-                      disabled={busy}
-                    >
-                      <option value="LOCAL">Универсальный</option>
-                      <option value="CONTRACTOR">Подрядчики</option>
-                    </select>
                     <input
                       value={newSectionTitle}
                       onChange={(e) => setNewSectionTitle(e.target.value)}
-                      placeholder="Название раздела в смете"
+                      placeholder="Название раздела подрядчиков"
                       className={`min-w-[12rem] flex-1 ${inputField}`}
                       maxLength={200}
                     />
@@ -1605,7 +1685,7 @@ export function ProjectEstimatePanel({
                             <LineEditor
                               key={ln.id}
                               sectionId={sec.id}
-                              sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
+                              sectionKind="CONTRACTOR"
                               line={ln}
                               isDirty={dirtyLocalLineIds.has(ln.id)}
                               readOnly={readOnly}
@@ -1617,39 +1697,14 @@ export function ProjectEstimatePanel({
 
                           {!readOnly ? (
                             <div className="border-t border-dashed border-zinc-200 pt-2">
-                              {addLineFormOpenBySection[sec.id] ? (
-                                <>
-                                  <AddLineForm
-                                    sectionId={sec.id}
-                                    sectionKind={sec.kind === "CONTRACTOR" ? "CONTRACTOR" : "LOCAL"}
-                                    busy={busy}
-                                    onAdd={(sid, payload) => {
-                                      addLine(sid, payload);
-                                      setAddLineFormOpenBySection((p) => ({ ...p, [sid]: false }));
-                                    }}
-                                  />
-                                  <button
-                                    type="button"
-                                    className={`mt-2 ${btnSecondaryXs} text-zinc-600`}
-                                    onClick={() =>
-                                      setAddLineFormOpenBySection((p) => ({ ...p, [sec.id]: false }))
-                                    }
-                                  >
-                                    Свернуть
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  className={`${btnSecondaryXs} border-violet-200 bg-violet-50/80 font-semibold text-violet-900 hover:bg-violet-100`}
-                                  onClick={() =>
-                                    setAddLineFormOpenBySection((p) => ({ ...p, [sec.id]: true }))
-                                  }
-                                >
-                                  + Добавить строку
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                disabled={busy}
+                                className={`${btnSecondaryXs} border-violet-200 bg-violet-50/80 font-semibold text-violet-900 hover:bg-violet-100`}
+                                onClick={() => addEmptyLine(sec.id)}
+                              >
+                                {sec.lines.length === 0 ? "+ Добавить строку" : "+ Строка"}
+                              </button>
                             </div>
                           ) : null}
                         </>
@@ -1664,16 +1719,24 @@ export function ProjectEstimatePanel({
                   <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Сумма</span>
+                      <span className="text-zinc-600">Сумма по услугам</span>
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.clientSubtotal)} ₽</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Налог 6%</span>
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.tax6)} ₽</span>
+                      <EstimateFinanceToggle
+                        label={`Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`}
+                        checked={commissionEnabled}
+                        disabled={readOnly || busy}
+                        onChange={(value) => {
+                          setCommissionEnabled(value);
+                          setEstimateDraftDirty(true);
+                        }}
+                      />
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
                     </div>
                     <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
-                      <span className="font-extrabold text-violet-950">Итого</span>
-                      <span className="font-black tabular-nums text-violet-950">{money(totals.clientTotal)} ₽</span>
+                      <span className="font-extrabold text-violet-950">Итого клиенту</span>
+                      <span className="font-black tabular-nums text-violet-950">{money(totals.revenueTotal)} ₽</span>
                     </div>
                   </div>
                 </div>
@@ -1691,14 +1754,26 @@ export function ProjectEstimatePanel({
                       </div>
                     ) : null}
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Расходы всего</span>
+                      <span className="text-zinc-600">Расходы без налога 6%</span>
                       <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalWithCashTax)} ₽</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Комиссия 15% (справочно)</span>
-                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.commission)} ₽</span>
+                      <EstimateFinanceToggle
+                        label={`Налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
+                        checked={clientTaxEnabled}
+                        disabled={readOnly || busy}
+                        onChange={(value) => {
+                          setClientTaxEnabled(value);
+                          setEstimateDraftDirty(true);
+                        }}
+                      />
+                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.tax6)} ₽</span>
                     </div>
                     <div className="flex items-center justify-between gap-3 border-t border-zinc-200 pt-2">
+                      <span className="font-semibold text-zinc-700">Расходы всего</span>
+                      <span className="font-extrabold tabular-nums text-zinc-950">{money(totals.totalExpensesWithTax)} ₽</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-zinc-700">Валовая маржа</span>
                       <span className="font-extrabold tabular-nums text-zinc-950">{money(totals.grossMargin)} ₽</span>
                     </div>
@@ -1712,7 +1787,7 @@ export function ProjectEstimatePanel({
                       <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">{money(totals.marginAfterTax)} ₽</div>
                     </div>
                     <div>
-                      <div className="text-xs font-semibold text-emerald-900">Процент к итогу клиента</div>
+                      <div className="text-xs font-semibold text-emerald-900">Рентабельность</div>
                       <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">
                         {Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}
                       </div>
@@ -2201,234 +2276,6 @@ function LineEditor({
         </div>
       )}
     </div>
-  );
-}
-
-function AddLineForm({
-  sectionId,
-  sectionKind,
-  busy,
-  onAdd,
-}: {
-  sectionId: string;
-  sectionKind: "LOCAL" | "CONTRACTOR";
-  busy: boolean;
-  onAdd: (
-    sectionId: string,
-    payload: {
-      name: string;
-      description: string | null;
-      unit: string | null;
-      qty: string | null;
-      unitPriceClient: string | null;
-      costClient: number | null;
-      costInternal: number | null;
-      paymentMethod: string | null;
-      paymentStatus: string | null;
-      contractorNote: string | null;
-      contractorRequisites: string | null;
-    },
-  ) => void;
-}) {
-  const isContractor = sectionKind === "CONTRACTOR";
-  const [name, setName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [unit, setUnit] = React.useState("шт");
-  const [qty, setQty] = React.useState("");
-  const [up, setUp] = React.useState("");
-  const [ci, setCi] = React.useState("");
-  const [pm, setPm] = React.useState("");
-  const [paymentStatus, setPaymentStatus] = React.useState("");
-  const [cn, setCn] = React.useState("");
-  const [cr, setCr] = React.useState("");
-
-  const sumPreview = displayLocalLineClientSum({
-    qty: qty || null,
-    unitPriceClient: up || null,
-    costClient: null,
-  });
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    const paymentStatusSaved = paymentStatus.trim() === "" ? null : paymentStatus.trim();
-
-    onAdd(sectionId, {
-      name: name.trim(),
-      description: description.trim() || null,
-      unit: unit.trim() || null,
-      qty: qty.trim() || null,
-      unitPriceClient: up.trim() || null,
-      costClient: null,
-      costInternal: ci === "" ? null : parseFloat(ci.replace(",", ".")),
-      paymentMethod: pm.trim() || null,
-      paymentStatus: paymentStatusSaved,
-      contractorNote: cn.trim() || null,
-      contractorRequisites: cr.trim() || null,
-    });
-    setName("");
-    setDescription("");
-    setUnit("шт");
-    setQty("");
-    setUp("");
-    setCi("");
-    setPm("");
-    setPaymentStatus("");
-    setCn("");
-    setCr("");
-  }
-
-  return (
-    <form onSubmit={submit} className="space-y-2 text-xs">
-      <div className="rounded-lg border border-violet-200/80 bg-violet-50/50 p-2">
-        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-violet-900/85">Новая строка · клиенту</div>
-        <div className={ESTIMATE_CLIENT_ROW_GRID}>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Позиция
-            <input
-              placeholder="Название"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={`mt-0.5 w-full ${cellXs}`}
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Описание
-            <input
-              placeholder="Описание"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className={`mt-0.5 w-full ${cellXs}`}
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Ед.
-            <input
-              placeholder="шт"
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              className={`mt-0.5 w-full ${cellXs}`}
-              list={UNIT_DATALIST_ID}
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Кол-во
-            <input
-              placeholder="Кол-во"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Цена/ед
-            <input
-              placeholder="Цена"
-              value={up}
-              onChange={(e) => setUp(e.target.value)}
-              className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Сумма
-            <div
-              className={`mt-0.5 flex min-h-[1.75rem] w-full items-center tabular-nums ${cellXs} bg-zinc-100/90 text-zinc-800`}
-              title="Кол-во × цена за ед."
-            >
-              {sumPreview}
-              {sumPreview !== "—" ? <span className="ml-0.5 text-zinc-500">₽</span> : null}
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-zinc-200/95 bg-zinc-50/85 p-2">
-        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-zinc-600">Новая строка · наши поля</div>
-        {isContractor ? (
-          <div className="grid gap-1.5 xl:grid-cols-[4.5rem_7rem_1fr_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Внутр.
-              <input
-                placeholder="₽"
-                value={ci}
-                onChange={(e) => setCi(e.target.value)}
-                className={`mt-0.5 w-full ${cellXs} tabular-nums`}
-                inputMode="decimal"
-              />
-            </label>
-            <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Оплата
-              <select
-                value={pm}
-                onChange={(e) => setPm(e.target.value)}
-                className={`mt-0.5 w-full ${cellXs} bg-white`}
-              >
-                <option value="">—</option>
-                {PAYMENT_METHOD_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Статус оплаты
-              <input
-                value={paymentStatus}
-                onChange={(e) => setPaymentStatus(e.target.value)}
-                list={paymentStatusDatalistId(`new-${sectionId}`)}
-                placeholder="Выберите из списка или введите"
-                autoComplete="off"
-                className={`mt-0.5 w-full min-w-0 ${cellXs} bg-white ${paymentStatusTextClass(paymentStatus)}`}
-              />
-              <datalist id={paymentStatusDatalistId(`new-${sectionId}`)}>
-                <option value={PAYMENT_STATUS_PAID} />
-                <option value={PAYMENT_STATUS_UNPAID} />
-              </datalist>
-            </label>
-            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Коммент. подрядчику
-              <input
-                placeholder="Комментарий"
-                value={cn}
-                onChange={(e) => setCn(e.target.value)}
-                className={`mt-0.5 w-full ${cellXs}`}
-              />
-            </label>
-            <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
-              Реквизиты / счёт
-              <input
-                placeholder="Счёт / реквизиты"
-                value={cr}
-                onChange={(e) => setCr(e.target.value)}
-                className={`mt-0.5 w-full ${cellXs}`}
-              />
-            </label>
-          </div>
-        ) : (
-          <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Внутр.
-            <input
-              placeholder="₽"
-              value={ci}
-              onChange={(e) => setCi(e.target.value)}
-              className={`mt-0.5 w-full max-w-[6rem] ${cellXs} tabular-nums`}
-              inputMode="decimal"
-            />
-          </label>
-        )}
-      </div>
-
-      <button
-        type="submit"
-        disabled={busy || !name.trim()}
-        className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
-      >
-        + строка
-      </button>
-    </form>
   );
 }
 

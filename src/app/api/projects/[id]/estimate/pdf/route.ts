@@ -53,6 +53,8 @@ export async function GET(
     versionNumber: model.current.versionNumber,
     sections: model.current.sections,
     variant,
+    commissionEnabled: model.current.commissionEnabled,
+    clientTaxEnabled: model.current.clientTaxEnabled,
   });
 
   const dateOnly = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);

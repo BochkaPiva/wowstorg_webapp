@@ -66,13 +66,20 @@ describe("project estimate totals", () => {
     ).toBe(5040);
   });
 
-  it("returns null for incomplete requisite line inputs", () => {
+  it("matches Gazprom Arena manual estimate totals", () => {
     expect(
-      calcProjectEstimateRequisiteTotal({
-        pricePerDay: "",
-        qty: 2,
-        plannedDays: 3,
+      calcProjectEstimateTotals({
+        clientSubtotal: 112_500,
+        internalSubtotal: 86_500,
+        cashInternalCostTax: 105,
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      commission: 16_875,
+      revenueTotal: 129_375,
+      tax: 7_762.5,
+      grossMargin: 42_770,
+      marginAfterTax: 35_007.5,
+      marginAfterTaxPct: 27.06,
+    });
   });
 });

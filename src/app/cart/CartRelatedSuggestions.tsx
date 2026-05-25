@@ -181,31 +181,39 @@ export function CartRelatedSuggestions({
     prevItemCountRef.current = count;
   }, [itemIds.length, cartScope]);
 
+  const itemIdsKey = itemIds.join(",");
+  const qtysKey = qtys.join(",");
+
   const requestKey = React.useMemo(
     () =>
       [
-        itemIds.join(","),
-        qtys.join(","),
+        itemIdsKey,
+        qtysKey,
         startDate ?? "",
         endDate ?? "",
         rentalStartPartOfDay,
         rentalEndPartOfDay,
         excludeOrderId ?? "",
       ].join("|"),
-    [itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
+    [itemIdsKey, qtysKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
+  );
+
+  const catalogItemIdsKey = React.useMemo(
+    () => (itemIdsKey ? itemIdsKey.split(",").sort().join(",") : ""),
+    [itemIdsKey],
   );
 
   const catalogRequestKey = React.useMemo(
     () =>
       [
-        [...itemIds].sort().join(","),
+        catalogItemIdsKey,
         startDate ?? "",
         endDate ?? "",
         rentalStartPartOfDay,
         rentalEndPartOfDay,
         excludeOrderId ?? "",
       ].join("|"),
-    [itemIds, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
+    [catalogItemIdsKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
   );
 
   const fetchKey = variant === "catalog" ? catalogRequestKey : requestKey;
@@ -214,7 +222,7 @@ export function CartRelatedSuggestions({
   groupsRef.current = groups;
 
   React.useEffect(() => {
-    if (disabled || itemIds.length === 0) {
+    if (disabled || !itemIdsKey) {
       setGroups([]);
       setLoading(false);
       return;
@@ -225,8 +233,8 @@ export function CartRelatedSuggestions({
       if (groupsRef.current.length === 0) setLoading(true);
       try {
         const params = new URLSearchParams();
-        params.set("itemIds", itemIds.join(","));
-        params.set("qtys", qtys.join(","));
+        params.set("itemIds", itemIdsKey);
+        params.set("qtys", qtysKey);
         if (startDate && endDate) {
           params.set("startDate", startDate);
           params.set("endDate", endDate);
@@ -249,7 +257,8 @@ export function CartRelatedSuggestions({
     return () => {
       cancelled = true;
     };
-  }, [disabled, fetchKey, itemIds, qtys, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId]);
+    // fetchKey encodes cart lines, dates and excludeOrderId.
+  }, [disabled, fetchKey]);
 
   const visibleGroups = React.useMemo(
     () =>

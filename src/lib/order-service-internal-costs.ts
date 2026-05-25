@@ -16,6 +16,13 @@ function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+export const ORDER_SERVICE_PAYMENT_METHOD_LABELS: Record<OrderServicePaymentMethod, string> = {
+  NON_CASH: "Безнал",
+  CASH: "Наличка",
+};
+
+export const ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL = "Оплата";
+
 export function normalizeOrderServicePaymentMethod(
   value: OrderServicePaymentMethod | string | null | undefined,
 ): OrderServicePaymentMethod {

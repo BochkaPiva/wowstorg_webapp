@@ -12,6 +12,8 @@ import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
   calcOrderServicesInternalCosts,
+  ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL,
+  ORDER_SERVICE_PAYMENT_METHOD_LABELS,
   type OrderServicePaymentMethod,
 } from "@/lib/order-service-internal-costs";
 import {
@@ -686,14 +688,16 @@ function ServiceEditRow({
           ) : null}
           {showInternalPrice && internalPaymentMethod && onInternalPaymentMethodChange ? (
             <div className="min-w-[130px]">
-              <label className="block text-xs font-medium text-zinc-500 mb-1">РћРїР»Р°С‚Р°</label>
+              <label className="block text-xs font-medium text-zinc-500 mb-1">
+                {ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL}
+              </label>
               <select
                 value={internalPaymentMethod}
                 onChange={(e) => onInternalPaymentMethodChange(e.target.value as OrderServicePaymentMethod)}
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
               >
-                <option value="NON_CASH">Р‘РµР·РЅР°Р»</option>
-                <option value="CASH">РќР°Р»РёС‡РєР°</option>
+                <option value="NON_CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.NON_CASH}</option>
+                <option value="CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.CASH}</option>
               </select>
             </div>
           ) : null}

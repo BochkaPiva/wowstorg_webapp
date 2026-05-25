@@ -6,10 +6,12 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import { roundMoney } from "@/lib/money";
 import {
   calcWarehouseProfitEstimate,
   ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL,
@@ -220,8 +222,8 @@ function calcOrderPricingClient(order: {
   const rentalAfterDiscount = Math.max(0, rentalBeforeDiscount - discountAmount);
   const services =
     (order.deliveryPrice ?? 0) + (order.montagePrice ?? 0) + (order.demontagePrice ?? 0);
-  const grandTotalBeforeTax = rentalAfterDiscount + services;
-  const taxAmount = Math.round(grandTotalBeforeTax * ORDER_TAX_RATE);
+  const grandTotalBeforeTax = roundMoney(rentalAfterDiscount + services);
+  const taxAmount = roundMoney(grandTotalBeforeTax * ORDER_TAX_RATE);
   return {
     days,
     multiplier,
@@ -232,7 +234,7 @@ function calcOrderPricingClient(order: {
     grandTotalBeforeTax,
     taxRate: ORDER_TAX_RATE,
     taxAmount,
-    grandTotal: Math.round(grandTotalBeforeTax + taxAmount),
+    grandTotal: roundMoney(grandTotalBeforeTax + taxAmount),
   };
 }
 
@@ -1409,51 +1411,25 @@ export default function OrderDetailsPage() {
               <p className="text-xs text-zinc-400">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}
               </p>
-              <p className="mt-2 text-sm">
-                Сумма заявки:{" "}
-                <span className="rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
-                  {orderTotal(order).toLocaleString("ru-RU")} ₽
-                </span>
-                {orderPricing && orderPricing.discountAmount > 0 ? (
-                  <span className="ml-2 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-800">
-                    скидка {formatDiscountLabel(order.rentalDiscountType, order.rentalDiscountPercent, order.rentalDiscountAmount)}
-                  </span>
-                ) : null}
-              </p>
               {orderPricing ? (
-                <p className="mt-1 text-xs text-zinc-500">
-                  Включая налог {Math.round(orderPricing.taxRate * 100)}%:{" "}
-                  <span className="font-semibold tabular-nums text-zinc-700">
-                    {orderPricing.taxAmount.toLocaleString("ru-RU")} ₽
-                  </span>
-                  {" · "}
-                  сумма до налога:{" "}
-                  <span className="font-semibold tabular-nums text-zinc-700">
-                    {Math.round(orderPricing.grandTotalBeforeTax).toLocaleString("ru-RU")} ₽
-                  </span>
-                </p>
-              ) : null}
-              {warehouseProfitEstimate ? (
-                <p className="mt-1 text-xs text-zinc-600">
-                  Себестоимость доп. услуг (внутр.):{" "}
-                  <span className="font-semibold tabular-nums text-zinc-800">
-                    {warehouseProfitEstimate.internalCostTotal.toLocaleString("ru-RU")} ₽
-                  </span>
-                  {warehouseProfitEstimate.cashInternalCostTax > 0 ? (
-                    <>
-                      {" · "}
-                      Налог на наличку 3.5%:{" "}
-                      <span className="font-semibold tabular-nums text-zinc-800">
-                        {warehouseProfitEstimate.cashInternalCostTax.toLocaleString("ru-RU")} ₽
-                      </span>
-                    </>
-                  ) : null}
-                  {" · "}
-                  оценка прибыли (без себестоимости аренды реквизита):{" "}
-                  <span className="font-semibold tabular-nums text-emerald-800">
-                    {Math.max(0, warehouseProfitEstimate.profitEstimate).toLocaleString("ru-RU")} ₽
-                  </span>
-                </p>
+                <OrderFinancialSummary
+                  pricing={{
+                    grandTotalBeforeTax: orderPricing.grandTotalBeforeTax,
+                    taxRate: orderPricing.taxRate,
+                    taxAmount: orderPricing.taxAmount,
+                    grandTotal: orderPricing.grandTotal,
+                  }}
+                  warehouse={warehouseProfitEstimate}
+                  discountLabel={
+                    orderPricing.discountAmount > 0
+                      ? formatDiscountLabel(
+                          order.rentalDiscountType,
+                          order.rentalDiscountPercent,
+                          order.rentalDiscountAmount,
+                        )
+                      : null
+                  }
+                />
               ) : null}
               {order.estimateFileKey ? (
                 <p className="mt-3">

@@ -1,3 +1,5 @@
+import { roundMoney } from "@/lib/money";
+
 export const PROJECT_ESTIMATE_TAX_RATE = 0.06;
 export const PROJECT_ESTIMATE_COMMISSION_RATE = 0.15;
 
@@ -22,9 +24,7 @@ export type ProjectEstimateTotals = {
   marginAfterTaxPct: number;
 };
 
-export function roundMoney(value: number): number {
-  return Math.round(Number.isFinite(value) ? value : 0);
-}
+export { roundMoney };
 
 export function getNumericAmount(value: unknown): number {
   const num = value == null ? 0 : Number(value);
@@ -41,11 +41,11 @@ export function calcProjectEstimateTotals(
   const cashInternalCostTax = roundMoney(input.cashInternalCostTax ?? 0);
   const internalExpensesTotal = roundMoney(internalSubtotal + cashInternalCostTax);
   const commission = roundMoney(clientSubtotal * commissionRate);
-  const revenueTotal = clientSubtotal + commission;
+  const revenueTotal = roundMoney(clientSubtotal + commission);
   const tax = roundMoney(revenueTotal * taxRate);
   const grossMargin = roundMoney(revenueTotal - internalSubtotal - cashInternalCostTax);
   const marginAfterTax = roundMoney(grossMargin - tax);
-  const marginAfterTaxPct = revenueTotal > 0 ? (marginAfterTax / revenueTotal) * 100 : 0;
+  const marginAfterTaxPct = revenueTotal > 0 ? roundMoney((marginAfterTax / revenueTotal) * 100) : 0;
 
   return {
     clientSubtotal,

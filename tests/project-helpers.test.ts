@@ -212,6 +212,13 @@ describe("project helpers", () => {
     expect(findRowByName("Стул")?.getCell(daysColumn).value).toBe(3);
     expect(findRowByName("Стол")?.getCell(daysColumn).value).toBe(2);
 
+    expect(findRowByName("Стул")?.getCell(8).value).toMatchObject({
+      formula: expect.stringMatching(/E\d+\*IF\(F\d+="",1,F\d+\)\*G\d+/),
+    });
+    expect(findRowByName("Стул")?.getCell(1).value).toMatchObject({
+      formula: expect.stringMatching(/COUNTA\(\$B\$/),
+    });
+
     let hasSectionTotal = false;
     sheet!.eachRow((row) => {
       row.eachCell((cell) => {

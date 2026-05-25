@@ -1,4 +1,5 @@
 import { ORDER_TAX_RATE } from "@/lib/constants";
+import { roundMoney } from "@/lib/money";
 import {
   billableRentalDays,
   rentalCalendarDaysInclusiveUtcDates,
@@ -119,10 +120,10 @@ export function calcOrderPricing(args: {
   const discountAmount = Math.min(Math.max(0, requestedDiscount), rentalSubtotalBeforeDiscount);
   const rentalSubtotalAfterDiscount = Math.max(0, rentalSubtotalBeforeDiscount - discountAmount);
   const servicesTotal = num(args.deliveryPrice) + num(args.montagePrice) + num(args.demontagePrice);
-  const grandTotalBeforeTax = rentalSubtotalAfterDiscount + servicesTotal;
+  const grandTotalBeforeTax = roundMoney(rentalSubtotalAfterDiscount + servicesTotal);
   const taxRate = ORDER_TAX_RATE;
-  const taxAmount = Math.round(grandTotalBeforeTax * taxRate);
-  const grandTotal = Math.round(grandTotalBeforeTax + taxAmount);
+  const taxAmount = roundMoney(grandTotalBeforeTax * taxRate);
+  const grandTotal = roundMoney(grandTotalBeforeTax + taxAmount);
   const lineAllocations = baseLines.map((line) => {
     const share =
       rentalSubtotalBeforeDiscount > 0

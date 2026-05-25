@@ -9,14 +9,14 @@ describe("project estimate totals", () => {
       calcProjectEstimateTotals({
         clientSubtotal: 23_320,
         internalSubtotal: 2_500,
-        cashInternalCostTax: 88,
+        cashInternalCostTax: 87.5,
         commissionRate: 0,
       }),
     ).toMatchObject({
-      tax: 1_399,
-      grossMargin: 20_732,
-      marginAfterTax: 19_333,
-      internalExpensesTotal: 2_588,
+      tax: 1_399.2,
+      grossMargin: 20_732.5,
+      marginAfterTax: 19_333.3,
+      internalExpensesTotal: 2_587.5,
     });
   });
 

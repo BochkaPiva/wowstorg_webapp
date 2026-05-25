@@ -1,4 +1,5 @@
 import { ORDER_CASH_INTERNAL_COST_TAX_RATE } from "@/lib/constants";
+import { roundMoney } from "@/lib/money";
 
 export const ORDER_SERVICE_PAYMENT_METHODS = ["NON_CASH", "CASH"] as const;
 
@@ -29,7 +30,7 @@ export function calcCashInternalCostTaxAmount(
 ): number {
   const base = Number(cashInternalCostTotal);
   if (!Number.isFinite(base) || base <= 0) return 0;
-  return Math.round(base * cashTaxRate);
+  return roundMoney(base * cashTaxRate);
 }
 
 export function calcWarehouseProfitEstimate(input: {
@@ -44,18 +45,23 @@ export function calcWarehouseProfitEstimate(input: {
     montage: input.montage,
     demontage: input.demontage,
   });
-  const clientTaxAmount = Math.round(input.clientTaxAmount);
-  const profitEstimate = Math.round(
-    input.clientGrandTotal -
+  const clientGrandTotal = roundMoney(input.clientGrandTotal);
+  const clientTaxAmount = roundMoney(input.clientTaxAmount);
+  const profitEstimate = roundMoney(
+    clientGrandTotal -
       clientTaxAmount -
       services.internalCostTotal -
       services.cashInternalCostTax,
   );
+  const profitabilityPct =
+    clientGrandTotal > 0 ? roundMoney((profitEstimate / clientGrandTotal) * 100) : 0;
 
   return {
     ...services,
+    clientGrandTotal,
     clientTaxAmount,
     profitEstimate,
+    profitabilityPct,
   };
 }
 
@@ -88,10 +94,10 @@ export function calcOrderServicesInternalCosts(input: {
   const cashInternalCostTax = calcCashInternalCostTaxAmount(cashInternalCostTotal, cashTaxRate);
 
   return {
-    internalCostTotal: Math.round(internalCostTotal),
-    cashInternalCostTotal: Math.round(cashInternalCostTotal),
+    internalCostTotal: roundMoney(internalCostTotal),
+    cashInternalCostTotal: roundMoney(cashInternalCostTotal),
     cashInternalCostTax,
-    internalCostWithCashTax: Math.round(internalCostTotal + cashInternalCostTax),
+    internalCostWithCashTax: roundMoney(internalCostTotal + cashInternalCostTax),
     cashTaxRate,
   };
 }

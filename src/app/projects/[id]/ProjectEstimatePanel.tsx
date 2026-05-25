@@ -26,8 +26,8 @@ import {
   calcProjectEstimateTotals,
   PROJECT_ESTIMATE_COMMISSION_RATE,
   getNumericAmount,
-  roundMoney,
 } from "@/lib/project-estimate-totals";
+import { formatMoneyRub, roundMoney } from "@/lib/money";
 
 type EstLine = {
   id: string;
@@ -1237,8 +1237,7 @@ export function ProjectEstimatePanel({
   }, [renderedSections]);
 
   function money(n: number) {
-    if (!Number.isFinite(n)) return "—";
-    return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+    return formatMoneyRub(n);
   }
 
   return (

@@ -11,15 +11,16 @@ import {
 describe("order service internal costs", () => {
   it("subtracts client tax, internal cost and cash tax from grand total", () => {
     const estimate = calcWarehouseProfitEstimate({
-      clientGrandTotal: 24_719,
-      clientTaxAmount: 1_399,
+      clientGrandTotal: 24_719.2,
+      clientTaxAmount: 1_399.2,
       delivery: { enabled: true, internalCost: 2_500, internalPaymentMethod: "CASH" },
       montage: { enabled: true, internalCost: 0, internalPaymentMethod: "NON_CASH" },
     });
 
     expect(estimate.internalCostTotal).toBe(2_500);
-    expect(estimate.cashInternalCostTax).toBe(88);
-    expect(estimate.profitEstimate).toBe(20_732);
+    expect(estimate.cashInternalCostTax).toBe(87.5);
+    expect(estimate.profitEstimate).toBe(20_732.5);
+    expect(estimate.profitabilityPct).toBe(83.87);
   });
 
   it("adds 3.5% tax only to cash-paid internal service costs", () => {

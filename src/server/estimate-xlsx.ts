@@ -3,7 +3,20 @@ import path from "node:path";
 
 import ExcelJS from "exceljs";
 
+import { roundMoney } from "@/lib/money";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
+import {
+  addFormulaRefFormula,
+  applyLineFormulas,
+  percentOfFormula,
+  setXlsxFormula,
+  setXlsxMoneyFormat,
+  sumColumnFormula,
+  type XlsxDataRowRange,
+  type XlsxLineColumns,
+  xlsxCellRef,
+  XLSX_MONEY_NUMFMT,
+} from "@/server/xlsx-estimate-formulas";
 
 type OrderForEstimate = {
   id: string;
@@ -32,6 +45,16 @@ type OrderForEstimate = {
     pricePerDaySnapshot: unknown;
     item?: { name: string };
   }>;
+};
+
+const COLS = 8;
+const LINE_COLS: XlsxLineColumns = {
+  number: 1,
+  name: 2,
+  qty: 5,
+  days: 6,
+  unitPrice: 7,
+  lineTotal: 8,
 };
 
 const COLORS = {
@@ -127,18 +150,18 @@ async function addLogo(ws: ExcelJS.Worksheet, wb: ExcelJS.Workbook) {
   }
 }
 
-function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate, cols: number) {
+function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate) {
   for (let row = 1; row <= 7; row += 1) {
     ws.getRow(row).height = row <= 5 ? 23 : 10;
   }
 
   ws.mergeCells(1, 1, 5, 3);
-  ws.mergeCells(1, 4, 1, cols);
-  ws.mergeCells(2, 4, 2, cols);
-  ws.mergeCells(3, 4, 3, cols);
-  ws.mergeCells(4, 4, 4, cols);
-  ws.mergeCells(5, 4, 5, cols);
-  styleRange(ws, 1, 5, 1, cols, { fill: COLORS.white, borderColor: COLORS.white });
+  ws.mergeCells(1, 4, 1, COLS);
+  ws.mergeCells(2, 4, 2, COLS);
+  ws.mergeCells(3, 4, 3, COLS);
+  ws.mergeCells(4, 4, 4, COLS);
+  ws.mergeCells(5, 4, 5, COLS);
+  styleRange(ws, 1, 5, 1, COLS, { fill: COLORS.white, borderColor: COLORS.white });
 
   ws.getCell(1, 4).value = "Смета расходов";
   styleCell(ws.getCell(1, 4), { bold: true, size: 22, fontColor: COLORS.violetDark, borderColor: COLORS.white });
@@ -157,13 +180,13 @@ function addHeader(ws: ExcelJS.Worksheet, order: OrderForEstimate, cols: number)
     styleCell(cell, { size: 10, fontColor: COLORS.muted, borderColor: COLORS.white });
   }
 
-  styleRange(ws, 6, 6, 1, cols, { fill: COLORS.violet, borderColor: COLORS.violet });
+  styleRange(ws, 6, 6, 1, COLS, { fill: COLORS.violet, borderColor: COLORS.violet });
   ws.getRow(6).height = 5;
 }
 
-function styleHeaderRow(ws: ExcelJS.Worksheet, rowNumber: number, cols: number) {
+function styleHeaderRow(ws: ExcelJS.Worksheet, rowNumber: number) {
   ws.getRow(rowNumber).height = 28;
-  for (let col = 1; col <= cols; col += 1) {
+  for (let col = 1; col <= COLS; col += 1) {
     styleCell(ws.getCell(rowNumber, col), {
       fill: COLORS.violetDark,
       fontColor: COLORS.white,
@@ -174,35 +197,24 @@ function styleHeaderRow(ws: ExcelJS.Worksheet, rowNumber: number, cols: number) 
   }
 }
 
-function addEstimateRow(
-  ws: ExcelJS.Worksheet,
-  values: Array<string | number>,
-  cols: number,
-  rowIndex: number,
-) {
-  const rowValues = [...values];
-  while (rowValues.length < cols) rowValues.push("");
-  ws.addRow(rowValues.slice(0, cols));
-  const row = ws.lastRow!;
-  row.height = 40;
-  for (let col = 1; col <= cols; col += 1) {
-    styleCell(ws.getCell(row.number, col), {
+function styleDataRow(ws: ExcelJS.Worksheet, row: number, rowIndex: number) {
+  ws.getRow(row).height = 40;
+  for (let col = 1; col <= COLS; col += 1) {
+    styleCell(ws.getCell(row, col), {
       fill: rowIndex % 2 === 0 ? COLORS.slateSoft : COLORS.white,
       horizontal: col === 1 || col >= 4 ? "center" : "left",
     });
   }
-  ws.getCell(row.number, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
-  ws.getCell(row.number, cols - 1).numFmt = '#,##0 "₽"';
-  ws.getCell(row.number, cols).numFmt = '#,##0 "₽"';
-  return row.number;
+  ws.getCell(row, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
+  setXlsxMoneyFormat(ws, row, [LINE_COLS.unitPrice, LINE_COLS.lineTotal]);
 }
 
-function addSectionRow(ws: ExcelJS.Worksheet, title: string, cols: number) {
+function addSectionRow(ws: ExcelJS.Worksheet, title: string) {
   ws.addRow(["", title]);
   const row = ws.lastRow!.number;
-  ws.mergeCells(row, 2, row, cols);
+  ws.mergeCells(row, 2, row, COLS);
   ws.getRow(row).height = 30;
-  for (let col = 1; col <= cols; col += 1) {
+  for (let col = 1; col <= COLS; col += 1) {
     styleCell(ws.getCell(row, col), {
       fill: COLORS.violetSoft,
       fontColor: COLORS.violetDark,
@@ -213,30 +225,63 @@ function addSectionRow(ws: ExcelJS.Worksheet, title: string, cols: number) {
   }
 }
 
-function addSummaryRow(
+function addSummaryFormulaRow(
   ws: ExcelJS.Worksheet,
-  cols: number,
   label: string,
-  amount: number,
-  opts: { emphasis?: boolean; fill?: string; fontColor?: string } = {},
+  formula: string,
+  result: number,
+  opts: { emphasis?: boolean; fill?: string; fontColor?: string; staticValue?: number } = {},
 ) {
   ws.addRow([]);
   const row = ws.lastRow!.number;
-  ws.mergeCells(row, cols - 2, row, cols - 1);
-  ws.getCell(row, cols - 2).value = label;
-  ws.getCell(row, cols).value = amount;
+  ws.mergeCells(row, COLS - 2, row, COLS - 1);
+  ws.getCell(row, COLS - 2).value = label;
+  if (opts.staticValue !== undefined) {
+    ws.getCell(row, COLS).value = opts.staticValue;
+  } else {
+    setXlsxFormula(ws, row, COLS, formula, result);
+  }
   ws.getRow(row).height = opts.emphasis ? 30 : 25;
-  for (let col = cols - 2; col <= cols; col += 1) {
+  for (let col = COLS - 2; col <= COLS; col += 1) {
     styleCell(ws.getCell(row, col), {
       fill: opts.fill ?? COLORS.violetSoft,
       fontColor: opts.fontColor ?? COLORS.violetDark,
       bold: true,
       size: opts.emphasis ? 12 : 10,
-      horizontal: col === cols ? "right" : "left",
+      horizontal: col === COLS ? "right" : "left",
       borderColor: COLORS.borderStrong,
     });
   }
-  ws.getCell(row, cols).numFmt = '#,##0 "₽"';
+  ws.getCell(row, COLS).numFmt = XLSX_MONEY_NUMFMT;
+  return row;
+}
+
+function addDataSection(
+  ws: ExcelJS.Worksheet,
+  title: string,
+  rows: Array<Array<string | number>>,
+  lineTotalResults: number[],
+  rowIndexStart: number,
+): { range: XlsxDataRowRange | null; nextRowIndex: number } {
+  addSectionRow(ws, title);
+  if (rows.length === 0) return { range: null, nextRowIndex: rowIndexStart };
+
+  const sectionStartRow = ws.lastRow!.number + 1;
+  let rowIndex = rowIndexStart;
+  let firstRow = 0;
+  let lastRow = 0;
+
+  rows.forEach((values, idx) => {
+    ws.addRow(values);
+    const row = ws.lastRow!.number;
+    if (idx === 0) firstRow = row;
+    lastRow = row;
+    styleDataRow(ws, row, rowIndex);
+    applyLineFormulas(ws, row, LINE_COLS, sectionStartRow, lineTotalResults[idx]);
+    rowIndex += 1;
+  });
+
+  return { range: { firstRow, lastRow }, nextRowIndex: rowIndex };
 }
 
 export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer> {
@@ -262,7 +307,6 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     discount: order,
   });
 
-  const cols = 8;
   const ws = wb.addWorksheet("Смета", {
     views: [{ state: "frozen", ySplit: 8, showGridLines: false }],
     pageSetup: {
@@ -292,39 +336,30 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   ];
   ws.properties.defaultRowHeight = 22;
 
-  addHeader(ws, order, cols);
+  addHeader(ws, order);
   await addLogo(ws, wb);
 
   ws.addRow(["№", "Услуга", "Описание", "Ед.", "Кол-во", "Дней", "Цена/ед.", "Итого"]);
-  const headerRow = ws.lastRow!.number;
-  styleHeaderRow(ws, headerRow, cols);
+  styleHeaderRow(ws, ws.lastRow!.number);
 
-  addSectionRow(ws, "Реквизит", cols);
-  let visibleIndex = 1;
+  const requisiteRows: Array<Array<string | number>> = [];
+  const requisiteTotals: number[] = [];
   for (const [idx, line] of order.lines.entries()) {
     const price = line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : 0;
     const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-    const clientPrice = Math.round(price * multiplier * 100) / 100;
+    const clientPrice = roundMoney(price * multiplier);
     const allocation = pricing.lineAllocations[idx];
-    const total = Math.round(allocation?.rentalAfterDiscount ?? price * line.requestedQty * pricing.days * multiplier);
-    addEstimateRow(
-      ws,
-      [
-        visibleIndex,
-        line.item?.name ?? "Позиция",
-        "",
-        "шт.",
-        line.requestedQty,
-        pricing.days,
-        clientPrice,
-        total,
-      ],
-      cols,
-      visibleIndex,
+    const total = roundMoney(
+      allocation?.rentalAfterDiscount ?? price * line.requestedQty * pricing.days * multiplier,
     );
-    visibleIndex += 1;
+    requisiteRows.push(["", line.item?.name ?? "Позиция", "", "шт.", line.requestedQty, pricing.days, clientPrice, ""]);
+    requisiteTotals.push(total);
   }
 
+  const { range: requisiteRange } = addDataSection(ws, "Реквизит", requisiteRows, requisiteTotals, 1);
+
+  const serviceRows: Array<Array<string | number>> = [];
+  const serviceTotals: number[] = [];
   const services: Array<[string, number, string]> = [];
   if (order.deliveryEnabled) {
     services.push(["Доставка", Number(order.deliveryPrice ?? 0), (order.deliveryComment ?? "").trim()]);
@@ -335,39 +370,94 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   if (order.demontageEnabled) {
     services.push(["Демонтаж", Number(order.demontagePrice ?? 0), (order.demontageComment ?? "").trim()]);
   }
-
-  if (services.length > 0) {
-    addSectionRow(ws, "Дополнительные услуги", cols);
-    for (const [name, amount, comment] of services) {
-      addEstimateRow(ws, [visibleIndex, name, comment, "усл.", 1, "", amount, amount], cols, visibleIndex);
-      visibleIndex += 1;
-    }
+  for (const [name, amount, comment] of services) {
+    serviceRows.push(["", name, comment, "усл.", 1, "", amount, ""]);
+    serviceTotals.push(roundMoney(amount));
   }
 
-  ws.addRow([]);
-  addSummaryRow(ws, cols, "Аренда", Math.round(pricing.rentalSubtotalBeforeDiscount));
+  const { range: servicesRange } =
+    serviceRows.length > 0
+      ? addDataSection(ws, "Дополнительные услуги", serviceRows, serviceTotals, requisiteRows.length + 1)
+      : { range: null as XlsxDataRowRange | null };
 
+  ws.addRow([]);
+
+  const rentalFormula =
+    requisiteRange != null
+      ? sumColumnFormula(LINE_COLS.lineTotal, requisiteRange.firstRow, requisiteRange.lastRow)
+      : "0";
+  const rentalRow = addSummaryFormulaRow(
+    ws,
+    "Аренда",
+    rentalFormula,
+    roundMoney(pricing.rentalSubtotalBeforeDiscount),
+  );
+
+  let rentalBaseRef = xlsxCellRef(rentalRow, COLS);
   if (pricing.discountAmount > 0) {
     const label =
       pricing.discountType === "PERCENT" && pricing.discountPercent != null
         ? `Скидка на реквизит ${pricing.discountPercent}%`
         : "Скидка на реквизит";
-    addSummaryRow(ws, cols, label, -Math.round(pricing.discountAmount));
-    addSummaryRow(ws, cols, "Аренда после скидки", Math.round(pricing.rentalSubtotalAfterDiscount));
+    const discountRow = addSummaryFormulaRow(ws, label, "", -roundMoney(pricing.discountAmount), {
+      staticValue: -roundMoney(pricing.discountAmount),
+    });
+    const afterDiscountRow = addSummaryFormulaRow(
+      ws,
+      "Аренда после скидки",
+      addFormulaRefFormula(rentalBaseRef, xlsxCellRef(discountRow, COLS)),
+      roundMoney(pricing.rentalSubtotalAfterDiscount),
+    );
+    rentalBaseRef = xlsxCellRef(afterDiscountRow, COLS);
   }
 
-  const servicesTotal =
-    (order.deliveryEnabled ? Number(order.deliveryPrice ?? 0) : 0) +
-    (order.montageEnabled ? Number(order.montagePrice ?? 0) : 0) +
-    (order.demontageEnabled ? Number(order.demontagePrice ?? 0) : 0);
-  if (servicesTotal > 0) {
-    addSummaryRow(ws, cols, "Доп. услуги", servicesTotal);
+  let subtotalFormula = rentalBaseRef;
+  if (servicesRange != null) {
+    const servicesFormula = sumColumnFormula(
+      LINE_COLS.lineTotal,
+      servicesRange.firstRow,
+      servicesRange.lastRow,
+    );
+    const servicesRow = addSummaryFormulaRow(
+      ws,
+      "Доп. услуги",
+      servicesFormula,
+      roundMoney(pricing.servicesTotal),
+    );
+    subtotalFormula = addFormulaRefFormula(rentalBaseRef, xlsxCellRef(servicesRow, COLS));
   }
-  addSummaryRow(ws, cols, `Налог ${Math.round(pricing.taxRate * 100)}%`, pricing.taxAmount);
-  addSummaryRow(ws, cols, "Всего по смете", pricing.grandTotal, {
-    emphasis: true,
-    fill: COLORS.yellow,
-    fontColor: COLORS.ink,
+
+  const subtotalRow = addSummaryFormulaRow(
+    ws,
+    "Сумма до налога",
+    subtotalFormula,
+    roundMoney(pricing.grandTotalBeforeTax),
+  );
+  const subtotalRef = xlsxCellRef(subtotalRow, COLS);
+
+  const taxRow = addSummaryFormulaRow(
+    ws,
+    `Налог ${Math.round(pricing.taxRate * 100)}%`,
+    percentOfFormula(pricing.taxRate, subtotalRef),
+    roundMoney(pricing.taxAmount),
+  );
+
+  addSummaryFormulaRow(
+    ws,
+    "Всего по смете",
+    addFormulaRefFormula(subtotalRef, xlsxCellRef(taxRow, COLS)),
+    roundMoney(pricing.grandTotal),
+    {
+      emphasis: true,
+      fill: COLORS.yellow,
+      fontColor: COLORS.ink,
+    },
+  );
+
+  ws.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.protection = { locked: false };
+    });
   });
 
   return Buffer.from(await wb.xlsx.writeBuffer());

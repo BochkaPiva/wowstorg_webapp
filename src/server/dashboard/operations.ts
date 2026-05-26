@@ -22,6 +22,7 @@ const ORDER_STALE_WAREHOUSE_STATUSES = ["PICKING", "ISSUED", "RETURN_DECLARED"] 
 const UPCOMING_TIMELINE_DAYS = 5;
 const UPCOMING_TIMELINE_START_OFFSET = 1;
 const UPCOMING_TIMELINE_MAX_OFFSET = UPCOMING_TIMELINE_START_OFFSET + UPCOMING_TIMELINE_DAYS - 1;
+const UPCOMING_TIMELINE_EVENTS_PER_DAY = 20;
 
 type Urgency = "normal" | "soon" | "today" | "overdue" | "critical";
 type SignalSeverity = "info" | "warning" | "critical";
@@ -44,6 +45,7 @@ export type DashboardEvent = {
   projectId?: string;
   orderId?: string;
   taskId?: string;
+  isAssignedToMe?: boolean;
 };
 
 export type DashboardTask = {
@@ -362,6 +364,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         projectId: task.projectId ?? undefined,
         orderId: task.orderId ?? undefined,
         taskId: task.id,
+        isAssignedToMe: isMine,
       });
       continue;
     }
@@ -378,6 +381,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         projectId: task.projectId ?? undefined,
         orderId: task.orderId ?? undefined,
         taskId: task.id,
+        isAssignedToMe: isMine,
       });
     }
 
@@ -519,7 +523,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       events: events
         .filter((event) => event.date === date)
         .sort((a, b) => eventRank(a) - eventRank(b))
-        .slice(0, 6),
+        .slice(0, UPCOMING_TIMELINE_EVENTS_PER_DAY),
     };
   });
 

@@ -735,19 +735,7 @@ type OperationsEvent = {
   date: string;
   urgency: "normal" | "soon" | "today" | "overdue" | "critical";
   href: string;
-};
-
-type OperationsTask = {
-  id: string;
-  title: string;
-  priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
-  dueDate: string | null;
-  columnTitle: string;
-  projectTitle: string | null;
-  orderTitle: string | null;
-  checklistDone: number;
-  checklistTotal: number;
-  href: string;
+  isAssignedToMe?: boolean;
 };
 
 type OperationsSignal = {
@@ -766,12 +754,6 @@ type OperationsSignal = {
 type OperationsDashboardData = {
   today: OperationsEvent[];
   upcomingDays: Array<{ date: string; label: string; events: OperationsEvent[] }>;
-  myTasks: {
-    overdue: OperationsTask[];
-    today: OperationsTask[];
-    soon: OperationsTask[];
-    noDueDate: OperationsTask[];
-  };
   signals: OperationsSignal[];
   summary: {
     todayCount: number;
@@ -780,13 +762,6 @@ type OperationsDashboardData = {
     nearestOrderTitle: string | null;
   };
 };
-
-function priorityRu(priority: OperationsTask["priority"]) {
-  if (priority === "URGENT") return "Срочно";
-  if (priority === "HIGH") return "Важно";
-  if (priority === "LOW") return "Низкий";
-  return "Обычный";
-}
 
 function operationKindLabel(kind: OperationsEvent["kind"]): string {
   if (kind === "task_overdue") return "Просрочено";
@@ -818,17 +793,29 @@ function signalEntityLabel(kind: OperationsSignal["entityKind"]) {
 }
 
 function OperationEventCard({ event, compact = false }: { event: OperationsEvent; compact?: boolean }) {
+  const isPersonalTask = event.isAssignedToMe === true && (event.kind === "task_due" || event.kind === "task_overdue");
   return (
     <Link
       href={event.href}
       className={[
-        "block rounded-xl border bg-white px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40",
-        event.urgency === "critical" || event.urgency === "overdue" ? "border-rose-200" : "border-zinc-200",
+        "block rounded-xl border px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40",
+        isPersonalTask
+          ? "border-amber-300 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.96))] ring-1 ring-amber-100"
+          : event.urgency === "critical" || event.urgency === "overdue"
+            ? "border-rose-200 bg-white"
+            : "border-zinc-200 bg-white",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{event.title}</div>
+          <div className="flex min-w-0 items-start gap-1.5">
+            {isPersonalTask ? (
+              <span className="mt-0.5 shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-900">
+                Моя
+              </span>
+            ) : null}
+            <div className="line-clamp-2 min-w-0 text-sm font-semibold leading-snug text-zinc-950">{event.title}</div>
+          </div>
           {event.subtitle ? <div className="mt-0.5 truncate text-xs text-zinc-500">{event.subtitle}</div> : null}
         </div>
         <span className={["shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold", operationPillClass(event.urgency)].join(" ")}>
@@ -836,38 +823,6 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
         </span>
       </div>
       {!compact ? <div className="mt-2 text-xs font-medium text-zinc-500">{fmtDateRu(event.date)}</div> : null}
-    </Link>
-  );
-}
-
-function TaskMiniCard({ task }: { task: OperationsTask }) {
-  const meta = task.projectTitle ?? task.orderTitle ?? task.columnTitle;
-  return (
-    <Link href={task.href} className="block rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="line-clamp-2 text-sm font-semibold leading-snug text-zinc-950">{task.title}</div>
-          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-zinc-600">
-            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.columnTitle}</span>
-            {task.dueDate ? (
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-violet-800">
-                {fmtDateRu(task.dueDate)}
-              </span>
-            ) : null}
-            {task.priority !== "NORMAL" ? (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">
-                {priorityRu(task.priority)}
-              </span>
-            ) : null}
-          </div>
-          {meta ? <div className="mt-1 truncate text-xs text-zinc-500">{meta}</div> : null}
-        </div>
-        {task.checklistTotal > 0 ? (
-          <div className="shrink-0 rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-semibold text-zinc-700">
-            {task.checklistDone}/{task.checklistTotal}
-          </div>
-        ) : null}
-      </div>
     </Link>
   );
 }
@@ -901,14 +856,6 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
       cancelled = true;
     };
   }, [isWowstorg]);
-
-  const taskGroups = [
-    { key: "overdue", title: "Просрочено", items: data?.myTasks.overdue ?? [] },
-    { key: "today", title: "Сегодня", items: data?.myTasks.today ?? [] },
-    { key: "soon", title: "Скоро", items: data?.myTasks.soon ?? [] },
-    { key: "noDueDate", title: "Без срока", items: data?.myTasks.noDueDate ?? [] },
-  ] as const;
-  const visibleTaskGroups = taskGroups.filter((group) => group.items.length > 0);
 
   const snoozeSignal = React.useCallback(async (signal: OperationsSignal) => {
     if (!signal.canSnooze) return;
@@ -1044,43 +991,32 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
       <div className={DASH_CARD}>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+              Моя = личная задача
+            </span>
+          </div>
+          <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
           {(data?.upcomingDays ?? []).map((day) => (
             <div key={day.date} className="min-h-[9rem] rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
               <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
                 <div className="text-sm font-bold text-zinc-950">{day.label}</div>
-                <div className="text-[11px] text-zinc-500">{fmtDateRu(day.date)}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-600">
+                    {day.events.length}
+                  </span>
+                  <div className="text-[11px] text-zinc-500">{fmtDateRu(day.date)}</div>
+                </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
                 {day.events.length === 0 ? (
                   <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">Пусто</div>
                 ) : (
-                  day.events.slice(0, 4).map((event) => <OperationEventCard key={event.id} event={event} compact />)
+                  day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)
                 )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className={DASH_CARD}>
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
-          <div className="text-sm font-semibold text-zinc-900">Мои задачи</div>
-          <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
-        </div>
-        {!loading && !error && visibleTaskGroups.length === 0 ? (
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
-            Открытых задач нет.
-          </div>
-        ) : null}
-        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {visibleTaskGroups.map((group) => (
-            <div key={group.key} className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
-              <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-zinc-500">{group.title}</div>
-              <div className="space-y-1.5">
-                {group.items.slice(0, 4).map((task) => <TaskMiniCard key={task.id} task={task} />)}
               </div>
             </div>
           ))}

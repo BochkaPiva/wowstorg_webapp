@@ -991,12 +991,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
       <div className={DASH_CARD}>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-              Моя = личная задача
-            </span>
-          </div>
+          <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
           <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-5">

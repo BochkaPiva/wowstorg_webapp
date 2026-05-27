@@ -281,14 +281,20 @@ export default function OrdersPage() {
 
   function renderOrderCard(o: OrderCard, kind: "root" | "child") {
     const isCancelled = o.status === "CANCELLED";
+    const isCancelledArchive = scopeFilter === "DONE" && isCancelled;
     const isArchive = scopeFilter === "DONE";
     const isSupplement = Boolean(o.parentOrderId);
+    const discountLabel = o.discount
+      ? o.discount.type === "PERCENT" && o.discount.percent != null
+        ? `${o.discount.percent}%`
+        : formatMoney(o.discount.amount)
+      : null;
     return (
       <div
         key={o.id}
         className={[
           "overflow-hidden rounded-[1.75rem] border p-0 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5",
-          isCancelled
+          isCancelledArchive
             ? "border-zinc-200/90 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 hover:border-zinc-300 hover:opacity-100"
             : isSupplement
               ? "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.8))] hover:border-amber-300"
@@ -305,14 +311,14 @@ export default function OrdersPage() {
               <div
                 className={[
                   "text-xl font-black leading-tight",
-                  isCancelled ? "text-zinc-500" : "text-zinc-950",
+                  isCancelledArchive ? "text-zinc-500" : "text-zinc-950",
                 ].join(" ")}
               >
                 {o.customer.name}
               </div>
-          {o.eventName ? (
+              {o.eventName ? (
                 <div className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-500">{o.eventName}</div>
-          ) : null}
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
                 <span
                   className={[
@@ -324,7 +330,7 @@ export default function OrdersPage() {
                 >
                   {isSupplement ? `Доп. к ${o.parentOrderId?.slice(0, 8)}` : "Основная"}
                 </span>
-                {isCancelled ? (
+                {isCancelledArchive ? (
                   <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
                     Не учитывается
                   </span>
@@ -332,24 +338,38 @@ export default function OrdersPage() {
                 <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
                   Готовность {fmtDate(o.readyByDate)}
                 </span>
-                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
-                  {periodLineOrders(o)}
-                </span>
               </div>
             </div>
-            {o.totalAmount != null ? (
+            <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
+              Создана {fmtDate(o.createdAt)}
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
+              {periodLineOrders(o)}
+            </span>
+            {isArchive ? (
+              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
+                Закрытая/архивная
+              </span>
+            ) : null}
+          </div>
+
+          {o.totalAmount != null || o.taxAmount != null || o.discount ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
               <div
                 className={[
-                  "shrink-0 rounded-2xl border px-4 py-3 text-right",
-                  isCancelled
-                    ? "border-zinc-200 bg-white/60"
+                  "rounded-2xl border px-4 py-3",
+                  isCancelledArchive
+                    ? "border-zinc-200/90 bg-white/60"
                     : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
                 ].join(" ")}
               >
                 <div
                   className={[
                     "text-[10px] font-black uppercase tracking-[0.16em]",
-                    isCancelled ? "text-zinc-400" : "text-violet-600",
+                    isCancelledArchive ? "text-zinc-400" : "text-violet-600",
                   ].join(" ")}
                 >
                   Сумма
@@ -357,32 +377,59 @@ export default function OrdersPage() {
                 <div
                   className={[
                     "mt-1 text-lg font-black",
-                    isCancelled ? "text-zinc-500" : "text-violet-950",
+                    isCancelledArchive ? "text-zinc-500" : "text-violet-950",
                   ].join(" ")}
                 >
-                  {formatMoney(o.totalAmount)}
+                  {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
                 </div>
               </div>
+
+              <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Налог</div>
+                <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
+                  {o.taxAmount != null ? formatMoney(o.taxAmount) : "—"}
+                </div>
+              </div>
+
+              <div
+                className={[
+                  "rounded-2xl border px-4 py-3",
+                  o.discount && !isCancelledArchive
+                    ? "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.78))]"
+                    : "border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))]",
+                ].join(" ")}
+              >
+                <div
+                  className={[
+                    "text-[10px] font-black uppercase tracking-[0.16em]",
+                    o.discount && !isCancelledArchive ? "text-emerald-700" : "text-zinc-500",
+                  ].join(" ")}
+                >
+                  Скидка
+                </div>
+                <div
+                  className={[
+                    "mt-1 text-lg font-black",
+                    o.discount && !isCancelledArchive ? "text-emerald-950" : "text-zinc-500",
+                  ].join(" ")}
+                >
+                  {discountLabel ?? "—"}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+            <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
+              ID {o.id.slice(0, 8)}
+            </span>
+            {isCancelled && !isCancelledArchive ? (
+              <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 text-zinc-500">
+                Отменена
+              </span>
             ) : null}
           </div>
 
-          {(o.taxAmount != null || o.discount) && !isCancelled ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-              {o.taxAmount != null ? (
-                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
-                  Налог {formatMoney(o.taxAmount)}
-                </span>
-              ) : null}
-              {o.discount ? (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50/85 px-2.5 py-1 text-emerald-800">
-                  Скидка{" "}
-                  {o.discount.type === "PERCENT" && o.discount.percent != null
-                    ? `${o.discount.percent}%`
-                    : formatMoney(o.discount.amount)}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={`/orders/${o.id}`}
@@ -454,47 +501,47 @@ export default function OrdersPage() {
             <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
               <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(15rem,20rem)_minmax(12rem,16rem)]">
                 <div className="relative min-w-0">
-                <svg
+                  <svg
                     className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden
-                >
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M20 20l-3.2-3.2" />
-                </svg>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M20 20l-3.2-3.2" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
                     placeholder="Найти заявку"
                     className="h-12 w-full rounded-[1.15rem] border border-transparent bg-white/90 pl-11 pr-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                />
-              </div>
+                  />
+                </div>
 
-              <div
+                <div
                   className="inline-flex h-12 min-w-0 items-center rounded-[1.15rem] bg-white/90 p-1 shadow-sm"
-                role="group"
-                aria-label="Тип заявки"
-              >
-                {(["ALL", "MAIN", "SUPPLEMENT"] as const).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setKindFilter(key)}
-                    className={[
+                  role="group"
+                  aria-label="Тип заявки"
+                >
+                  {(["ALL", "MAIN", "SUPPLEMENT"] as const).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setKindFilter(key)}
+                      className={[
                         "h-10 flex-1 rounded-xl px-3 text-sm font-black transition",
-                      kindFilter === key
+                        kindFilter === key
                           ? "bg-violet-700 text-white shadow-sm"
                           : "text-zinc-600 hover:bg-violet-50 hover:text-violet-900",
-                    ].join(" ")}
-                  >
-                    {key === "ALL" ? "Все типы" : key === "MAIN" ? "Основные" : "Доп."}
-                  </button>
-                ))}
-              </div>
+                      ].join(" ")}
+                    >
+                      {key === "ALL" ? "Все типы" : key === "MAIN" ? "Основные" : "Доп."}
+                    </button>
+                  ))}
+                </div>
 
                 <select
                   value={sortMode}

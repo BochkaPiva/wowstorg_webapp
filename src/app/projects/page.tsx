@@ -324,36 +324,42 @@ function ProjectsContent() {
                 >
                   Создать проект
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTab("active");
-                    setSort("updated_desc");
-                  }}
-                  className={[
-                    "rounded-2xl px-4 py-3 text-sm font-black shadow-sm transition",
-                    tab === "active"
-                      ? "bg-violet-700 text-white shadow-violet-200"
-                      : "border border-white/80 bg-white/75 text-zinc-800 hover:bg-white",
-                  ].join(" ")}
+                <div
+                  className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
+                  role="group"
+                  aria-label="Область проектов"
                 >
-                  Активные
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTab("archive");
-                    setSort("updated_desc");
-                  }}
-                  className={[
-                    "rounded-2xl px-4 py-3 text-sm font-black shadow-sm transition",
-                    tab === "archive"
-                      ? "bg-violet-700 text-white shadow-violet-200"
-                      : "border border-white/80 bg-white/75 text-zinc-800 hover:bg-white",
-                  ].join(" ")}
-                >
-                  Архив
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("active");
+                      setSort("updated_desc");
+                    }}
+                    className={[
+                      "rounded-xl px-4 py-3 text-sm font-black transition",
+                      tab === "active"
+                        ? "bg-violet-700 text-white shadow-violet-200"
+                        : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
+                    ].join(" ")}
+                  >
+                    Активные
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("archive");
+                      setSort("updated_desc");
+                    }}
+                    className={[
+                      "rounded-xl px-4 py-3 text-sm font-black transition",
+                      tab === "archive"
+                        ? "bg-violet-700 text-white shadow-violet-200"
+                        : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
+                    ].join(" ")}
+                  >
+                    Архив
+                  </button>
+                </div>
               </div>
             </div>
 

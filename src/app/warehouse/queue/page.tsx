@@ -88,10 +88,10 @@ function formatMoney(value: number): string {
 
 function statusHeaderClass(status: string): string {
   return status === "CANCELLED"
-    ? "bg-[#5b0b17]/10 text-[#5b0b17]"
+    ? "bg-zinc-100/90 text-zinc-500"
     : status === "CLOSED"
-      ? "bg-violet-50 text-violet-900"
-      : "bg-white";
+      ? "bg-violet-50/80 text-violet-900"
+      : "bg-white/80";
 }
 
 function parseStatusSetFromUrl(raw: string | null): Set<string> {
@@ -262,18 +262,27 @@ function WarehouseQueueContent() {
   }, [orders]);
 
   function renderQueueCard(o: QueueOrder, kind: "root" | "child") {
+    const isCancelled = o.status === "CANCELLED";
+    const isCancelledArchive = tab === "archive" && isCancelled;
+    const isSupplement = Boolean(o.parentOrderId);
+    const discountLabel = o.discount
+      ? o.discount.type === "PERCENT" && o.discount.percent != null
+        ? `${o.discount.percent}%`
+        : formatMoney(o.discount.amount)
+      : null;
+
     return (
       <div
         key={o.id}
         className={[
-          "rounded-2xl border overflow-hidden shadow-sm transition",
-          o.status === "CANCELLED"
-            ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03] hover:border-[#5b0b17]/40"
+          "overflow-hidden rounded-[1.75rem] border p-0 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5",
+          isCancelledArchive
+            ? "border-zinc-200/90 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 hover:border-zinc-300 hover:opacity-100"
             : o.project
-              ? "border-violet-300 bg-violet-50/40 hover:border-violet-400"
-            : o.parentOrderId
-              ? "border-amber-300 bg-amber-50/30 hover:border-amber-400"
-              : "border-zinc-200 bg-white hover:border-violet-200",
+              ? "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.82))] hover:border-violet-300 hover:shadow-[0_24px_70px_rgba(109,40,217,0.14)]"
+              : isSupplement
+                ? "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.8))] hover:border-amber-300"
+                : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
           kind === "child" ? "ml-8" : "",
         ].join(" ")}
       >
@@ -281,102 +290,133 @@ function WarehouseQueueContent() {
           <OrderStatusStepper status={o.status as OrderStatus} source={o.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
         </div>
         <div className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-zinc-900">
-              {o.customer.name}
-              {o.greenwichUser
-                ? ` · ${o.greenwichUser.displayName}${
-                    o.greenwichUser.ratingScore != null
-                      ? ` · рейтинг ${o.greenwichUser.ratingScore}`
-                      : ""
-                  }`
-                : ""}
-            </div>
-          </div>
-          {o.parentOrderId ? (
-            <div className="mt-1 inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              Доп. заявка к №{o.parentOrderId.slice(0, 8)}
-            </div>
-          ) : (
-            <div className="mt-1 inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-900">
-              Основная заявка
-            </div>
-          )}
-          {o.project ? (
-            <div className="mt-1 inline-flex items-center rounded-full border border-violet-300 bg-white px-2 py-0.5 text-xs font-semibold text-violet-800">
-              Проект: {o.project.title}
-            </div>
-          ) : null}
-          <div className="mt-2 text-sm text-zinc-600">
-            Готовность: <span className="font-semibold">{fmtDateRu(o.readyByDate)}</span> · Период:{" "}
-            <span className="font-semibold">{periodLineQueue(o)}</span>
-            {tab !== "archive" && o.totalAmount != null ? (
-              <span className="ml-2 rounded-md bg-violet-100 px-1.5 py-0.5 font-bold text-violet-800">
-                · {o.totalAmount.toLocaleString("ru-RU")} ₽
-              </span>
-            ) : null}
-            {o.taxAmount != null ? (
-              <span className="ml-2 rounded-md bg-zinc-100 px-1.5 py-0.5 font-semibold text-zinc-700">
-                налог {o.taxAmount.toLocaleString("ru-RU")} ₽
-              </span>
-            ) : null}
-            {o.discount ? (
-              <span className="ml-2 rounded-md bg-emerald-100 px-1.5 py-0.5 font-bold text-emerald-800">
-                Скидка{" "}
-                {o.discount.type === "PERCENT" && o.discount.percent != null
-                  ? `${o.discount.percent}%`
-                  : `${Math.round(o.discount.amount).toLocaleString("ru-RU")} ₽`}
-              </span>
-            ) : null}
-          </div>
-          {tab === "archive" && (o.totalAmount != null || o.profitEstimate != null) ? (
-            <div className="mt-3 grid gap-2 sm:max-w-md sm:grid-cols-2">
-              {o.totalAmount != null ? (
-                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Сумма</div>
-                  <div className="mt-0.5 text-base font-bold text-violet-950">{formatMoney(o.totalAmount)}</div>
-                </div>
-              ) : null}
-              {o.profitEstimate != null ? (
-                <div
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div
+                className={[
+                  "text-xl font-black leading-tight",
+                  isCancelledArchive ? "text-zinc-500" : "text-zinc-950",
+                ].join(" ")}
+              >
+                {o.customer.name}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm font-semibold text-zinc-500">
+                {o.greenwichUser ? (
+                  <span>
+                    {o.greenwichUser.displayName}
+                    {o.greenwichUser.ratingScore != null ? ` · рейтинг ${o.greenwichUser.ratingScore}` : ""}
+                  </span>
+                ) : null}
+                {o.project ? <span>Проект: {o.project.title}</span> : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span
                   className={[
-                    "rounded-xl border px-3 py-2",
-                    o.profitEstimate < 0
-                      ? "border-red-200 bg-red-50"
-                      : "border-emerald-200 bg-emerald-50",
+                    "rounded-full border px-2.5 py-1 font-bold",
+                    isSupplement
+                      ? "border-amber-200 bg-amber-50/85 text-amber-900"
+                      : "border-violet-200 bg-violet-50/85 text-violet-800",
                   ].join(" ")}
                 >
-                  <div
-                    className={[
-                      "text-[11px] font-semibold uppercase tracking-wide",
-                      o.profitEstimate < 0 ? "text-red-700" : "text-emerald-700",
-                    ].join(" ")}
-                  >
-                    Прибыль
-                  </div>
-                  <div
-                    className={[
-                      "mt-0.5 text-base font-bold",
-                      o.profitEstimate < 0 ? "text-red-950" : "text-emerald-950",
-                    ].join(" ")}
-                  >
-                    {formatMoney(o.profitEstimate)}
-                  </div>
-                </div>
-              ) : null}
+                  {isSupplement ? `Доп. к ${o.parentOrderId?.slice(0, 8)}` : "Основная"}
+                </span>
+                {o.project ? (
+                  <span className="rounded-full border border-violet-200 bg-white/75 px-2.5 py-1 font-bold text-violet-800">
+                    Проект
+                  </span>
+                ) : null}
+                {isCancelledArchive ? (
+                  <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
+                    Не учитывается
+                  </span>
+                ) : null}
+              </div>
             </div>
-          ) : null}
+            <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
+              Создана {fmtDateRu(o.createdAt)}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(9rem,0.75fr)_minmax(16rem,1.35fr)_minmax(9rem,0.9fr)]">
+            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Готовность</div>
+              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
+                {fmtDateRu(o.readyByDate)}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Период</div>
+              <div className={["mt-1 text-base font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
+                {periodLineQueue(o)}
+              </div>
+            </div>
+
+            <div
+              className={[
+                "rounded-2xl border px-4 py-3",
+                isCancelledArchive
+                  ? "border-zinc-200/90 bg-white/60"
+                  : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "text-[10px] font-black uppercase tracking-[0.16em]",
+                  isCancelledArchive ? "text-zinc-400" : "text-violet-600",
+                ].join(" ")}
+              >
+                Сумма
+              </div>
+              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-violet-950"].join(" ")}>
+                {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+            <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-500">ID {o.id.slice(0, 8)}</span>
+            {tab === "archive" ? (
+              <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-500">Архив</span>
+            ) : null}
+            {isCancelled && !isCancelledArchive ? (
+              <span className="rounded-full border border-zinc-300 bg-zinc-100 px-2.5 py-1 text-zinc-600">Отменена</span>
+            ) : null}
+            {o.taxAmount != null ? (
+              <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-600">
+                Налог {formatMoney(o.taxAmount)}
+              </span>
+            ) : null}
+            {discountLabel ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50/80 px-2.5 py-1 text-emerald-800">
+                Скидка {discountLabel}
+              </span>
+            ) : null}
+            {o.profitEstimate != null ? (
+              <span
+                className={[
+                  "rounded-full border px-2.5 py-1",
+                  o.profitEstimate < 0
+                    ? "border-red-200 bg-red-50/85 text-red-800"
+                    : "border-emerald-200 bg-emerald-50/85 text-emerald-800",
+                ].join(" ")}
+              >
+                Прибыль {formatMoney(o.profitEstimate)}
+              </span>
+            ) : null}
+          </div>
+
           {o.warehouseInternalNote ? (
-            <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
-              <span className="font-semibold text-amber-800">Внутр. комментарий:</span>{" "}
+            <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
+              <span className="font-black text-amber-900">Комментарий склада:</span>{" "}
               <span className="whitespace-pre-wrap">{o.warehouseInternalNote}</span>
             </div>
           ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {o.status === "ISSUED" && o.greenwichUser && !o.parentOrderId ? (
               <Link
                 href={`/catalog?quickParentId=${o.id}`}
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100"
+                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-black text-amber-900 hover:bg-amber-100"
               >
                 Быстрая доп.-выдача
               </Link>
@@ -387,27 +427,27 @@ function WarehouseQueueContent() {
                 setEditingNoteOrderId(o.id);
                 setEditingNoteValue(o.warehouseInternalNote ?? "");
               }}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className="rounded-2xl border border-zinc-200 bg-white/75 px-4 py-2 text-sm font-black text-zinc-700 hover:bg-white"
             >
               Комментарий
             </button>
             <Link
               href={`/orders/${o.id}?from=warehouse-queue`}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100"
+              className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-800 hover:bg-violet-100"
             >
               Открыть заявку
             </Link>
           </div>
           {editingNoteOrderId === o.id ? (
-            <div className="mt-3 pt-3 border-t border-zinc-200">
-              <label className="block text-xs font-semibold text-zinc-500 mb-1">
-                Внутренний комментарий (только для склада)
+            <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 p-4">
+              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                Внутренний комментарий
               </label>
               <textarea
                 value={editingNoteValue}
                 onChange={(e) => setEditingNoteValue(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold shadow-inner outline-none transition focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
                 placeholder="Заметка для сотрудников склада…"
               />
               <div className="mt-2 flex gap-2">
@@ -415,7 +455,7 @@ function WarehouseQueueContent() {
                   type="button"
                   disabled={noteSaveBusy}
                   onClick={() => saveInternalNote(o.id)}
-                  className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                  className="rounded-2xl border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-50"
                 >
                   {noteSaveBusy ? "…" : "Сохранить"}
                 </button>
@@ -426,7 +466,7 @@ function WarehouseQueueContent() {
                     setEditingNoteOrderId(null);
                     setEditingNoteValue("");
                   }}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm font-black text-zinc-700 hover:bg-zinc-50"
                 >
                   Отмена
                 </button>
@@ -582,7 +622,7 @@ function WarehouseQueueContent() {
           ) : (
             <div className="space-y-4">
               {grouped.map(({ root, children }) => (
-                <div key={root.id} className="rounded-3xl border border-zinc-200/80 bg-white/40 p-2">
+                <div key={root.id} className="rounded-[2rem] border border-white/70 bg-white/35 p-2 shadow-[0_18px_52px_rgba(24,24,27,0.06)]">
                   {renderQueueCard(root, "root")}
                   {children.length > 0 ? (
                     <div className="mt-2 space-y-2 border-l-2 border-amber-300/70 pl-2">

@@ -425,16 +425,28 @@ function ProjectsContent() {
             <div className="text-sm text-zinc-600">Пока нет проектов.</div>
           ) : !listError ? (
             <ul className="grid gap-3">
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/projects/${p.id}`}
-                    className="group block overflow-hidden rounded-[1.75rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] p-4 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]"
-                  >
+              {projects.map((p) => {
+                const isCancelledArchive = tab === "archive" && p.status === "CANCELLED";
+                return (
+                  <li key={p.id}>
+                    <Link
+                      href={`/projects/${p.id}`}
+                      className={[
+                        "group block overflow-hidden rounded-[1.75rem] border p-4 transition hover:-translate-y-0.5",
+                        isCancelledArchive
+                          ? "border-zinc-200/80 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 shadow-[0_14px_42px_rgba(24,24,27,0.06)] hover:border-zinc-300 hover:opacity-100 hover:shadow-[0_18px_54px_rgba(24,24,27,0.1)]"
+                          : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] shadow-[0_18px_52px_rgba(24,24,27,0.08)] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
+                      ].join(" ")}
+                    >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="min-w-0 text-xl font-black leading-tight text-zinc-950 group-hover:text-violet-800">
+                          <h2
+                            className={[
+                              "min-w-0 text-xl font-black leading-tight",
+                              isCancelledArchive ? "text-zinc-500 group-hover:text-zinc-700" : "text-zinc-950 group-hover:text-violet-800",
+                            ].join(" ")}
+                          >
                             {p.title}
                           </h2>
                           <span className="rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-bold text-zinc-600">
@@ -448,9 +460,21 @@ function ProjectsContent() {
                           ) : null}
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-700">
+                          <span
+                            className={[
+                              "rounded-full border px-2.5 py-1 font-bold",
+                              isCancelledArchive
+                                ? "border-zinc-300 bg-zinc-100/80 text-zinc-500"
+                                : "border-zinc-200 bg-white/75 text-zinc-700",
+                            ].join(" ")}
+                          >
                             {PROJECT_STATUS_LABEL[p.status]}
                           </span>
+                          {isCancelledArchive ? (
+                            <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
+                              Не учитывается
+                            </span>
+                          ) : null}
                           <span className="rounded-full border border-amber-200 bg-amber-50/85 px-2.5 py-1 font-bold text-amber-900">
                             {PROJECT_BALL_LABEL[p.ball]}
                           </span>
@@ -472,16 +496,37 @@ function ProjectsContent() {
                       </p>
                     ) : null}
                     <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                      <div className="rounded-2xl border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))] px-4 py-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">Выручка</div>
-                        <div className="mt-1 text-lg font-black text-violet-950">
+                      <div
+                        className={[
+                          "rounded-2xl border px-4 py-3",
+                          isCancelledArchive
+                            ? "border-zinc-200/90 bg-white/60"
+                            : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
+                        ].join(" ")}
+                      >
+                        <div
+                          className={[
+                            "text-[10px] font-black uppercase tracking-[0.16em]",
+                            isCancelledArchive ? "text-zinc-400" : "text-violet-600",
+                          ].join(" ")}
+                        >
+                          Выручка
+                        </div>
+                        <div
+                          className={[
+                            "mt-1 text-lg font-black",
+                            isCancelledArchive ? "text-zinc-500" : "text-violet-950",
+                          ].join(" ")}
+                        >
                           {formatMoney(p.finance.revenueTotal)}
                         </div>
                       </div>
                       <div
                         className={[
                           "rounded-2xl border px-4 py-3",
-                          p.finance.marginAfterTax < 0
+                          isCancelledArchive
+                            ? "border-zinc-200/90 bg-white/60"
+                            : p.finance.marginAfterTax < 0
                             ? "border-red-200 bg-[linear-gradient(135deg,rgba(254,242,242,0.95),rgba(255,255,255,0.78))]"
                             : "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.78))]",
                         ].join(" ")}
@@ -489,7 +534,7 @@ function ProjectsContent() {
                         <div
                           className={[
                             "text-[10px] font-black uppercase tracking-[0.16em]",
-                            p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700",
+                            isCancelledArchive ? "text-zinc-400" : p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700",
                           ].join(" ")}
                         >
                           Прибыль
@@ -497,7 +542,7 @@ function ProjectsContent() {
                         <div
                           className={[
                             "mt-1 text-lg font-black",
-                            p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950",
+                            isCancelledArchive ? "text-zinc-500" : p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950",
                           ].join(" ")}
                         >
                           {formatMoney(p.finance.marginAfterTax)}
@@ -505,14 +550,15 @@ function ProjectsContent() {
                       </div>
                       <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Маржа</div>
-                        <div className="mt-1 text-lg font-black text-zinc-950">
+                        <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
                           {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
                         </div>
                       </div>
                     </div>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
 

@@ -30,14 +30,33 @@ const CreateSchema = z
   .strict();
 
 const SORT_VALUES = ["updated_desc", "updated_asc", "created_desc", "created_asc", "title_asc"] as const;
+const STAGE_FILTERS = ["preparation", "execution", "completion"] as const;
 
 const PROJECT_STATUS_SET = new Set<string>(Object.values(ProjectStatus));
 const PROJECT_BALL_SET = new Set<string>(Object.values(ProjectBall));
+const PROJECT_STATUS_BY_STAGE: Record<(typeof STAGE_FILTERS)[number], ProjectStatus[]> = {
+  preparation: [
+    ProjectStatus.LEAD,
+    ProjectStatus.BRIEFING,
+    ProjectStatus.INTERNAL_PREP,
+    ProjectStatus.PROPOSAL_SENT,
+    ProjectStatus.PROPOSAL_REVISION,
+    ProjectStatus.CONTRACT_PREP,
+    ProjectStatus.CONTRACT_SENT,
+    ProjectStatus.CONTRACT_SIGNED,
+    ProjectStatus.AWAITING_CLIENT_INPUT,
+    ProjectStatus.AWAITING_VENDOR,
+    ProjectStatus.ON_HOLD,
+  ],
+  execution: [ProjectStatus.PREPRODUCTION, ProjectStatus.READY_TO_RUN, ProjectStatus.LIVE],
+  completion: [ProjectStatus.WRAP_UP, ProjectStatus.COMPLETED, ProjectStatus.CANCELLED],
+};
 
 function parseProjectsListQuery(url: URL): {
   archived: boolean;
   sort: (typeof SORT_VALUES)[number];
   statusFilter: "all" | ProjectStatus;
+  stageFilter: "all" | (typeof STAGE_FILTERS)[number];
   ballFilter: "all" | ProjectBall;
   q?: string;
 } {
@@ -54,6 +73,11 @@ function parseProjectsListQuery(url: URL): {
     statusFilter = statusRaw as ProjectStatus;
   }
 
+  const stageRaw = url.searchParams.get("stage") ?? "";
+  const stageFilter = (STAGE_FILTERS as readonly string[]).includes(stageRaw)
+    ? (stageRaw as (typeof STAGE_FILTERS)[number])
+    : "all";
+
   const ballRaw = url.searchParams.get("ball");
   let ballFilter: "all" | ProjectBall = "all";
   if (ballRaw && ballRaw !== "all" && PROJECT_BALL_SET.has(ballRaw)) {
@@ -63,7 +87,7 @@ function parseProjectsListQuery(url: URL): {
   const qRaw = url.searchParams.get("q")?.trim() ?? "";
   const q = qRaw.length > 0 ? qRaw.slice(0, 120) : undefined;
 
-  return { archived, sort, statusFilter, ballFilter, q };
+  return { archived, sort, statusFilter, stageFilter, ballFilter, q };
 }
 
 function orderByFromSort(sort: (typeof SORT_VALUES)[number]): Prisma.ProjectOrderByWithRelationInput[] {
@@ -87,7 +111,7 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
-  const { archived, sort, statusFilter, ballFilter, q } = parseProjectsListQuery(url);
+  const { archived, sort, statusFilter, stageFilter, ballFilter, q } = parseProjectsListQuery(url);
 
   const searchWhere: Prisma.ProjectWhereInput | undefined =
     q && q.length > 0
@@ -102,7 +126,11 @@ export async function GET(req: Request) {
       : undefined;
 
   const statusWhere: Prisma.ProjectWhereInput | undefined =
-    statusFilter === "all" ? undefined : { status: statusFilter };
+    statusFilter !== "all"
+      ? { status: statusFilter }
+      : stageFilter !== "all"
+        ? { status: { in: PROJECT_STATUS_BY_STAGE[stageFilter] } }
+        : undefined;
 
   const ballWhere: Prisma.ProjectWhereInput | undefined =
     ballFilter === "all" ? undefined : { ball: ballFilter };

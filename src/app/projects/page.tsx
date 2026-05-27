@@ -5,7 +5,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
-import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-labels";
+import {
+  PROJECT_BALL_LABEL,
+  PROJECT_STATUS_GROUP_LABEL,
+  PROJECT_STATUS_LABEL,
+} from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import type { ProjectBall, ProjectStatus } from "@prisma/client";
 
@@ -32,34 +36,35 @@ type ProjectCard = {
 };
 
 const PROJECT_SORT_OPTIONS = [
-  { value: "updated_desc", label: "По обновлению (новые сверху)" },
-  { value: "updated_asc", label: "По обновлению (старые сверху)" },
-  { value: "created_desc", label: "По созданию (новые сверху)" },
-  { value: "created_asc", label: "По созданию (старые сверху)" },
-  { value: "title_asc", label: "Название А → Я" },
+  { value: "updated_desc", label: "Новые изменения" },
+  { value: "updated_asc", label: "Старые изменения" },
+  { value: "created_desc", label: "Новые проекты" },
+  { value: "created_asc", label: "Старые проекты" },
+  { value: "title_asc", label: "А → Я" },
 ] as const;
 
-const PROJECT_STATUS_FILTERS: Array<{ value: "all" | ProjectStatus; label: string }> = [
-  { value: "all", label: "Все статусы" },
-  ...(Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[]).map((s) => ({
-    value: s,
-    label: PROJECT_STATUS_LABEL[s],
-  })),
-];
-
 const PROJECT_BALL_FILTERS: Array<{ value: "all" | ProjectBall; label: string }> = [
-  { value: "all", label: "Все (мяч)" },
+  { value: "all", label: "Все мячи" },
   ...(Object.keys(PROJECT_BALL_LABEL) as ProjectBall[]).map((b) => ({
     value: b,
     label: PROJECT_BALL_LABEL[b],
   })),
 ];
 
+type ProjectStageFilter = "all" | "preparation" | "execution" | "completion";
+
+const PROJECT_STAGE_FILTERS: Array<{ value: ProjectStageFilter; label: string }> = [
+  { value: "all", label: "Все этапы" },
+  { value: "preparation", label: PROJECT_STATUS_GROUP_LABEL.preparation },
+  { value: "execution", label: PROJECT_STATUS_GROUP_LABEL.execution },
+  { value: "completion", label: PROJECT_STATUS_GROUP_LABEL.completion },
+];
+
 function buildProjectsListQuery(args: {
   tab: "active" | "archive";
   sort: string;
   q: string;
-  status: string;
+  stage: string;
   ball: string;
 }): string {
   const p = new URLSearchParams();
@@ -67,7 +72,7 @@ function buildProjectsListQuery(args: {
   if (args.sort && args.sort !== "updated_desc") p.set("sort", args.sort);
   const q = args.q.trim();
   if (q) p.set("q", q);
-  if (args.status !== "all") p.set("status", args.status);
+  if (args.stage !== "all") p.set("stage", args.stage);
   if (args.ball !== "all") p.set("ball", args.ball);
   return p.toString();
 }
@@ -76,7 +81,7 @@ function buildProjectsPageQuery(args: {
   tab: "active" | "archive";
   sort: string;
   q: string;
-  status: string;
+  stage: string;
   ball: string;
 }): string {
   const p = new URLSearchParams();
@@ -84,7 +89,7 @@ function buildProjectsPageQuery(args: {
   if (args.sort && args.sort !== "updated_desc") p.set("sort", args.sort);
   const q = args.q.trim();
   if (q) p.set("q", q);
-  if (args.status !== "all") p.set("status", args.status);
+  if (args.stage !== "all") p.set("stage", args.stage);
   if (args.ball !== "all") p.set("ball", args.ball);
   return p.toString();
 }
@@ -97,9 +102,8 @@ function tabFromSearchParams(sp: { get: (k: string) => string | null }): "active
   return "active";
 }
 
-function parseStatusFilter(raw: string | null): "all" | ProjectStatus {
-  if (!raw || raw === "all") return "all";
-  if (raw in PROJECT_STATUS_LABEL) return raw as ProjectStatus;
+function parseStageFilter(raw: string | null): ProjectStageFilter {
+  if (raw === "preparation" || raw === "execution" || raw === "completion") return raw;
   return "all";
 }
 
@@ -144,8 +148,8 @@ function ProjectsContent() {
   const [sort, setSort] = React.useState(() => searchParams.get("sort") || "updated_desc");
   const [qInput, setQInput] = React.useState(() => searchParams.get("q") ?? "");
   const [qDebounced, setQDebounced] = React.useState(() => searchParams.get("q") ?? "");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | ProjectStatus>(() =>
-    parseStatusFilter(searchParams.get("status")),
+  const [stageFilter, setStageFilter] = React.useState<ProjectStageFilter>(() =>
+    parseStageFilter(searchParams.get("stage")),
   );
   const [ballFilter, setBallFilter] = React.useState<"all" | ProjectBall>(() => parseBallFilter(searchParams.get("ball")));
 
@@ -158,7 +162,7 @@ function ProjectsContent() {
     setSort(searchParams.get("sort") || "updated_desc");
     setQInput(searchParams.get("q") ?? "");
     setQDebounced(searchParams.get("q") ?? "");
-    setStatusFilter(parseStatusFilter(searchParams.get("status")));
+    setStageFilter(parseStageFilter(searchParams.get("stage")));
     setBallFilter(parseBallFilter(searchParams.get("ball")));
   }, [searchParams]);
 
@@ -198,7 +202,7 @@ function ProjectsContent() {
       tab,
       sort,
       q: qDebounced,
-      status: statusFilter,
+      stage: stageFilter,
       ball: ballFilter,
     });
     setLoading(true);
@@ -221,7 +225,7 @@ function ProjectsContent() {
         setListError("Сеть или сервер недоступны. Проверьте подключение и попробуйте снова.");
       })
       .finally(() => setLoading(false));
-  }, [state.status, role, tab, sort, qDebounced, statusFilter, ballFilter]);
+  }, [state.status, role, tab, sort, qDebounced, stageFilter, ballFilter]);
 
   React.useEffect(() => {
     loadProjects();
@@ -233,11 +237,11 @@ function ProjectsContent() {
       tab,
       sort,
       q: qDebounced,
-      status: statusFilter,
+      stage: stageFilter,
       ball: ballFilter,
     });
     router.replace(pageQs ? `${pathname}?${pageQs}` : pathname, { scroll: false });
-  }, [state.status, role, tab, sort, qDebounced, statusFilter, ballFilter, pathname, router]);
+  }, [state.status, role, tab, sort, qDebounced, stageFilter, ballFilter, pathname, router]);
 
   React.useEffect(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
@@ -315,6 +319,13 @@ function ProjectsContent() {
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={openCreateModal}
+                  className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(24,24,27,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
+                >
+                  Создать проект
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     setTab("active");
                     setSort("updated_desc");
@@ -343,59 +354,56 @@ function ProjectsContent() {
                 >
                   Архив
                 </button>
-                {tab === "active" ? (
-                  <button
-                    type="button"
-                    onClick={openCreateModal}
-                    className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(24,24,27,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
-                  >
-                    Создать проект
-                  </button>
-                ) : null}
               </div>
             </div>
 
-            <div className="mt-5 grid gap-2 lg:grid-cols-[minmax(18rem,1fr)_minmax(11rem,15rem)_minmax(11rem,15rem)_minmax(9rem,13rem)]">
-              <input
-                type="search"
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-                placeholder="Название, заказчик, ответственный..."
-                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-              />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-              >
-                {PROJECT_SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(parseStatusFilter(e.target.value))}
-                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-              >
-                {PROJECT_STATUS_FILTERS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={ballFilter}
-                onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
-                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-              >
-                {PROJECT_BALL_FILTERS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
+              <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(10rem,13rem)_minmax(12rem,15rem)_minmax(9rem,12rem)]">
+                <input
+                  type="search"
+                  value={qInput}
+                  onChange={(e) => setQInput(e.target.value)}
+                  placeholder="Найти проект"
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Найти проект"
+                />
+                <select
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Сортировка"
+                >
+                  {PROJECT_SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={stageFilter}
+                  onChange={(e) => setStageFilter(parseStageFilter(e.target.value))}
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Статус"
+                >
+                  {PROJECT_STAGE_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={ballFilter}
+                  onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Мяч"
+                >
+                  {PROJECT_BALL_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </section>
 

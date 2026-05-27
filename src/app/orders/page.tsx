@@ -335,9 +335,6 @@ export default function OrdersPage() {
                     Не учитывается
                   </span>
                 ) : null}
-                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
-                  Готовность {fmtDate(o.readyByDate)}
-                </span>
               </div>
             </div>
             <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
@@ -345,84 +342,67 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
-              {periodLineOrders(o)}
-            </span>
-            {isArchive ? (
-              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
-                Закрытая/архивная
-              </span>
-            ) : null}
-          </div>
-
-          {o.totalAmount != null || o.taxAmount != null || o.discount ? (
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              <div
-                className={[
-                  "rounded-2xl border px-4 py-3",
-                  isCancelledArchive
-                    ? "border-zinc-200/90 bg-white/60"
-                    : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
-                ].join(" ")}
-              >
-                <div
-                  className={[
-                    "text-[10px] font-black uppercase tracking-[0.16em]",
-                    isCancelledArchive ? "text-zinc-400" : "text-violet-600",
-                  ].join(" ")}
-                >
-                  Сумма
-                </div>
-                <div
-                  className={[
-                    "mt-1 text-lg font-black",
-                    isCancelledArchive ? "text-zinc-500" : "text-violet-950",
-                  ].join(" ")}
-                >
-                  {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Налог</div>
-                <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                  {o.taxAmount != null ? formatMoney(o.taxAmount) : "—"}
-                </div>
-              </div>
-
-              <div
-                className={[
-                  "rounded-2xl border px-4 py-3",
-                  o.discount && !isCancelledArchive
-                    ? "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.78))]"
-                    : "border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))]",
-                ].join(" ")}
-              >
-                <div
-                  className={[
-                    "text-[10px] font-black uppercase tracking-[0.16em]",
-                    o.discount && !isCancelledArchive ? "text-emerald-700" : "text-zinc-500",
-                  ].join(" ")}
-                >
-                  Скидка
-                </div>
-                <div
-                  className={[
-                    "mt-1 text-lg font-black",
-                    o.discount && !isCancelledArchive ? "text-emerald-950" : "text-zinc-500",
-                  ].join(" ")}
-                >
-                  {discountLabel ?? "—"}
-                </div>
+          <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(9rem,0.75fr)_minmax(16rem,1.35fr)_minmax(9rem,0.9fr)]">
+            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Готовность</div>
+              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
+                {fmtDate(o.readyByDate)}
               </div>
             </div>
-          ) : null}
+
+            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Период</div>
+              <div className={["mt-1 text-base font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
+                {periodLineOrders(o)}
+              </div>
+            </div>
+
+            <div
+              className={[
+                "rounded-2xl border px-4 py-3",
+                isCancelledArchive
+                  ? "border-zinc-200/90 bg-white/60"
+                  : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "text-[10px] font-black uppercase tracking-[0.16em]",
+                  isCancelledArchive ? "text-zinc-400" : "text-violet-600",
+                ].join(" ")}
+              >
+                Сумма
+              </div>
+              <div
+                className={[
+                  "mt-1 text-lg font-black",
+                  isCancelledArchive ? "text-zinc-500" : "text-violet-950",
+                ].join(" ")}
+              >
+                {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
+              </div>
+            </div>
+          </div>
 
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
             <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
               ID {o.id.slice(0, 8)}
             </span>
+            {o.taxAmount != null ? (
+              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
+                Налог {formatMoney(o.taxAmount)}
+              </span>
+            ) : null}
+            {discountLabel ? (
+              <span className="rounded-full border border-emerald-200 bg-emerald-50/85 px-2.5 py-1 text-emerald-800">
+                Скидка {discountLabel}
+              </span>
+            ) : null}
+            {isArchive ? (
+              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
+                Архив
+              </span>
+            ) : null}
             {isCancelled && !isCancelledArchive ? (
               <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 text-zinc-500">
                 Отменена

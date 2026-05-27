@@ -22,7 +22,7 @@ const ORDER_STALE_WAREHOUSE_STATUSES = ["PICKING", "ISSUED", "RETURN_DECLARED"] 
 const UPCOMING_TIMELINE_DAYS = 5;
 const UPCOMING_TIMELINE_START_OFFSET = 1;
 const UPCOMING_TIMELINE_MAX_OFFSET = UPCOMING_TIMELINE_START_OFFSET + UPCOMING_TIMELINE_DAYS - 1;
-const UPCOMING_TIMELINE_EVENTS_PER_DAY = 20;
+const TIMELINE_EVENTS_PER_DAY = 20;
 
 type Urgency = "normal" | "soon" | "today" | "overdue" | "critical";
 type SignalSeverity = "info" | "warning" | "critical";
@@ -523,14 +523,14 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       events: events
         .filter((event) => event.date === date)
         .sort((a, b) => eventRank(a) - eventRank(b))
-        .slice(0, UPCOMING_TIMELINE_EVENTS_PER_DAY),
+        .slice(0, TIMELINE_EVENTS_PER_DAY),
     };
   });
 
   const todayEvents = events
     .filter((event) => event.date === today || event.urgency === "overdue" || event.urgency === "critical")
     .sort((a, b) => eventRank(a) - eventRank(b))
-    .slice(0, 6);
+    .slice(0, TIMELINE_EVENTS_PER_DAY);
 
   const sortedSignals = signals
     .sort((a, b) => signalRank(a) - signalRank(b) || a.title.localeCompare(b.title, "ru"))

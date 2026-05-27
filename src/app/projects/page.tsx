@@ -167,6 +167,7 @@ function ProjectsContent() {
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [createBusy, setCreateBusy] = React.useState(false);
+  const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [customerId, setCustomerId] = React.useState("");
   const [customerInput, setCustomerInput] = React.useState("");
@@ -259,6 +260,16 @@ function ProjectsContent() {
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, []);
 
+  function openCreateModal() {
+    setCustomerDropdownOpen(false);
+    setCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    setCustomerDropdownOpen(false);
+    setCreateModalOpen(false);
+  }
+
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !customerInputTrim) return;
@@ -280,6 +291,7 @@ function ProjectsContent() {
         setTitle("");
         setCustomerId("");
         setCustomerInput("");
+        closeCreateModal();
         router.push(`/projects/${data.project.id}`);
         return;
       }
@@ -294,183 +306,98 @@ function ProjectsContent() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-zinc-600">
-              {tab === "active"
-                ? "Активные проекты. До 500 записей с учётом фильтров."
-                : "Архив: только просмотр. До 500 записей с учётом фильтров."}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("active");
-                  setSort("updated_desc");
-                }}
-                className={[
-                  "rounded-lg px-3 py-2 text-sm font-medium",
-                  tab === "active"
-                    ? "bg-violet-700 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-                ].join(" ")}
-              >
-                Активные
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("archive");
-                  setSort("updated_desc");
-                }}
-                className={[
-                  "rounded-lg px-3 py-2 text-sm font-medium",
-                  tab === "archive"
-                    ? "bg-violet-700 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-                ].join(" ")}
-              >
-                Архив
-              </button>
-            </div>
-          </div>
-
-          {tab === "active" ? (
-            <form
-              onSubmit={createProject}
-              className="rounded-2xl border border-violet-200/80 bg-violet-50/40 p-4 space-y-3"
-            >
-              <div className="text-sm font-semibold text-zinc-900">Управление проектами</div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="block text-xs text-zinc-600">
-                  Название
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
-                    maxLength={300}
-                    required
-                  />
-                </label>
-                <div className="block text-xs text-zinc-600">
-                  <div>Заказчик</div>
-                  <div className="relative mt-1" ref={customerInputRef}>
-                    <input
-                      value={customerInput}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setCustomerInput(value);
-                        const trimmed = value.trim();
-                        const match =
-                          trimmed &&
-                          customers.find((c) => c.name.localeCompare(trimmed, undefined, { sensitivity: "accent" }) === 0);
-                        setCustomerId(match ? match.id : "");
-                        setCustomerDropdownOpen(true);
-                      }}
-                      onFocus={() => setCustomerDropdownOpen(true)}
-                      className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
-                      placeholder="Выберите из списка или введите название заказчика"
-                      autoComplete="off"
-                      required
-                    />
-                    {customerDropdownOpen ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-56 overflow-y-auto rounded-2xl border border-zinc-200 bg-white/95 py-1 shadow-[0_10px_40px_rgba(17,24,39,0.12)] backdrop-blur">
-                        {customerFiltered.length === 0 ? (
-                          <div className="px-4 py-3 text-sm text-zinc-500">
-                            {customerInputTrim ? "Нет совпадений - будет создан новый заказчик" : "Нет заказчиков в списке"}
-                          </div>
-                        ) : (
-                          customerFiltered.map((c) => (
-                            <button
-                              key={c.id}
-                              type="button"
-                              className="block w-full px-4 py-2 text-left text-sm text-zinc-800 transition hover:bg-violet-50"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setCustomerInput(c.name);
-                                setCustomerId(c.id);
-                                setCustomerDropdownOpen(false);
-                              }}
-                            >
-                              {c.name}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                  {customerInputTrim && !matchedCustomer ? (
-                    <div className="mt-2 border-t border-zinc-200/70 pt-2 text-[11px] text-zinc-500">
-                      Будет создан новый заказчик «{customerInputTrim}»
-                    </div>
-                  ) : null}
-                </div>
+          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.24),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.22),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Рабочий центр</div>
+                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Проекты</h1>
               </div>
-              <button
-                type="submit"
-                disabled={createBusy || !title.trim() || !customerInputTrim}
-                className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
-              >
-                {createBusy ? "Создание…" : "Создать"}
-              </button>
-            </form>
-          ) : null}
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex min-w-[200px] flex-1 flex-col gap-1">
-                <span className="text-xs font-semibold text-zinc-500">Поиск</span>
-                <input
-                  type="search"
-                  value={qInput}
-                  onChange={(e) => setQInput(e.target.value)}
-                  placeholder="Название, заказчик, ответственный, id…"
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="flex min-w-[220px] flex-col gap-1">
-                <span className="text-xs font-semibold text-zinc-500">Сортировка</span>
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("active");
+                    setSort("updated_desc");
+                  }}
+                  className={[
+                    "rounded-2xl px-4 py-3 text-sm font-black shadow-sm transition",
+                    tab === "active"
+                      ? "bg-violet-700 text-white shadow-violet-200"
+                      : "border border-white/80 bg-white/75 text-zinc-800 hover:bg-white",
+                  ].join(" ")}
                 >
-                  {PROJECT_SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-[200px] flex-col gap-1">
-                <span className="text-xs font-semibold text-zinc-500">Статус</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(parseStatusFilter(e.target.value))}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                  Активные
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("archive");
+                    setSort("updated_desc");
+                  }}
+                  className={[
+                    "rounded-2xl px-4 py-3 text-sm font-black shadow-sm transition",
+                    tab === "archive"
+                      ? "bg-violet-700 text-white shadow-violet-200"
+                      : "border border-white/80 bg-white/75 text-zinc-800 hover:bg-white",
+                  ].join(" ")}
                 >
-                  {PROJECT_STATUS_FILTERS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-[160px] flex-col gap-1">
-                <span className="text-xs font-semibold text-zinc-500">Мяч</span>
-                <select
-                  value={ballFilter}
-                  onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
-                >
-                  {PROJECT_BALL_FILTERS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  Архив
+                </button>
+                {tab === "active" ? (
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(24,24,27,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
+                  >
+                    Создать проект
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
+
+            <div className="mt-5 grid gap-2 lg:grid-cols-[minmax(18rem,1fr)_minmax(11rem,15rem)_minmax(11rem,15rem)_minmax(9rem,13rem)]">
+              <input
+                type="search"
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+                placeholder="Название, заказчик, ответственный..."
+                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+              />
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+              >
+                {PROJECT_SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(parseStatusFilter(e.target.value))}
+                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+              >
+                {PROJECT_STATUS_FILTERS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={ballFilter}
+                onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
+                className="h-12 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-semibold text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+              >
+                {PROJECT_BALL_FILTERS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
 
           {listError ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -489,49 +416,71 @@ function ProjectsContent() {
           ) : !listError && projects.length === 0 ? (
             <div className="text-sm text-zinc-600">Пока нет проектов.</div>
           ) : !listError ? (
-            <ul className="space-y-2">
+            <ul className="grid gap-3">
               {projects.map((p) => (
                 <li key={p.id}>
                   <Link
                     href={`/projects/${p.id}`}
-                    className="block rounded-2xl border border-zinc-200/90 bg-white p-4 shadow-sm transition hover:border-violet-300 hover:shadow-md"
+                    className="group block overflow-hidden rounded-[1.75rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] p-4 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]"
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="font-semibold text-zinc-900">{p.title}</div>
-                      <div className="text-xs text-zinc-500">обновл. {fmtDate(p.updatedAt)}</div>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-                      <span>{p.customer.name}</span>
-                      {projectDateLine(p) ? (
-                        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs font-medium text-zinc-700">
-                          {projectDateLine(p)}
-                          {p.eventDateConfirmed ? "" : " · не подтверждено"}
-                        </span>
-                      ) : null}
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="min-w-0 text-xl font-black leading-tight text-zinc-950 group-hover:text-violet-800">
+                            {p.title}
+                          </h2>
+                          <span className="rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-bold text-zinc-600">
+                            {p.customer.name}
+                          </span>
+                          {projectDateLine(p) ? (
+                            <span className="rounded-full border border-violet-100 bg-violet-50/80 px-2.5 py-1 text-xs font-bold text-violet-800">
+                              {projectDateLine(p)}
+                              {p.eventDateConfirmed ? "" : " · черновик"}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                          <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-700">
+                            {PROJECT_STATUS_LABEL[p.status]}
+                          </span>
+                          <span className="rounded-full border border-amber-200 bg-amber-50/85 px-2.5 py-1 font-bold text-amber-900">
+                            {PROJECT_BALL_LABEL[p.ball]}
+                          </span>
+                          <span className="rounded-full border border-violet-200 bg-violet-50/85 px-2.5 py-1 font-bold text-violet-800">
+                            {p._count.orders} заявок
+                          </span>
+                          <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
+                            {p.owner.displayName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
+                        {fmtDate(p.updatedAt)}
+                      </div>
                     </div>
                     {tab === "archive" && p.archiveNote?.trim() ? (
-                      <p className="mt-2 rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2 text-sm text-zinc-700 whitespace-pre-wrap">
+                      <p className="mt-3 rounded-2xl border border-zinc-100 bg-white/70 px-3 py-2 text-sm text-zinc-700 whitespace-pre-wrap">
                         {p.archiveNote.trim()}
                       </p>
                     ) : null}
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:max-w-2xl">
-                      <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Выручка</div>
-                        <div className="mt-0.5 text-base font-bold text-violet-950">
+                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))] px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">Выручка</div>
+                        <div className="mt-1 text-lg font-black text-violet-950">
                           {formatMoney(p.finance.revenueTotal)}
                         </div>
                       </div>
                       <div
                         className={[
-                          "rounded-xl border px-3 py-2",
+                          "rounded-2xl border px-4 py-3",
                           p.finance.marginAfterTax < 0
-                            ? "border-red-200 bg-red-50"
-                            : "border-emerald-200 bg-emerald-50",
+                            ? "border-red-200 bg-[linear-gradient(135deg,rgba(254,242,242,0.95),rgba(255,255,255,0.78))]"
+                            : "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.78))]",
                         ].join(" ")}
                       >
                         <div
                           className={[
-                            "text-[11px] font-semibold uppercase tracking-wide",
+                            "text-[10px] font-black uppercase tracking-[0.16em]",
                             p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700",
                           ].join(" ")}
                         >
@@ -539,38 +488,122 @@ function ProjectsContent() {
                         </div>
                         <div
                           className={[
-                            "mt-0.5 text-base font-bold",
+                            "mt-1 text-lg font-black",
                             p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950",
                           ].join(" ")}
                         >
                           {formatMoney(p.finance.marginAfterTax)}
                         </div>
                       </div>
-                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Маржа</div>
-                        <div className="mt-0.5 text-base font-bold text-zinc-900">
+                      <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Маржа</div>
+                        <div className="mt-1 text-lg font-black text-zinc-950">
                           {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
                         </div>
                       </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-medium text-zinc-700">
-                        {PROJECT_STATUS_LABEL[p.status]}
-                      </span>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-900">
-                        Мяч: {PROJECT_BALL_LABEL[p.ball]}
-                      </span>
-                      <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 font-medium text-violet-800">
-                        Заявок: {p._count.orders}
-                      </span>
-                      <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-zinc-600">
-                        {p.owner.displayName}
-                      </span>
                     </div>
                   </Link>
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {createModalOpen ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm">
+              <form
+                onSubmit={createProject}
+                className="w-full max-w-2xl overflow-visible rounded-[2rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(245,243,255,0.94))] p-5 shadow-[0_30px_100px_rgba(24,24,27,0.28)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">Новый проект</div>
+                    <h2 className="mt-1 text-3xl font-black text-zinc-950">Создать проект</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeCreateModal}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-200 bg-white/80 text-xl font-black leading-none text-zinc-500 shadow-sm transition hover:bg-white hover:text-zinc-950"
+                    aria-label="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="h-14 w-full rounded-2xl border border-zinc-200 bg-white/85 px-4 text-base font-bold text-zinc-950 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                    maxLength={300}
+                    placeholder="Название проекта"
+                    required
+                  />
+
+                  <div className="relative" ref={customerInputRef}>
+                    <input
+                      value={customerInput}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setCustomerInput(value);
+                        const trimmed = value.trim();
+                        const match =
+                          trimmed &&
+                          customers.find((c) => c.name.localeCompare(trimmed, undefined, { sensitivity: "accent" }) === 0);
+                        setCustomerId(match ? match.id : "");
+                        setCustomerDropdownOpen(true);
+                      }}
+                      onFocus={() => setCustomerDropdownOpen(true)}
+                      className="h-14 w-full rounded-2xl border border-zinc-200 bg-white/85 px-4 text-base font-bold text-zinc-950 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                      placeholder="Заказчик"
+                      autoComplete="off"
+                      required
+                    />
+                    {customerDropdownOpen ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto rounded-2xl border border-zinc-200 bg-white/95 py-1 shadow-[0_18px_50px_rgba(17,24,39,0.16)] backdrop-blur">
+                        {customerFiltered.length === 0 ? (
+                          <div className="px-4 py-3 text-sm font-medium text-zinc-500">
+                            {customerInputTrim ? "Новый заказчик будет создан вместе с проектом" : "Список пуст"}
+                          </div>
+                        ) : (
+                          customerFiltered.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-zinc-800 transition hover:bg-violet-50"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setCustomerInput(c.name);
+                                setCustomerId(c.id);
+                                setCustomerDropdownOpen(false);
+                              }}
+                            >
+                              {c.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeCreateModal}
+                    className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-sm font-black text-zinc-700 shadow-sm transition hover:bg-white"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createBusy || !title.trim() || !customerInputTrim}
+                    className="rounded-2xl bg-violet-700 px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(109,40,217,0.24)] transition hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {createBusy ? "Создаю..." : "Создать проект"}
+                  </button>
+                </div>
+              </form>
+            </div>
           ) : null}
         </div>
       )}

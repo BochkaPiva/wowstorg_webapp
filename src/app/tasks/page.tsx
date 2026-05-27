@@ -89,6 +89,7 @@ type TaskCreateDraft = {
 };
 
 type TaskDropEdge = "before" | "after";
+type ColumnDropEdge = "before" | "after";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   LOW: "Низкий",
@@ -1154,6 +1155,11 @@ function TasksPageContent() {
     columnId: string;
     edge: TaskDropEdge;
   } | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = React.useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = React.useState<{
+    columnId: string;
+    edge: ColumnDropEdge;
+  } | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
@@ -1562,6 +1568,62 @@ function TasksPageContent() {
     }
   }
 
+  async function reorderColumn(columnId: string, targetColumnId: string, edge: ColumnDropEdge) {
+    const currentBoard = boardRef.current;
+    if (!currentBoard || columnId === targetColumnId) return;
+
+    const movingColumn = currentBoard.columns.find((column) => column.id === columnId);
+    if (!movingColumn) return;
+
+    const previousBoard = currentBoard;
+    const columnsWithoutMoving = currentBoard.columns.filter((column) => column.id !== columnId);
+    const targetIndex = columnsWithoutMoving.findIndex((column) => column.id === targetColumnId);
+    if (targetIndex < 0) return;
+
+    const insertIndex = edge === "before" ? targetIndex : targetIndex + 1;
+    const reorderedColumns = [
+      ...columnsWithoutMoving.slice(0, insertIndex),
+      movingColumn,
+      ...columnsWithoutMoving.slice(insertIndex),
+    ];
+    const unchanged = reorderedColumns.every((column, index) => column.id === currentBoard.columns[index]?.id);
+    if (unchanged) return;
+
+    const movedIndex = reorderedColumns.findIndex((column) => column.id === columnId);
+    const prevColumn = reorderedColumns[movedIndex - 1] ?? null;
+    const nextColumn = reorderedColumns[movedIndex + 1] ?? null;
+    const nextSortOrder =
+      prevColumn && nextColumn
+        ? Math.floor((prevColumn.sortOrder + nextColumn.sortOrder) / 2)
+        : prevColumn
+          ? prevColumn.sortOrder + 1000
+          : nextColumn
+            ? nextColumn.sortOrder - 1000
+            : movingColumn.sortOrder;
+
+    applyBoard({
+      ...currentBoard,
+      columns: reorderedColumns.map((column) =>
+        column.id === columnId ? { ...column, sortOrder: nextSortOrder } : column,
+      ),
+    });
+
+    try {
+      await readApi(
+        await fetch(`/api/tasks/columns/${columnId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: nextSortOrder }),
+        }),
+      );
+      const freshBoard = await fetchBoardDetail(currentBoard.id);
+      if (freshBoard) applyBoard(freshBoard);
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось изменить порядок колонок");
+    }
+  }
+
   async function moveTaskToColumn(taskId: string, targetColumnId: string) {
     const currentBoard = boardRef.current;
     if (!currentBoard) return;
@@ -1693,24 +1755,74 @@ function TasksPageContent() {
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
+                const movedColumnId = event.dataTransfer.types.includes("application/x-wowstorg-column-id")
+                  ? event.dataTransfer.getData("application/x-wowstorg-column-id") || draggingColumnId
+                  : draggingColumnId;
+                if (movedColumnId) {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const edge: ColumnDropEdge = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+                  setDragOverColumn(movedColumnId === column.id ? null : { columnId: column.id, edge });
+                  setDragOverColumnId(null);
+                  return;
+                }
                 setDragOverColumnId(column.id);
               }}
               onDragLeave={() => {
                 if (dragOverColumnId === column.id) setDragOverColumnId(null);
+                if (dragOverColumn?.columnId === column.id) setDragOverColumn(null);
               }}
               onDrop={(event) => {
                 event.preventDefault();
+                const movedColumnId = event.dataTransfer.getData("application/x-wowstorg-column-id") || draggingColumnId;
+                if (movedColumnId) {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const edge: ColumnDropEdge = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+                  setDraggingColumnId(null);
+                  setDragOverColumn(null);
+                  if (!viewParams.readOnly) void reorderColumn(movedColumnId, column.id, edge);
+                  return;
+                }
                 const taskId = event.dataTransfer.getData("text/plain") || draggingTaskId;
                 setDragOverColumnId(null);
                 setDragOverTask(null);
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
-                "flex w-[320px] shrink-0 flex-col rounded-2xl border bg-white/85 shadow-sm backdrop-blur transition",
+                "relative flex w-[320px] shrink-0 flex-col rounded-2xl border bg-white/85 shadow-sm backdrop-blur transition",
                 dragOverColumnId === column.id ? "border-violet-300 ring-4 ring-violet-100" : "border-white/80",
+                draggingColumnId === column.id ? "opacity-60" : "",
               ].join(" ")}
             >
-              <div className="rounded-t-2xl px-3 py-3" style={{ backgroundColor: column.color ?? "#334155" }}>
+              {dragOverColumn?.columnId === column.id ? (
+                <div
+                  className={[
+                    "pointer-events-none absolute bottom-2 top-2 z-20 w-1.5 rounded-full bg-violet-500 shadow-[0_0_0_5px_rgba(139,92,246,0.18)]",
+                    dragOverColumn.edge === "before" ? "-left-2" : "-right-2",
+                  ].join(" ")}
+                />
+              ) : null}
+              <div
+                draggable={!viewParams.readOnly}
+                onDragStart={(event) => {
+                  const target = event.target as HTMLElement;
+                  if (target.closest("input,button,select,textarea,a")) {
+                    event.preventDefault();
+                    return;
+                  }
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("application/x-wowstorg-column-id", column.id);
+                  event.dataTransfer.setData("text/plain", "");
+                  setDraggingColumnId(column.id);
+                  setDragOverTask(null);
+                  setDragOverColumnId(null);
+                }}
+                onDragEnd={() => {
+                  setDraggingColumnId(null);
+                  setDragOverColumn(null);
+                }}
+                className="cursor-grab rounded-t-2xl px-3 py-3 active:cursor-grabbing"
+                style={{ backgroundColor: column.color ?? "#334155" }}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <input
                     value={column.title}
@@ -1727,12 +1839,14 @@ function TasksPageContent() {
                     }}
                     onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
                     disabled={viewParams.readOnly}
+                    draggable={false}
                     className="min-w-0 flex-1 bg-transparent text-base font-bold text-white outline-none placeholder:text-white/70"
                   />
                   <button
                     type="button"
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
                     disabled={viewParams.readOnly}
+                    draggable={false}
                     className="rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs text-white/90 hover:bg-white/20"
                     title="Колонка завершения"
                   >
@@ -1744,6 +1858,7 @@ function TasksPageContent() {
                     type="button"
                     onClick={() => setEditor({ task: null, columnId: column.id })}
                     disabled={viewParams.readOnly}
+                    draggable={false}
                     className="text-sm font-semibold text-white/90 hover:text-white"
                   >
                     + Добавить задачу
@@ -1752,6 +1867,7 @@ function TasksPageContent() {
                     <button
                       type="button"
                       onClick={() => void deleteColumn(column.id)}
+                      draggable={false}
                       className="ml-auto text-xs font-medium text-white/75 hover:text-white"
                     >
                       удалить
@@ -1776,12 +1892,15 @@ function TasksPageContent() {
                     onDragStart={(taskId, fromColumnId) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);
+                      setDraggingColumnId(null);
+                      setDragOverColumn(null);
                     }}
                     onDragEnd={() => {
                       setDraggingTaskId(null);
                       setDraggingFromColumnId(null);
                       setDragOverColumnId(null);
                       setDragOverTask(null);
+                      setDragOverColumn(null);
                     }}
                     onDragOverTask={(taskId, columnId, edge) => {
                       if (viewParams.readOnly || !draggingTaskId || draggingTaskId === taskId) {

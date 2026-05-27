@@ -76,10 +76,10 @@ type KindFilter = "ALL" | "MAIN" | "SUPPLEMENT";
 
 function statusHeaderClass(status: OrderCard["status"]): string {
   return status === "CANCELLED"
-    ? "bg-[#5b0b17]/10 text-[#5b0b17]"
+    ? "bg-zinc-100/90 text-zinc-500"
     : status === "CLOSED"
-      ? "bg-violet-50 text-violet-900"
-      : "bg-white";
+      ? "bg-violet-50/80 text-violet-900"
+      : "bg-white/80";
 }
 
 function fmtDate(iso: string) {
@@ -280,16 +280,19 @@ export default function OrdersPage() {
   const filteredCount = filteredSorted.length;
 
   function renderOrderCard(o: OrderCard, kind: "root" | "child") {
+    const isCancelled = o.status === "CANCELLED";
+    const isArchive = scopeFilter === "DONE";
+    const isSupplement = Boolean(o.parentOrderId);
     return (
       <div
         key={o.id}
         className={[
-          "rounded-2xl border overflow-hidden shadow-sm transition",
-          o.status === "CANCELLED"
-            ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03] hover:border-[#5b0b17]/40"
-            : o.parentOrderId
-              ? "border-amber-300 bg-amber-50/30 hover:border-amber-400"
-              : "border-zinc-200 bg-white hover:border-violet-200",
+          "overflow-hidden rounded-[1.75rem] border p-0 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5",
+          isCancelled
+            ? "border-zinc-200/90 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 hover:border-zinc-300 hover:opacity-100"
+            : isSupplement
+              ? "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.8))] hover:border-amber-300"
+              : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
           kind === "child" ? "ml-8" : "",
         ].join(" ")}
       >
@@ -297,59 +300,100 @@ export default function OrdersPage() {
           <OrderStatusStepper status={o.status} source={o.source} />
         </div>
         <div className="p-4">
-          <div className="text-sm font-semibold text-zinc-900">{o.customer.name}</div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div
+                className={[
+                  "text-xl font-black leading-tight",
+                  isCancelled ? "text-zinc-500" : "text-zinc-950",
+                ].join(" ")}
+              >
+                {o.customer.name}
+              </div>
           {o.eventName ? (
-            <div className="mt-1 text-xs text-zinc-600 line-clamp-2">{o.eventName}</div>
+                <div className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-500">{o.eventName}</div>
           ) : null}
-          {o.parentOrderId ? (
-            <div className="mt-1 inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-              Доп. заявка к №{o.parentOrderId.slice(0, 8)}
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span
+                  className={[
+                    "rounded-full border px-2.5 py-1 font-bold",
+                    isSupplement
+                      ? "border-amber-200 bg-amber-50/85 text-amber-900"
+                      : "border-violet-200 bg-violet-50/85 text-violet-800",
+                  ].join(" ")}
+                >
+                  {isSupplement ? `Доп. к ${o.parentOrderId?.slice(0, 8)}` : "Основная"}
+                </span>
+                {isCancelled ? (
+                  <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
+                    Не учитывается
+                  </span>
+                ) : null}
+                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
+                  Готовность {fmtDate(o.readyByDate)}
+                </span>
+                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
+                  {periodLineOrders(o)}
+                </span>
+              </div>
             </div>
-          ) : (
-            <div className="mt-1 inline-flex items-center rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-900">
-              Основная заявка
-            </div>
-          )}
-          <div className="mt-2 text-sm text-zinc-600">
-            Готовность к: <span className="font-semibold">{fmtDate(o.readyByDate)}</span>
-            {" · "}
-            Период: <span className="font-semibold">{periodLineOrders(o)}</span>
-            {scopeFilter !== "DONE" && o.totalAmount != null ? (
-              <span className="ml-2 inline-flex items-baseline gap-1 rounded-md bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
-                {o.totalAmount.toLocaleString("ru-RU")} ₽
-              </span>
-            ) : null}
-            {o.taxAmount != null ? (
-              <span className="ml-2 rounded-md bg-zinc-100 px-2 py-0.5 font-semibold text-zinc-700">
-                налог {o.taxAmount.toLocaleString("ru-RU")} ₽
-              </span>
-            ) : null}
-            {o.discount ? (
-              <span className="ml-2 rounded-md bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
-                скидка{" "}
-                {o.discount.type === "PERCENT" && o.discount.percent != null
-                  ? `${o.discount.percent}%`
-                  : `${Math.round(o.discount.amount).toLocaleString("ru-RU")} ₽`}
-              </span>
+            {o.totalAmount != null ? (
+              <div
+                className={[
+                  "shrink-0 rounded-2xl border px-4 py-3 text-right",
+                  isCancelled
+                    ? "border-zinc-200 bg-white/60"
+                    : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
+                ].join(" ")}
+              >
+                <div
+                  className={[
+                    "text-[10px] font-black uppercase tracking-[0.16em]",
+                    isCancelled ? "text-zinc-400" : "text-violet-600",
+                  ].join(" ")}
+                >
+                  Сумма
+                </div>
+                <div
+                  className={[
+                    "mt-1 text-lg font-black",
+                    isCancelled ? "text-zinc-500" : "text-violet-950",
+                  ].join(" ")}
+                >
+                  {formatMoney(o.totalAmount)}
+                </div>
+              </div>
             ) : null}
           </div>
-          {scopeFilter === "DONE" && o.totalAmount != null ? (
-            <div className="mt-3 inline-flex items-baseline gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">Сумма</span>
-              <span className="text-base font-bold text-violet-950">{formatMoney(o.totalAmount)}</span>
+
+          {(o.taxAmount != null || o.discount) && !isCancelled ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+              {o.taxAmount != null ? (
+                <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
+                  Налог {formatMoney(o.taxAmount)}
+                </span>
+              ) : null}
+              {o.discount ? (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50/85 px-2.5 py-1 text-emerald-800">
+                  Скидка{" "}
+                  {o.discount.type === "PERCENT" && o.discount.percent != null
+                    ? `${o.discount.percent}%`
+                    : formatMoney(o.discount.amount)}
+                </span>
+              ) : null}
             </div>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={`/orders/${o.id}`}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100"
+              className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-black text-violet-800 transition hover:bg-violet-100"
             >
               Открыть заявку
             </Link>
             {o.status === "ISSUED" && !o.parentOrderId ? (
               <Link
                 href={`/catalog?quickParentId=${o.id}`}
-                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-black text-amber-900 transition hover:bg-amber-100"
               >
                 Быстрая доп.-выдача
               </Link>
@@ -359,7 +403,7 @@ export default function OrdersPage() {
                 type="button"
                 disabled={cancellingId === o.id}
                 onClick={() => cancelOrder(o.id)}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm font-black text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
               >
                 {cancellingId === o.id ? "…" : "Отменить заявку"}
               </button>
@@ -377,12 +421,41 @@ export default function OrdersPage() {
       ) : orders.length === 0 ? (
         <div className="text-sm text-zinc-600">Пока нет заявок.</div>
       ) : (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-violet-200/50 bg-gradient-to-br from-white to-violet-50/40 px-3 py-2.5 shadow-sm">
-            <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-              <div className="relative min-w-0 flex-1 sm:min-w-[200px] sm:max-w-md">
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.2),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Рабочий центр</div>
+                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Заявки</h1>
+              </div>
+              <div
+                className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
+                role="group"
+                aria-label="Область заявок"
+              >
+                {(["ACTIVE", "ALL", "DONE"] as const).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setScopeFilter(key)}
+                    className={[
+                      "rounded-xl px-4 py-3 text-sm font-black transition",
+                      scopeFilter === key
+                        ? "bg-violet-700 text-white shadow-violet-200"
+                        : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
+                    ].join(" ")}
+                  >
+                    {key === "ACTIVE" ? "Активные" : key === "ALL" ? "Все" : "Архив"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
+              <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(15rem,20rem)_minmax(12rem,16rem)]">
+                <div className="relative min-w-0">
                 <svg
-                  className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                    className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -396,35 +469,13 @@ export default function OrdersPage() {
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Поиск: заказчик, №, мероприятие"
-                  className="h-9 w-full rounded-lg border border-zinc-200/90 bg-white pl-9 pr-3 text-sm text-zinc-900 placeholder:text-zinc-400 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    placeholder="Найти заявку"
+                    className="h-12 w-full rounded-[1.15rem] border border-transparent bg-white/90 pl-11 pr-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
                 />
               </div>
 
               <div
-                className="inline-flex min-h-9 items-center rounded-lg border border-zinc-200/90 bg-zinc-100/70 p-0.5 shadow-inner"
-                role="group"
-                aria-label="Область заявок"
-              >
-                {(["ACTIVE", "ALL", "DONE"] as const).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setScopeFilter(key)}
-                    className={[
-                      "rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
-                      scopeFilter === key
-                        ? "bg-white text-violet-900 shadow-sm ring-1 ring-violet-200/80"
-                        : "text-zinc-600 hover:text-zinc-900",
-                    ].join(" ")}
-                  >
-                    {key === "ACTIVE" ? "Активные" : key === "ALL" ? "Все" : "Архив"}
-                  </button>
-                ))}
-              </div>
-
-              <div
-                className="inline-flex min-h-9 items-center rounded-lg border border-zinc-200/90 bg-zinc-100/70 p-0.5 shadow-inner"
+                  className="inline-flex h-12 min-w-0 items-center rounded-[1.15rem] bg-white/90 p-1 shadow-sm"
                 role="group"
                 aria-label="Тип заявки"
               >
@@ -434,10 +485,10 @@ export default function OrdersPage() {
                     type="button"
                     onClick={() => setKindFilter(key)}
                     className={[
-                      "rounded-md px-2.5 py-1.5 text-xs font-semibold transition",
+                        "h-10 flex-1 rounded-xl px-3 text-sm font-black transition",
                       kindFilter === key
-                        ? "bg-white text-violet-900 shadow-sm ring-1 ring-violet-200/80"
-                        : "text-zinc-600 hover:text-zinc-900",
+                          ? "bg-violet-700 text-white shadow-sm"
+                          : "text-zinc-600 hover:bg-violet-50 hover:text-violet-900",
                     ].join(" ")}
                   >
                     {key === "ALL" ? "Все типы" : key === "MAIN" ? "Основные" : "Доп."}
@@ -445,11 +496,10 @@ export default function OrdersPage() {
                 ))}
               </div>
 
-              <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:shrink-0">
                 <select
                   value={sortMode}
                   onChange={(e) => setSortMode(e.target.value as SortMode)}
-                  className="h-9 min-w-0 flex-1 cursor-pointer rounded-lg border border-zinc-200/90 bg-white px-2.5 text-xs font-medium text-zinc-800 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 sm:max-w-[200px] sm:flex-initial"
+                  className="h-12 min-w-0 cursor-pointer rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
                   aria-label="Сортировка"
                 >
                   {(Object.keys(SORT_LABEL) as SortMode[]).map((m) => (
@@ -459,27 +509,26 @@ export default function OrdersPage() {
                   ))}
                 </select>
               </div>
-
-              <div className="flex items-center gap-2 sm:ml-auto">
-                <span className="tabular-nums text-xs text-zinc-500">
-                  {filteredCount}/{totalLoaded}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    setDebouncedSearch("");
-                    setScopeFilter("ACTIVE");
-                    setKindFilter("ALL");
-                    setSortMode("SMART");
-                  }}
-                  className="rounded-lg px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100/80 hover:text-violet-900"
-                >
-                  Сброс
-                </button>
-              </div>
             </div>
-          </div>
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              <span className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-bold tabular-nums text-zinc-500">
+                {filteredCount}/{totalLoaded}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setDebouncedSearch("");
+                  setScopeFilter("ACTIVE");
+                  setKindFilter("ALL");
+                  setSortMode("SMART");
+                }}
+                className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-violet-700 transition hover:bg-white hover:text-violet-950"
+              >
+                Сбросить
+              </button>
+            </div>
+          </section>
 
           {grouped.length === 0 ? (
             <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-6 text-center text-sm text-zinc-600">
@@ -488,7 +537,7 @@ export default function OrdersPage() {
           ) : (
             <div className="space-y-4">
               {grouped.map(({ root, children }) => (
-                <div key={root.id} className="rounded-3xl border border-zinc-200/80 bg-white/40 p-2">
+                <div key={root.id} className="rounded-[2rem] border border-white/70 bg-white/35 p-2 shadow-[0_18px_52px_rgba(24,24,27,0.06)]">
                   {renderOrderCard(root, "root")}
                   {children.length > 0 ? (
                     <div className="mt-2 space-y-2 border-l-2 border-amber-300/70 pl-2">

@@ -443,14 +443,18 @@ function WarehouseQueueContent() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-zinc-600">
-              {tab === "archive"
-                ? "Завершённые и отменённые заявки. До 500 записей с учётом фильтров."
-                : "Актуальные заявки (не завершённые и не отменённые). До 500 записей с учётом фильтров."}
-            </div>
-            <div className="flex flex-wrap gap-2">
+        <div className="space-y-6">
+          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.2),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Склад</div>
+                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Очередь заявок</h1>
+              </div>
+              <div
+                className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
+                role="group"
+                aria-label="Область заявок"
+              >
               <button
                 type="button"
                 onClick={() => {
@@ -458,10 +462,10 @@ function WarehouseQueueContent() {
                   setSort(DEFAULT_SORT);
                 }}
                 className={[
-                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  "rounded-xl px-4 py-3 text-sm font-black transition",
                   tab === "active"
                     ? "bg-violet-700 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                    : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                 ].join(" ")}
               >
                 Активные
@@ -473,35 +477,32 @@ function WarehouseQueueContent() {
                   setSort(ARCHIVE_DEFAULT_SORT);
                 }}
                 className={[
-                  "rounded-lg px-3 py-2 text-sm font-medium",
+                  "rounded-xl px-4 py-3 text-sm font-black transition",
                   tab === "archive"
                     ? "bg-violet-700 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
+                    : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                 ].join(" ")}
               >
                 Архив
               </button>
             </div>
-          </div>
+            </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1 min-w-[200px] flex-1">
-                <span className="text-xs font-semibold text-zinc-500">Поиск</span>
+            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
+              <div className={["grid gap-2", tab === "archive" ? "xl:grid-cols-[minmax(22rem,1fr)_minmax(12rem,16rem)_minmax(10rem,14rem)_minmax(10rem,14rem)]" : "xl:grid-cols-[minmax(22rem,1fr)_minmax(12rem,16rem)_minmax(10rem,14rem)]"].join(" ")}>
                 <input
                   type="search"
                   value={qInput}
                   onChange={(e) => setQInput(e.target.value)}
-                  placeholder="Заказчик, Grinvich, ID заявки…"
-                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm w-full"
+                  placeholder="Найти заявку"
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Найти заявку"
                 />
-              </label>
-              <label className="flex flex-col gap-1 min-w-[200px]">
-                <span className="text-xs font-semibold text-zinc-500">Сортировка</span>
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm bg-white"
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Сортировка"
                 >
                   {SORT_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -509,13 +510,11 @@ function WarehouseQueueContent() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="flex flex-col gap-1 min-w-[180px]">
-                <span className="text-xs font-semibold text-zinc-500">Источник</span>
                 <select
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
-                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm bg-white"
+                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  aria-label="Источник"
                 >
                   {SOURCE_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -523,51 +522,49 @@ function WarehouseQueueContent() {
                     </option>
                   ))}
                 </select>
-              </label>
-              {tab === "archive" ? (
-                <label className="flex flex-col gap-1 min-w-[160px]">
-                  <span className="text-xs font-semibold text-zinc-500">Статус</span>
+                {tab === "archive" ? (
                   <select
                     value={archiveStatus}
                     onChange={(e) => setArchiveStatus(e.target.value)}
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm bg-white"
+                    className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                    aria-label="Статус"
                   >
                     <option value="all">Все</option>
                     <option value="CLOSED">Завершена</option>
                     <option value="CANCELLED">Отменена</option>
                   </select>
-                </label>
-              ) : null}
+                ) : null}
+              </div>
             </div>
 
             {tab === "active" ? (
-              <div>
+              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => setFiltersOpen((v) => !v)}
-                  className="text-sm font-medium text-violet-800 hover:text-violet-950"
+                  className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-violet-700 transition hover:bg-white hover:text-violet-950"
                 >
-                  {filtersOpen ? "▼ Скрыть статусы" : "► Фильтр по статусам"}
+                  {filtersOpen ? "Скрыть статусы" : "Статусы"}
                 </button>
                 {filtersOpen ? (
-                  <div className="mt-3 flex flex-wrap gap-2 items-center">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={selectAllStatuses}
-                      className="text-xs rounded-md border border-zinc-200 px-2 py-1 text-zinc-700 hover:bg-zinc-50"
+                      className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-zinc-600 hover:bg-white"
                     >
                       Все статусы
                     </button>
                     {QUEUE_STATUS_OPTIONS.map((opt) => (
                       <label
                         key={opt.value}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50/80 px-2 py-1.5 text-xs cursor-pointer hover:bg-violet-50"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-violet-50"
                       >
                         <input
                           type="checkbox"
                           checked={statusSet.has(opt.value)}
                           onChange={() => toggleStatus(opt.value)}
-                          className="rounded border-zinc-300"
+                          className="rounded border-zinc-300 accent-violet-700"
                         />
                         {opt.label}
                       </label>
@@ -576,7 +573,7 @@ function WarehouseQueueContent() {
                 ) : null}
               </div>
             ) : null}
-          </div>
+          </section>
 
           {loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>

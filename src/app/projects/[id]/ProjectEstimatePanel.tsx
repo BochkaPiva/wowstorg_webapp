@@ -161,6 +161,18 @@ type VersionMeta = {
   includeInProjectTotals: boolean;
   createdAt: string;
   createdBy: { displayName: string };
+  financials: {
+    clientSubtotal: number;
+    internalSubtotal: number;
+    cashInternalCostTax: number;
+    internalExpensesTotal: number;
+    commission: number;
+    revenueTotal: number;
+    tax: number;
+    grossMargin: number;
+    marginAfterTax: number;
+    marginAfterTaxPct: number;
+  };
 };
 
 type EstimatePayload = {
@@ -218,7 +230,7 @@ function isEditableOrderStatus(status: string) {
 }
 
 function formatOrderMoney(n: number) {
-  return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+  return formatMoneyRub(n);
 }
 
 /** Пустая строка → null; иначе число ≥ 0 или null при невалидном вводе. */
@@ -291,17 +303,53 @@ function EstimateFinanceToggle({
 
 function EstimateHelpLegend({ title, children }: { title: string; children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const [style, setStyle] = React.useState<React.CSSProperties>({});
+  const updatePosition = React.useCallback(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    setStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      left,
+      width,
+      zIndex: 1000,
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open, updatePosition]);
+
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
-        onMouseEnter={() => setOpen(true)}
+        onMouseEnter={() => {
+          updatePosition();
+          setOpen(true);
+        }}
         onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          updatePosition();
+          setOpen(true);
+        }}
         onBlur={() => setOpen(false)}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          updatePosition();
           setOpen(true);
         }}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-sm font-black text-violet-700 shadow-sm hover:bg-violet-100"
@@ -309,11 +357,17 @@ function EstimateHelpLegend({ title, children }: { title: string; children: Reac
       >
         !
       </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-20 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-xl sm:left-auto sm:right-0">
+      {open && typeof document !== "undefined" ? createPortal(
+        <div
+          style={style}
+          className="rounded-2xl border border-zinc-200 bg-white p-3 text-xs text-zinc-700 shadow-[0_20px_60px_rgba(24,24,27,0.18)]"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+        >
           <div className="font-semibold text-zinc-950">{title}</div>
           <div className="mt-2">{children}</div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
@@ -1084,7 +1138,7 @@ export function ProjectEstimatePanel({
                   Object.prototype.hasOwnProperty.call(patch, "qty") ||
                   Object.prototype.hasOwnProperty.call(patch, "unitPriceClient");
                 if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
-                  next = { ...next, costClient: String(Math.round(q * up)) };
+                  next = { ...next, costClient: String(roundMoney(q * up)) };
                 } else if (touchedPricing) {
                   next = { ...next, costClient: null };
                 }
@@ -1152,7 +1206,7 @@ export function ProjectEstimatePanel({
         const up =
           payload.unitPriceClient != null ? Number(payload.unitPriceClient.replace(",", ".")) : NaN;
         if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
-          costClientStr = String(Math.round(q * up));
+          costClientStr = String(roundMoney(q * up));
         }
         return {
           ...section,
@@ -1386,6 +1440,30 @@ export function ProjectEstimatePanel({
       marginAfterTaxPct: estimateTotals.marginAfterTaxPct,
     };
   }, [renderedSections, commissionEnabled, clientTaxEnabled]);
+
+  const projectTotals = React.useMemo(() => {
+    const included = (data?.versions ?? []).filter((version) => version.includeInProjectTotals);
+    const revenueTotal = roundMoney(included.reduce((sum, version) => sum + version.financials.revenueTotal, 0));
+    const internalSubtotal = roundMoney(included.reduce((sum, version) => sum + version.financials.internalSubtotal, 0));
+    const cashInternalCostTax = roundMoney(
+      included.reduce((sum, version) => sum + version.financials.cashInternalCostTax, 0),
+    );
+    const tax6 = roundMoney(included.reduce((sum, version) => sum + version.financials.tax, 0));
+    const totalExpensesWithTax = roundMoney(internalSubtotal + cashInternalCostTax + tax6);
+    const marginAfterTax = roundMoney(included.reduce((sum, version) => sum + version.financials.marginAfterTax, 0));
+    const marginAfterTaxPct = revenueTotal > 0 ? roundMoney((marginAfterTax / revenueTotal) * 100) : 0;
+
+    return {
+      count: included.length,
+      revenueTotal,
+      internalSubtotal,
+      cashInternalCostTax,
+      tax6,
+      totalExpensesWithTax,
+      marginAfterTax,
+      marginAfterTaxPct,
+    };
+  }, [data?.versions]);
 
   function money(n: number) {
     return formatMoneyRub(n);
@@ -1851,7 +1929,25 @@ export function ProjectEstimatePanel({
                 )}
               </div>
 
-              <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-white/85 p-3 xl:grid-cols-[1.15fr_0.95fr_1fr]">
+              <div className="rounded-[1.5rem] border border-white/70 bg-white/75 p-3 shadow-[0_16px_45px_rgba(24,24,27,0.08)]">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Выбранная смета</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-600">
+                      {currentVersionMeta?.title?.trim() || "Текущая смета"}
+                    </div>
+                  </div>
+                  {currentVersionMeta?.includeInProjectTotals ? (
+                    <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-extrabold text-violet-800">
+                      входит в проект
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-extrabold text-zinc-600">
+                      не входит в проект
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3 xl:grid-cols-[1.15fr_0.95fr_1fr]">
                 <div className="rounded-2xl border border-violet-200 bg-violet-50/80 p-3">
                   <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
                   <div className="mt-3 space-y-2 text-sm">
@@ -1932,6 +2028,43 @@ export function ProjectEstimatePanel({
                   </div>
                 </div>
               </div>
+              </div>
+
+              {data.versions.length > 1 ? (
+                <div className="rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.88),rgba(255,255,255,0.96),rgba(250,245,255,0.45))] p-4 shadow-[0_16px_45px_rgba(6,78,59,0.08)]">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-800">Итоги проекта</div>
+                      <div className="mt-1 text-sm font-semibold text-zinc-600">
+                        Сумма всех смет с отметкой «В итогах проекта»
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-extrabold text-emerald-900">
+                      {projectTotals.count} из {data.versions.length} смет
+                    </span>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-violet-100 bg-white/80 p-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">Клиент</div>
+                      <div className="mt-2 text-xl font-black tabular-nums text-violet-950">{money(projectTotals.revenueTotal)} ₽</div>
+                    </div>
+                    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">Расходы</div>
+                      <div className="mt-2 text-xl font-black tabular-nums text-zinc-950">{money(projectTotals.totalExpensesWithTax)} ₽</div>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Прибыль</div>
+                      <div className="mt-2 text-xl font-black tabular-nums text-emerald-950">{money(projectTotals.marginAfterTax)} ₽</div>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Рентабельность</div>
+                      <div className="mt-2 text-xl font-black tabular-nums text-emerald-950">
+                        {Number.isFinite(projectTotals.marginAfterTaxPct) ? `${projectTotals.marginAfterTaxPct.toFixed(2)}%` : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {!readOnly && data?.current ? (
                 <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(237,233,254,0.55),rgba(255,255,255,0.98),rgba(196,181,253,0.12))] p-4">
@@ -3068,7 +3201,7 @@ function RequisiteSectionEditor({
     (services.deliveryEnabled ? Number(services.deliveryPrice || 0) : 0) +
     (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
     (services.demontageEnabled ? Number(services.demontagePrice || 0) : 0);
-  const taxAmount = Math.round((rentalTotal + servicesTotal) * ORDER_TAX_RATE);
+  const taxAmount = roundMoney((rentalTotal + servicesTotal) * ORDER_TAX_RATE);
 
   const summaryTitleAddon =
     order && !loading ? (
@@ -3600,7 +3733,7 @@ function DraftRequisiteEditor({
         const q = parseQtyDisplayInt(line.qty);
         const d = parseQtyDisplayInt(line.plannedDays);
         if (q <= 0 || d <= 0) return sum;
-        return sum + Math.round((line.pricePerDaySnapshot ?? 0) * q * d);
+        return sum + roundMoney((line.pricePerDaySnapshot ?? 0) * q * d);
       }, 0),
     [lines],
   );
@@ -3846,7 +3979,7 @@ function DraftRequisiteEditor({
           const qDisp = parseQtyDisplayInt(line.qty);
           const dDisp = parseQtyDisplayInt(line.plannedDays);
           const lineTotal =
-            qDisp > 0 && dDisp > 0 ? Math.round((line.pricePerDaySnapshot ?? 0) * qDisp * dDisp) : 0;
+            qDisp > 0 && dDisp > 0 ? roundMoney((line.pricePerDaySnapshot ?? 0) * qDisp * dDisp) : 0;
           const maxRemPhysical = maxPhysicalRemainingForDraftLine(lines, index);
           const maxQtyCap =
             Number.isFinite(maxRemPhysical) && maxRemPhysical < Number.POSITIVE_INFINITY

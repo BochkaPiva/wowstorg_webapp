@@ -237,8 +237,8 @@ export function ProjectContactsPanel({
 
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-lg font-extrabold tracking-tight text-violet-900">Контакты</div>
+      <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/70 bg-[radial-gradient(circle_at_10%_0%,rgba(124,58,237,0.13),transparent_34%),linear-gradient(135deg,rgba(250,245,255,0.94),rgba(255,255,255,0.9),rgba(255,251,235,0.62))] px-4 py-3 shadow-[0_14px_38px_rgba(76,29,149,0.08)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-lg font-black tracking-tight text-violet-950">Контакты</div>
         {!readOnly ? (
           <button
             type="button"

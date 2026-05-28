@@ -1,3 +1,5 @@
+import { roundMoney } from "@/lib/money";
+
 function toFiniteNumber(value: unknown): number | null {
   const num =
     typeof value === "number" && Number.isFinite(value)
@@ -27,7 +29,7 @@ export function calcProjectEstimateRequisiteTotal(args: {
   if (pricePerDay == null || qty == null || plannedDays == null || qty <= 0 || pricePerDay < 0) {
     return null;
   }
-  return Math.round(pricePerDay * qty * plannedDays * payMultiplier);
+  return roundMoney(pricePerDay * qty * plannedDays * payMultiplier);
 }
 
 export function calcProjectEstimateRequisiteUnitPricePerDay(args: {
@@ -39,5 +41,5 @@ export function calcProjectEstimateRequisiteUnitPricePerDay(args: {
   const qty = toFiniteNumber(args.qty);
   const plannedDays = normalizeProjectEstimateDays(args.plannedDays);
   if (totalClient == null || qty == null || plannedDays == null || qty <= 0) return null;
-  return Math.round(totalClient / qty / plannedDays);
+  return roundMoney(totalClient / qty / plannedDays);
 }

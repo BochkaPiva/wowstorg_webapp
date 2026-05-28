@@ -1,3 +1,5 @@
+import { roundMoney } from "@/lib/money";
+
 export type ProjectEstimateLocalLineLike = {
   costClient?: string | number | null;
   qty?: string | number | null;
@@ -20,9 +22,9 @@ export function parseEstimateQtyUp(
 
 export function normalizedLocalLineCostClientNumber(line: ProjectEstimateLocalLineLike): number | null {
   const parsed = parseEstimateQtyUp(line);
-  if (parsed) return Math.round(parsed.q * parsed.up);
+  if (parsed) return roundMoney(parsed.q * parsed.up);
   const current = line.costClient == null || line.costClient === "" ? NaN : Number(line.costClient);
-  return Number.isFinite(current) ? Math.round(current) : null;
+  return Number.isFinite(current) ? roundMoney(current) : null;
 }
 
 export function normalizedLocalLineCostClientString(line: ProjectEstimateLocalLineLike): string | null {

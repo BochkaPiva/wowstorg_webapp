@@ -134,6 +134,9 @@ function buildProjectCatalogHref(args: {
 
 const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-sm sm:p-4";
 const softShell = "rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4";
+const glassSectionHeader =
+  "flex flex-col gap-3 rounded-[1.35rem] border border-white/70 bg-[radial-gradient(circle_at_10%_0%,rgba(124,58,237,0.13),transparent_34%),linear-gradient(135deg,rgba(250,245,255,0.94),rgba(255,255,255,0.9),rgba(255,251,235,0.62))] px-4 py-3 shadow-[0_14px_38px_rgba(76,29,149,0.08)] sm:flex-row sm:items-center sm:justify-between";
+const glassSectionTitle = "text-lg font-black tracking-tight text-violet-950";
 const cardTile = "rounded-xl border border-zinc-100 bg-zinc-50/50 px-3 py-3";
 const inputField =
   "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
@@ -1222,9 +1225,9 @@ export default function ProjectDetailPage() {
           </section>
 
           <section className={softShell}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
-                <div className="text-lg font-extrabold tracking-tight text-violet-900">Задачи проекта</div>
+                <div className={glassSectionTitle}>Задачи проекта</div>
                 <HelpLegend title="Задачи проекта">
                   Здесь видны только задачи этого проекта. Новую задачу можно создать здесь или в общем YouGile, если указать этот проект в карточке задачи.
                 </HelpLegend>
@@ -1439,9 +1442,9 @@ export default function ProjectDetailPage() {
             </section>
 
             <section className={`${softShell} h-full`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className={glassSectionHeader}>
                 <div className="flex items-center gap-2">
-                  <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочие заметки</div>
+                  <div className={glassSectionTitle}>Рабочие заметки</div>
                   <HelpLegend title="Рабочие заметки">
                     «Блокеры» — что мешает двигаться дальше. «Внутреннее резюме» — короткая памятка для команды: договоренности, риски, важные нюансы.
                   </HelpLegend>
@@ -1563,9 +1566,9 @@ export default function ProjectDetailPage() {
           <ProjectContactsPanel projectId={id} readOnly={readOnly} />
 
           <div className={softShell}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
-                <div className="text-lg font-extrabold tracking-tight text-violet-900">Заявки реквизита</div>
+                <div className={glassSectionTitle}>Заявки реквизита</div>
                 <HelpLegend title="Как работает блок заявок">
                   Нажми «Каталог → реквизит», чтобы собрать новую заявку для проекта. Если даты еще не подтверждены, это будет черновик без резерва склада. «Привязать существующую» нужно, когда заявка уже создана отдельно и ее надо добавить в проект.
                 </HelpLegend>
@@ -1806,9 +1809,9 @@ export default function ProjectDetailPage() {
           </div>
 
           <section className="rounded-[1.35rem] border border-zinc-200 bg-[linear-gradient(180deg,rgba(24,24,27,0.035),rgba(255,255,255,0.96))] p-3 shadow-sm sm:p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
-                <div className="text-lg font-extrabold tracking-tight text-violet-900">Рабочая зона</div>
+                <div className={glassSectionTitle}>Рабочая зона</div>
                 <HelpLegend title="Рабочая зона проекта">
                   Выбери, с чем сейчас работаешь: смета, тайминг, файлы или история изменений. Это вкладки одного проекта, поэтому можно переключаться и не терять контекст.
                 </HelpLegend>

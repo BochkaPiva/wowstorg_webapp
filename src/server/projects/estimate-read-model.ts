@@ -6,6 +6,9 @@ import {
   calcProjectEstimateRequisiteUnitPricePerDay,
   normalizeProjectEstimateDays,
 } from "@/lib/project-estimate-requisite";
+import { calcOrderServicesInternalCosts, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
+import { calcProjectEstimateTotals, getNumericAmount, type ProjectEstimateTotals } from "@/lib/project-estimate-totals";
+import { roundMoney } from "@/lib/money";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import { prisma } from "@/server/db";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
@@ -149,6 +152,8 @@ export async function buildProjectEstimateReadModel(args: {
       isPrimary: true,
       sortOrder: true,
       includeInProjectTotals: true,
+      commissionEnabled: true,
+      clientTaxEnabled: true,
       createdAt: true,
       createdBy: { select: { displayName: true } },
     },
@@ -231,6 +236,97 @@ export async function buildProjectEstimateReadModel(args: {
     },
   });
 
+  const versionsForFinancials = await prisma.projectEstimateVersion.findMany({
+    where: { projectId: args.projectId },
+    include: {
+      sections: {
+        include: {
+          lines: true,
+        },
+      },
+    },
+  });
+
+  function summarizeVersionFinancials(version: (typeof versionsForFinancials)[number]): ProjectEstimateTotals {
+    let clientSubtotal = 0;
+    let internalSubtotal = 0;
+    let cashInternalSubtotal = 0;
+
+    for (const section of version.sections) {
+      if (section.kind === ProjectEstimateSectionKind.REQUISITE && section.linkedOrderId) {
+        const linkedOrder = orderById.get(section.linkedOrderId);
+        if (!linkedOrder) continue;
+
+        const pricing = calcOrderPricing({
+          startDate: linkedOrder.startDate,
+          endDate: linkedOrder.endDate,
+          rentalStartPartOfDay: linkedOrder.rentalStartPartOfDay,
+          rentalEndPartOfDay: linkedOrder.rentalEndPartOfDay,
+          payMultiplier: linkedOrder.payMultiplier,
+          lines: linkedOrder.lines,
+          discount: linkedOrder,
+        });
+
+        for (const allocation of pricing.lineAllocations) {
+          clientSubtotal += getNumericAmount(allocation.rentalAfterDiscount);
+        }
+        if (linkedOrder.deliveryEnabled) {
+          clientSubtotal += getNumericAmount(linkedOrder.deliveryPrice);
+          const cost = getNumericAmount(linkedOrder.deliveryInternalCost);
+          internalSubtotal += cost;
+          if (linkedOrder.deliveryInternalPaymentMethod === "CASH") cashInternalSubtotal += cost;
+        }
+        if (linkedOrder.montageEnabled) {
+          clientSubtotal += getNumericAmount(linkedOrder.montagePrice);
+          const cost = getNumericAmount(linkedOrder.montageInternalCost);
+          internalSubtotal += cost;
+          if (linkedOrder.montageInternalPaymentMethod === "CASH") cashInternalSubtotal += cost;
+        }
+        if (linkedOrder.demontageEnabled) {
+          clientSubtotal += getNumericAmount(linkedOrder.demontagePrice);
+          const cost = getNumericAmount(linkedOrder.demontageInternalCost);
+          internalSubtotal += cost;
+          if (linkedOrder.demontageInternalPaymentMethod === "CASH") cashInternalSubtotal += cost;
+        }
+        continue;
+      }
+
+      if (section.kind === ProjectEstimateSectionKind.LOCAL || section.kind === ProjectEstimateSectionKind.CONTRACTOR) {
+        for (const line of section.lines) {
+          const costClient = normalizedLocalLineCostClientNumber({
+            costClient: dec(line.costClient),
+            qty: line.qty != null ? Number(line.qty) : null,
+            unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
+          });
+          const internalCost = getNumericAmount(line.costInternal);
+          clientSubtotal += getNumericAmount(costClient);
+          internalSubtotal += internalCost;
+          if (isCashPaymentMethod(line.paymentMethod)) cashInternalSubtotal += internalCost;
+        }
+      }
+    }
+
+    const cashInternalCostTax = calcOrderServicesInternalCosts({
+      delivery: {
+        enabled: true,
+        internalCost: cashInternalSubtotal,
+        internalPaymentMethod: "CASH",
+      },
+    }).cashInternalCostTax;
+
+    return calcProjectEstimateTotals({
+      clientSubtotal,
+      internalSubtotal,
+      cashInternalCostTax,
+      commissionEnabled: version.commissionEnabled,
+      clientTaxEnabled: version.clientTaxEnabled,
+    });
+  }
+
+  const financialsByVersionId = new Map(
+    versionsForFinancials.map((version) => [version.id, summarizeVersionFinancials(version)]),
+  );
+
   return {
     projectTitle: project.title,
     projectOrders: project.orders.map((o) => ({
@@ -245,6 +341,7 @@ export async function buildProjectEstimateReadModel(args: {
       ...v,
       title: v.title?.trim() || v.note?.trim() || `Смета ${v.versionNumber}`,
       createdAt: v.createdAt.toISOString(),
+      financials: financialsByVersionId.get(v.id) ?? calcProjectEstimateTotals({ clientSubtotal: 0, internalSubtotal: 0 }),
     })),
     current:
       versionRow == null
@@ -280,7 +377,7 @@ export async function buildProjectEstimateReadModel(args: {
                 const dayCount = normalizeProjectEstimateDays(pricing.days) ?? 1;
                 const orderLines: ProjectEstimateReadLine[] = linkedOrder.lines.map((line, index) => {
                   const qty = line.requestedQty;
-                  const clientTotal = Math.round(pricing.lineAllocations[index]?.rentalAfterDiscount ?? 0);
+                  const clientTotal = roundMoney(pricing.lineAllocations[index]?.rentalAfterDiscount ?? 0);
                   return {
                     id: line.id,
                     position: line.position,
@@ -310,7 +407,7 @@ export async function buildProjectEstimateReadModel(args: {
                   linkedOrder.deliveryEnabled
                     ? (() => {
                         const sid = `${linkedOrder.id}:delivery`;
-                        const clientTotal = Math.round(
+                        const clientTotal = roundMoney(
                           linkedOrder.deliveryPrice != null ? Number(linkedOrder.deliveryPrice) : 0,
                         );
                         return {
@@ -324,7 +421,7 @@ export async function buildProjectEstimateReadModel(args: {
                             linkedOrder.deliveryPrice != null ? String(Number(linkedOrder.deliveryPrice)) : null,
                           costInternal:
                             linkedOrder.deliveryInternalCost != null
-                              ? String(Math.round(Number(linkedOrder.deliveryInternalCost)))
+                              ? String(roundMoney(Number(linkedOrder.deliveryInternalCost)))
                               : "0",
                           orderLineId: null,
                           itemId: null,
@@ -341,7 +438,7 @@ export async function buildProjectEstimateReadModel(args: {
                   linkedOrder.montageEnabled
                     ? (() => {
                         const sid = `${linkedOrder.id}:montage`;
-                        const clientTotal = Math.round(
+                        const clientTotal = roundMoney(
                           linkedOrder.montagePrice != null ? Number(linkedOrder.montagePrice) : 0,
                         );
                         return {
@@ -355,7 +452,7 @@ export async function buildProjectEstimateReadModel(args: {
                             linkedOrder.montagePrice != null ? String(Number(linkedOrder.montagePrice)) : null,
                           costInternal:
                             linkedOrder.montageInternalCost != null
-                              ? String(Math.round(Number(linkedOrder.montageInternalCost)))
+                              ? String(roundMoney(Number(linkedOrder.montageInternalCost)))
                               : "0",
                           orderLineId: null,
                           itemId: null,
@@ -372,7 +469,7 @@ export async function buildProjectEstimateReadModel(args: {
                   linkedOrder.demontageEnabled
                     ? (() => {
                         const sid = `${linkedOrder.id}:demontage`;
-                        const clientTotal = Math.round(
+                        const clientTotal = roundMoney(
                           linkedOrder.demontagePrice != null ? Number(linkedOrder.demontagePrice) : 0,
                         );
                         return {
@@ -386,7 +483,7 @@ export async function buildProjectEstimateReadModel(args: {
                             linkedOrder.demontagePrice != null ? String(Number(linkedOrder.demontagePrice)) : null,
                           costInternal:
                             linkedOrder.demontageInternalCost != null
-                              ? String(Math.round(Number(linkedOrder.demontageInternalCost)))
+                              ? String(roundMoney(Number(linkedOrder.demontageInternalCost)))
                               : "0",
                           orderLineId: null,
                           itemId: null,
@@ -444,7 +541,7 @@ export async function buildProjectEstimateReadModel(args: {
                     qtyNum != null &&
                     qtyNum > 0
                   ) {
-                    unitP = Math.round(costNum / qtyNum);
+                    unitP = roundMoney(costNum / qtyNum);
                   }
                   return {
                     id: line.id,

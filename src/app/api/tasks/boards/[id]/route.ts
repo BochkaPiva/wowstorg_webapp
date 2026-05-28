@@ -25,7 +25,8 @@ export async function GET(
   const searchParams = new URL(req.url).searchParams;
   const projectId = searchParams.get("projectId")?.trim() || null;
   const includeClosedProjectTasks = searchParams.get("includeClosedProjectTasks") === "1";
-  const taskWhere: Prisma.WorkTaskWhereInput = projectId
+  const archived = searchParams.get("archived") === "1";
+  const visibleTaskWhere: Prisma.WorkTaskWhereInput = projectId
     ? { projectId }
     : includeClosedProjectTasks
       ? {}
@@ -40,6 +41,12 @@ export async function GET(
             },
           ],
         };
+  const taskWhere: Prisma.WorkTaskWhereInput = {
+    AND: [
+      visibleTaskWhere,
+      archived ? { archivedAt: { not: null } } : { archivedAt: null },
+    ],
+  };
 
   const board = await prisma.workTaskBoard.findUnique({
     where: { id },
@@ -69,6 +76,7 @@ export async function GET(
               sortOrder: true,
               dueDate: true,
               completedAt: true,
+              archivedAt: true,
               createdAt: true,
               assignee: { select: { id: true, displayName: true } },
               project: { select: { id: true, title: true } },
@@ -99,6 +107,7 @@ export async function GET(
         tasks: column.tasks.map((task) => ({
           ...task,
           dueDate: dateOnlyOrNull(task.dueDate),
+          archivedAt: task.archivedAt?.toISOString() ?? null,
           createdAt: task.createdAt.toISOString(),
           checklistDone: task.checklistItems.filter((item) => item.isDone).length,
           checklistTotal: task.checklistItems.length,

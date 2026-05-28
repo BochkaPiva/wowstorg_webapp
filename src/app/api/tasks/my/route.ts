@@ -11,6 +11,7 @@ export async function GET() {
     where: {
       assigneeUserId: auth.user.id,
       completedAt: null,
+      archivedAt: null,
     },
     orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
     take: 30,
@@ -36,4 +37,3 @@ export async function GET() {
     })),
   });
 }
-

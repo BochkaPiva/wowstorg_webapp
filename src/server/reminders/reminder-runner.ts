@@ -345,6 +345,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   const workTasksDueTomorrow = await prisma.workTask.findMany({
     where: {
       completedAt: null,
+      archivedAt: null,
       dueDate: { gte: tomorrowStartUtc, lt: dayAfterTomorrowStartUtc },
     },
     select: { id: true, dueDate: true },

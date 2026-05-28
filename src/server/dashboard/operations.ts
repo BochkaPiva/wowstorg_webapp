@@ -245,6 +245,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
     prisma.workTask.findMany({
       where: {
         completedAt: null,
+        archivedAt: null,
         OR: [
           { assigneeUserId: userId },
           { dueDate: { gte: todayDate, lte: parseDateOnlyToUtcMidnight(end14) } },
@@ -308,7 +309,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         openBlockers: true,
         updatedAt: true,
         estimateVersions: { where: { isPrimary: true }, select: { id: true }, take: 1 },
-        tasks: { where: { completedAt: null }, select: { id: true }, take: 1 },
+        tasks: { where: { completedAt: null, archivedAt: null }, select: { id: true }, take: 1 },
         notificationCooldowns: {
           where: { blockKey: PROJECT_SIGNAL_BLOCK_KEY, muteUntil: { gt: now } },
           select: { muteUntil: true },

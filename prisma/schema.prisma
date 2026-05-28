@@ -383,6 +383,7 @@ model WorkTask {
   sortOrder   Int              @default(0)
   dueDate     DateTime?
   completedAt DateTime?
+  archivedAt  DateTime?
 
   createdById String
   createdBy   User   @relation("task_created_by", fields: [createdById], references: [id], onDelete: Restrict)
@@ -406,6 +407,7 @@ model WorkTask {
   @@index([projectId])
   @@index([orderId])
   @@index([completedAt])
+  @@index([archivedAt])
 }
 
 model WorkTaskChecklistItem {
@@ -622,9 +624,9 @@ model ProjectEstimateVersion {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  versionNumber Int
-  note          String?
-  isPrimary     Boolean @default(false)
+  versionNumber     Int
+  note              String?
+  isPrimary         Boolean @default(false)
   /// Комиссия агентства 15% в итогах сметы (можно отключить для отдельных проектов).
   commissionEnabled Boolean @default(true)
   /// Условный налог 6% от суммы клиента с комиссией (можно отключить).
@@ -912,9 +914,9 @@ model Order {
   demontagePrice   Decimal? @db.Decimal(12, 2)
 
   /// Наша себестоимость доп. услуг (для маржи в смете проекта; клиентские суммы — deliveryPrice / montagePrice / demontagePrice).
-  deliveryInternalCost  Decimal? @db.Decimal(12, 2)
-  montageInternalCost   Decimal? @db.Decimal(12, 2)
-  demontageInternalCost Decimal? @db.Decimal(12, 2)
+  deliveryInternalCost           Decimal?                  @db.Decimal(12, 2)
+  montageInternalCost            Decimal?                  @db.Decimal(12, 2)
+  demontageInternalCost          Decimal?                  @db.Decimal(12, 2)
   deliveryInternalPaymentMethod  OrderServicePaymentMethod @default(NON_CASH)
   montageInternalPaymentMethod   OrderServicePaymentMethod @default(NON_CASH)
   demontageInternalPaymentMethod OrderServicePaymentMethod @default(NON_CASH)

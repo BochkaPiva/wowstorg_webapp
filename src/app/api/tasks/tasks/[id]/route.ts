@@ -22,6 +22,7 @@ const PatchTaskSchema = z
     columnId: z.string().trim().min(1).optional(),
     sortOrder: z.number().int().optional(),
     completed: z.boolean().optional(),
+    archived: z.boolean().optional(),
   })
   .strict();
 
@@ -81,6 +82,7 @@ export async function PATCH(
       ...(parsed.data.projectId !== undefined ? { projectId: parsed.data.projectId || null } : {}),
       ...(parsed.data.orderId !== undefined ? { orderId: parsed.data.orderId || null } : {}),
       ...(parsed.data.completed !== undefined ? { completedAt: parsed.data.completed ? new Date() : null } : {}),
+      ...(parsed.data.archived !== undefined ? { archivedAt: parsed.data.archived ? new Date() : null } : {}),
     },
     select: { id: true },
   });

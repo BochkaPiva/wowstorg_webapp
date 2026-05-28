@@ -1,9 +1,9 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-05-25T09:38:16.556Z  
-> **Файлов route.ts:** 112  
-> Команда: `npm run brain:inventory`  
-> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
+> **Сгенерировано:** 2026-05-28T06:03:31.890Z
+> **Файлов route.ts:** 113
+> Команда: `npm run brain:inventory`
+> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).
 > Расхождение других доков с этой таблицей — **ошибка документации**.
 
 | HTTP | Путь (App Router) | Файл |
@@ -101,6 +101,7 @@
 | GET, PATCH | `/api/tasks/boards/[id]` | `src/app/api/tasks/boards/[id]/route.ts` |
 | GET, POST | `/api/tasks/boards` | `src/app/api/tasks/boards/route.ts` |
 | PATCH, DELETE | `/api/tasks/checklist/[id]` | `src/app/api/tasks/checklist/[id]/route.ts` |
+| POST | `/api/tasks/columns/[id]/archive` | `src/app/api/tasks/columns/[id]/archive/route.ts` |
 | PATCH, DELETE | `/api/tasks/columns/[id]` | `src/app/api/tasks/columns/[id]/route.ts` |
 | POST | `/api/tasks/columns/[id]/tasks` | `src/app/api/tasks/columns/[id]/tasks/route.ts` |
 | GET | `/api/tasks/meta` | `src/app/api/tasks/meta/route.ts` |

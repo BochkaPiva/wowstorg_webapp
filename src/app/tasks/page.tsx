@@ -32,6 +32,7 @@ type BoardTask = {
   sortOrder: number;
   dueDate: string | null;
   completedAt: string | null;
+  archivedAt: string | null;
   createdAt: string;
   assignee: null | { id: string; displayName: string };
   project: null | { id: string; title: string };
@@ -75,6 +76,7 @@ type TaskPatchBody = Partial<{
   orderId: string | null;
   columnId: string;
   completed: boolean;
+  archived: boolean;
 }>;
 
 type TaskCreateDraft = {
@@ -1161,6 +1163,9 @@ function TasksPageContent() {
     edge: ColumnDropEdge;
   } | null>(null);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
+  const [archiveOpen, setArchiveOpen] = React.useState(false);
+  const [archiveLoading, setArchiveLoading] = React.useState(false);
+  const [archiveTasks, setArchiveTasks] = React.useState<Array<BoardTask & { columnTitle: string }>>([]);
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
   const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
@@ -1187,6 +1192,7 @@ function TasksPageContent() {
       params.set("projectId", viewParams.projectId);
       params.set("includeClosedProjectTasks", "1");
     }
+    params.set("archived", "0");
     const suffix = params.toString() ? `?${params.toString()}` : "";
     const data = await readApi<{ board: BoardDetail }>(
       await fetch(`/api/tasks/boards/${id}${suffix}`, { cache: "no-store" }),
@@ -1201,6 +1207,31 @@ function TasksPageContent() {
     },
     [applyBoard, fetchBoardDetail],
   );
+
+  const loadArchive = React.useCallback(async () => {
+    if (!boardId) return;
+    setArchiveLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ archived: "1" });
+      if (viewParams.projectId) {
+        params.set("projectId", viewParams.projectId);
+        params.set("includeClosedProjectTasks", "1");
+      }
+      const data = await readApi<{ board: BoardDetail }>(
+        await fetch(`/api/tasks/boards/${boardId}?${params.toString()}`, { cache: "no-store" }),
+      );
+      setArchiveTasks(
+        data.board.columns.flatMap((column) =>
+          column.tasks.map((task) => ({ ...task, columnTitle: column.title })),
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить архив задач");
+    } finally {
+      setArchiveLoading(false);
+    }
+  }, [boardId, viewParams.projectId]);
 
   const refresh = React.useCallback(async () => {
     if (!isWowstorg) return;
@@ -1298,6 +1329,56 @@ function TasksPageContent() {
       if (board) await loadBoard(board.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось удалить колонку");
+    }
+  }
+
+  async function archiveCompletedTasks(column: BoardColumn) {
+    const count = column.tasks.filter((task) => task.completedAt).length;
+    if (count === 0) {
+      setError("В этой колонке нет выполненных задач для архива");
+      return;
+    }
+    if (!window.confirm(`Архивировать выполненные задачи из колонки «${column.title}»?`)) return;
+    const previousBoard = boardRef.current;
+    setError(null);
+    applyBoard(
+      previousBoard
+        ? {
+            ...previousBoard,
+            columns: previousBoard.columns.map((item) =>
+              item.id === column.id
+                ? { ...item, tasks: item.tasks.filter((task) => !task.completedAt) }
+                : item,
+            ),
+          }
+        : previousBoard,
+    );
+    try {
+      await readApi<{ archivedCount: number }>(
+        await fetch(`/api/tasks/columns/${column.id}/archive`, { method: "POST" }),
+      );
+      if (boardRef.current) await loadBoard(boardRef.current.id);
+      if (archiveOpen) await loadArchive();
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось архивировать задачи");
+    }
+  }
+
+  async function restoreArchivedTask(taskId: string) {
+    setError(null);
+    try {
+      await readApi(
+        await fetch(`/api/tasks/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: false }),
+        }),
+      );
+      if (boardRef.current) await loadBoard(boardRef.current.id);
+      await loadArchive();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось вернуть задачу из архива");
     }
   }
 
@@ -1406,6 +1487,7 @@ function TasksPageContent() {
       sortOrder: column.tasks.reduce((max, task) => Math.max(max, task.sortOrder), 0) + 1000,
       dueDate: draft.dueDate,
       completedAt: column.isDone ? new Date().toISOString() : null,
+      archivedAt: null,
       createdAt: new Date().toISOString(),
       assignee,
       project: project ? { id: project.id, title: project.title } : null,
@@ -1734,6 +1816,16 @@ function TasksPageContent() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            onClick={() => {
+              setArchiveOpen(true);
+              void loadArchive();
+            }}
+            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 shadow-sm hover:bg-zinc-50"
+          >
+            Архив
+          </button>
+          <button
+            type="button"
             onClick={() => void addColumn()}
             disabled={viewParams.readOnly}
             className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-500"
@@ -1863,6 +1955,18 @@ function TasksPageContent() {
                   >
                     + Добавить задачу
                   </button>
+                  {column.isDone && column.tasks.some((task) => task.completedAt) ? (
+                    <button
+                      type="button"
+                      onClick={() => void archiveCompletedTasks(column)}
+                      disabled={viewParams.readOnly}
+                      draggable={false}
+                      className="ml-auto rounded-lg border border-white/30 bg-white/15 px-2 py-1 text-xs font-bold text-white/90 hover:bg-white/24 disabled:opacity-45"
+                      title="Убрать выполненные задачи из доски в архив"
+                    >
+                      Архивировать
+                    </button>
+                  ) : null}
                   {column.tasks.length === 0 ? (
                     <button
                       type="button"
@@ -1936,6 +2040,72 @@ function TasksPageContent() {
             </section>
           ))}
         </div>
+        </div>
+      ) : null}
+
+      {archiveOpen ? (
+        <div className="fixed inset-0 z-[950] flex items-center justify-center p-3 sm:p-6">
+          <button
+            type="button"
+            className="absolute inset-0 bg-zinc-950/35 backdrop-blur-[2px]"
+            onClick={() => setArchiveOpen(false)}
+            aria-label="Закрыть архив"
+          />
+          <section className="relative flex max-h-[min(720px,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] shadow-[0_28px_90px_rgba(15,23,42,0.28)]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-violet-100 px-5 py-4">
+              <div>
+                <div className="text-lg font-black text-zinc-950">Архив задач</div>
+                <div className="text-sm font-semibold text-zinc-500">Сюда попадают задачи, убранные из завершённых колонок.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setArchiveOpen(false)}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 shadow-sm hover:bg-zinc-50"
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {archiveLoading ? (
+                <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-6 text-sm font-semibold text-zinc-500">
+                  Загружаю архив...
+                </div>
+              ) : archiveTasks.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-6 text-sm font-semibold text-violet-700">
+                  Архив пока пуст.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {archiveTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black text-zinc-950">{task.title}</div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs font-bold text-zinc-500">
+                          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.columnTitle}</span>
+                          {task.dueDate ? (
+                            <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
+                              {fmtDate(task.dueDate)}
+                            </span>
+                          ) : null}
+                          {task.assignee ? <span>{task.assignee.displayName}</span> : null}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void restoreArchivedTask(task.id)}
+                        className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100"
+                      >
+                        Вернуть
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       ) : null}
 

@@ -131,6 +131,37 @@ function projectDateLine(project: ProjectCard): string | null {
   return fmtDate(project.eventStartDate ?? project.eventEndDate ?? "");
 }
 
+function projectArchiveHeader(status: ProjectStatus): null | {
+  title: string;
+  subtitle: string;
+  icon: string;
+  className: string;
+  iconClassName: string;
+  muted: boolean;
+} {
+  if (status === "COMPLETED") {
+    return {
+      title: "Закрыто",
+      subtitle: "Проект завершён",
+      icon: "✓",
+      className: "bg-violet-50/80 text-violet-800",
+      iconClassName: "border-violet-300 bg-violet-100/70 text-violet-700",
+      muted: false,
+    };
+  }
+  if (status === "CANCELLED") {
+    return {
+      title: "Отменено",
+      subtitle: "Проект отменён",
+      icon: "—",
+      className: "bg-zinc-100/80 text-zinc-500",
+      iconClassName: "border-zinc-300 bg-zinc-100/70 text-zinc-500",
+      muted: true,
+    };
+  }
+  return null;
+}
+
 function ProjectsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -432,18 +463,36 @@ function ProjectsContent() {
           ) : !listError ? (
             <ul className="grid gap-3">
               {projects.map((p) => {
-                const isCancelledArchive = tab === "archive" && p.status === "CANCELLED";
+                const archiveHeader = tab === "archive" ? projectArchiveHeader(p.status) : null;
+                const isCancelledArchive = Boolean(archiveHeader?.muted);
                 return (
                   <li key={p.id}>
                     <Link
                       href={`/projects/${p.id}`}
                       className={[
-                        "group block overflow-hidden rounded-[1.75rem] border p-4 transition hover:-translate-y-0.5",
+                        "group block overflow-hidden rounded-[1.75rem] border p-0 transition hover:-translate-y-0.5",
                         isCancelledArchive
                           ? "border-zinc-200/80 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 shadow-[0_14px_42px_rgba(24,24,27,0.06)] hover:border-zinc-300 hover:opacity-100 hover:shadow-[0_18px_54px_rgba(24,24,27,0.1)]"
                           : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] shadow-[0_18px_52px_rgba(24,24,27,0.08)] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
                       ].join(" ")}
                     >
+                    {archiveHeader ? (
+                      <div className={["flex items-center gap-3 px-5 py-4", archiveHeader.className].join(" ")}>
+                        <div
+                          className={[
+                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-xl font-black",
+                            archiveHeader.iconClassName,
+                          ].join(" ")}
+                        >
+                          {archiveHeader.icon}
+                        </div>
+                        <div>
+                          <div className="text-sm font-black">{archiveHeader.title}</div>
+                          <div className="mt-0.5 text-xs font-semibold opacity-85">{archiveHeader.subtitle}</div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="p-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -560,6 +609,7 @@ function ProjectsContent() {
                           {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
                         </div>
                       </div>
+                    </div>
                     </div>
                     </Link>
                   </li>

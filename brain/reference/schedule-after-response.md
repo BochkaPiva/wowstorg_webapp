@@ -24,7 +24,7 @@
 | `src/app/api/projects/[id]/draft-order/route.ts` | `notifyProjectDraftOrderUpdated`, `notifyProjectDraftOrderDeleted` |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | `notifyProjectDraftMaterialized` |
 | `src/app/api/projects/[id]/estimate/route.ts` | `notifyProjectEstimateDraftSaved` |
-| `src/app/api/projects/[id]/estimate/versions/route.ts` | `notifyProjectEstimateVersionCreated`, `notifyProjectEstimatePatched`, `notifyProjectEstimateDeleted` |
+| `src/app/api/projects/[id]/estimate/versions/route.ts` | `notifyProjectEstimateCreated`, `notifyProjectEstimatePatched`, `notifyProjectEstimateDeleted` |
 | `src/app/api/projects/[id]/estimate/sections/route.ts` | `notifyProjectEstimateSectionCreated` |
 | `src/app/api/projects/[id]/estimate/sections/[sectionId]/route.ts` | `notifyProjectEstimateSectionUpdated`, `notifyProjectEstimateSectionDeleted` |
 | `src/app/api/projects/[id]/estimate/sections/[sectionId]/lines/route.ts` | `notifyProjectEstimateLineCreated` |

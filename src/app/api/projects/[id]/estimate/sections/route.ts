@@ -60,7 +60,10 @@ export async function POST(
   });
   const sortOrder = (maxSo._max.sortOrder ?? -1) + 1;
 
-  const kind = ProjectEstimateSectionKind.CONTRACTOR;
+  const kind =
+    parsed.data.kind === "LOCAL"
+      ? ProjectEstimateSectionKind.LOCAL
+      : ProjectEstimateSectionKind.CONTRACTOR;
 
   const section = await prisma.projectEstimateSection.create({
     data: {

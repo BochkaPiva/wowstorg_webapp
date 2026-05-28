@@ -1,4 +1,4 @@
-import { Prisma, ProjectEstimateSectionKind } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -94,15 +94,9 @@ export async function DELETE(
 
   const section = await prisma.projectEstimateSection.findFirst({
     where: { id: sectionId, version: { projectId } },
-    select: { id: true, kind: true },
+    select: { id: true, title: true, linkedOrderId: true },
   });
   if (!section) return jsonError(404, "Раздел не найден");
-  if (
-    section.kind !== ProjectEstimateSectionKind.LOCAL &&
-    section.kind !== ProjectEstimateSectionKind.CONTRACTOR
-  ) {
-    return jsonError(400, "Удалять можно только универсальные разделы и подрядчиков (не реквизит)");
-  }
 
   await prisma.projectEstimateSection.delete({ where: { id: sectionId } });
   scheduleAfterResponse("notifyProjectEstimateSectionDeleted", async () => {
@@ -111,7 +105,9 @@ export async function DELETE(
       projectId,
       actorUserId: auth.user.id,
       block: "estimate",
-      action: "Удалён локальный раздел сметы.",
+      action: section.linkedOrderId
+        ? `Заявка убрана из сметы «${section.title}».`
+        : `Удалён раздел сметы «${section.title}».`,
     });
   });
   return jsonOk({ ok: true });

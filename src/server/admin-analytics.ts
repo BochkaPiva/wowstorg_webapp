@@ -99,6 +99,8 @@ export type RequisiteAnalyticsData = {
 export type ProjectFinancials = {
   clientSubtotal: number;
   internalSubtotal: number;
+  cashInternalCostTax: number;
+  internalExpensesTotal: number;
   commission: number;
   revenueTotal: number;
   tax: number;
@@ -698,6 +700,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       },
       draftOrders: {
         select: {
+          estimateVersionId: true,
           lines: {
             select: {
               qty: true,
@@ -708,11 +711,14 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
         },
       },
       estimateVersions: {
-        orderBy: { versionNumber: "desc" },
+        orderBy: [{ sortOrder: "asc" }, { versionNumber: "asc" }],
         select: {
           id: true,
           isPrimary: true,
           versionNumber: true,
+          includeInProjectTotals: true,
+          commissionEnabled: true,
+          clientTaxEnabled: true,
           sections: {
             select: {
               kind: true,
@@ -766,6 +772,25 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
 
   type ProjectRow = (typeof projects)[number];
   type ProjectVersion = ProjectRow["estimateVersions"][number];
+
+  function addDraftOrdersClientSubtotal(draftOrders: ProjectRow["draftOrders"], targetVersionId: string | null): number {
+    let clientSubtotal = 0;
+    for (const draft of draftOrders) {
+      if (targetVersionId != null && draft.estimateVersionId !== targetVersionId) continue;
+      for (const line of draft.lines) {
+        const days = normalizeProjectEstimateDays(line.plannedDays ?? 1) ?? 1;
+        clientSubtotal +=
+          line.pricePerDaySnapshot != null
+            ? calcProjectEstimateRequisiteTotal({
+                pricePerDay: line.pricePerDaySnapshot,
+                qty: line.qty,
+                plannedDays: days,
+              }) ?? 0
+            : 0;
+      }
+    }
+    return clientSubtotal;
+  }
 
   function versionFinancials(version: ProjectVersion | null, draftOrders: ProjectRow["draftOrders"]): ProjectFinancials {
     let clientSubtotal = 0;
@@ -827,21 +852,45 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       }
     }
 
-    for (const draft of draftOrders) {
-      for (const line of draft.lines) {
-        const days = normalizeProjectEstimateDays(line.plannedDays ?? 1) ?? 1;
-        clientSubtotal +=
-          line.pricePerDaySnapshot != null
-            ? calcProjectEstimateRequisiteTotal({
-                pricePerDay: line.pricePerDaySnapshot,
-                qty: line.qty,
-                plannedDays: days,
-              }) ?? 0
-            : 0;
-      }
-    }
+    clientSubtotal += addDraftOrdersClientSubtotal(draftOrders, version?.id ?? null);
 
-    return calcProjectEstimateTotals({ clientSubtotal, internalSubtotal, cashInternalCostTax });
+    return calcProjectEstimateTotals({
+      clientSubtotal,
+      internalSubtotal,
+      cashInternalCostTax,
+      commissionEnabled: version?.commissionEnabled,
+      clientTaxEnabled: version?.clientTaxEnabled,
+    });
+  }
+
+  function draftOrdersFinancials(draftOrders: ProjectRow["draftOrders"]): ProjectFinancials {
+    const clientSubtotal = addDraftOrdersClientSubtotal(draftOrders, null);
+    return calcProjectEstimateTotals({ clientSubtotal, internalSubtotal: 0, cashInternalCostTax: 0 });
+  }
+
+  function sumFinancials(financials: ProjectFinancials[]): ProjectFinancials {
+    const clientSubtotal = financials.reduce((sum, item) => sum + item.clientSubtotal, 0);
+    const internalSubtotal = financials.reduce((sum, item) => sum + item.internalSubtotal, 0);
+    const cashInternalCostTax = financials.reduce((sum, item) => sum + item.cashInternalCostTax, 0);
+    const internalExpensesTotal = financials.reduce((sum, item) => sum + item.internalExpensesTotal, 0);
+    const commission = financials.reduce((sum, item) => sum + item.commission, 0);
+    const revenueTotal = financials.reduce((sum, item) => sum + item.revenueTotal, 0);
+    const tax = financials.reduce((sum, item) => sum + item.tax, 0);
+    const grossMargin = financials.reduce((sum, item) => sum + item.grossMargin, 0);
+    const marginAfterTax = financials.reduce((sum, item) => sum + item.marginAfterTax, 0);
+    const marginAfterTaxPct = revenueTotal > 0 ? round2((marginAfterTax / revenueTotal) * 100) : 0;
+    return {
+      clientSubtotal,
+      internalSubtotal,
+      cashInternalCostTax,
+      internalExpensesTotal,
+      commission,
+      revenueTotal,
+      tax,
+      grossMargin,
+      marginAfterTax,
+      marginAfterTaxPct,
+    };
   }
 
   function statusAge(project: ProjectRow): number {
@@ -852,15 +901,17 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   }
 
   const rows: ProjectAnalyticsRow[] = projects.map((project) => {
-    const primaryVersion = project.estimateVersions.find((v) => v.isPrimary) ?? null;
-    const financialVersion = primaryVersion ?? project.estimateVersions[0] ?? null;
-    const financials = versionFinancials(financialVersion, project.draftOrders);
+    const includedVersions = project.estimateVersions.filter((version) => version.includeInProjectTotals);
+    const financials =
+      includedVersions.length > 0
+        ? sumFinancials(includedVersions.map((version) => versionFinancials(version, project.draftOrders)))
+        : draftOrdersFinancials(project.draftOrders);
     const archived = project.archivedAt != null;
     const terminal = project.status === ProjectStatus.COMPLETED || project.status === ProjectStatus.CANCELLED;
     const active = !terminal && !archived;
     const daysSinceActivity = daysSince(project.updatedAt, now);
     const currentStatusAgeDays = statusAge(project);
-    const hasPrimaryEstimate = primaryVersion != null;
+    const hasPrimaryEstimate = includedVersions.length > 0;
     const hasLinkedOrder = project.orders.length > 0;
     const risks: string[] = [];
 

@@ -618,19 +618,22 @@ model ProjectFile {
   @@index([folderId])
 }
 
-/// Версия сметы проекта (конструктор); одна версия может быть явно назначена основной.
+/// Смета проекта (исторически называлась версией); в UI это самостоятельный сметный документ.
 model ProjectEstimateVersion {
   id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  versionNumber     Int
-  note              String?
-  isPrimary         Boolean @default(false)
+  versionNumber          Int
+  title                  String?
+  note                   String?
+  isPrimary              Boolean @default(false)
+  sortOrder              Int     @default(0)
+  includeInProjectTotals Boolean @default(true)
   /// Комиссия агентства 15% в итогах сметы (можно отключить для отдельных проектов).
-  commissionEnabled Boolean @default(true)
+  commissionEnabled      Boolean @default(true)
   /// Условный налог 6% от суммы клиента с комиссией (можно отключить).
-  clientTaxEnabled  Boolean @default(true)
+  clientTaxEnabled       Boolean @default(true)
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -643,6 +646,8 @@ model ProjectEstimateVersion {
   @@unique([projectId, versionNumber])
   @@index([projectId])
   @@index([projectId, isPrimary])
+  @@index([projectId, sortOrder])
+  @@index([projectId, includeInProjectTotals])
 }
 
 model ProjectEstimateSection {

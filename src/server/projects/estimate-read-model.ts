@@ -140,12 +140,15 @@ export async function buildProjectEstimateReadModel(args: {
 
   const versions = await prisma.projectEstimateVersion.findMany({
     where: { projectId: args.projectId },
-    orderBy: { versionNumber: "desc" },
+    orderBy: [{ sortOrder: "asc" }, { versionNumber: "asc" }],
     select: {
       id: true,
       versionNumber: true,
+      title: true,
       note: true,
       isPrimary: true,
+      sortOrder: true,
+      includeInProjectTotals: true,
       createdAt: true,
       createdBy: { select: { displayName: true } },
     },
@@ -172,6 +175,39 @@ export async function buildProjectEstimateReadModel(args: {
           },
         })
       : null;
+
+  const linkedOrderSections = await prisma.projectEstimateSection.findMany({
+    where: {
+      linkedOrderId: { not: null },
+      version: { projectId: args.projectId },
+    },
+    select: {
+      linkedOrderId: true,
+      version: {
+        select: {
+          id: true,
+          versionNumber: true,
+          title: true,
+          note: true,
+        },
+      },
+    },
+  });
+  const linkedEstimateByOrderId = new Map(
+    linkedOrderSections
+      .filter((section) => section.linkedOrderId)
+      .map((section) => [
+        section.linkedOrderId!,
+        {
+          id: section.version.id,
+          versionNumber: section.version.versionNumber,
+          title:
+            section.version.title?.trim() ||
+            section.version.note?.trim() ||
+            `Смета ${section.version.versionNumber}`,
+        },
+      ]),
+  );
 
   const orderById = new Map(project.orders.map((order) => [order.id, order]));
   const draftOrder = await prisma.projectDraftOrder.findUnique({
@@ -203,9 +239,11 @@ export async function buildProjectEstimateReadModel(args: {
       eventName: o.eventName,
       startDate: o.startDate.toISOString().slice(0, 10),
       endDate: o.endDate.toISOString().slice(0, 10),
+      assignedEstimate: linkedEstimateByOrderId.get(o.id) ?? null,
     })),
     versions: versions.map((v) => ({
       ...v,
+      title: v.title?.trim() || v.note?.trim() || `Смета ${v.versionNumber}`,
       createdAt: v.createdAt.toISOString(),
     })),
     current:
@@ -214,7 +252,10 @@ export async function buildProjectEstimateReadModel(args: {
         : {
             id: versionRow.id,
             versionNumber: versionRow.versionNumber,
+            title: versionRow.title?.trim() || versionRow.note?.trim() || `Смета ${versionRow.versionNumber}`,
             note: versionRow.note,
+            sortOrder: versionRow.sortOrder,
+            includeInProjectTotals: versionRow.includeInProjectTotals,
             createdAt: versionRow.createdAt.toISOString(),
             commissionEnabled: versionRow.commissionEnabled,
             clientTaxEnabled: versionRow.clientTaxEnabled,

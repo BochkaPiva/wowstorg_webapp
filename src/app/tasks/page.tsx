@@ -162,6 +162,18 @@ async function readApi<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+function getModalPortalHost(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  try {
+    if (window.parent && window.parent !== window && window.parent.document?.body) {
+      return window.parent.document.body;
+    }
+  } catch {
+    // Cross-origin iframe fallback; local embeds are same-origin.
+  }
+  return document.body;
+}
+
 function cardTextColor(color: string | null): string {
   if (!color) return "text-slate-100";
   return "text-white";
@@ -779,7 +791,7 @@ function TaskEditor({
   const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
 
   React.useEffect(() => {
-    setPortalHost(document.body);
+    setPortalHost(getModalPortalHost());
   }, []);
 
   React.useEffect(() => {
@@ -1166,11 +1178,16 @@ function TasksPageContent() {
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [archiveLoading, setArchiveLoading] = React.useState(false);
   const [archiveTasks, setArchiveTasks] = React.useState<Array<BoardTask & { columnTitle: string }>>([]);
+  const [archivePortalHost, setArchivePortalHost] = React.useState<HTMLElement | null>(null);
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveRequestIdRef = React.useRef(0);
   const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
+
+  React.useEffect(() => {
+    setArchivePortalHost(getModalPortalHost());
+  }, []);
 
   const applyBoard = React.useCallback((nextBoard: BoardDetail | null) => {
     boardRef.current = nextBoard;
@@ -2043,7 +2060,7 @@ function TasksPageContent() {
         </div>
       ) : null}
 
-      {archiveOpen ? (
+      {archiveOpen && archivePortalHost ? createPortal(
         <div className="fixed inset-0 z-[950] flex items-center justify-center p-3 sm:p-6">
           <button
             type="button"
@@ -2106,7 +2123,8 @@ function TasksPageContent() {
               )}
             </div>
           </section>
-        </div>
+        </div>,
+        archivePortalHost,
       ) : null}
 
       {editor ? (

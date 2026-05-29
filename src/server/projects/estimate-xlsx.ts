@@ -563,8 +563,6 @@ export async function buildProjectEstimateXlsx(args: {
     }
 
     let sectionClient = 0;
-    let sectionInternal = 0;
-    let sectionCashInternalCostTax = 0;
     const sectionStartRow = ws.lastRow!.number + 1;
     let sectionFirstRow = 0;
     let sectionLastRow = 0;
@@ -575,8 +573,6 @@ export async function buildProjectEstimateXlsx(args: {
       const internal = lineInternal(line);
       const lineCashTax = lineCashInternalCostTax(line);
       sectionClient += client;
-      sectionInternal += internal;
-      sectionCashInternalCostTax += lineCashTax;
       clientSubtotal += client;
       internalSubtotal += internal;
       cashInternalCostTax += lineCashTax;
@@ -636,121 +632,15 @@ export async function buildProjectEstimateXlsx(args: {
       sectionLineCount > 0
         ? sumColumnFormula(lineCols.lineTotal, sectionFirstRow, sectionLastRow)
         : "0";
-    const sectionInternalFormula =
-      sectionLineCount > 0
-        ? sumColumnFormula(lineCols.internal!, sectionFirstRow, sectionLastRow)
-        : "0";
-
     if (isClient) {
       addClientSectionTotal(ws, colCount, "Итого по разделу", sectionClientFormula, roundMoney(sectionClient));
     } else {
-      const sectionTotals = calcProjectEstimateTotals({
-        clientSubtotal: sectionClient,
-        internalSubtotal: sectionInternal,
-        cashInternalCostTax: sectionCashInternalCostTax,
-        commissionRate: financeRates.commissionRate,
-        taxRate: financeRates.taxRate,
-      });
-      const revenueRow = addInternalFooterRow(
-        ws,
-        colCount,
-        "Выручка клиента, раздел",
-        sectionClientFormula,
-        roundMoney(sectionClient),
-      );
-      const revenueRef = xlsxCellRef(revenueRow, 8);
-      const commissionRow = addInternalFooterRow(
-        ws,
-        colCount,
-        `Комиссия ${roundMoney(financeRates.commissionRate * 100)}%, раздел`,
-        percentOfFormula(financeRates.commissionRate, revenueRef),
-        sectionTotals.commission,
-      );
-      const clientWithCommissionRow = addInternalFooterRow(
-        ws,
-        colCount,
-        "Итого клиент с комиссией, раздел",
-        addFormulaRefFormula(revenueRef, xlsxCellRef(commissionRow, 8)),
-        sectionTotals.revenueTotal,
-      );
-      const clientWithCommissionRef = xlsxCellRef(clientWithCommissionRow, 8);
-      const internalRow = addInternalFooterRow(
-        ws,
-        colCount,
-        "Себестоимость, раздел",
-        sectionInternalFormula,
-        roundMoney(sectionInternal),
-      );
-      const internalRef = xlsxCellRef(internalRow, 8);
-      let expensesRef = internalRef;
-      if (section.kind === "CONTRACTOR" && sectionLineCount > 0) {
-        const cashTaxRow = addInternalFooterRow(
-          ws,
-          colCount,
-          "Налог на наличку 3.5%, раздел",
-          cashInternalTaxFormula(lineCols.internal!, lineCols.payment!, sectionFirstRow, sectionLastRow),
-          roundMoney(sectionCashInternalCostTax),
-        );
-        expensesRef = xlsxCellRef(
-          addInternalFooterRow(
-            ws,
-            colCount,
-            "Расходы всего, раздел",
-            addFormulaRefFormula(internalRef, xlsxCellRef(cashTaxRow, 8)),
-            sectionTotals.internalExpensesTotal,
-          ),
-          8,
-        );
-      } else if (sectionCashInternalCostTax > 0) {
-        const cashTaxRow = addInternalFooterRow(
-          ws,
-          colCount,
-          "Налог на наличку 3.5%, раздел",
-          String(roundMoney(sectionCashInternalCostTax)),
-          roundMoney(sectionCashInternalCostTax),
-        );
-        expensesRef = xlsxCellRef(
-          addInternalFooterRow(
-            ws,
-            colCount,
-            "Расходы всего, раздел",
-            addFormulaRefFormula(internalRef, xlsxCellRef(cashTaxRow, 8)),
-            sectionTotals.internalExpensesTotal,
-          ),
-          8,
-        );
-      } else {
-        expensesRef = xlsxCellRef(
-          addInternalFooterRow(
-            ws,
-            colCount,
-            "Расходы всего, раздел",
-            internalRef,
-            sectionTotals.internalExpensesTotal,
-          ),
-          8,
-        );
-      }
-      const grossRow = addInternalFooterRow(
-        ws,
-        colCount,
-        "Валовая маржа, раздел",
-        subtractFormulaRefs(clientWithCommissionRef, expensesRef),
-        sectionTotals.grossMargin,
-      );
-      const taxRow = addInternalFooterRow(
-        ws,
-        colCount,
-        `Условный налог ${roundMoney(financeRates.taxRate * 100)}%, раздел`,
-        percentOfFormula(financeRates.taxRate, clientWithCommissionRef),
-        sectionTotals.tax,
-      );
       addInternalFooterRow(
         ws,
         colCount,
-        "Маржа после налога, раздел",
-        subtractFormulaRefs(xlsxCellRef(grossRow, 8), xlsxCellRef(taxRow, 8)),
-        sectionTotals.marginAfterTax,
+        "Сумма клиента, раздел",
+        sectionClientFormula,
+        roundMoney(sectionClient),
       );
     }
 

@@ -1803,11 +1803,11 @@ function TasksPageContent() {
   return (
     <div
       className={[
-        "rounded-3xl border border-violet-100 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.92))] shadow-[0_24px_70px_rgba(109,40,217,0.12)]",
+        "rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.16),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(250,204,21,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.82))] shadow-[0_28px_80px_rgba(76,29,149,0.13)] backdrop-blur",
         viewParams.embedded ? "p-3" : "p-4",
       ].join(" ")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-white/80 bg-white/70 px-4 py-3 shadow-[0_18px_42px_rgba(76,29,149,0.09)] backdrop-blur">
         <div className="flex min-w-0 items-center gap-3">
           {viewParams.projectId ? (
             <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">
@@ -1818,7 +1818,7 @@ function TasksPageContent() {
             <select
               value={boardId}
               onChange={(event) => setBoardId(event.target.value)}
-              className="rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 shadow-sm outline-none focus:border-violet-300"
+              className="rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-sm font-black text-zinc-900 shadow-sm outline-none backdrop-blur focus:border-violet-300"
             >
               {boards.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -1837,7 +1837,7 @@ function TasksPageContent() {
               setArchiveOpen(true);
               void loadArchive();
             }}
-            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 shadow-sm hover:bg-zinc-50"
+            className="rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-sm font-black text-zinc-700 shadow-sm backdrop-blur hover:bg-white"
           >
             Архив
           </button>
@@ -1845,7 +1845,7 @@ function TasksPageContent() {
             type="button"
             onClick={() => void addColumn()}
             disabled={viewParams.readOnly}
-            className="rounded-xl bg-violet-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-violet-500"
+            className="rounded-2xl bg-zinc-950 px-3 py-2 text-sm font-black text-white shadow-[0_16px_30px_rgba(17,24,39,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
           >
             + Колонка
           </button>
@@ -1897,8 +1897,8 @@ function TasksPageContent() {
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
-                "relative flex w-[320px] shrink-0 flex-col rounded-2xl border bg-white/85 shadow-sm backdrop-blur transition",
-                dragOverColumnId === column.id ? "border-violet-300 ring-4 ring-violet-100" : "border-white/80",
+                "relative flex w-[320px] shrink-0 flex-col overflow-hidden rounded-[1.35rem] border bg-white/60 shadow-[0_18px_46px_rgba(76,29,149,0.08)] backdrop-blur transition",
+                dragOverColumnId === column.id ? "border-violet-300 ring-4 ring-violet-100" : "border-white/75",
                 draggingColumnId === column.id ? "opacity-60" : "",
               ].join(" ")}
             >
@@ -1929,7 +1929,7 @@ function TasksPageContent() {
                   setDraggingColumnId(null);
                   setDragOverColumn(null);
                 }}
-                className="cursor-grab rounded-t-2xl px-3 py-3 active:cursor-grabbing"
+                className="cursor-grab border-b border-white/30 px-3 py-3 active:cursor-grabbing"
                 style={{ backgroundColor: column.color ?? "#334155" }}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -1956,7 +1956,7 @@ function TasksPageContent() {
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="rounded-md border border-white/30 bg-white/10 px-2 py-1 text-xs text-white/90 hover:bg-white/20"
+                    className="rounded-lg border border-white/35 bg-white/14 px-2 py-1 text-xs font-bold text-white/90 shadow-sm hover:bg-white/24"
                     title="Колонка завершения"
                   >
                     {column.isDone ? "✓" : "○"}
@@ -1968,7 +1968,7 @@ function TasksPageContent() {
                     onClick={() => setEditor({ task: null, columnId: column.id })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="text-sm font-semibold text-white/90 hover:text-white"
+                    className="text-sm font-black text-white/90 hover:text-white"
                   >
                     + Добавить задачу
                   </button>
@@ -1978,7 +1978,7 @@ function TasksPageContent() {
                       onClick={() => void archiveCompletedTasks(column)}
                       disabled={viewParams.readOnly}
                       draggable={false}
-                      className="ml-auto rounded-lg border border-white/30 bg-white/15 px-2 py-1 text-xs font-bold text-white/90 hover:bg-white/24 disabled:opacity-45"
+                      className="ml-auto rounded-xl border border-white/35 bg-white/18 px-2 py-1 text-xs font-black text-white/90 shadow-sm hover:bg-white/28 disabled:opacity-45"
                       title="Убрать выполненные задачи из доски в архив"
                     >
                       Архивировать
@@ -1989,7 +1989,7 @@ function TasksPageContent() {
                       type="button"
                       onClick={() => void deleteColumn(column.id)}
                       draggable={false}
-                      className="ml-auto text-xs font-medium text-white/75 hover:text-white"
+                    className="ml-auto text-xs font-bold text-white/75 hover:text-white"
                     >
                       удалить
                     </button>
@@ -2049,7 +2049,7 @@ function TasksPageContent() {
                   />
                 ))}
                 {column.tasks.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-sm text-zinc-500">
+                  <div className="rounded-2xl border border-dashed border-violet-200/70 bg-white/60 px-3 py-4 text-sm font-semibold text-zinc-500">
                     {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
                   </div>
                 ) : null}

@@ -262,30 +262,30 @@ function formatRatio(n: number | null) {
 
 function kpiTone(tone: "violet" | "emerald" | "amber" | "rose" | "slate") {
   const map = {
-    violet: "border-violet-200 bg-violet-50 text-violet-950",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-950",
-    amber: "border-amber-200 bg-amber-50 text-amber-950",
-    rose: "border-rose-200 bg-rose-50 text-rose-950",
-    slate: "border-zinc-200 bg-white text-zinc-950",
+    violet: "border-violet-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.12),transparent_55%),rgba(255,255,255,0.72)] text-violet-950",
+    emerald: "border-emerald-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.13),transparent_55%),rgba(255,255,255,0.72)] text-emerald-950",
+    amber: "border-amber-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(250,204,21,0.18),transparent_55%),rgba(255,255,255,0.72)] text-amber-950",
+    rose: "border-rose-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(244,63,94,0.12),transparent_55%),rgba(255,255,255,0.72)] text-rose-950",
+    slate: "border-white/70 bg-white/70 text-zinc-950",
   } satisfies Record<string, string>;
   return map[tone];
 }
 
 function KpiCard(props: { label: string; value: string | number; note?: string; tone?: "violet" | "emerald" | "amber" | "rose" | "slate" }) {
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${kpiTone(props.tone ?? "slate")}`}>
-      <div className="text-xs font-medium opacity-70">{props.label}</div>
-      <div className="mt-1 text-2xl font-semibold">{props.value}</div>
-      {props.note ? <div className="mt-1 text-xs opacity-70">{props.note}</div> : null}
+    <div className={`rounded-2xl border p-4 shadow-[0_16px_40px_rgba(76,29,149,0.08)] backdrop-blur ${kpiTone(props.tone ?? "slate")}`}>
+      <div className="text-xs font-black uppercase tracking-[0.14em] opacity-65">{props.label}</div>
+      <div className="mt-2 text-2xl font-black tabular-nums">{props.value}</div>
+      {props.note ? <div className="mt-1 text-xs font-semibold opacity-65">{props.note}</div> : null}
     </div>
   );
 }
 
 function SectionCard(props: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="rounded-3xl border border-zinc-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 p-4">
-        <h2 className="text-lg font-semibold text-zinc-900">{props.title}</h2>
+    <section className="overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/70 shadow-[0_22px_60px_rgba(76,29,149,0.09)] backdrop-blur">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(245,243,255,0.58))] p-4">
+        <h2 className="text-lg font-black text-zinc-950">{props.title}</h2>
         {props.action}
       </div>
       <div className="p-4">{props.children}</div>
@@ -308,8 +308,8 @@ function ExportButton(props: { section: "global" | "requisites" | "projects" | "
       onClick={onClick}
       className={
         props.primary
-          ? "rounded-xl border border-violet-300 bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:from-violet-700 hover:to-fuchsia-700"
-          : "rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100"
+          ? "rounded-2xl border border-black/10 bg-zinc-950 px-4 py-2 text-sm font-black text-white shadow-[0_18px_34px_rgba(17,24,39,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
+          : "rounded-2xl border border-violet-200/70 bg-white/75 px-3 py-2 text-sm font-black text-violet-800 shadow-[0_12px_26px_rgba(109,40,217,0.09)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-violet-50"
       }
     >
       {props.children}
@@ -361,7 +361,7 @@ export default function AdminAnalyticsPage() {
             ← Админка
           </Link>
 
-          <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4 shadow-sm">
+          <div className="rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.16),transparent_35%),radial-gradient(circle_at_100%_10%,rgba(250,204,21,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.78))] p-5 shadow-[0_26px_70px_rgba(76,29,149,0.12)] backdrop-blur">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold text-violet-950">Глобальный период отчета</div>
@@ -372,7 +372,7 @@ export default function AdminAnalyticsPage() {
                   С даты
                   <input
                     type="date"
-                    className="h-10 rounded-xl border border-zinc-300 bg-white px-3"
+                    className="h-11 rounded-2xl border border-white/80 bg-white/80 px-3 font-semibold shadow-sm outline-none backdrop-blur focus:border-violet-300"
                     value={scope.from}
                     onChange={(e) => setScope((s) => ({ ...s, from: e.target.value }))}
                   />
@@ -381,7 +381,7 @@ export default function AdminAnalyticsPage() {
                   По дату
                   <input
                     type="date"
-                    className="h-10 rounded-xl border border-zinc-300 bg-white px-3"
+                    className="h-11 rounded-2xl border border-white/80 bg-white/80 px-3 font-semibold shadow-sm outline-none backdrop-blur focus:border-violet-300"
                     value={scope.to}
                     onChange={(e) => setScope((s) => ({ ...s, to: e.target.value }))}
                   />
@@ -389,7 +389,7 @@ export default function AdminAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setScope(initialScope)}
-                  className="h-10 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+                  className="h-11 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-black text-zinc-800 shadow-sm backdrop-blur hover:bg-white"
                 >
                   Сбросить
                 </button>
@@ -406,7 +406,7 @@ export default function AdminAnalyticsPage() {
             <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>
           ) : data ? (
             <>
-              <div className="flex flex-wrap gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-sm">
+              <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -415,7 +415,7 @@ export default function AdminAnalyticsPage() {
                     className={[
                       "rounded-xl px-4 py-2 text-sm font-semibold transition",
                       activeTab === tab.id
-                        ? "bg-violet-600 text-white shadow-sm"
+                        ? "bg-zinc-950 text-white shadow-[0_12px_28px_rgba(17,24,39,0.2)]"
                         : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
                     ].join(" ")}
                   >
@@ -429,7 +429,7 @@ export default function AdminAnalyticsPage() {
               {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
               {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
 
-              <details className="group rounded-3xl border border-zinc-200 bg-white shadow-sm">
+              <details className="group rounded-[1.75rem] border border-white/70 bg-white/70 shadow-[0_22px_60px_rgba(76,29,149,0.09)] backdrop-blur">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-bold text-zinc-900">
                   <span>Как считаются показатели</span>
                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600 transition group-open:rotate-180">
@@ -438,7 +438,7 @@ export default function AdminAnalyticsPage() {
                 </summary>
                 <div className="grid gap-3 border-t border-zinc-100 p-4 md:grid-cols-2">
                   {data.methodology.map((row) => (
-                    <div key={row.section} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+                    <div key={row.section} className="rounded-2xl border border-white/70 bg-white/75 p-3 text-sm shadow-sm">
                       <div className="font-semibold text-zinc-900">{row.section}</div>
                       <div className="mt-1 text-zinc-600">{row.rule}</div>
                     </div>
@@ -460,7 +460,7 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_0.9fr]">
-        <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 shadow-sm">
+        <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.18),transparent_42%),linear-gradient(135deg,rgba(236,253,245,0.88),rgba(255,255,255,0.72))] p-5 text-emerald-950 shadow-[0_26px_70px_rgba(6,95,70,0.10)] backdrop-blur">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Факт</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.fact.profitTotal)}</div>
           <div className="mt-1 text-sm font-medium opacity-80">Прибыль за закрытые деньги периода</div>
@@ -470,7 +470,7 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-violet-200 bg-violet-50 p-5 text-violet-950 shadow-sm">
+        <section className="rounded-[2rem] border border-violet-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.72))] p-5 text-violet-950 shadow-[0_26px_70px_rgba(76,29,149,0.10)] backdrop-blur">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.profitTotal)}</div>
           <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль по активным заявкам и проектам</div>
@@ -480,7 +480,7 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
+        <section className="rounded-[2rem] border border-amber-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(250,204,21,0.24),transparent_42%),linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.72))] p-5 text-amber-950 shadow-[0_26px_70px_rgba(146,64,14,0.10)] backdrop-blur">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Бонусы {finance.bonuses.ratePercent}%</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.bonuses.factPool)}</div>
           <div className="mt-1 text-sm font-medium opacity-80">Факт, пул на {finance.bonuses.recipients} человек</div>
@@ -497,7 +497,7 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
         <KpiCard label="Проекты с рисками" value={riskCount} tone={riskCount > 0 ? "amber" : "slate"} />
         <KpiCard label="Повторные заказчики" value={k.repeatCustomers} />
       </div>
-<SectionCard title="Что требует внимания">
+      <SectionCard title="Что требует внимания">
         {data.overview.attention.length === 0 ? (
           <p className="text-sm text-zinc-500">Критичных сигналов за период нет.</p>
         ) : (
@@ -505,8 +505,8 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
             {data.overview.attention.map((item) => (
               <div
                 key={`${item.projectId}-${item.message}`}
-                className={`rounded-2xl border p-3 text-sm ${
-                  item.severity === "critical" ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"
+                className={`rounded-2xl border p-3 text-sm shadow-sm ${
+                  item.severity === "critical" ? "border-rose-200/70 bg-rose-50/80" : "border-amber-200/70 bg-amber-50/80"
                 }`}
               >
                 <div className="font-semibold text-zinc-900">{item.projectTitle}</div>
@@ -685,13 +685,13 @@ function ProjectsTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) 
 
 function MiniTable(props: { title: string; headers: string[]; rows: string[][] }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      <div className="border-b border-zinc-100 bg-zinc-50 p-3 text-sm font-semibold text-zinc-900">{props.title}</div>
+    <div className="overflow-hidden rounded-[1.5rem] border border-white/70 bg-white/70 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
+      <div className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(245,243,255,0.58))] p-3 text-sm font-black text-zinc-950">{props.title}</div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-zinc-100">
+          <tr className="border-b border-white/70">
             {props.headers.map((h, i) => (
-              <th key={h} className={["p-3 font-medium text-zinc-600", i === 0 ? "text-left" : "text-right"].join(" ")}>
+              <th key={h} className={["p-3 text-xs font-black uppercase tracking-[0.12em] text-zinc-500", i === 0 ? "text-left" : "text-right"].join(" ")}>
                 {h}
               </th>
             ))}
@@ -699,9 +699,9 @@ function MiniTable(props: { title: string; headers: string[]; rows: string[][] }
         </thead>
         <tbody>
           {props.rows.slice(0, 10).map((row, idx) => (
-            <tr key={`${row[0]}-${idx}`} className="border-b border-zinc-100 last:border-0">
+            <tr key={`${row[0]}-${idx}`} className="border-b border-white/60 last:border-0">
               {row.map((cell, i) => (
-                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left" : "text-right tabular-nums"} text-zinc-800`}>
+                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left font-semibold" : "text-right font-bold tabular-nums"} text-zinc-800`}>
                   {cell}
                 </td>
               ))}
@@ -715,12 +715,12 @@ function MiniTable(props: { title: string; headers: string[]; rows: string[][] }
 
 function DataTable(props: { headers: string[]; rows: string[][] }) {
   return (
-    <div className="overflow-auto rounded-2xl border border-zinc-200 bg-white">
+    <div className="overflow-auto rounded-[1.5rem] border border-white/70 bg-white/70 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
       <table className="w-full min-w-[900px] text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 bg-zinc-50">
+          <tr className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(245,243,255,0.58))]">
             {props.headers.map((h, i) => (
-              <th key={h} className={["p-3 font-semibold text-zinc-700", i === 0 ? "text-left" : "text-right"].join(" ")}>
+              <th key={h} className={["p-3 text-xs font-black uppercase tracking-[0.12em] text-zinc-500", i === 0 ? "text-left" : "text-right"].join(" ")}>
                 {h}
               </th>
             ))}
@@ -728,9 +728,9 @@ function DataTable(props: { headers: string[]; rows: string[][] }) {
         </thead>
         <tbody>
           {props.rows.map((row, idx) => (
-            <tr key={`${row[0]}-${idx}`} className="border-b border-zinc-100 last:border-0">
+            <tr key={`${row[0]}-${idx}`} className="border-b border-white/60 last:border-0">
               {row.map((cell, i) => (
-                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left font-medium text-zinc-900" : "text-right tabular-nums text-zinc-700"}`}>
+                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left font-semibold text-zinc-900" : "text-right font-bold tabular-nums text-zinc-700"}`}>
                   {cell}
                 </td>
               ))}

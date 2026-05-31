@@ -96,43 +96,45 @@ export async function POST(
   }
 
   const declaredAt = new Date();
+  const declaredSplitRows = linesToDeclare.flatMap((l) =>
+    l.splits
+      .filter((s) => s.qty > 0)
+      .map((s) => ({
+        orderId: id,
+        orderLineId: l.orderLineId,
+        phase: "DECLARED" as const,
+        condition: s.condition,
+        qty: s.qty,
+        comment: l.comment?.trim() || null,
+      })),
+  );
 
-  await prisma.$transaction(async (tx) => {
-    await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "DECLARED" } });
-
-    for (const l of linesToDeclare) {
-      for (const s of l.splits) {
-        if (s.qty <= 0) continue;
-        await tx.returnSplit.create({
-          data: {
-            orderId: id,
-            orderLineId: l.orderLineId,
-            phase: "DECLARED",
-            condition: s.condition,
-            qty: s.qty,
-            comment: l.comment?.trim() || null,
-          },
-        });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "DECLARED" } });
+      if (declaredSplitRows.length > 0) {
+        await tx.returnSplit.createMany({ data: declaredSplitRows });
       }
-    }
 
-    const overdueDelta =
-      order.greenwichUserId != null
-        ? computeGreenwichOverdueDelta(order.endDate, declaredAt)
-        : 0;
+      const overdueDelta =
+        order.greenwichUserId != null
+          ? computeGreenwichOverdueDelta(order.endDate, declaredAt)
+          : 0;
 
-    await tx.order.update({
-      where: { id },
-      data: {
-        status: "RETURN_DECLARED",
-        ...(order.greenwichUserId != null ? { greenwichRatingOverdueDelta: overdueDelta } : {}),
-      },
-    });
+      await tx.order.update({
+        where: { id },
+        data: {
+          status: "RETURN_DECLARED",
+          ...(order.greenwichUserId != null ? { greenwichRatingOverdueDelta: overdueDelta } : {}),
+        },
+      });
 
-    if (order.greenwichUserId) {
-      await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
-    }
-  });
+      if (order.greenwichUserId) {
+        await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+      }
+    },
+    { maxWait: 5_000, timeout: 15_000 },
+  );
 
   const fullOrder = await prisma.order.findUnique({
     where: { id },

@@ -95,9 +95,18 @@ export async function POST(
   }
 
   const ratingRows: Array<{ condition: Condition; qty: number; itemType: ItemType }> = [];
+  const checkedInSplitRows: Array<{
+    orderId: string;
+    orderLineId: string;
+    phase: "CHECKED_IN";
+    condition: Condition;
+    qty: number;
+    comment?: string | null;
+  }> = [];
 
-  await prisma.$transaction(async (tx) => {
-    await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "CHECKED_IN" } });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "CHECKED_IN" } });
 
     if (isV2) {
       const lines = (parsed.data as z.infer<typeof BodySchemaV2>).lines;
@@ -119,15 +128,13 @@ export async function POST(
               itemType: line.item.type,
             });
           }
-          await tx.returnSplit.create({
-            data: {
-              orderId: id,
-              orderLineId: l.orderLineId,
-              phase: "CHECKED_IN",
-              condition: s.condition,
-              qty: actualQty,
-              comment: l.comment?.trim() || null,
-            },
+          checkedInSplitRows.push({
+            orderId: id,
+            orderLineId: l.orderLineId,
+            phase: "CHECKED_IN",
+            condition: s.condition,
+            qty: actualQty,
+            comment: l.comment?.trim() || null,
           });
 
           // Движения в “базы” по статусам (кроме OK)
@@ -186,14 +193,12 @@ export async function POST(
             itemType: line.item.type,
           });
         }
-        await tx.returnSplit.create({
-          data: {
-            orderId: id,
-            orderLineId,
-            phase: "CHECKED_IN",
-            condition,
-            qty: actualQty,
-          },
+        checkedInSplitRows.push({
+          orderId: id,
+          orderLineId,
+          phase: "CHECKED_IN",
+          condition,
+          qty: actualQty,
         });
 
         if (condition === "NEEDS_REPAIR" || condition === "BROKEN") {
@@ -233,6 +238,10 @@ export async function POST(
         }
       }
     }
+    if (checkedInSplitRows.length > 0) {
+      await tx.returnSplit.createMany({ data: checkedInSplitRows });
+    }
+
     const incidentsDelta = order.greenwichUserId
       ? computeGreenwichIncidentsDelta(ratingRows)
       : 0;
@@ -247,10 +256,12 @@ export async function POST(
       },
     });
 
-    if (order.greenwichUserId) {
-      await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
-    }
-  });
+      if (order.greenwichUserId) {
+        await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+      }
+    },
+    { maxWait: 5_000, timeout: 15_000 },
+  );
 
   const fullOrder = await prisma.order.findUnique({
     where: { id },

@@ -74,11 +74,11 @@ export function OrderFinancialSummary({
 
       <div
         className={[
-          "grid gap-3 rounded-2xl border border-zinc-200 bg-white/85 p-3",
+          "grid gap-3 rounded-[1.5rem] border border-white/75 bg-white/70 p-3 shadow-[0_18px_45px_rgba(24,24,27,0.07)] backdrop-blur",
           showWarehouse ? "xl:grid-cols-[1.05fr_0.95fr_1fr]" : "md:grid-cols-1",
         ].join(" ")}
       >
-        <div className="rounded-2xl border border-violet-200 bg-violet-50/80 p-3">
+        <div className="rounded-[1.35rem] border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.92),rgba(255,255,255,0.82))] p-4 shadow-sm">
           <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
           <div className="mt-3 space-y-2 text-sm">
             <SummaryRow label="Сумма до налога" value={`${formatMoneyRub(pricing.grandTotalBeforeTax)} ₽`} />
@@ -93,7 +93,7 @@ export function OrderFinancialSummary({
 
         {warehouse ? (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50/90 p-3">
+            <div className="rounded-[1.35rem] border border-zinc-200/80 bg-white/82 p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
               <div className="mt-3 space-y-2 text-sm">
                 <SummaryRow
@@ -117,7 +117,7 @@ export function OrderFinancialSummary({
               </p>
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+            <div className="rounded-[1.35rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.92),rgba(255,255,255,0.82))] p-4 shadow-sm">
               <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Маржа</div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <div>

@@ -158,6 +158,25 @@ const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label
   { value: "AMOUNT", label: "Сумма", hint: "Фиксированная сумма" },
 ];
 
+const orderShellClass =
+  "overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(246,241,255,0.82)_52%,rgba(255,247,218,0.72))] shadow-[0_24px_70px_rgba(76,29,149,0.12)]";
+const orderGlassCardClass =
+  "rounded-[1.5rem] border border-white/75 bg-white/76 shadow-[0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur";
+const orderSoftCardClass =
+  "rounded-[1.35rem] border border-zinc-200/70 bg-white/82 shadow-[0_12px_34px_rgba(24,24,27,0.06)] backdrop-blur";
+const orderSectionHeaderClass =
+  "border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(245,240,255,0.78))] px-5 py-4";
+const orderInputClass =
+  "rounded-2xl border border-zinc-200/80 bg-white/88 px-4 py-2.5 text-sm shadow-inner shadow-zinc-950/[0.03] outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100";
+const orderPrimaryButtonClass =
+  "rounded-2xl border border-violet-500/30 bg-[linear-gradient(135deg,#7c1fff,#b409e8)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(124,31,255,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(124,31,255,0.28)] disabled:translate-y-0 disabled:opacity-50";
+const orderSecondaryButtonClass =
+  "rounded-2xl border border-zinc-200/80 bg-white/85 px-4 py-2.5 text-sm font-bold text-zinc-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white disabled:translate-y-0 disabled:opacity-50";
+const orderDangerButtonClass =
+  "rounded-2xl border border-rose-200 bg-white/85 px-4 py-2.5 text-sm font-bold text-rose-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-50 disabled:translate-y-0 disabled:opacity-50";
+const orderWarningButtonClass =
+  "rounded-2xl border border-amber-300/70 bg-[linear-gradient(135deg,#f59e0b,#d97706)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(217,119,6,0.2)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(217,119,6,0.24)] disabled:translate-y-0 disabled:opacity-50";
+
 function fmtDate(s: string) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
@@ -466,7 +485,7 @@ function AddLineRow({
       <div className="text-sm font-medium text-zinc-600">Добавить позицию</div>
       {selected ? (
         <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-[220px] flex-1 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2">
+          <div className="min-w-[220px] flex-1 rounded-2xl border border-violet-200/80 bg-violet-50/70 px-3 py-2 shadow-sm">
             <ProductIdentity
               itemId={selected.id}
               photo1Key={selected.photo1Key}
@@ -481,7 +500,7 @@ function AddLineRow({
               }
             />
           </div>
-          <div className="flex items-center rounded-xl border border-zinc-200 bg-white overflow-hidden">
+          <div className="flex items-center overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/88 shadow-sm">
             <button
               type="button"
               onClick={() => setQty((n) => Math.max(1, (typeof n === "number" ? n : 1) - 1))}
@@ -533,14 +552,14 @@ function AddLineRow({
               setQty(1);
               setSearch("");
             }}
-            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+            className={orderPrimaryButtonClass}
           >
             Добавить
           </button>
           <button
             type="button"
             onClick={() => { setSelected(null); setSearch(""); }}
-            className="rounded-xl border border-zinc-200 px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50"
+            className={orderSecondaryButtonClass + " px-3 py-2"}
           >
             Отмена
           </button>
@@ -553,7 +572,7 @@ function AddLineRow({
             onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
             placeholder="Найти позицию по названию…"
-            className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className={orderInputClass + " w-full"}
           />
           {open && (
             <>
@@ -563,7 +582,7 @@ function AddLineRow({
                 onClick={() => setOpen(false)}
               />
               <ul
-                className="absolute top-full left-0 right-0 z-50 mt-1 max-h-56 overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg"
+                className="absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-auto rounded-2xl border border-white/75 bg-white/95 shadow-[0_18px_45px_rgba(24,24,27,0.14)] backdrop-blur"
                 role="listbox"
               >
                 {filtered.length === 0 ? (
@@ -647,8 +666,8 @@ function ServiceEditRow({
   return (
     <div
       className={[
-        "rounded-xl border p-4 transition-colors",
-        enabled ? "border-violet-200 bg-violet-50/35" : "border-zinc-200 bg-zinc-50/30",
+        "rounded-[1.35rem] border p-4 shadow-sm transition-colors",
+        enabled ? "border-violet-200/80 bg-violet-50/45" : "border-zinc-200/70 bg-white/65",
       ].join(" ")}
     >
       <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} />
@@ -661,7 +680,7 @@ function ServiceEditRow({
               value={comment}
               onChange={(e) => onCommentChange(e.target.value)}
               placeholder="Описание или примечание"
-              className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-200"
+              className={orderInputClass + " w-full"}
             />
           </div>
           {showPrice ? (
@@ -676,10 +695,10 @@ function ServiceEditRow({
                 value={price === "" ? "" : price}
                 onChange={(e) => onPriceChange(e.target.value === "" ? "" : Number(e.target.value))}
                 placeholder="0"
-                className={`w-full rounded-xl border px-3 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-2 ${
+                className={`w-full rounded-2xl border px-3 py-2 text-sm text-right tabular-nums outline-none focus:ring-4 ${
                   priceMissing
                     ? "border-amber-300 bg-amber-50/50 focus:border-amber-400 focus:ring-amber-200"
-                    : "border-zinc-200 bg-white focus:border-violet-300 focus:ring-violet-200"
+                    : "border-zinc-200/80 bg-white/88 focus:border-violet-300 focus:ring-violet-100"
                 }`}
               />
               {priceMissing && (
@@ -699,7 +718,7 @@ function ServiceEditRow({
                   onInternalPriceChange(e.target.value === "" ? "" : Number(e.target.value))
                 }
                 placeholder="необяз."
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-right tabular-nums focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                className={orderInputClass + " w-full text-right tabular-nums"}
               />
             </div>
           ) : null}
@@ -711,7 +730,7 @@ function ServiceEditRow({
               <select
                 value={internalPaymentMethod}
                 onChange={(e) => onInternalPaymentMethodChange(e.target.value as OrderServicePaymentMethod)}
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                className={orderInputClass + " w-full font-semibold text-zinc-800"}
               >
                 <option value="NON_CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.NON_CASH}</option>
                 <option value="CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.CASH}</option>
@@ -1354,7 +1373,7 @@ export default function OrderDetailsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href={isWarehouse ? warehouseBackHref : "/orders"}
-              className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900"
+              className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-4 py-2 text-sm font-bold text-zinc-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:text-zinc-950"
             >
               ← {isWarehouse ? warehouseBackLabel : "Мои заявки"}
             </Link>
@@ -1363,18 +1382,22 @@ export default function OrderDetailsPage() {
 
         <div
           className={[
-            "rounded-2xl border overflow-hidden shadow-sm",
+            orderShellClass,
             order.status === "CANCELLED"
-              ? "border-[#5b0b17]/25 bg-[#5b0b17]/[0.03]"
-              : "border-zinc-200 bg-white",
+              ? "border-[#5b0b17]/20"
+              : "border-white/70",
           ].join(" ")}
         >
-          <div className={["px-4 py-5", statusHeaderClass].join(" ")}>
-            <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+          <div className={["border-b border-white/70 px-4 py-5 sm:px-6", statusHeaderClass].join(" ")}>
+            <div className={orderGlassCardClass}>
+              <div className="p-4">
+                <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+              </div>
+            </div>
           </div>
-          <div className="p-4">
-            <div className="space-y-1">
-              <div className="text-lg font-semibold text-zinc-900">
+          <div className="p-4 sm:p-6">
+            <div className="space-y-4">
+              <div className="text-2xl font-black tracking-[-0.01em] text-zinc-950 sm:text-4xl">
                 {order.customer.name}
                 {order.greenwichUser
                   ? ` · ${order.greenwichUser.displayName}${
@@ -1403,7 +1426,7 @@ export default function OrderDetailsPage() {
               {order.eventName ? (
                 <p className="text-sm text-zinc-600">Мероприятие: {order.eventName}</p>
               ) : null}
-              <p className="text-sm text-zinc-500">
+              <p className="hidden">
                 Готовность к: <strong>{fmtDate(order.readyByDate)}</strong> · Период:{" "}
                 <strong>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</strong> —{" "}
                 <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</strong>
@@ -1411,6 +1434,19 @@ export default function OrderDetailsPage() {
               <p className="text-xs text-zinc-400">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}
               </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className={orderSoftCardClass + " p-4"}>
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Готовность</div>
+                  <div className="mt-2 text-xl font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
+                </div>
+                <div className={orderSoftCardClass + " p-4 md:col-span-2"}>
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Период</div>
+                  <div className="mt-2 text-xl font-black text-zinc-950">
+                    {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
+                    {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}
+                  </div>
+                </div>
+              </div>
               {orderPricing ? (
                 <OrderFinancialSummary
                   pricing={{
@@ -1435,7 +1471,7 @@ export default function OrderDetailsPage() {
                 <p className="mt-3">
                   <a
                     href={`/api/orders/${order.id}/estimate`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
                     download
                   >
                     📥 Скачать смету (xlsx)
@@ -1447,7 +1483,7 @@ export default function OrderDetailsPage() {
         </div>
 
         {isWarehouse ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className={orderGlassCardClass + " p-4"}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold text-zinc-800">Внутренний комментарий (только склад)</div>
               <button
@@ -1456,23 +1492,23 @@ export default function OrderDetailsPage() {
                   setInternalNoteOpen((v) => !v);
                   setInternalNoteDraft(order.warehouseInternalNote ?? "");
                 }}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                className={orderSecondaryButtonClass + " px-3 py-1.5 text-xs"}
               >
                 {internalNoteOpen ? "Закрыть" : "Редактировать"}
               </button>
             </div>
             {order.warehouseInternalNote && !internalNoteOpen ? (
-              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 whitespace-pre-wrap">
+              <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950 shadow-sm whitespace-pre-wrap">
                 <span className="font-semibold text-amber-800">Заметка:</span> {order.warehouseInternalNote}
               </div>
             ) : null}
             {internalNoteOpen ? (
-              <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
+              <div className="mt-3 space-y-2 border-t border-white/70 pt-3">
                 <textarea
                   value={internalNoteDraft}
                   onChange={(e) => setInternalNoteDraft(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className={orderInputClass + " w-full"}
                   placeholder="Заметка для сотрудников склада…"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -1480,7 +1516,7 @@ export default function OrderDetailsPage() {
                     type="button"
                     disabled={internalNoteBusy}
                     onClick={() => void saveInternalNote()}
-                    className="rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                    className={orderPrimaryButtonClass + " px-3 py-1.5"}
                   >
                     {internalNoteBusy ? "…" : "Сохранить"}
                   </button>
@@ -1491,7 +1527,7 @@ export default function OrderDetailsPage() {
                       setInternalNoteDraft(order.warehouseInternalNote ?? "");
                       setInternalNoteOpen(false);
                     }}
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    className={orderSecondaryButtonClass + " px-3 py-1.5"}
                   >
                     Отмена
                   </button>
@@ -1502,7 +1538,7 @@ export default function OrderDetailsPage() {
         ) : null}
 
         {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+          <div className="rounded-[1.5rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.9),rgba(255,255,255,0.82))] p-4 shadow-[0_18px_45px_rgba(217,119,6,0.08)] backdrop-blur">
             <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
               Запрос скидки от Grinvich
             </div>
@@ -1525,7 +1561,7 @@ export default function OrderDetailsPage() {
         ) : null}
 
         {!isEditing && order.comment ? (
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4">
+          <div className={orderGlassCardClass + " p-4"}>
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Комментарий</div>
             <p className="mt-1 text-sm text-zinc-800 whitespace-pre-wrap">{order.comment}</p>
           </div>
@@ -1533,8 +1569,8 @@ export default function OrderDetailsPage() {
 
         {isEditing ? (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-3">
+            <div className={orderGlassCardClass + " overflow-hidden"}>
+              <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Мероприятие и комментарий</span>
               </div>
               <div className="p-5 space-y-4">
@@ -1544,7 +1580,7 @@ export default function OrderDetailsPage() {
                     type="text"
                     value={editEventName}
                     onChange={(e) => setEditEventName(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    className={orderInputClass + " w-full"}
                     placeholder="Название мероприятия"
                   />
                 </div>
@@ -1554,14 +1590,14 @@ export default function OrderDetailsPage() {
                     value={editComment}
                     onChange={(e) => setEditComment(e.target.value)}
                     rows={2}
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    className={orderInputClass + " w-full"}
                     placeholder="Комментарий к заявке для склада"
                   />
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white shadow-sm overflow-hidden">
-              <div className="border-b border-emerald-100 px-5 py-3">
+            <div className="overflow-hidden rounded-[1.5rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.9),rgba(255,255,255,0.82))] shadow-[0_18px_45px_rgba(5,150,105,0.08)] backdrop-blur">
+              <div className="border-b border-white/70 px-5 py-4">
                 <span className="text-sm font-semibold text-emerald-900">
                   {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
                 </span>
@@ -1642,7 +1678,7 @@ export default function OrderDetailsPage() {
                                         setEditGreenwichRequestedDiscountAmount(value);
                                       }
                                     }}
-                                    className="mt-1 w-full rounded-xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-2 focus:ring-white/40"
+                                    className="mt-1 w-full rounded-2xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-4 focus:ring-white/40"
                                     placeholder={option.value === "PERCENT" ? "10" : "5000"}
                                     autoFocus={showValueInput}
                                     tabIndex={showValueInput ? 0 : -1}
@@ -1663,21 +1699,21 @@ export default function OrderDetailsPage() {
                       value={editGreenwichDiscountRequestComment}
                       onChange={(e) => setEditGreenwichDiscountRequestComment(e.target.value)}
                       rows={2}
-                      className="mt-1 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm normal-case text-zinc-800"
+                      className={orderInputClass + " mt-1 w-full normal-case text-zinc-800"}
                       placeholder="Например: нужна скидка из-за объема заявки"
                     />
                   </label>
                 ) : null}
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-3">
+            <div className={orderGlassCardClass + " overflow-hidden"}>
+              <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Состав заявки</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-200 bg-zinc-50/50">
+                    <tr className="border-b border-white/70 bg-white/55">
                       <th className="text-left px-5 py-3 font-semibold text-zinc-700">Позиция</th>
                       <th className="text-right px-5 py-3 font-semibold text-zinc-700 w-36">Кол-во</th>
                       <th className="text-left px-5 py-3 font-semibold text-zinc-700">
@@ -1688,7 +1724,7 @@ export default function OrderDetailsPage() {
                   </thead>
                   <tbody>
                     {editLines.map((line, idx) => (
-                      <tr key={line.id ?? `new-${idx}`} className="border-b border-zinc-100 hover:bg-zinc-50/50">
+                      <tr key={line.id ?? `new-${idx}`} className="border-b border-white/70 hover:bg-white/60">
                         <td className="px-5 py-3">
                           <ProductIdentity
                             itemId={line.itemId}
@@ -1707,7 +1743,7 @@ export default function OrderDetailsPage() {
                           />
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <div className="inline-flex items-center rounded-xl border border-zinc-200 bg-white overflow-hidden">
+                          <div className="inline-flex items-center overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/88 shadow-sm">
                             <button
                               type="button"
                               onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))}
@@ -1744,7 +1780,7 @@ export default function OrderDetailsPage() {
                             type="text"
                             value={line.lineComment}
                             onChange={(e) => updateEditLine(idx, "lineComment", e.target.value)}
-                            className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                            className={orderInputClass + " w-full max-w-sm"}
                             placeholder="Комментарий к позиции"
                           />
                         </td>
@@ -1752,7 +1788,7 @@ export default function OrderDetailsPage() {
                           <button
                             type="button"
                             onClick={() => removeEditLine(idx)}
-                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100"
+                            className={orderDangerButtonClass + " px-3 py-2 text-xs"}
                           >
                             Удалить
                           </button>
@@ -1763,8 +1799,8 @@ export default function OrderDetailsPage() {
                 </table>
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-3">
+            <div className={orderGlassCardClass}>
+              <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Добавить позицию</span>
               </div>
               <div className="p-5">
@@ -1775,8 +1811,8 @@ export default function OrderDetailsPage() {
                 />
               </div>
             </div>
-            <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-3">
+            <div className={orderGlassCardClass + " overflow-hidden"}>
+              <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Доп. услуги</span>
               </div>
               <div className="p-5 space-y-4">
@@ -1828,7 +1864,7 @@ export default function OrderDetailsPage() {
               </div>
             </div>
             {editPricing ? (
-              <div className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 text-sm text-violet-950">
+              <div className="rounded-[1.5rem] border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.82))] p-4 text-sm text-violet-950 shadow-[0_18px_45px_rgba(124,58,237,0.08)] backdrop-blur">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span>Сумма до налога</span>
                   <span className="font-semibold tabular-nums">
@@ -1850,14 +1886,14 @@ export default function OrderDetailsPage() {
           </>
         ) : (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
-              <div className="border-b border-zinc-200 bg-zinc-50/80 px-4 py-2 text-sm font-semibold text-zinc-700">
+            <div className={orderGlassCardClass + " overflow-hidden"}>
+              <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
                 Состав заявки
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-200 bg-zinc-50/50">
+                    <tr className="border-b border-white/70 bg-white/55">
                       <th className="text-left p-3 font-semibold text-zinc-700">Позиция</th>
                       <th className="text-right p-3 font-semibold text-zinc-700">Запрос</th>
                       <th className="text-right p-3 font-semibold text-zinc-700">Соглас.</th>
@@ -1869,7 +1905,7 @@ export default function OrderDetailsPage() {
                   </thead>
                   <tbody>
                     {order.lines.map((line) => (
-                      <tr key={line.id} className="border-b border-zinc-100">
+                      <tr key={line.id} className="border-b border-white/70 hover:bg-white/60">
                         <td className="p-3">
                           <ProductIdentity
                             itemId={line.item.id}
@@ -1915,7 +1951,7 @@ export default function OrderDetailsPage() {
             </div>
 
             {(order.deliveryEnabled || order.montageEnabled || order.demontageEnabled) ? (
-              <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+              <div className={orderGlassCardClass + " p-4"}>
                 <div className="text-sm font-semibold text-zinc-700 mb-2">Доп. услуги</div>
                 <ul className="space-y-1.5 text-sm text-zinc-600">
                   {order.deliveryEnabled ? (
@@ -1956,8 +1992,8 @@ export default function OrderDetailsPage() {
 
         {/* Приёмка: склад редактирует и закрывает */}
         {isWarehouse && order.status === "RETURN_DECLARED" && !isEditing ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-zinc-200 bg-zinc-50/80 px-4 py-2 text-sm font-semibold text-zinc-700">
+          <div className={orderGlassCardClass + " overflow-hidden"}>
+            <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
               Приёмка (как отправил Grinvich)
             </div>
             <div className="p-4 space-y-4">
@@ -1967,7 +2003,7 @@ export default function OrderDetailsPage() {
                 const rows = normalizeRows(total, draft.rows);
                 const usedAll = rows.map((r) => r.condition);
                 return (
-                  <div key={l.id} className="rounded-xl border border-zinc-200 p-3">
+                  <div key={l.id} className={orderSoftCardClass + " p-3"}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <ProductIdentity
                         itemId={l.item.id}
@@ -1997,7 +2033,7 @@ export default function OrderDetailsPage() {
                                 nextRows[idx] = { condition: cond, qty };
                                 updateLineDraft("checkin", l.id, { ...draft, rows: nextRows });
                               }}
-                              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                              className={orderInputClass}
                             >
                               {options.map((c) => (
                                 <option key={c} value={c} disabled={c !== r.condition && usedAll.includes(c)}>
@@ -2030,7 +2066,7 @@ export default function OrderDetailsPage() {
                                     updateLineDraft("checkin", l.id, { ...draft, rows: nextRows });
                                   }
                                 }}
-                                className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                                className={orderInputClass + " w-24"}
                               />
                             ) : (
                               <div className="text-sm text-zinc-600">
@@ -2045,7 +2081,7 @@ export default function OrderDetailsPage() {
                         <input
                           value={draft.comment}
                           onChange={(e) => updateLineDraft("checkin", l.id, { ...draft, comment: e.target.value, rows })}
-                          className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                          className={orderInputClass + " mt-1 w-full"}
                           placeholder="Комментарий по позиции (опционально)"
                         />
                       </div>
@@ -2058,7 +2094,7 @@ export default function OrderDetailsPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => submitCheckIn(checkInDraft)}
-                  className="rounded-lg border border-amber-300 bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  className={orderWarningButtonClass}
                 >
                   {busy ? "…" : "Принять (закрыть)"}
                 </button>
@@ -2066,7 +2102,7 @@ export default function OrderDetailsPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => setCheckInDraft(buildDraftFromPhase("DECLARED"))}
-                  className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  className={orderSecondaryButtonClass}
                 >
                   Сбросить к декларации
                 </button>
@@ -2077,8 +2113,8 @@ export default function OrderDetailsPage() {
 
         {/* Приёмка: итог (в архиве/после закрытия) */}
         {order.status === "CLOSED" && (order.returnSplits ?? []).some((s) => s.phase === "CHECKED_IN") ? (
-          <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-zinc-200 bg-zinc-50/80 px-4 py-2 text-sm font-semibold text-zinc-700">
+          <div className={orderGlassCardClass + " overflow-hidden"}>
+            <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
               Приёмка (итог)
             </div>
             <div className="p-4 space-y-3">
@@ -2087,7 +2123,7 @@ export default function OrderDetailsPage() {
                 const splits = checkedInByLine.get(l.id) ?? [];
                 const comment = splits.find((s) => (s.comment ?? "").trim() !== "")?.comment ?? "";
                 return (
-                  <div key={l.id} className="rounded-xl border border-zinc-200 p-3">
+                  <div key={l.id} className={orderSoftCardClass + " p-3"}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <ProductIdentity
                         itemId={l.item.id}
@@ -2104,7 +2140,7 @@ export default function OrderDetailsPage() {
                       {splits.length ? (
                         <div className="flex flex-wrap gap-2">
                           {splits.map((s) => (
-                            <span key={s.id} className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800">
+                            <span key={s.id} className="rounded-full border border-zinc-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-zinc-800 shadow-sm">
                               {CONDITION_LABEL[s.condition]}: {s.qty}
                             </span>
                           ))}
@@ -2131,23 +2167,23 @@ export default function OrderDetailsPage() {
           order.status === "ISSUED" &&
           typeof document !== "undefined" &&
           createPortal(
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-3xl rounded-2xl border border-zinc-200 bg-white shadow-xl overflow-hidden">
-                <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 py-3 flex items-center justify-between gap-3">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-3xl overflow-hidden rounded-[2rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(246,241,255,0.88))] shadow-[0_28px_90px_rgba(24,24,27,0.28)]">
+                <div className="flex items-center justify-between gap-3 border-b border-white/70 bg-white/70 px-5 py-4">
                   <div className="text-sm font-semibold text-zinc-900">Отправить на приёмку</div>
                   <button
                     type="button"
                     onClick={() => setDeclareOpen(false)}
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    className={orderSecondaryButtonClass + " px-3 py-1.5"}
                   >
                     Закрыть
                   </button>
                 </div>
-                <div className="p-5 space-y-4 max-h-[70vh] overflow-auto">
+                <div className="max-h-[70vh] space-y-4 overflow-auto p-5">
                   <div className="text-sm text-zinc-600">
                     Полученное количество фиксировано. Если статус не «Все в норме», укажите количество и при необходимости разбейте остаток на следующий статус.
                   </div>
-                  <details className="group rounded-2xl border border-violet-100 bg-violet-50/60">
+                  <details className="group rounded-[1.5rem] border border-violet-100 bg-violet-50/60">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-violet-950">
                       <span>Что означают статусы?</span>
                       <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-700 transition group-open:rotate-180">
@@ -2169,7 +2205,7 @@ export default function OrderDetailsPage() {
                     const rows = normalizeRows(total, draft.rows);
                     const usedAll = rows.map((r) => r.condition);
                     return (
-                      <div key={l.id} className="rounded-xl border border-zinc-200 p-4">
+                      <div key={l.id} className={orderSoftCardClass + " p-4"}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <ProductIdentity
                             itemId={l.item.id}
@@ -2199,7 +2235,7 @@ export default function OrderDetailsPage() {
                                     nextRows[idx] = { condition: cond, qty };
                                     updateLineDraft("declare", l.id, { ...draft, rows: nextRows });
                                   }}
-                                  className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
+                                  className={orderInputClass}
                                 >
                                   {options.map((c) => (
                                     <option key={c} value={c} disabled={c !== r.condition && usedAll.includes(c)}>
@@ -2232,7 +2268,7 @@ export default function OrderDetailsPage() {
                                         updateLineDraft("declare", l.id, { ...draft, rows: nextRows });
                                       }
                                     }}
-                                    className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                                    className={orderInputClass + " w-24"}
                                   />
                                 ) : (
                                   <div className="text-sm text-zinc-600">
@@ -2247,7 +2283,7 @@ export default function OrderDetailsPage() {
                             <input
                               value={draft.comment}
                               onChange={(e) => updateLineDraft("declare", l.id, { ...draft, comment: e.target.value, rows })}
-                              className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                              className={orderInputClass + " mt-1 w-full"}
                               placeholder="Комментарий по позиции (опционально)"
                             />
                           </div>
@@ -2256,14 +2292,14 @@ export default function OrderDetailsPage() {
                     );
                   })}
                 </div>
-                <div className="border-t border-zinc-200 bg-white px-5 py-3 flex flex-wrap gap-2 justify-end">
+                <div className="flex flex-wrap justify-end gap-2 border-t border-white/70 bg-white/72 px-5 py-4">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => {
                       void submitReturnDeclared(declareDraft).then(() => setDeclareOpen(false));
                     }}
-                    className="rounded-lg border border-amber-300 bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                    className={orderWarningButtonClass}
                   >
                     {busy ? "…" : "Отправить на приёмку"}
                   </button>
@@ -2271,7 +2307,7 @@ export default function OrderDetailsPage() {
                     type="button"
                     disabled={busy}
                     onClick={() => setDeclareOpen(false)}
-                    className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    className={orderSecondaryButtonClass}
                   >
                     Отмена
                   </button>
@@ -2287,12 +2323,12 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
           {canEditOrder && !isEditing && (
             <button
               type="button"
               onClick={startEditing}
-              className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
+              className={orderSecondaryButtonClass}
             >
               Редактировать заявку
             </button>
@@ -2303,7 +2339,7 @@ export default function OrderDetailsPage() {
                 type="button"
                 disabled={busy}
                 onClick={saveOrderEdit}
-                className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                className={orderPrimaryButtonClass}
               >
                 {busy ? "…" : isGreenwich ? "Запросить изменения" : "Сохранить"}
               </button>
@@ -2311,7 +2347,7 @@ export default function OrderDetailsPage() {
                 type="button"
                 disabled={busy}
                 onClick={() => { setIsEditing(false); setActionError(null); }}
-                className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                className={orderSecondaryButtonClass}
               >
                 Отмена
               </button>
@@ -2327,7 +2363,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy || !canSendEstimate}
               onClick={() => doAction("POST", `/api/orders/${orderId}/send-estimate`)}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+              className={orderPrimaryButtonClass}
             >
               {busy ? "…" : "Отправить смету"}
             </button>
@@ -2337,7 +2373,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy || !canStartPicking}
               onClick={() => doAction("POST", `/api/orders/${orderId}/start-picking`)}
-              className="rounded-lg border border-indigo-300 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              className={orderPrimaryButtonClass}
               title={startPickingBlocked ? "Сначала укажите цены для включённых доп. услуг" : undefined}
             >
               {busy ? "…" : "Начать сборку"}
@@ -2348,7 +2384,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy}
               onClick={() => doAction("POST", `/api/orders/${orderId}/issue`)}
-              className="rounded-lg border border-green-300 bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+              className="rounded-2xl border border-emerald-400/60 bg-[linear-gradient(135deg,#10b981,#059669)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(5,150,105,0.2)] transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-50"
             >
               {busy ? "…" : "Выдать"}
             </button>
@@ -2358,7 +2394,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy}
               onClick={() => doAction("POST", `/api/orders/${orderId}/approve`, {})}
-              className="rounded-lg border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              className={orderPrimaryButtonClass}
             >
               {busy ? "…" : "Согласовать смету"}
             </button>
@@ -2370,7 +2406,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy || !order.greenwichUserId}
               onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+              className={orderPrimaryButtonClass}
             >
               {busy ? "…" : "Быстрая доп.-выдача"}
             </button>
@@ -2384,7 +2420,7 @@ export default function OrderDetailsPage() {
                   const okDraft = buildDraftFromPhase("DECLARED");
                   void submitReturnDeclared(okDraft);
                 }}
-                className="rounded-lg border border-amber-300 bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                className={orderWarningButtonClass}
               >
                 {busy ? "…" : "Все в норме → на приёмку"}
               </button>
@@ -2395,7 +2431,7 @@ export default function OrderDetailsPage() {
                   setDeclareDraft(buildDraftFromPhase("DECLARED"));
                   setDeclareOpen(true);
                 }}
-                className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                className={orderSecondaryButtonClass}
               >
                 По позициям…
               </button>
@@ -2406,7 +2442,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy}
               onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
-              className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+              className={orderPrimaryButtonClass}
             >
               {busy ? "…" : "Быстрая доп.-выдача"}
             </button>
@@ -2416,7 +2452,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy}
               onClick={() => doAction("POST", `/api/orders/${orderId}/return-declared`)}
-              className="rounded-lg border border-amber-300 bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              className={orderWarningButtonClass}
             >
               {busy ? "…" : "На приёмку"}
             </button>
@@ -2429,7 +2465,7 @@ export default function OrderDetailsPage() {
                 if (!confirm("Отменить заявку? Она попадёт в архив.")) return;
                 doAction("POST", `/api/orders/${orderId}/cancel`);
               }}
-              className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className={orderDangerButtonClass}
             >
               {busy ? "…" : "Отменить заявку"}
             </button>

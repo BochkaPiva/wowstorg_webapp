@@ -204,6 +204,12 @@ export async function GET(req: Request) {
                   demontagePrice: true,
                   demontageInternalCost: true,
                   demontageInternalPaymentMethod: true,
+                  hiddenExpenses: {
+                    select: {
+                      cost: true,
+                      internalPaymentMethod: true,
+                    },
+                  },
                   rentalDiscountType: true,
                   rentalDiscountPercent: true,
                   rentalDiscountAmount: true,
@@ -292,6 +298,10 @@ export async function GET(req: Request) {
               internalCost: order.demontageInternalCost,
               internalPaymentMethod: order.demontageInternalPaymentMethod,
             },
+            hiddenExpenses: order.hiddenExpenses.map((expense) => ({
+              cost: expense.cost,
+              internalPaymentMethod: expense.internalPaymentMethod,
+            })),
           });
           internalSubtotal += serviceCosts.internalCostTotal;
           cashInternalCostTax += serviceCosts.cashInternalCostTax;

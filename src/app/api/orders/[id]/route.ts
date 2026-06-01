@@ -40,6 +40,19 @@ export async function GET(
           },
         },
       },
+      hiddenExpenses: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          title: true,
+          comment: true,
+          cost: true,
+          internalPaymentMethod: true,
+          sortOrder: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
       returnSplits: {
         select: {
           id: true,
@@ -71,7 +84,7 @@ export async function GET(
     LIMIT 1
   `;
 
-  const { greenwichUser, lines, returnSplits, project, ...orderBase } = order;
+  const { greenwichUser, lines, hiddenExpenses, returnSplits, project, ...orderBase } = order;
 
   const serialized: Record<string, unknown> = {
     ...orderBase,
@@ -124,6 +137,12 @@ export async function GET(
     delete serialized.warehouseInternalNote;
   } else {
     serialized.warehouseInternalNote = order.warehouseInternalNote ?? null;
+    serialized.hiddenExpenses = hiddenExpenses.map((expense) => ({
+      ...expense,
+      cost: Number(expense.cost),
+      createdAt: expense.createdAt.toISOString(),
+      updatedAt: expense.updatedAt.toISOString(),
+    }));
   }
 
   if (auth.user.role === "GREENWICH") {

@@ -111,6 +111,17 @@ export async function buildProjectEstimateReadModel(args: {
           demontagePrice: true,
           demontageInternalCost: true,
           demontageInternalPaymentMethod: true,
+          hiddenExpenses: {
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              title: true,
+              comment: true,
+              cost: true,
+              internalPaymentMethod: true,
+              sortOrder: true,
+            },
+          },
           rentalDiscountType: true,
           rentalDiscountPercent: true,
           rentalDiscountAmount: true,
@@ -287,6 +298,11 @@ export async function buildProjectEstimateReadModel(args: {
           const cost = getNumericAmount(linkedOrder.demontageInternalCost);
           internalSubtotal += cost;
           if (linkedOrder.demontageInternalPaymentMethod === "CASH") cashInternalSubtotal += cost;
+        }
+        for (const expense of linkedOrder.hiddenExpenses) {
+          const cost = getNumericAmount(expense.cost);
+          internalSubtotal += cost;
+          if (expense.internalPaymentMethod === "CASH") cashInternalSubtotal += cost;
         }
         continue;
       }
@@ -498,6 +514,27 @@ export async function buildProjectEstimateReadModel(args: {
                       })()
                     : null,
                 ].filter((line): line is NonNullable<typeof line> => line !== null);
+                const hiddenExpenseRows: ProjectEstimateReadLine[] = linkedOrder.hiddenExpenses.map((expense, index) => {
+                  const rowIndex = orderLines.length + serviceRows.length + index;
+                  return {
+                    id: expense.id,
+                    position: rowIndex,
+                    lineNumber: rowIndex + 1,
+                    name: expense.title,
+                    description: expense.comment ?? null,
+                    lineType: "HIDDEN_EXPENSE",
+                    costClient: "0",
+                    costInternal: String(roundMoney(Number(expense.cost))),
+                    orderLineId: null,
+                    itemId: null,
+                    unit: "расх.",
+                    unitPriceClient: 0,
+                    qty: 1,
+                    plannedDays: null,
+                    maxQtyPhysical: null,
+                    paymentMethod: expense.internalPaymentMethod === "CASH" ? "Наличка" : "Безнал",
+                  };
+                });
                 return {
                   id: section.id,
                   sortOrder: section.sortOrder,
@@ -508,7 +545,7 @@ export async function buildProjectEstimateReadModel(args: {
                   linkedOrderStatus: linkedOrder.status,
                   linkedOrderEditable: EDITABLE_ORDER_STATUSES.has(linkedOrder.status),
                   lineLocalExtras: extras,
-                  lines: [...orderLines, ...serviceRows],
+                  lines: [...orderLines, ...serviceRows, ...hiddenExpenseRows],
                 };
               }
 

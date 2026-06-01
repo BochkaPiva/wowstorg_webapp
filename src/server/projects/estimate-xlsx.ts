@@ -569,6 +569,7 @@ export async function buildProjectEstimateXlsx(args: {
     let sectionLineCount = 0;
 
     for (const line of section.lines) {
+      if (isClient && line.lineType === "HIDDEN_EXPENSE") continue;
       const client = lineClient(line);
       const internal = lineInternal(line);
       const lineCashTax = lineCashInternalCostTax(line);

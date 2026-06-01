@@ -11,6 +11,11 @@ export type OrderServiceInternalCostInput = {
   internalPaymentMethod?: OrderServicePaymentMethod | string | null;
 };
 
+export type OrderHiddenExpenseInput = {
+  cost?: unknown;
+  internalPaymentMethod?: OrderServicePaymentMethod | string | null;
+};
+
 function num(value: unknown): number {
   if (value == null) return 0;
   const n = Number(value);
@@ -39,11 +44,13 @@ export function calcWarehouseProfitEstimate(input: {
   delivery?: OrderServiceInternalCostInput;
   montage?: OrderServiceInternalCostInput;
   demontage?: OrderServiceInternalCostInput;
+  hiddenExpenses?: OrderHiddenExpenseInput[] | null;
 }) {
   const services = calcOrderServicesInternalCosts({
     delivery: input.delivery,
     montage: input.montage,
     demontage: input.demontage,
+    hiddenExpenses: input.hiddenExpenses,
   });
   const clientGrandTotal = roundMoney(input.clientGrandTotal);
   const clientTaxAmount = roundMoney(input.clientTaxAmount);
@@ -80,15 +87,22 @@ export function calcOrderServicesInternalCosts(input: {
   delivery?: OrderServiceInternalCostInput;
   montage?: OrderServiceInternalCostInput;
   demontage?: OrderServiceInternalCostInput;
+  hiddenExpenses?: OrderHiddenExpenseInput[] | null;
   cashTaxRate?: number;
 }) {
   const services = [input.delivery, input.montage, input.demontage].filter(
     (service): service is OrderServiceInternalCostInput => Boolean(service?.enabled),
   );
-  const internalCostTotal = services.reduce((sum, service) => sum + num(service.internalCost), 0);
+  const hiddenExpenses = (input.hiddenExpenses ?? []).filter((expense) => num(expense.cost) > 0);
+  const internalCostTotal =
+    services.reduce((sum, service) => sum + num(service.internalCost), 0) +
+    hiddenExpenses.reduce((sum, expense) => sum + num(expense.cost), 0);
   const cashInternalCostTotal = services.reduce((sum, service) => {
     if (normalizeOrderServicePaymentMethod(service.internalPaymentMethod) !== "CASH") return sum;
     return sum + num(service.internalCost);
+  }, 0) + hiddenExpenses.reduce((sum, expense) => {
+    if (normalizeOrderServicePaymentMethod(expense.internalPaymentMethod) !== "CASH") return sum;
+    return sum + num(expense.cost);
   }, 0);
   const cashTaxRate = input.cashTaxRate ?? ORDER_CASH_INTERNAL_COST_TAX_RATE;
   const cashInternalCostTax = calcCashInternalCostTaxAmount(cashInternalCostTotal, cashTaxRate);

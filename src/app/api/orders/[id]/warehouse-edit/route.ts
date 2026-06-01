@@ -14,6 +14,13 @@ const LineSchema = z.object({
   requestedQty: z.number().int().min(0),
   warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
+const HiddenExpenseSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().trim().min(1).max(160),
+  comment: z.string().trim().max(1000).nullable().optional(),
+  cost: z.number().min(0),
+  internalPaymentMethod: z.enum(["NON_CASH", "CASH"]).optional(),
+});
 const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 const ServicePaymentMethodSchema = z.enum(["NON_CASH", "CASH"]);
 
@@ -38,7 +45,8 @@ const BodySchema = z.object({
   rentalDiscountType: DiscountTypeSchema.optional(),
   rentalDiscountPercent: z.number().min(0).max(100).nullable().optional(),
   rentalDiscountAmount: z.number().min(0).nullable().optional(),
-  lines: z.array(LineSchema).min(1).max(500),
+  hiddenExpenses: z.array(HiddenExpenseSchema).max(100).optional(),
+  lines: z.array(LineSchema).min(1).max(500).optional(),
 });
 
 const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
@@ -59,6 +67,29 @@ function discountValueForCompare(discount: {
     ? Number(discount.rentalDiscountAmount)
     : null;
   return JSON.stringify({ type, percent, amount });
+}
+
+async function replaceHiddenExpenses(args: {
+  tx: Prisma.TransactionClient;
+  orderId: string;
+  actorUserId: string;
+  hiddenExpenses: z.infer<typeof HiddenExpenseSchema>[];
+}) {
+  await args.tx.orderHiddenExpense.deleteMany({ where: { orderId: args.orderId } });
+  const rows = args.hiddenExpenses
+    .map((expense, index) => ({
+      orderId: args.orderId,
+      title: expense.title.trim(),
+      comment: expense.comment?.trim() || null,
+      cost: expense.cost,
+      internalPaymentMethod: expense.internalPaymentMethod ?? "NON_CASH",
+      sortOrder: index,
+      createdById: args.actorUserId,
+    }))
+    .filter((expense) => expense.title.length > 0 || Number(expense.cost) > 0);
+  if (rows.length > 0) {
+    await args.tx.orderHiddenExpense.createMany({ data: rows });
+  }
 }
 
 export async function PATCH(
@@ -115,14 +146,78 @@ export async function PATCH(
         `;
         const isQuickSupplement = Boolean(quickRow?.[0]?.parentOrderId);
 
-        if (!EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
+        const isRegularEditableStatus = EDITABLE_STATUSES.includes(
+          order.status as (typeof EDITABLE_STATUSES)[number],
+        );
+        const hasClientFacingInput =
+          data.eventName !== undefined ||
+          data.comment !== undefined ||
+          data.deliveryEnabled !== undefined ||
+          data.deliveryComment !== undefined ||
+          data.deliveryPrice !== undefined ||
+          data.montageEnabled !== undefined ||
+          data.montageComment !== undefined ||
+          data.montagePrice !== undefined ||
+          data.demontageEnabled !== undefined ||
+          data.demontageComment !== undefined ||
+          data.demontagePrice !== undefined;
+        const hasInternalServiceInput =
+          data.deliveryInternalCost !== undefined ||
+          data.deliveryInternalPaymentMethod !== undefined ||
+          data.montageInternalCost !== undefined ||
+          data.montageInternalPaymentMethod !== undefined ||
+          data.demontageInternalCost !== undefined ||
+          data.demontageInternalPaymentMethod !== undefined;
+        const hasHiddenExpenseInput = data.hiddenExpenses !== undefined;
+        const isInternalOnlyPatch =
+          order.status !== "CANCELLED" &&
+          data.lines === undefined &&
+          !hasDiscountInput &&
+          !hasClientFacingInput &&
+          (hasInternalServiceInput || hasHiddenExpenseInput);
+
+        if (!isRegularEditableStatus && !isInternalOnlyPatch) {
           throw new Error("BAD_STATUS");
         }
-        if (hasDiscountInput && !EDITABLE_STATUSES.includes(order.status as (typeof EDITABLE_STATUSES)[number])) {
+        if (hasDiscountInput && !isRegularEditableStatus) {
           throw new Error("DISCOUNT_STATUS");
         }
 
-        const itemIds = [...new Set(data.lines.map((l) => l.itemId))];
+        if (isInternalOnlyPatch) {
+          await tx.order.update({
+            where: { id },
+            data: {
+              ...(data.deliveryInternalCost !== undefined ? { deliveryInternalCost: data.deliveryInternalCost } : {}),
+              ...(data.deliveryInternalPaymentMethod !== undefined
+                ? { deliveryInternalPaymentMethod: data.deliveryInternalPaymentMethod }
+                : {}),
+              ...(data.montageInternalCost !== undefined ? { montageInternalCost: data.montageInternalCost } : {}),
+              ...(data.montageInternalPaymentMethod !== undefined
+                ? { montageInternalPaymentMethod: data.montageInternalPaymentMethod }
+                : {}),
+              ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
+              ...(data.demontageInternalPaymentMethod !== undefined
+                ? { demontageInternalPaymentMethod: data.demontageInternalPaymentMethod }
+                : {}),
+            },
+          });
+          if (data.hiddenExpenses !== undefined) {
+            await replaceHiddenExpenses({
+              tx,
+              orderId: id,
+              actorUserId: auth.user.id,
+              hiddenExpenses: data.hiddenExpenses,
+            });
+          }
+          return;
+        }
+
+        const editLines = data.lines;
+        if (!editLines?.length) {
+          throw new Error("BAD_LINES");
+        }
+
+        const itemIds = [...new Set(editLines.map((l) => l.itemId))];
         const items = await tx.item.findMany({
           where: { id: { in: itemIds }, isActive: true },
           select: {
@@ -141,7 +236,7 @@ export async function PATCH(
         }
 
         const requestedByItemId = new Map<string, number>();
-        for (const row of data.lines) {
+        for (const row of editLines) {
           requestedByItemId.set(row.itemId, (requestedByItemId.get(row.itemId) ?? 0) + row.requestedQty);
         }
         const reserved = await getReservedQtyByItemId({
@@ -163,7 +258,7 @@ export async function PATCH(
         }
 
         const existingIds = new Set(order.lines.map((l) => l.id));
-        const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
+        const incomingIds = new Set(editLines.filter((l) => l.id).map((l) => l.id as string));
         const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
 
         wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
@@ -198,7 +293,7 @@ export async function PATCH(
           deliveryPrice: data.deliveryPrice ?? order.deliveryPrice,
           montagePrice: data.montagePrice ?? order.montagePrice,
           demontagePrice: data.demontagePrice ?? order.demontagePrice,
-          lines: data.lines.map((row) => ({
+          lines: editLines.map((row) => ({
             itemId: row.itemId,
             requestedQty: row.requestedQty,
             pricePerDaySnapshot:
@@ -219,7 +314,7 @@ export async function PATCH(
         }
 
         let position = 0;
-        for (const row of data.lines) {
+        for (const row of editLines) {
           const price = itemById.get(row.itemId)!.pricePerDay;
           if (row.id && existingIds.has(row.id)) {
             await tx.orderLine.update({
@@ -291,6 +386,15 @@ export async function PATCH(
           },
         });
 
+        if (data.hiddenExpenses !== undefined) {
+          await replaceHiddenExpenses({
+            tx,
+            orderId: id,
+            actorUserId: auth.user.id,
+            hiddenExpenses: data.hiddenExpenses,
+          });
+        }
+
         if (order.source === "WOWSTORG_EXTERNAL") {
           const artifacts = await makeEstimateArtifactsForOrder(tx, id);
           const now = new Date();
@@ -319,6 +423,7 @@ export async function PATCH(
     }
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
+      if (e.message === "BAD_LINES") return jsonError(400, "В заявке должна быть хотя бы одна позиция");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
       if (e.message === "DISCOUNT_STATUS") return jsonError(400, "Скидку можно менять только до начала сборки");
       if (e.message === "ITEM_NOT_FOUND") return jsonError(400, "Одна или несколько позиций не найдены");

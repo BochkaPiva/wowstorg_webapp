@@ -123,6 +123,12 @@ export async function GET(req: Request) {
       demontagePrice: true,
       demontageInternalCost: true,
       demontageInternalPaymentMethod: true,
+      hiddenExpenses: {
+        select: {
+          cost: true,
+          internalPaymentMethod: true,
+        },
+      },
       rentalDiscountType: true,
       rentalDiscountPercent: true,
       rentalDiscountAmount: true,
@@ -173,6 +179,10 @@ export async function GET(req: Request) {
         internalCost: o.demontageInternalCost,
         internalPaymentMethod: o.demontageInternalPaymentMethod,
       },
+      hiddenExpenses: o.hiddenExpenses.map((expense) => ({
+        cost: expense.cost,
+        internalPaymentMethod: expense.internalPaymentMethod,
+      })),
     });
 
     return {

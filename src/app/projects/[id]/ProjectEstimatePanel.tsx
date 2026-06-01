@@ -726,10 +726,12 @@ export function ProjectEstimatePanel({
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const versionPickerWrapRef = React.useRef<HTMLDivElement>(null);
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
+  const saveBarRef = React.useRef<HTMLDivElement | null>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
   const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
+  const [showFloatingSave, setShowFloatingSave] = React.useState(false);
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -899,6 +901,23 @@ export function ProjectEstimatePanel({
     estimateDraftStorageKey,
     localSectionsDraft,
   ]);
+
+  React.useEffect(() => {
+    if (readOnly || !data?.current || !estimateDraftDirty || typeof IntersectionObserver === "undefined") {
+      setShowFloatingSave(false);
+      return;
+    }
+    const el = saveBarRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowFloatingSave(!entry?.isIntersecting);
+      },
+      { threshold: 0.15 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [data?.current, estimateDraftDirty, readOnly]);
 
   function mutateLocalSections(mutator: (prev: LocalDraftSection[]) => LocalDraftSection[]) {
     setLocalSectionsDraft((prev) => mutator(prev));
@@ -1361,7 +1380,7 @@ export function ProjectEstimatePanel({
     const requisites = data.current.sections.filter(
       (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
     );
-    return sortSectionsBySortOrder([...requisites, ...localSectionsDraft]);
+    return [...sortSectionsBySortOrder(requisites), ...sortSectionsBySortOrder(localSectionsDraft)];
   }, [data?.current, localSectionsDraft]);
 
   const dirtyLocalLineIds = React.useMemo(() => {
@@ -2067,7 +2086,10 @@ export function ProjectEstimatePanel({
               ) : null}
 
               {!readOnly && data?.current ? (
-                <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(237,233,254,0.55),rgba(255,255,255,0.98),rgba(196,181,253,0.12))] p-4">
+                <div
+                  ref={saveBarRef}
+                  className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(237,233,254,0.55),rgba(255,255,255,0.98),rgba(196,181,253,0.12))] p-4"
+                >
                   <button
                     type="button"
                     disabled={busy || !estimateDraftDirty}
@@ -2090,6 +2112,19 @@ export function ProjectEstimatePanel({
           )}
         </>
       )}
+      {showFloatingSave && typeof document !== "undefined"
+        ? createPortal(
+            <button
+              type="button"
+              disabled={busy || !estimateDraftDirty}
+              onClick={() => void saveEstimateDraft()}
+              className="fixed bottom-6 right-6 z-[160] rounded-2xl border border-violet-500 bg-[linear-gradient(135deg,#7c3aed,#111827)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_18px_45px_rgba(76,29,149,0.32)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? "Сохраняю…" : "Сохранить смету"}
+            </button>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -2104,6 +2139,7 @@ function EstimateSectionBlock({
   children,
   summaryTitleAddon,
   summaryTrailing,
+  defaultOpen = true,
 }: {
   sec: EstSection | LocalDraftSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
@@ -2116,6 +2152,7 @@ function EstimateSectionBlock({
   summaryTitleAddon?: React.ReactNode;
   /** Если задано — подменяет стандартную колонку «Открыть заявку» справа в summary. */
   summaryTrailing?: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
@@ -2149,7 +2186,7 @@ function EstimateSectionBlock({
               ? sectionTone.contractor
               : sectionTone.local
       }`}
-      open
+      open={defaultOpen ? true : undefined}
     >
       <summary className="cursor-pointer list-none">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -3288,6 +3325,7 @@ function RequisiteSectionEditor({
       onDeleteSection={onDeleteSection}
       summaryTitleAddon={summaryTitleAddon}
       summaryTrailing={summaryTrailing}
+      defaultOpen={false}
     >
       {loading ? (
         <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>

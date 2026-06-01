@@ -49,6 +49,14 @@ type ReturnSplit = {
   createdAt: string;
 };
 
+type OrderHiddenExpense = {
+  id?: string;
+  title: string;
+  comment: string | null;
+  cost: number | null;
+  internalPaymentMethod: OrderServicePaymentMethod;
+};
+
 type Order = {
   id: string;
   status: OrderStatus;
@@ -84,6 +92,7 @@ type Order = {
   demontagePrice: number | null;
   demontageInternalCost?: number | null;
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
+  hiddenExpenses?: OrderHiddenExpense[];
   payMultiplier?: number | null;
   rentalDiscountType: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent: number | null;
@@ -273,6 +282,7 @@ function orderServicesProfitEstimate(order: {
   demontageEnabled: boolean;
   demontageInternalCost?: number | null;
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
+  hiddenExpenses?: OrderHiddenExpense[] | null;
   lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
@@ -305,6 +315,7 @@ function orderServicesProfitEstimate(order: {
       internalCost: order.demontageInternalCost,
       internalPaymentMethod: order.demontageInternalPaymentMethod,
     },
+    hiddenExpenses: order.hiddenExpenses,
   });
 }
 
@@ -641,6 +652,8 @@ function ServiceEditRow({
   onInternalPriceChange,
   internalPaymentMethod,
   onInternalPaymentMethodChange,
+  lockEnabled = false,
+  hideComment = false,
 }: {
   label: string;
   enabled: boolean;
@@ -655,10 +668,14 @@ function ServiceEditRow({
   onInternalPriceChange?: (v: number | "") => void;
   internalPaymentMethod?: OrderServicePaymentMethod;
   onInternalPaymentMethodChange?: (v: OrderServicePaymentMethod) => void;
+  lockEnabled?: boolean;
+  hideComment?: boolean;
 }) {
   const priceMissing = enabled && !isEnabledServicePriceSpecified(price);
   const gridCols =
-    showPrice && showInternalPrice
+    hideComment && showInternalPrice
+      ? "sm:grid-cols-[minmax(8rem,12rem)_minmax(10rem,14rem)]"
+      : showPrice && showInternalPrice
       ? "sm:grid-cols-[1fr_auto_auto_auto]"
       : showPrice
         ? "sm:grid-cols-[1fr_auto]"
@@ -670,9 +687,10 @@ function ServiceEditRow({
         enabled ? "border-violet-200/80 bg-violet-50/45" : "border-zinc-200/70 bg-white/65",
       ].join(" ")}
     >
-      <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} />
+      <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} disabled={lockEnabled} />
       {enabled && (
         <div className={`mt-3 grid gap-3 ${gridCols}`}>
+          {!hideComment ? (
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
             <input
@@ -683,6 +701,7 @@ function ServiceEditRow({
               className={orderInputClass + " w-full"}
             />
           </div>
+          ) : null}
           {showPrice ? (
             <div className="min-w-[120px]">
               <label className="block text-xs font-medium text-zinc-500 mb-1">
@@ -770,8 +789,16 @@ export default function OrderDetailsPage() {
     requestedQty: number | string;
     lineComment: string;
   };
+  type EditHiddenExpense = {
+    id?: string;
+    title: string;
+    comment: string;
+    cost: number | "";
+    internalPaymentMethod: OrderServicePaymentMethod;
+  };
   const [isEditing, setIsEditing] = React.useState(false);
   const [editLines, setEditLines] = React.useState<EditLine[]>([]);
+  const [editHiddenExpenses, setEditHiddenExpenses] = React.useState<EditHiddenExpense[]>([]);
   const [editEventName, setEditEventName] = React.useState("");
   const [editComment, setEditComment] = React.useState("");
   const [editDeliveryEnabled, setEditDeliveryEnabled] = React.useState(false);
@@ -882,6 +909,8 @@ export default function OrderDetailsPage() {
             order.greenwichUserId === user.id &&
             ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status))),
     );
+  const canEditClosedOrderServiceCosts = Boolean(order && isWarehouse && order.status === "CLOSED" && !canEditOrder);
+  const isClosedServiceCostEdit = Boolean(isEditing && canEditClosedOrderServiceCosts);
 
   const loadOrder = React.useCallback(async () => {
     if (!orderId) return;
@@ -1077,6 +1106,15 @@ export default function OrderDetailsPage() {
       order.demontageInternalCost != null ? Number(order.demontageInternalCost) : "",
     );
     setEditDemontageInternalPaymentMethod(order.demontageInternalPaymentMethod ?? "NON_CASH");
+    setEditHiddenExpenses(
+      (order.hiddenExpenses ?? []).map((expense) => ({
+        id: expense.id,
+        title: expense.title,
+        comment: expense.comment ?? "",
+        cost: expense.cost != null ? Number(expense.cost) : "",
+        internalPaymentMethod: expense.internalPaymentMethod ?? "NON_CASH",
+      })),
+    );
     setEditRentalDiscountType(order.rentalDiscountType ?? "NONE");
     setEditRentalDiscountPercent(order.rentalDiscountPercent ?? "");
     setEditRentalDiscountAmount(order.rentalDiscountAmount ?? "");
@@ -1086,6 +1124,10 @@ export default function OrderDetailsPage() {
     setEditGreenwichDiscountRequestComment(order.greenwichDiscountRequestComment ?? "");
     setIsEditing(true);
     setActionError(null);
+    if (canEditClosedOrderServiceCosts) {
+      setCatalogItems([]);
+      return;
+    }
     const start = order.startDate.slice(0, 10);
     const end = order.endDate.slice(0, 10);
     const rsp = encodeURIComponent(order.rentalStartPartOfDay ?? "MORNING");
@@ -1109,8 +1151,80 @@ export default function OrderDetailsPage() {
       .catch(() => setCatalogItems([]));
   }
 
+  function hiddenExpensePayload() {
+    return editHiddenExpenses
+      .map((expense) => ({
+        id: expense.id,
+        title: expense.title.trim(),
+        comment: expense.comment.trim() || null,
+        cost: expense.cost === "" ? 0 : Number(expense.cost),
+        internalPaymentMethod: expense.internalPaymentMethod,
+      }))
+      .filter((expense) => expense.title.length > 0 || expense.cost > 0);
+  }
+
   async function saveOrderEdit() {
     if (!orderId || !order) return;
+    const incompleteHiddenExpense = editHiddenExpenses.some(
+      (expense) =>
+        expense.title.trim().length === 0 &&
+        (expense.comment.trim().length > 0 || expense.cost !== ""),
+    );
+    if (incompleteHiddenExpense) {
+      setActionError("Укажите название для каждой скрытой траты.");
+      return;
+    }
+    if (isClosedServiceCostEdit) {
+      const body = {
+        ...(order.deliveryEnabled
+          ? {
+              deliveryInternalCost: editDeliveryInternalCost === "" ? null : Number(editDeliveryInternalCost),
+              deliveryInternalPaymentMethod: editDeliveryInternalPaymentMethod,
+            }
+          : {}),
+        ...(order.montageEnabled
+          ? {
+              montageInternalCost: editMontageInternalCost === "" ? null : Number(editMontageInternalCost),
+              montageInternalPaymentMethod: editMontageInternalPaymentMethod,
+            }
+          : {}),
+        ...(order.demontageEnabled
+          ? {
+              demontageInternalCost: editDemontageInternalCost === "" ? null : Number(editDemontageInternalCost),
+              demontageInternalPaymentMethod: editDemontageInternalPaymentMethod,
+            }
+          : {}),
+        hiddenExpenses: hiddenExpensePayload(),
+      };
+      setBusy(true);
+      setActionError(null);
+      try {
+        const res = await fetch(`/api/orders/${orderId}/warehouse-edit`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        let data: { error?: { message?: string } } = {};
+        try {
+          if (text) data = JSON.parse(text) as { error?: { message?: string } };
+        } catch {
+          data = {};
+        }
+        if (!res.ok) {
+          setActionError(data?.error?.message ?? "Ошибка сохранения");
+          return;
+        }
+        await loadOrder();
+        notifyProjectParent();
+        setIsEditing(false);
+      } catch {
+        setActionError("Ошибка сети или ответ сервера");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (editLines.length === 0) {
       setActionError("Должна быть хотя бы одна позиция.");
       return;
@@ -1185,6 +1299,7 @@ export default function OrderDetailsPage() {
                 demontageInternalPaymentMethod: editDemontageEnabled
                   ? editDemontageInternalPaymentMethod
                   : "NON_CASH",
+                hiddenExpenses: hiddenExpensePayload(),
               }
             : {}),
           ...(isWarehouse
@@ -1302,6 +1417,27 @@ export default function OrderDetailsPage() {
         }
         return next;
       }),
+    );
+  }
+
+  function addHiddenExpense() {
+    setEditHiddenExpenses((prev) => [
+      ...prev,
+      { title: "", comment: "", cost: "", internalPaymentMethod: "NON_CASH" },
+    ]);
+  }
+
+  function removeHiddenExpense(index: number) {
+    setEditHiddenExpenses((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateHiddenExpense<K extends keyof EditHiddenExpense>(
+    index: number,
+    field: K,
+    value: EditHiddenExpense[K],
+  ) {
+    setEditHiddenExpenses((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
     );
   }
 
@@ -1569,6 +1705,12 @@ export default function OrderDetailsPage() {
 
         {isEditing ? (
           <>
+            {isClosedServiceCostEdit ? (
+              <div className="rounded-[1.5rem] border border-emerald-200/80 bg-emerald-50/70 px-5 py-4 text-sm text-emerald-950">
+                Закрытая заявка: можно менять только внутреннюю себестоимость доп. услуг и способ оплаты. Клиентская смета и состав заявки останутся без изменений.
+              </div>
+            ) : (
+            <>
             <div className={orderGlassCardClass + " overflow-hidden"}>
               <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Мероприятие и комментарий</span>
@@ -1811,11 +1953,83 @@ export default function OrderDetailsPage() {
                 />
               </div>
             </div>
+            </>
+            )}
             <div className={orderGlassCardClass + " overflow-hidden"}>
               <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Доп. услуги</span>
               </div>
               <div className="p-5 space-y-4">
+                {isClosedServiceCostEdit ? (
+                  <>
+                    {!editDeliveryEnabled &&
+                    !editMontageEnabled &&
+                    !editDemontageEnabled &&
+                    editHiddenExpenses.length === 0 ? (
+                      <div className="rounded-2xl border border-zinc-200 bg-white/75 px-4 py-3 text-sm text-zinc-600">
+                        В закрытой заявке нет включенных доп. услуг.
+                      </div>
+                    ) : null}
+                    {editDeliveryEnabled ? (
+                      <ServiceEditRow
+                        label="Доставка"
+                        enabled={editDeliveryEnabled}
+                        onEnabledChange={setEditDeliveryEnabled}
+                        comment={editDeliveryComment}
+                        onCommentChange={setEditDeliveryComment}
+                        showPrice={false}
+                        price={editDeliveryPrice}
+                        onPriceChange={setEditDeliveryPrice}
+                        showInternalPrice={isWarehouse}
+                        internalPrice={editDeliveryInternalCost}
+                        onInternalPriceChange={setEditDeliveryInternalCost}
+                        internalPaymentMethod={editDeliveryInternalPaymentMethod}
+                        onInternalPaymentMethodChange={setEditDeliveryInternalPaymentMethod}
+                        lockEnabled
+                        hideComment
+                      />
+                    ) : null}
+                    {editMontageEnabled ? (
+                      <ServiceEditRow
+                        label="Монтаж"
+                        enabled={editMontageEnabled}
+                        onEnabledChange={setEditMontageEnabled}
+                        comment={editMontageComment}
+                        onCommentChange={setEditMontageComment}
+                        showPrice={false}
+                        price={editMontagePrice}
+                        onPriceChange={setEditMontagePrice}
+                        showInternalPrice={isWarehouse}
+                        internalPrice={editMontageInternalCost}
+                        onInternalPriceChange={setEditMontageInternalCost}
+                        internalPaymentMethod={editMontageInternalPaymentMethod}
+                        onInternalPaymentMethodChange={setEditMontageInternalPaymentMethod}
+                        lockEnabled
+                        hideComment
+                      />
+                    ) : null}
+                    {editDemontageEnabled ? (
+                      <ServiceEditRow
+                        label="Демонтаж"
+                        enabled={editDemontageEnabled}
+                        onEnabledChange={setEditDemontageEnabled}
+                        comment={editDemontageComment}
+                        onCommentChange={setEditDemontageComment}
+                        showPrice={false}
+                        price={editDemontagePrice}
+                        onPriceChange={setEditDemontagePrice}
+                        showInternalPrice={isWarehouse}
+                        internalPrice={editDemontageInternalCost}
+                        onInternalPriceChange={setEditDemontageInternalCost}
+                        internalPaymentMethod={editDemontageInternalPaymentMethod}
+                        onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
+                        lockEnabled
+                        hideComment
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <>
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -1861,9 +2075,90 @@ export default function OrderDetailsPage() {
                   internalPaymentMethod={editDemontageInternalPaymentMethod}
                   onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
+                  </>
+                )}
+                {isWarehouse ? (
+                  <div className="rounded-[1.35rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.86),rgba(255,255,255,0.78))] p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-zinc-900">Скрытые траты</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          Не попадают в клиентскую смету, но уменьшают прибыль заявки.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addHiddenExpense}
+                        className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}
+                      >
+                        + Трата
+                      </button>
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {editHiddenExpenses.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-amber-200 bg-white/65 px-4 py-3 text-sm text-zinc-500">
+                          Скрытых трат пока нет.
+                        </div>
+                      ) : null}
+                      {editHiddenExpenses.map((expense, idx) => (
+                        <div
+                          key={expense.id ?? idx}
+                          className="grid gap-3 rounded-2xl border border-white/80 bg-white/82 p-3 shadow-sm lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1.2fr)_8rem_9rem_auto]"
+                        >
+                          <input
+                            type="text"
+                            value={expense.title}
+                            onChange={(e) => updateHiddenExpense(idx, "title", e.target.value)}
+                            placeholder="Название траты"
+                            className={orderInputClass + " w-full"}
+                          />
+                          <input
+                            type="text"
+                            value={expense.comment}
+                            onChange={(e) => updateHiddenExpense(idx, "comment", e.target.value)}
+                            placeholder="Комментарий"
+                            className={orderInputClass + " w-full"}
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={expense.cost === "" ? "" : expense.cost}
+                            onChange={(e) =>
+                              updateHiddenExpense(idx, "cost", e.target.value === "" ? "" : Number(e.target.value))
+                            }
+                            placeholder="0"
+                            className={orderInputClass + " w-full text-right tabular-nums"}
+                          />
+                          <select
+                            value={expense.internalPaymentMethod}
+                            onChange={(e) =>
+                              updateHiddenExpense(
+                                idx,
+                                "internalPaymentMethod",
+                                e.target.value as OrderServicePaymentMethod,
+                              )
+                            }
+                            className={orderInputClass + " w-full font-semibold text-zinc-800"}
+                          >
+                            <option value="NON_CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.NON_CASH}</option>
+                            <option value="CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.CASH}</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeHiddenExpense(idx)}
+                            className={orderDangerButtonClass + " px-3 py-2 text-xs"}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
-            {editPricing ? (
+            {!isClosedServiceCostEdit && editPricing ? (
               <div className="rounded-[1.5rem] border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.82))] p-4 text-sm text-violet-950 shadow-[0_18px_45px_rgba(124,58,237,0.08)] backdrop-blur">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span>Сумма до налога</span>
@@ -1985,6 +2280,37 @@ export default function OrderDetailsPage() {
                     </li>
                   ) : null}
                 </ul>
+              </div>
+            ) : null}
+
+            {isWarehouse && (order.hiddenExpenses?.length ?? 0) > 0 ? (
+              <div className={orderGlassCardClass + " p-4"}>
+                <div className="text-sm font-semibold text-zinc-700 mb-2">Скрытые траты</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {order.hiddenExpenses!.map((expense) => (
+                    <div
+                      key={expense.id ?? expense.title}
+                      className="rounded-2xl border border-amber-200/70 bg-amber-50/35 px-4 py-3 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-bold text-zinc-900">{expense.title}</div>
+                          {expense.comment ? (
+                            <div className="mt-1 text-xs text-zinc-500">{expense.comment}</div>
+                          ) : null}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-black tabular-nums text-zinc-950">
+                            {Number(expense.cost ?? 0).toLocaleString("ru-RU")} ₽
+                          </div>
+                          <div className="mt-1 text-[11px] font-semibold text-zinc-500">
+                            {ORDER_SERVICE_PAYMENT_METHOD_LABELS[expense.internalPaymentMethod ?? "NON_CASH"]}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
           </>
@@ -2324,13 +2650,13 @@ export default function OrderDetailsPage() {
         ) : null}
 
         <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
-          {canEditOrder && !isEditing && (
+          {(canEditOrder || canEditClosedOrderServiceCosts) && !isEditing && (
             <button
               type="button"
               onClick={startEditing}
               className={orderSecondaryButtonClass}
             >
-              Редактировать заявку
+              {canEditClosedOrderServiceCosts ? "Редактировать себестоимость доп. услуг" : "Редактировать заявку"}
             </button>
           )}
           {isEditing && (
@@ -2341,7 +2667,7 @@ export default function OrderDetailsPage() {
                 onClick={saveOrderEdit}
                 className={orderPrimaryButtonClass}
               >
-                {busy ? "…" : isGreenwich ? "Запросить изменения" : "Сохранить"}
+                {busy ? "…" : isClosedServiceCostEdit ? "Сохранить себестоимость" : isGreenwich ? "Запросить изменения" : "Сохранить"}
               </button>
               <button
                 type="button"

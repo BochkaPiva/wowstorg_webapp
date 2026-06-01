@@ -97,7 +97,7 @@ export function OrderFinancialSummary({
               <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
               <div className="mt-3 space-y-2 text-sm">
                 <SummaryRow
-                  label="Себестоимость доп. услуг"
+                  label="Себестоимость доп. услуг и скрытых трат"
                   value={`${formatMoneyRub(warehouse.internalCostTotal)} ₽`}
                 />
                 {warehouse.cashInternalCostTax > 0 ? (

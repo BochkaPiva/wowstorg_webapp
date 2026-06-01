@@ -386,6 +386,12 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     demontagePrice: true,
     demontageInternalCost: true,
     demontageInternalPaymentMethod: true,
+    hiddenExpenses: {
+      select: {
+        cost: true,
+        internalPaymentMethod: true,
+      },
+    },
     rentalDiscountType: true,
     rentalDiscountPercent: true,
     rentalDiscountAmount: true,
@@ -491,6 +497,10 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         internalCost: order.demontageInternalCost,
         internalPaymentMethod: order.demontageInternalPaymentMethod,
       },
+      hiddenExpenses: order.hiddenExpenses.map((expense) => ({
+        cost: expense.cost,
+        internalPaymentMethod: expense.internalPaymentMethod,
+      })),
     });
     totalRentalDays += pricing.days;
     totalProfitEstimate += profitEstimate.profitEstimate;
@@ -565,6 +575,10 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         internalCost: order.demontageInternalCost,
         internalPaymentMethod: order.demontageInternalPaymentMethod,
       },
+      hiddenExpenses: order.hiddenExpenses.map((expense) => ({
+        cost: expense.cost,
+        internalPaymentMethod: expense.internalPaymentMethod,
+      })),
     });
     forecastRevenue += pricing.grandTotal;
     forecastProfitEstimate += profitEstimate.profitEstimate;
@@ -742,6 +756,12 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                   demontagePrice: true,
                   demontageInternalCost: true,
                   demontageInternalPaymentMethod: true,
+                  hiddenExpenses: {
+                    select: {
+                      cost: true,
+                      internalPaymentMethod: true,
+                    },
+                  },
                   rentalDiscountType: true,
                   rentalDiscountPercent: true,
                   rentalDiscountAmount: true,
@@ -830,6 +850,10 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
               internalCost: order.demontageInternalCost,
               internalPaymentMethod: order.demontageInternalPaymentMethod,
             },
+            hiddenExpenses: order.hiddenExpenses.map((expense) => ({
+              cost: expense.cost,
+              internalPaymentMethod: expense.internalPaymentMethod,
+            })),
           });
           internalSubtotal += serviceCosts.internalCostTotal;
           cashInternalCostTax += serviceCosts.cashInternalCostTax;

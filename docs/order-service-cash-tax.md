@@ -19,6 +19,8 @@
 - `montageInternalPaymentMethod`
 - `demontageInternalPaymentMethod`
 
+Hidden expenses are stored separately in `OrderHiddenExpense`. They are visible only to Wowstorg, never appear in the client estimate, and use the same `internalPaymentMethod` rule: `CASH` adds 3.5% to internal expenses, `NON_CASH` does not.
+
 Для старых заявок и для выключенных услуг значение по умолчанию — `NON_CASH`, чтобы исторические расчеты не изменились неожиданно.
 
 ## Формулы

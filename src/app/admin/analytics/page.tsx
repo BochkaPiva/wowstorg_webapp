@@ -281,6 +281,220 @@ function KpiCard(props: { label: string; value: string | number; note?: string; 
   );
 }
 
+function formatMoneyCompact(n: number) {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн ₽`;
+  if (abs >= 1_000) return `${(n / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} тыс. ₽`;
+  return formatMoney(n);
+}
+
+function safePercent(value: number, total: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.max(0, Math.min(100, (value / total) * 100));
+}
+
+function monthKeyFromDate(value: string | null) {
+  return value ? value.slice(0, 7) : null;
+}
+
+function monthLabel(month: string) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  if (!year || !monthIndex) return month;
+  return new Intl.DateTimeFormat("ru-RU", { month: "short" }).format(new Date(Date.UTC(year, monthIndex - 1, 1))).replace(".", "");
+}
+
+function buildMonthlyRevenueSeries(data: AnalyticsPayload) {
+  const months = new Map<string, { month: string; ordersRevenue: number; projectsRevenue: number; orders: number; projects: number }>();
+
+  for (const row of data.requisites.breakdowns.revenueByMonth) {
+    months.set(row.month, {
+      month: row.month,
+      ordersRevenue: row.revenue,
+      projectsRevenue: 0,
+      orders: row.orders,
+      projects: 0,
+    });
+  }
+
+  for (const project of data.projects.rows) {
+    if (project.status !== "COMPLETED") continue;
+    const month = monthKeyFromDate(project.eventStartDate ?? project.eventEndDate);
+    if (!month) continue;
+    const current = months.get(month) ?? { month, ordersRevenue: 0, projectsRevenue: 0, orders: 0, projects: 0 };
+    current.projectsRevenue += project.financials.revenueTotal;
+    current.projects += 1;
+    months.set(month, current);
+  }
+
+  return Array.from(months.values())
+    .map((row) => ({ ...row, totalRevenue: row.ordersRevenue + row.projectsRevenue }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function DashboardMetricCard(props: { label: string; value: string; note: string; tone?: "violet" | "emerald" | "amber" | "slate" }) {
+  const tones = {
+    violet: "border-violet-200/80 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.16),transparent_58%),rgba(255,255,255,0.74)] text-violet-950",
+    emerald: "border-emerald-200/80 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.16),transparent_58%),rgba(255,255,255,0.74)] text-emerald-950",
+    amber: "border-amber-200/80 bg-[radial-gradient(circle_at_0%_0%,rgba(245,158,11,0.16),transparent_58%),rgba(255,255,255,0.74)] text-amber-950",
+    slate: "border-white/80 bg-white/72 text-zinc-950",
+  } satisfies Record<string, string>;
+  return (
+    <div className={`rounded-[1.6rem] border p-5 shadow-[0_18px_50px_rgba(76,29,149,0.08)] backdrop-blur ${tones[props.tone ?? "slate"]}`}>
+      <div className="text-xs font-black uppercase tracking-[0.18em] opacity-60">{props.label}</div>
+      <div className="mt-3 text-3xl font-black tabular-nums">{props.value}</div>
+      <div className="mt-2 text-sm font-semibold opacity-65">{props.note}</div>
+    </div>
+  );
+}
+
+function MonthlyRevenueChart({ data }: { data: AnalyticsPayload }) {
+  const series = buildMonthlyRevenueSeries(data);
+  const max = Math.max(1, ...series.map((row) => row.totalRevenue));
+
+  return (
+    <section className="rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.12),transparent_38%),linear-gradient(135deg,rgba(255,255,255,0.82),rgba(248,250,252,0.68))] p-5 shadow-[0_26px_70px_rgba(76,29,149,0.10)] backdrop-blur">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Динамика факта</div>
+          <h2 className="mt-2 text-2xl font-black text-zinc-950">Выручка по месяцам</h2>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs font-bold">
+          <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-violet-800">Заявки</span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">Проекты</span>
+        </div>
+      </div>
+
+      {series.length === 0 ? (
+        <div className="mt-8 rounded-2xl border border-dashed border-zinc-200 bg-white/60 p-8 text-sm font-semibold text-zinc-500">
+          За выбранный период нет закрытой выручки для графика.
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto pb-2">
+          <div className="flex min-w-[640px] items-end gap-4">
+            {series.map((row) => {
+              const totalHeight = Math.max(10, safePercent(row.totalRevenue, max));
+              const ordersHeight = safePercent(row.ordersRevenue, row.totalRevenue);
+              const projectsHeight = safePercent(row.projectsRevenue, row.totalRevenue);
+              return (
+                <div key={row.month} className="flex min-w-16 flex-1 flex-col items-center gap-3">
+                  <div className="text-xs font-black tabular-nums text-zinc-700">{formatMoneyCompact(row.totalRevenue)}</div>
+                  <div className="flex h-52 w-full items-end justify-center rounded-2xl bg-white/55 px-2 py-3 shadow-inner">
+                    <div className="flex w-9 flex-col justify-end overflow-hidden rounded-full bg-zinc-100 shadow-inner" style={{ height: `${totalHeight}%` }}>
+                      {row.projectsRevenue > 0 ? <div className="bg-emerald-400" style={{ height: `${projectsHeight}%` }} /> : null}
+                      {row.ordersRevenue > 0 ? <div className="bg-violet-600" style={{ height: `${ordersHeight}%` }} /> : null}
+                    </div>
+                  </div>
+                  <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-500">{monthLabel(row.month)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FinanceSplitPanel({ finance }: { finance: AnalyticsPayload["overview"]["finance"] }) {
+  const rows = [
+    {
+      label: "Факт",
+      revenue: finance.fact.revenueTotal,
+      profit: finance.fact.profitTotal,
+      parts: [
+        { label: "Заявки", value: finance.fact.standaloneOrdersProfit, className: "bg-violet-600" },
+        { label: "Проекты", value: finance.fact.completedProjectsProfit, className: "bg-emerald-400" },
+      ],
+    },
+    {
+      label: "Прогноз",
+      revenue: finance.forecast.revenueTotal,
+      profit: finance.forecast.profitTotal,
+      parts: [
+        { label: "Заявки", value: finance.forecast.standaloneOrdersProfit, className: "bg-violet-400" },
+        { label: "Проекты", value: finance.forecast.activeProjectsProfit, className: "bg-emerald-300" },
+      ],
+    },
+  ];
+
+  const maxProfit = Math.max(1, ...rows.map((row) => Math.max(0, row.profit)));
+
+  return (
+    <section className="rounded-[2rem] border border-white/80 bg-white/72 p-5 shadow-[0_26px_70px_rgba(76,29,149,0.09)] backdrop-blur">
+      <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Факт и прогноз</div>
+      <h2 className="mt-2 text-2xl font-black text-zinc-950">Деньги без двойного учета</h2>
+      <div className="mt-5 space-y-5">
+        {rows.map((row) => {
+          const totalPositive = row.parts.reduce((sum, part) => sum + Math.max(0, part.value), 0);
+          return (
+            <div key={row.label} className="rounded-[1.4rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.9),rgba(245,243,255,0.52))] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-black text-zinc-950">{row.label}</div>
+                  <div className="mt-1 text-xs font-semibold text-zinc-500">Выручка {formatMoney(row.revenue)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-black tabular-nums text-zinc-950">{formatMoney(row.profit)}</div>
+                  <div className="text-xs font-semibold text-zinc-500">прибыль</div>
+                </div>
+              </div>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-zinc-100">
+                <div className="h-full rounded-full bg-zinc-950/10" style={{ width: `${safePercent(Math.max(0, row.profit), maxProfit)}%` }} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {row.parts.map((part) => (
+                  <span key={part.label} className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/75 px-3 py-1 text-xs font-bold text-zinc-700">
+                    <span className={`size-2 rounded-full ${part.className}`} />
+                    {part.label}: {formatMoney(part.value)}
+                    {totalPositive > 0 ? ` · ${formatInt(safePercent(Math.max(0, part.value), totalPositive))}%` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function FactProfitDonut({ finance }: { finance: AnalyticsPayload["overview"]["finance"] }) {
+  const orders = Math.max(0, finance.fact.standaloneOrdersProfit);
+  const projects = Math.max(0, finance.fact.completedProjectsProfit);
+  const total = orders + projects;
+  const ordersPercent = safePercent(orders, total);
+
+  return (
+    <section className="rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_100%_0%,rgba(16,185,129,0.12),transparent_42%),rgba(255,255,255,0.72)] p-5 shadow-[0_26px_70px_rgba(76,29,149,0.09)] backdrop-blur">
+      <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Структура факта</div>
+      <h2 className="mt-2 text-2xl font-black text-zinc-950">Откуда пришла прибыль</h2>
+      {total <= 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-zinc-200 bg-white/60 p-6 text-sm font-semibold text-zinc-500">
+          Положительной фактической прибыли за период нет.
+        </div>
+      ) : (
+        <div className="mt-6 grid items-center gap-5 sm:grid-cols-[180px_1fr]">
+          <div
+            className="grid size-44 place-items-center rounded-full shadow-[inset_0_0_0_18px_rgba(255,255,255,0.72),0_20px_50px_rgba(76,29,149,0.12)]"
+            style={{ background: `conic-gradient(#7c3aed 0 ${ordersPercent}%, #34d399 ${ordersPercent}% 100%)` }}
+          >
+            <div className="grid size-24 place-items-center rounded-full bg-white text-center shadow-inner">
+              <div>
+                <div className="text-2xl font-black tabular-nums text-zinc-950">{formatInt(total)}</div>
+                <div className="text-xs font-bold text-zinc-500">прибыль</div>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <KpiCard label="Заявки" value={formatMoney(orders)} note={`${formatInt(ordersPercent)}% факта`} tone="violet" />
+            <KpiCard label="Проекты" value={formatMoney(projects)} note={`${formatInt(100 - ordersPercent)}% факта`} tone="emerald" />
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SectionCard(props: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/70 shadow-[0_22px_60px_rgba(76,29,149,0.09)] backdrop-blur">
@@ -459,44 +673,57 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
   const riskCount = k.staleProjects + k.lowMarginProjects;
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_0.9fr]">
-        <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.18),transparent_42%),linear-gradient(135deg,rgba(236,253,245,0.88),rgba(255,255,255,0.72))] p-5 text-emerald-950 shadow-[0_26px_70px_rgba(6,95,70,0.10)] backdrop-blur">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Факт</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.fact.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Прибыль за закрытые деньги периода</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Самостоятельные заявки" value={formatMoney(finance.fact.standaloneOrdersProfit)} note={formatMoney(finance.fact.standaloneOrdersRevenue)} />
-            <KpiCard label="Завершенные проекты" value={formatMoney(finance.fact.completedProjectsProfit)} note={formatMoney(finance.fact.completedProjectsRevenue)} />
-          </div>
-        </section>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <DashboardMetricCard
+          label="Факт прибыли"
+          value={formatMoney(finance.fact.profitTotal)}
+          note={`${formatMoney(finance.fact.revenueTotal)} выручки`}
+          tone="emerald"
+        />
+        <DashboardMetricCard
+          label="Прогноз прибыли"
+          value={formatMoney(finance.forecast.profitTotal)}
+          note={`${formatMoney(finance.forecast.revenueTotal)} ожидаемой выручки`}
+          tone="violet"
+        />
+        <DashboardMetricCard
+          label={`Бонусы ${finance.bonuses.ratePercent}%`}
+          value={formatMoney(finance.bonuses.factPool)}
+          note={`${formatMoney(finance.bonuses.factPerPerson)} на человека`}
+          tone="amber"
+        />
+        <DashboardMetricCard
+          label="Операционный фокус"
+          value={formatInt(riskCount)}
+          note={riskCount > 0 ? "проектов требуют внимания" : "критичных сигналов нет"}
+          tone={riskCount > 0 ? "amber" : "slate"}
+        />
+      </div>
 
-        <section className="rounded-[2rem] border border-violet-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.72))] p-5 text-violet-950 shadow-[0_26px_70px_rgba(76,29,149,0.10)] backdrop-blur">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль по активным заявкам и проектам</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Заявки без проекта" value={formatMoney(finance.forecast.standaloneOrdersProfit)} note={`${finance.forecast.standaloneOrdersTotal} шт. · ${formatMoney(finance.forecast.standaloneOrdersRevenue)}`} />
-            <KpiCard label="Активные проекты" value={formatMoney(finance.forecast.activeProjectsProfit)} note={`${k.activeProjects} шт. · ${formatMoney(finance.forecast.activeProjectsRevenue)}`} />
-          </div>
-        </section>
+      <div className="grid gap-5 xl:grid-cols-[1.35fr_0.9fr]">
+        <MonthlyRevenueChart data={data} />
+        <FinanceSplitPanel finance={finance} />
+      </div>
 
-        <section className="rounded-[2rem] border border-amber-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(250,204,21,0.24),transparent_42%),linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.72))] p-5 text-amber-950 shadow-[0_26px_70px_rgba(146,64,14,0.10)] backdrop-blur">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Бонусы {finance.bonuses.ratePercent}%</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.bonuses.factPool)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Факт, пул на {finance.bonuses.recipients} человек</div>
+      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <FactProfitDonut finance={finance} />
+        <section className="rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_100%_0%,rgba(250,204,21,0.16),transparent_40%),rgba(255,255,255,0.72)] p-5 shadow-[0_26px_70px_rgba(76,29,149,0.09)] backdrop-blur">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Контроль модели</div>
+          <h2 className="mt-2 text-2xl font-black text-zinc-950">Что важно не смешать</h2>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Факт на человека" value={formatMoney(finance.bonuses.factPerPerson)} />
-            <KpiCard label="Прогноз на человека" value={formatMoney(finance.bonuses.forecastPerPerson)} note={formatMoney(finance.bonuses.forecastPool)} />
+            <KpiCard label="Закрытые заявки" value={k.ordersClosed} note="Только без проекта" />
+            <KpiCard
+              label="Заявки в проектах"
+              value={finance.ownership.linkedClosedOrdersExcluded}
+              note="Учитываются на стороне проекта"
+              tone={finance.ownership.linkedClosedOrdersExcluded > 0 ? "violet" : "slate"}
+            />
+            <KpiCard label="Активные проекты" value={k.activeProjects} note={formatMoney(finance.forecast.activeProjectsRevenue)} tone="violet" />
+            <KpiCard label="Прогноз заявок" value={finance.forecast.standaloneOrdersTotal} note={formatMoney(finance.forecast.standaloneOrdersRevenue)} />
           </div>
         </section>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Закрытые заявки" value={k.ordersClosed} note="Только без проекта" />
-        <KpiCard label="Заявки в проектах" value={finance.ownership.linkedClosedOrdersExcluded} note="Исключены из факта заявок" tone={finance.ownership.linkedClosedOrdersExcluded > 0 ? "violet" : "slate"} />
-        <KpiCard label="Проекты с рисками" value={riskCount} tone={riskCount > 0 ? "amber" : "slate"} />
-        <KpiCard label="Повторные заказчики" value={k.repeatCustomers} />
-      </div>
       <SectionCard title="Что требует внимания">
         {data.overview.attention.length === 0 ? (
           <p className="text-sm text-zinc-500">Критичных сигналов за период нет.</p>
@@ -519,17 +746,17 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <MiniTable
-          title="Топ проектов"
+          title="Проекты по выручке"
           headers={["Проект", "Прогноз"]}
           rows={data.overview.topProjects.map((p) => [p.title, formatMoney(p.financials.revenueTotal)])}
         />
         <MiniTable
-          title="Топ заказчиков"
-          headers={["Заказчик", "LTV mixed"]}
+          title="Заказчики"
+          headers={["Заказчик", "Деньги"]}
           rows={data.overview.topCustomers.map((c) => [c.customerName, formatMoney(c.ltvMixed)])}
         />
         <MiniTable
-          title="Топ реквизита"
+          title="Реквизит по выручке"
           headers={["Позиция", "Выручка"]}
           rows={data.overview.topItems.map((i) => [i.itemName, formatMoney(i.revenue)])}
         />

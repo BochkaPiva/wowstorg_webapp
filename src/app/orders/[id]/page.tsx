@@ -1673,6 +1673,61 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
+        {(canEditOrder || canEditClosedOrderServiceCosts || isEditing || actionError) ? (
+          <div className="rounded-[1.5rem] border border-white/75 bg-white/78 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-black text-zinc-900">
+                  {isClosedServiceCostEdit || canEditClosedOrderServiceCosts
+                    ? "Внутренние затраты заявки"
+                    : "Редактирование заявки"}
+                </div>
+                <div className="mt-0.5 text-xs text-zinc-500">
+                  {isClosedServiceCostEdit || canEditClosedOrderServiceCosts
+                    ? "Себестоимость доп. услуг и скрытые траты можно поправить без изменения клиентской сметы."
+                    : "Изменения сохраняются после проверки заявки."}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(canEditOrder || canEditClosedOrderServiceCosts) && !isEditing ? (
+                  <button
+                    type="button"
+                    onClick={startEditing}
+                    className={orderSecondaryButtonClass}
+                  >
+                    {canEditClosedOrderServiceCosts ? "Редактировать затраты" : "Редактировать заявку"}
+                  </button>
+                ) : null}
+                {isEditing ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={saveOrderEdit}
+                      className={orderPrimaryButtonClass}
+                    >
+                      {busy ? "…" : isClosedServiceCostEdit ? "Сохранить затраты" : isGreenwich ? "Запросить изменения" : "Сохранить"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => { setIsEditing(false); setActionError(null); }}
+                      className={orderSecondaryButtonClass}
+                    >
+                      Отмена
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            {actionError ? (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+                {actionError}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
           <div className="rounded-[1.5rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.9),rgba(255,255,255,0.82))] p-4 shadow-[0_18px_45px_rgba(217,119,6,0.08)] backdrop-blur">
             <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -2643,42 +2698,17 @@ export default function OrderDetailsPage() {
             document.body,
           )}
 
-        {actionError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-            {actionError}
-          </div>
-        ) : null}
-
+        {(
+          sendEstimateBlocked ||
+          (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") && !isEditing) ||
+          (isWarehouse && order.status === "APPROVED_BY_GREENWICH") ||
+          (isWarehouse && order.status === "PICKING") ||
+          (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && !isEditing) ||
+          (isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id) ||
+          (isWarehouse && order.status === "ISSUED") ||
+          canCancel
+        ) ? (
         <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
-          {(canEditOrder || canEditClosedOrderServiceCosts) && !isEditing && (
-            <button
-              type="button"
-              onClick={startEditing}
-              className={orderSecondaryButtonClass}
-            >
-              {canEditClosedOrderServiceCosts ? "Редактировать себестоимость доп. услуг" : "Редактировать заявку"}
-            </button>
-          )}
-          {isEditing && (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={saveOrderEdit}
-                className={orderPrimaryButtonClass}
-              >
-                {busy ? "…" : isClosedServiceCostEdit ? "Сохранить себестоимость" : isGreenwich ? "Запросить изменения" : "Сохранить"}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => { setIsEditing(false); setActionError(null); }}
-                className={orderSecondaryButtonClass}
-              >
-                Отмена
-              </button>
-            </>
-          )}
           {sendEstimateBlocked ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
               <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
@@ -2797,6 +2827,7 @@ export default function OrderDetailsPage() {
             </button>
           )}
         </div>
+        ) : null}
       </div>
   );
 

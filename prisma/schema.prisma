@@ -633,8 +633,10 @@ model ProjectEstimateVersion {
   includeInProjectTotals Boolean @default(true)
   /// Комиссия агентства 15% в итогах сметы (можно отключить для отдельных проектов).
   commissionEnabled      Boolean @default(true)
-  /// Условный налог 6% от суммы клиента с комиссией (можно отключить).
+  /// Расходный условный налог 6% от суммы клиента с комиссией (можно отключить).
   clientTaxEnabled       Boolean @default(true)
+  /// Клиентская надбавка 6% к смете, когда ее нужно явно включить в сумму для клиента.
+  clientChargeTaxEnabled Boolean @default(false)
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Restrict)

@@ -149,6 +149,7 @@ type StoredEstimateDraft = {
   sections: LocalDraftSection[];
   commissionEnabled?: boolean;
   clientTaxEnabled?: boolean;
+  clientChargeTaxEnabled?: boolean;
 };
 
 type VersionMeta = {
@@ -167,6 +168,7 @@ type VersionMeta = {
     cashInternalCostTax: number;
     internalExpensesTotal: number;
     commission: number;
+    clientChargeTax: number;
     revenueTotal: number;
     tax: number;
     grossMargin: number;
@@ -196,6 +198,7 @@ type EstimatePayload = {
     createdAt: string;
     commissionEnabled: boolean;
     clientTaxEnabled: boolean;
+    clientChargeTaxEnabled: boolean;
     sections: EstSection[];
   } | null;
 };
@@ -748,6 +751,7 @@ export function ProjectEstimatePanel({
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
   const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
+  const [clientChargeTaxEnabled, setClientChargeTaxEnabled] = React.useState(false);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
   const [showFloatingSave, setShowFloatingSave] = React.useState(false);
   const selectedVersion =
@@ -780,6 +784,7 @@ export function ProjectEstimatePanel({
             const baseSections = j.current?.sections ? sortSectionsBySortOrder(cloneLocalSections(j.current.sections)) : [];
             const baseCommissionEnabled = j.current?.commissionEnabled ?? true;
             const baseClientTaxEnabled = j.current?.clientTaxEnabled ?? true;
+            const baseClientChargeTaxEnabled = j.current?.clientChargeTaxEnabled ?? false;
             if (versionNumber != null) {
               const storageKey = draftEstimateStorageKey(projectId, versionNumber);
               const raw = window.localStorage.getItem(storageKey);
@@ -794,22 +799,27 @@ export function ProjectEstimatePanel({
                     const storedSections = sortSectionsBySortOrder(parsed.sections);
                     const storedCommissionEnabled = parsed.commissionEnabled ?? baseCommissionEnabled;
                     const storedClientTaxEnabled = parsed.clientTaxEnabled ?? baseClientTaxEnabled;
+                    const storedClientChargeTaxEnabled =
+                      parsed.clientChargeTaxEnabled ?? baseClientChargeTaxEnabled;
                     const hasDestructiveEmptyDraft = storedSections.length === 0 && baseSections.length > 0;
                     const isSameAsServer =
                       JSON.stringify(normalizeLocalSectionsForCompare(storedSections)) ===
                         JSON.stringify(normalizeLocalSectionsForCompare(baseSections)) &&
                       storedCommissionEnabled === baseCommissionEnabled &&
-                      storedClientTaxEnabled === baseClientTaxEnabled;
+                      storedClientTaxEnabled === baseClientTaxEnabled &&
+                      storedClientChargeTaxEnabled === baseClientChargeTaxEnabled;
                     if (hasDestructiveEmptyDraft || isSameAsServer) {
                       window.localStorage.removeItem(storageKey);
                       setLocalSectionsDraft(baseSections);
                       setCommissionEnabled(baseCommissionEnabled);
                       setClientTaxEnabled(baseClientTaxEnabled);
+                      setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                       setEstimateDraftDirty(false);
                     } else {
                       setLocalSectionsDraft(storedSections);
                       setCommissionEnabled(storedCommissionEnabled);
                       setClientTaxEnabled(storedClientTaxEnabled);
+                      setClientChargeTaxEnabled(storedClientChargeTaxEnabled);
                       setEstimateDraftDirty(true);
                     }
                   } else {
@@ -817,6 +827,7 @@ export function ProjectEstimatePanel({
                     setLocalSectionsDraft(baseSections);
                     setCommissionEnabled(baseCommissionEnabled);
                     setClientTaxEnabled(baseClientTaxEnabled);
+                    setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                     setEstimateDraftDirty(false);
                   }
                 } catch {
@@ -824,18 +835,21 @@ export function ProjectEstimatePanel({
                   setLocalSectionsDraft(baseSections);
                   setCommissionEnabled(baseCommissionEnabled);
                   setClientTaxEnabled(baseClientTaxEnabled);
+                  setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                   setEstimateDraftDirty(false);
                 }
               } else {
                 setLocalSectionsDraft(baseSections);
                 setCommissionEnabled(baseCommissionEnabled);
                 setClientTaxEnabled(baseClientTaxEnabled);
+                setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                 setEstimateDraftDirty(false);
               }
             } else {
               setLocalSectionsDraft([]);
               setCommissionEnabled(true);
               setClientTaxEnabled(true);
+              setClientChargeTaxEnabled(false);
               setEstimateDraftDirty(false);
             }
             setError(null);
@@ -912,10 +926,12 @@ export function ProjectEstimatePanel({
       sections: localSectionsDraft,
       commissionEnabled,
       clientTaxEnabled,
+      clientChargeTaxEnabled,
     };
     window.localStorage.setItem(estimateDraftStorageKey, JSON.stringify(payload));
   }, [
     clientTaxEnabled,
+    clientChargeTaxEnabled,
     commissionEnabled,
     currentVersionNumber,
     estimateDraftDirty,
@@ -1297,6 +1313,7 @@ export function ProjectEstimatePanel({
           allowDeleteAllLocalSections: deletingAllLocalSections,
           commissionEnabled,
           clientTaxEnabled,
+          clientChargeTaxEnabled,
           localSections: sortSectionsBySortOrder(localSectionsDraft).map((section) => ({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
@@ -1351,6 +1368,7 @@ export function ProjectEstimatePanel({
     setLocalSectionsDraft(baseSections);
     setCommissionEnabled(data?.current?.commissionEnabled ?? true);
     setClientTaxEnabled(data?.current?.clientTaxEnabled ?? true);
+    setClientChargeTaxEnabled(data?.current?.clientChargeTaxEnabled ?? false);
     setEstimateDraftDirty(false);
   }
 
@@ -1463,11 +1481,13 @@ export function ProjectEstimatePanel({
       cashInternalCostTax,
       commissionEnabled,
       clientTaxEnabled,
+      clientChargeTaxEnabled,
     });
 
     return {
       clientSubtotal: estimateTotals.clientSubtotal,
       commission: estimateTotals.commission,
+      clientChargeTax: estimateTotals.clientChargeTax,
       revenueTotal: estimateTotals.revenueTotal,
       tax6: estimateTotals.tax,
       internalSubtotal: estimateTotals.internalSubtotal,
@@ -1479,7 +1499,7 @@ export function ProjectEstimatePanel({
       marginAfterTax: estimateTotals.marginAfterTax,
       marginAfterTaxPct: estimateTotals.marginAfterTaxPct,
     };
-  }, [renderedSections, commissionEnabled, clientTaxEnabled]);
+  }, [renderedSections, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled]);
 
   const projectTotals = React.useMemo(() => {
     const included = (data?.versions ?? []).filter((version) => version.includeInProjectTotals);
@@ -1989,6 +2009,18 @@ export function ProjectEstimatePanel({
                       />
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
                     </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <EstimateFinanceToggle
+                        label={`Налог клиенту ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
+                        checked={clientChargeTaxEnabled}
+                        disabled={readOnly || busy}
+                        onChange={(value) => {
+                          setClientChargeTaxEnabled(value);
+                          setEstimateDraftDirty(true);
+                        }}
+                      />
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.clientChargeTax)} ₽</span>
+                    </div>
                     <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
                       <span className="font-extrabold text-violet-950">Итого клиенту</span>
                       <span className="font-black tabular-nums text-violet-950">{money(totals.revenueTotal)} ₽</span>
@@ -2014,7 +2046,7 @@ export function ProjectEstimatePanel({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <EstimateFinanceToggle
-                        label={`Налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
+                        label={`Расходный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
                         checked={clientTaxEnabled}
                         disabled={readOnly || busy}
                         onChange={(value) => {

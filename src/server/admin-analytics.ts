@@ -102,6 +102,7 @@ export type ProjectFinancials = {
   cashInternalCostTax: number;
   internalExpensesTotal: number;
   commission: number;
+  clientChargeTax: number;
   revenueTotal: number;
   tax: number;
   grossMargin: number;
@@ -733,6 +734,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
           includeInProjectTotals: true,
           commissionEnabled: true,
           clientTaxEnabled: true,
+          clientChargeTaxEnabled: true,
           sections: {
             select: {
               kind: true,
@@ -884,6 +886,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       cashInternalCostTax,
       commissionEnabled: version?.commissionEnabled,
       clientTaxEnabled: version?.clientTaxEnabled,
+      clientChargeTaxEnabled: version?.clientChargeTaxEnabled,
     });
   }
 
@@ -898,6 +901,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     const cashInternalCostTax = financials.reduce((sum, item) => sum + item.cashInternalCostTax, 0);
     const internalExpensesTotal = financials.reduce((sum, item) => sum + item.internalExpensesTotal, 0);
     const commission = financials.reduce((sum, item) => sum + item.commission, 0);
+    const clientChargeTax = financials.reduce((sum, item) => sum + item.clientChargeTax, 0);
     const revenueTotal = financials.reduce((sum, item) => sum + item.revenueTotal, 0);
     const tax = financials.reduce((sum, item) => sum + item.tax, 0);
     const grossMargin = financials.reduce((sum, item) => sum + item.grossMargin, 0);
@@ -909,6 +913,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       cashInternalCostTax,
       internalExpensesTotal,
       commission,
+      clientChargeTax,
       revenueTotal,
       tax,
       grossMargin,
@@ -1283,7 +1288,7 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
     customers,
     methodology: [
       { section: "Реквизит", rule: "Фактическая выручка считается по закрытым заявкам, которые завершились в выбранном периоде. Скидки и налог берутся из той же формулы, что используется в заявках и сметах." },
-      { section: "Проекты", rule: `Финансовый прогноз считается по основной версии сметы проекта. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
+      { section: "Проекты", rule: `Финансовый прогноз считается по основной версии сметы проекта. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
       { section: "Заказчики", rule: "Метрики по заказчикам собираются из проектов, созданных в выбранном периоде. Фактическая выручка по заявкам показывается отдельно и учитывает только закрытые заявки." },
       { section: "Статусы", rule: "Возраст статусов и зависшие проекты — это управленческие сигналы для контроля работы, а не бухгалтерские показатели." },
     ],

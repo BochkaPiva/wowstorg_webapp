@@ -34,6 +34,7 @@ const PatchDraftSchema = z
     allowDeleteAllLocalSections: z.boolean().optional(),
     commissionEnabled: z.boolean().optional(),
     clientTaxEnabled: z.boolean().optional(),
+    clientChargeTaxEnabled: z.boolean().optional(),
     localSections: z
       .array(
         z
@@ -95,7 +96,14 @@ export async function PATCH(
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  const { versionNumber, localSections, allowDeleteAllLocalSections, commissionEnabled, clientTaxEnabled } =
+  const {
+    versionNumber,
+    localSections,
+    allowDeleteAllLocalSections,
+    commissionEnabled,
+    clientTaxEnabled,
+    clientChargeTaxEnabled,
+  } =
     parsed.data;
 
   const version = await prisma.projectEstimateVersion.findFirst({
@@ -224,12 +232,17 @@ export async function PATCH(
         }
       }
 
-      if (commissionEnabled !== undefined || clientTaxEnabled !== undefined) {
+      if (
+        commissionEnabled !== undefined ||
+        clientTaxEnabled !== undefined ||
+        clientChargeTaxEnabled !== undefined
+      ) {
         await tx.projectEstimateVersion.update({
           where: { id: version.id },
           data: {
             ...(commissionEnabled !== undefined ? { commissionEnabled } : {}),
             ...(clientTaxEnabled !== undefined ? { clientTaxEnabled } : {}),
+            ...(clientChargeTaxEnabled !== undefined ? { clientChargeTaxEnabled } : {}),
           },
         });
       }

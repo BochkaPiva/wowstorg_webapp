@@ -39,6 +39,25 @@ describe("project estimate totals", () => {
     });
   });
 
+  it("can add client-facing 6 percent tax without replacing the internal 6 percent expense tax", () => {
+    expect(
+      calcProjectEstimateTotals({
+        clientSubtotal: 100_000,
+        internalSubtotal: 60_000,
+        commissionEnabled: true,
+        clientTaxEnabled: true,
+        clientChargeTaxEnabled: true,
+      }),
+    ).toMatchObject({
+      commission: 15_000,
+      clientChargeTax: 6_900,
+      revenueTotal: 121_900,
+      tax: 6_900,
+      grossMargin: 61_900,
+      marginAfterTax: 55_000,
+    });
+  });
+
   it("keeps cash tax separate from internal subtotal in margin", () => {
     expect(
       calcProjectEstimateTotals({

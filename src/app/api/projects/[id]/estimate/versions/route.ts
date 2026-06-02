@@ -97,6 +97,7 @@ export async function POST(
           data: {
             commissionEnabled: src.commissionEnabled,
             clientTaxEnabled: src.clientTaxEnabled,
+            clientChargeTaxEnabled: src.clientChargeTaxEnabled,
           },
         });
 

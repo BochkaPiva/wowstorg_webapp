@@ -165,6 +165,7 @@ export async function buildProjectEstimateReadModel(args: {
       includeInProjectTotals: true,
       commissionEnabled: true,
       clientTaxEnabled: true,
+      clientChargeTaxEnabled: true,
       createdAt: true,
       createdBy: { select: { displayName: true } },
     },
@@ -336,6 +337,7 @@ export async function buildProjectEstimateReadModel(args: {
       cashInternalCostTax,
       commissionEnabled: version.commissionEnabled,
       clientTaxEnabled: version.clientTaxEnabled,
+      clientChargeTaxEnabled: version.clientChargeTaxEnabled,
     });
   }
 
@@ -372,6 +374,7 @@ export async function buildProjectEstimateReadModel(args: {
             createdAt: versionRow.createdAt.toISOString(),
             commissionEnabled: versionRow.commissionEnabled,
             clientTaxEnabled: versionRow.clientTaxEnabled,
+            clientChargeTaxEnabled: versionRow.clientChargeTaxEnabled,
             sections: [
               ...versionRow.sections.map<ProjectEstimateReadSection>((section) => {
               const linkedOrder =

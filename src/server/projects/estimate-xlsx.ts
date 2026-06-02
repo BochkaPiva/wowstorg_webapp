@@ -6,8 +6,6 @@ import ExcelJS from "exceljs";
 import {
   calcProjectEstimateTotals,
   getNumericAmount,
-  PROJECT_ESTIMATE_COMMISSION_RATE,
-  PROJECT_ESTIMATE_TAX_RATE,
   resolveProjectEstimateRates,
   roundMoney,
 } from "@/lib/project-estimate-totals";
@@ -380,6 +378,7 @@ function addClientSummary(
   subtotalFormula: string,
   subtotalResult: number,
   commissionRate: number,
+  clientChargeTaxRate: number,
 ) {
   ws.addRow([]);
   const titleRow = ws.lastRow!.number + 1;
@@ -399,38 +398,55 @@ function addClientSummary(
 
   addSummaryRow(ws, colCount, titleRow + 1, "Сумма по услугам", subtotalFormula, subtotalResult);
   const subtotalRef = xlsxCellRef(titleRow + 1, colCount);
+  let nextRow = titleRow + 2;
+  let clientTotalRef = subtotalRef;
   if (commissionRate > 0) {
     addSummaryRow(
       ws,
       colCount,
-      titleRow + 2,
+      nextRow,
       `Комиссия агентства ${roundMoney(commissionRate * 100)}%`,
       percentOfFormula(commissionRate, subtotalRef),
       totals.commission,
     );
-    const commissionRef = xlsxCellRef(titleRow + 2, colCount);
+    const commissionRef = xlsxCellRef(nextRow, colCount);
+    nextRow += 1;
+    const clientWithCommissionFormula = addFormulaRefFormula(subtotalRef, commissionRef);
+    if (clientChargeTaxRate > 0) {
+      addSummaryRow(
+        ws,
+        colCount,
+        nextRow,
+        "Итого до налога",
+        clientWithCommissionFormula,
+        roundMoney(totals.clientSubtotal + totals.commission),
+      );
+      clientTotalRef = xlsxCellRef(nextRow, colCount);
+      nextRow += 1;
+    } else {
+      clientTotalRef = clientWithCommissionFormula;
+    }
+  }
+
+  if (clientChargeTaxRate > 0) {
     addSummaryRow(
       ws,
       colCount,
-      titleRow + 3,
-      "Всего по смете",
-      addFormulaRefFormula(subtotalRef, commissionRef),
-      totals.revenueTotal,
-      {
-        emphasis: true,
-        fill: COLORS.yellow,
-        fontColor: COLORS.ink,
-      },
+      nextRow,
+      `Налог ${roundMoney(clientChargeTaxRate * 100)}%`,
+      percentOfFormula(clientChargeTaxRate, clientTotalRef),
+      totals.clientChargeTax,
     );
-    return;
+    clientTotalRef = addFormulaRefFormula(clientTotalRef, xlsxCellRef(nextRow, colCount));
+    nextRow += 1;
   }
 
   addSummaryRow(
     ws,
     colCount,
-    titleRow + 2,
+    nextRow,
     "Всего по смете",
-    subtotalRef,
+    clientTotalRef,
     totals.revenueTotal,
     {
       emphasis: true,
@@ -454,12 +470,14 @@ export async function buildProjectEstimateXlsx(args: {
   variant?: ProjectEstimateXlsxVariant;
   commissionEnabled?: boolean;
   clientTaxEnabled?: boolean;
+  clientChargeTaxEnabled?: boolean;
 }) {
   const variant = args.variant ?? "internal";
   const isClient = variant === "client";
   const financeRates = resolveProjectEstimateRates({
     commissionEnabled: args.commissionEnabled,
     clientTaxEnabled: args.clientTaxEnabled,
+    clientChargeTaxEnabled: args.clientChargeTaxEnabled,
   });
   const exportSections = buildExportSections(args.sections);
 
@@ -654,6 +672,7 @@ export async function buildProjectEstimateXlsx(args: {
     cashInternalCostTax,
     commissionRate: financeRates.commissionRate,
     taxRate: financeRates.taxRate,
+    clientChargeTaxRate: financeRates.clientChargeTaxRate,
   });
 
   const projectClientFormula = sumRangesFormula(lineCols.lineTotal, allClientDataRanges);
@@ -667,6 +686,7 @@ export async function buildProjectEstimateXlsx(args: {
       projectClientFormula,
       roundMoney(clientSubtotal),
       financeRates.commissionRate,
+      financeRates.clientChargeTaxRate,
     );
   } else {
     ws.addRow([]);
@@ -702,11 +722,31 @@ export async function buildProjectEstimateXlsx(args: {
     const clientWithCommissionRow = addInternalFooterRow(
       ws,
       colCount,
-      "Итого клиент с комиссией",
+      "Итого клиент до налога",
       addFormulaRefFormula(revenueRef, xlsxCellRef(commissionRow, 8)),
-      projectTotals.revenueTotal,
+      roundMoney(projectTotals.clientSubtotal + projectTotals.commission),
     );
     const clientWithCommissionRef = xlsxCellRef(clientWithCommissionRow, 8);
+    let revenueTotalRef = clientWithCommissionRef;
+    if (financeRates.clientChargeTaxRate > 0) {
+      const clientChargeTaxRow = addInternalFooterRow(
+        ws,
+        colCount,
+        `Налог клиенту ${roundMoney(financeRates.clientChargeTaxRate * 100)}%`,
+        percentOfFormula(financeRates.clientChargeTaxRate, clientWithCommissionRef),
+        projectTotals.clientChargeTax,
+      );
+      revenueTotalRef = xlsxCellRef(
+        addInternalFooterRow(
+          ws,
+          colCount,
+          "Итого клиенту",
+          addFormulaRefFormula(clientWithCommissionRef, xlsxCellRef(clientChargeTaxRow, 8)),
+          projectTotals.revenueTotal,
+        ),
+        8,
+      );
+    }
     const internalRow = addInternalFooterRow(
       ws,
       colCount,
@@ -749,13 +789,13 @@ export async function buildProjectEstimateXlsx(args: {
       ws,
       colCount,
       "Валовая маржа проекта",
-      subtractFormulaRefs(clientWithCommissionRef, expensesRef),
+      subtractFormulaRefs(revenueTotalRef, expensesRef),
       projectTotals.grossMargin,
     );
     const taxRow = addInternalFooterRow(
       ws,
       colCount,
-      `Условный налог ${roundMoney(financeRates.taxRate * 100)}%`,
+      `Условный расходный налог ${roundMoney(financeRates.taxRate * 100)}%`,
       percentOfFormula(financeRates.taxRate, clientWithCommissionRef),
       projectTotals.tax,
     );

@@ -64,6 +64,47 @@ describe("order pricing", () => {
     expect(pricing.rentalSubtotalBeforeDiscount).toBe(300);
   });
 
+  it("ignores stale prices for explicitly disabled services", () => {
+    const pricing = calcOrderPricing({
+      startDate: utcDate("2026-06-07"),
+      endDate: utcDate("2026-06-07"),
+      rentalStartPartOfDay: "MORNING",
+      rentalEndPartOfDay: "EVENING",
+      payMultiplier: 0.7,
+      deliveryEnabled: true,
+      deliveryPrice: 1500,
+      montageEnabled: false,
+      montagePrice: 500,
+      demontageEnabled: true,
+      demontagePrice: 500,
+      discount: { rentalDiscountType: "AMOUNT", rentalDiscountAmount: 100 },
+      lines: [
+        { itemId: "winder", requestedQty: 2, pricePerDaySnapshot: 1200 },
+        { itemId: "tile", requestedQty: 8, pricePerDaySnapshot: 0 },
+      ],
+    });
+
+    expect(pricing.rentalSubtotalAfterDiscount).toBe(1580);
+    expect(pricing.servicesTotal).toBe(2000);
+    expect(pricing.grandTotalBeforeTax).toBe(3580);
+    expect(pricing.taxAmount).toBe(214.8);
+    expect(pricing.grandTotal).toBe(3794.8);
+  });
+
+  it("keeps legacy service pricing behavior when enabled flags are absent", () => {
+    const pricing = calcOrderPricing({
+      startDate: utcDate("2026-06-07"),
+      endDate: utcDate("2026-06-07"),
+      payMultiplier: 1,
+      deliveryPrice: 100,
+      montagePrice: 200,
+      demontagePrice: 300,
+      lines: [],
+    });
+
+    expect(pricing.servicesTotal).toBe(600);
+  });
+
   it("rejects discounts larger than the rental subtotal", () => {
     expect(
       validateOrderDiscount({

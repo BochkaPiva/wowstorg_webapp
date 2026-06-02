@@ -13,8 +13,11 @@ export function calcOrderTotalAmount(args: {
   rentalStartPartOfDay?: RentalPartOfDay;
   rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier: number | null;
+  deliveryEnabled?: boolean;
   deliveryPrice: number | null;
+  montageEnabled?: boolean;
   montagePrice: number | null;
+  demontageEnabled?: boolean;
   demontagePrice: number | null;
   lines: Array<{ requestedQty: number; pricePerDaySnapshot: unknown }>;
   discount?: OrderDiscountInput;

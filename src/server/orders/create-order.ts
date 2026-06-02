@@ -292,8 +292,11 @@ export async function createOrderInTransaction(
     rentalStartPartOfDay,
     rentalEndPartOfDay,
     payMultiplier: Number(payMultiplier),
+    deliveryEnabled: input.deliveryEnabled ?? false,
     deliveryPrice: input.deliveryPrice ?? null,
+    montageEnabled: input.montageEnabled ?? false,
     montagePrice: input.montagePrice ?? null,
+    demontageEnabled: input.demontageEnabled ?? false,
     demontagePrice: input.demontagePrice ?? null,
     lines: lines.map((line) => ({
       itemId: line.itemId,

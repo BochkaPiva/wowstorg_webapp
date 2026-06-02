@@ -203,8 +203,11 @@ function orderTotal(order: {
   rentalStartPartOfDay?: RentalPartOfDay;
   rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier?: number | null;
+  deliveryEnabled?: boolean;
   deliveryPrice: number | null;
+  montageEnabled?: boolean;
   montagePrice: number | null;
+  demontageEnabled?: boolean;
   demontagePrice: number | null;
   rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent?: number | null;
@@ -220,8 +223,11 @@ function calcOrderPricingClient(order: {
   rentalStartPartOfDay?: RentalPartOfDay;
   rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier?: number | null;
+  deliveryEnabled?: boolean;
   deliveryPrice: number | null;
+  montageEnabled?: boolean;
   montagePrice: number | null;
+  demontageEnabled?: boolean;
   demontagePrice: number | null;
   rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent?: number | null;
@@ -249,7 +255,9 @@ function calcOrderPricingClient(order: {
   const discountAmount = Math.min(Math.max(0, rawDiscount), rentalBeforeDiscount);
   const rentalAfterDiscount = Math.max(0, rentalBeforeDiscount - discountAmount);
   const services =
-    (order.deliveryPrice ?? 0) + (order.montagePrice ?? 0) + (order.demontagePrice ?? 0);
+    (order.deliveryEnabled === false ? 0 : order.deliveryPrice ?? 0) +
+    (order.montageEnabled === false ? 0 : order.montagePrice ?? 0) +
+    (order.demontageEnabled === false ? 0 : order.demontagePrice ?? 0);
   const grandTotalBeforeTax = roundMoney(rentalAfterDiscount + services);
   const taxAmount = roundMoney(grandTotalBeforeTax * ORDER_TAX_RATE);
   return {

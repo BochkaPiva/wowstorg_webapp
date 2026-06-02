@@ -157,8 +157,11 @@ function calcOrderTotalAmount(args: {
   rentalStartPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalStartPartOfDay"];
   rentalEndPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalEndPartOfDay"];
   payMultiplier: Prisma.Decimal | number | null;
+  deliveryEnabled?: boolean;
   deliveryPrice: Prisma.Decimal | number | null;
+  montageEnabled?: boolean;
   montagePrice: Prisma.Decimal | number | null;
+  demontageEnabled?: boolean;
   demontagePrice: Prisma.Decimal | number | null;
   rentalDiscountType?: string | null;
   rentalDiscountPercent?: Prisma.Decimal | number | null;
@@ -245,8 +248,11 @@ export async function listOrdersForCleanup(
       eventName: true,
       estimateFileKey: true,
       payMultiplier: true,
+      deliveryEnabled: true,
       deliveryPrice: true,
+      montageEnabled: true,
       montagePrice: true,
+      demontageEnabled: true,
       demontagePrice: true,
       rentalDiscountType: true,
       rentalDiscountPercent: true,
@@ -282,8 +288,11 @@ export async function listOrdersForCleanup(
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
+      deliveryEnabled: order.deliveryEnabled,
       deliveryPrice: order.deliveryPrice,
+      montageEnabled: order.montageEnabled,
       montagePrice: order.montagePrice,
+      demontageEnabled: order.demontageEnabled,
       demontagePrice: order.demontagePrice,
       lines: order.lines,
     }),
@@ -387,8 +396,11 @@ async function prepareOrderCleanup(
       greenwichUser: { select: { displayName: true } },
       estimateFileKey: true,
       payMultiplier: true,
+      deliveryEnabled: true,
       deliveryPrice: true,
+      montageEnabled: true,
       montagePrice: true,
+      demontageEnabled: true,
       demontagePrice: true,
       rentalDiscountType: true,
       rentalDiscountPercent: true,
@@ -458,8 +470,11 @@ async function prepareOrderCleanup(
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
+      deliveryEnabled: order.deliveryEnabled,
       deliveryPrice: order.deliveryPrice,
+      montageEnabled: order.montageEnabled,
       montagePrice: order.montagePrice,
+      demontageEnabled: order.demontageEnabled,
       demontagePrice: order.demontagePrice,
       lines: order.lines,
     }),

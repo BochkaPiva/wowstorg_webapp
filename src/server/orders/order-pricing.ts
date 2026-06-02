@@ -80,8 +80,11 @@ export function calcOrderPricing(args: {
   rentalStartPartOfDay?: RentalPartOfDay;
   rentalEndPartOfDay?: RentalPartOfDay;
   payMultiplier: unknown;
+  deliveryEnabled?: boolean;
   deliveryPrice?: unknown;
+  montageEnabled?: boolean;
   montagePrice?: unknown;
+  demontageEnabled?: boolean;
   demontagePrice?: unknown;
   lines: OrderPricingLine[];
   discount?: OrderDiscountInput;
@@ -119,7 +122,10 @@ export function calcOrderPricing(args: {
         : 0;
   const discountAmount = Math.min(Math.max(0, requestedDiscount), rentalSubtotalBeforeDiscount);
   const rentalSubtotalAfterDiscount = Math.max(0, rentalSubtotalBeforeDiscount - discountAmount);
-  const servicesTotal = num(args.deliveryPrice) + num(args.montagePrice) + num(args.demontagePrice);
+  const deliveryTotal = args.deliveryEnabled === false ? 0 : num(args.deliveryPrice);
+  const montageTotal = args.montageEnabled === false ? 0 : num(args.montagePrice);
+  const demontageTotal = args.demontageEnabled === false ? 0 : num(args.demontagePrice);
+  const servicesTotal = deliveryTotal + montageTotal + demontageTotal;
   const grandTotalBeforeTax = roundMoney(rentalSubtotalAfterDiscount + servicesTotal);
   const taxRate = ORDER_TAX_RATE;
   const taxAmount = roundMoney(grandTotalBeforeTax * taxRate);

@@ -69,6 +69,28 @@ function discountValueForCompare(discount: {
   return JSON.stringify({ type, percent, amount });
 }
 
+function normalizedText(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function normalizedNumber(value: unknown): number {
+  if (value == null) return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function serviceValueForCompare(service: {
+  enabled: boolean;
+  comment: string | null | undefined;
+  price: unknown;
+}): string {
+  return JSON.stringify({
+    enabled: service.enabled,
+    comment: service.enabled ? normalizedText(service.comment) : "",
+    price: service.enabled ? normalizedNumber(service.price) : 0,
+  });
+}
+
 async function replaceHiddenExpenses(args: {
   tx: Prisma.TransactionClient;
   orderId: string;
@@ -264,6 +286,12 @@ export async function PATCH(
         wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
 
         const linePriceById = new Map(order.lines.map((l) => [l.id, l.pricePerDaySnapshot]));
+        const nextDeliveryEnabled = data.deliveryEnabled ?? order.deliveryEnabled;
+        const nextMontageEnabled = data.montageEnabled ?? order.montageEnabled;
+        const nextDemontageEnabled = data.demontageEnabled ?? order.demontageEnabled;
+        const nextDeliveryPrice = data.deliveryPrice ?? order.deliveryPrice;
+        const nextMontagePrice = data.montagePrice ?? order.montagePrice;
+        const nextDemontagePrice = data.demontagePrice ?? order.demontagePrice;
         const nextDiscount = {
           rentalDiscountType: data.rentalDiscountType ?? order.rentalDiscountType,
           rentalDiscountPercent:
@@ -284,15 +312,65 @@ export async function PATCH(
               rentalDiscountAmount: nextDiscount.rentalDiscountAmount,
             });
         }
+        const existingClientLineSignature = JSON.stringify(
+          order.lines.map((line) => ({
+            itemId: line.itemId,
+            requestedQty: line.requestedQty,
+          })),
+        );
+        const nextClientLineSignature = JSON.stringify(
+          editLines.map((line) => ({
+            itemId: line.itemId,
+            requestedQty: line.requestedQty,
+          })),
+        );
+        const clientFacingChanged =
+          existingClientLineSignature !== nextClientLineSignature ||
+          (data.eventName !== undefined && normalizedText(data.eventName) !== normalizedText(order.eventName)) ||
+          (data.comment !== undefined && normalizedText(data.comment) !== normalizedText(order.comment)) ||
+          serviceValueForCompare({
+            enabled: order.deliveryEnabled,
+            comment: order.deliveryComment,
+            price: order.deliveryPrice,
+          }) !==
+            serviceValueForCompare({
+              enabled: nextDeliveryEnabled,
+              comment: data.deliveryComment !== undefined ? data.deliveryComment : order.deliveryComment,
+              price: nextDeliveryPrice,
+            }) ||
+          serviceValueForCompare({
+            enabled: order.montageEnabled,
+            comment: order.montageComment,
+            price: order.montagePrice,
+          }) !==
+            serviceValueForCompare({
+              enabled: nextMontageEnabled,
+              comment: data.montageComment !== undefined ? data.montageComment : order.montageComment,
+              price: nextMontagePrice,
+            }) ||
+          serviceValueForCompare({
+            enabled: order.demontageEnabled,
+            comment: order.demontageComment,
+            price: order.demontagePrice,
+          }) !==
+            serviceValueForCompare({
+              enabled: nextDemontageEnabled,
+              comment: data.demontageComment !== undefined ? data.demontageComment : order.demontageComment,
+              price: nextDemontagePrice,
+            }) ||
+          rentalDiscountChanged;
         const pricingPreview = calcOrderPricing({
           startDate: order.startDate,
           endDate: order.endDate,
           rentalStartPartOfDay: order.rentalStartPartOfDay,
           rentalEndPartOfDay: order.rentalEndPartOfDay,
           payMultiplier: order.payMultiplier,
-          deliveryPrice: data.deliveryPrice ?? order.deliveryPrice,
-          montagePrice: data.montagePrice ?? order.montagePrice,
-          demontagePrice: data.demontagePrice ?? order.demontagePrice,
+          deliveryEnabled: nextDeliveryEnabled,
+          deliveryPrice: nextDeliveryPrice,
+          montageEnabled: nextMontageEnabled,
+          montagePrice: nextMontagePrice,
+          demontageEnabled: nextDemontageEnabled,
+          demontagePrice: nextDemontagePrice,
           lines: editLines.map((row) => ({
             itemId: row.itemId,
             requestedQty: row.requestedQty,
@@ -375,7 +453,7 @@ export async function PATCH(
                     nextDiscount.rentalDiscountType === "AMOUNT" ? nextDiscount.rentalDiscountAmount : null,
                 }
               : {}),
-            ...(wasCycleStatus
+            ...(wasCycleStatus && clientFacingChanged
               ? {
                   status:
                     order.source === "WOWSTORG_EXTERNAL" || isQuickSupplement

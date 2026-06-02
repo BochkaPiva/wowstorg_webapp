@@ -1,10 +1,14 @@
 "use client";
 
 import "@/app/catalog/catalog.css";
+import "react-day-picker/style.css";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
 import { createPortal } from "react-dom";
+import { format, parse } from "date-fns";
+import { ru } from "date-fns/locale";
+import { DayPicker, type DateRange } from "react-day-picker";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, orderStatusLabelRu, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
@@ -132,10 +136,12 @@ function buildProjectCatalogHref(args: {
   return `/catalog?${params.toString()}`;
 }
 
-const sectionShell = "rounded-2xl border border-zinc-200 bg-white/90 p-3 shadow-sm sm:p-4";
-const softShell = "rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:p-4";
+const sectionShell =
+  "rounded-[1.5rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.58),rgba(255,251,235,0.28))] p-3 shadow-[0_16px_42px_rgba(24,24,27,0.08)] backdrop-blur sm:p-4";
+const softShell =
+  "rounded-[1.65rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.50),rgba(255,251,235,0.24))] p-3 shadow-[0_18px_48px_rgba(24,24,27,0.08)] backdrop-blur sm:p-4";
 const glassSectionHeader =
-  "flex flex-col gap-3 rounded-[1.35rem] border border-white/70 bg-[radial-gradient(circle_at_10%_0%,rgba(124,58,237,0.13),transparent_34%),linear-gradient(135deg,rgba(250,245,255,0.94),rgba(255,255,255,0.9),rgba(255,251,235,0.62))] px-4 py-3 shadow-[0_14px_38px_rgba(76,29,149,0.08)] sm:flex-row sm:items-center sm:justify-between";
+  "flex flex-col gap-3 rounded-[1.35rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_36%),linear-gradient(135deg,rgba(250,245,255,0.96),rgba(255,255,255,0.86),rgba(255,251,235,0.62))] px-4 py-3 shadow-[0_16px_42px_rgba(76,29,149,0.09)] sm:flex-row sm:items-center sm:justify-between";
 const glassSectionTitle = "text-lg font-black tracking-tight text-violet-950";
 const cardTile = "rounded-xl border border-zinc-100 bg-zinc-50/50 px-3 py-3";
 const inputField =
@@ -155,7 +161,8 @@ const workTabBtn = (active: boolean) =>
       ? "border border-violet-500 bg-zinc-950 text-white shadow-[0_12px_26px_rgba(24,24,27,0.18)]"
       : "border border-zinc-200 bg-white/85 text-zinc-600 hover:border-violet-200 hover:bg-white hover:text-violet-900",
   ].join(" ");
-const heroStatCard = "rounded-2xl border border-white/80 bg-white/90 p-3 shadow-sm";
+const heroStatCard =
+  "rounded-[1.25rem] border border-white/85 bg-white/82 p-3 shadow-[0_12px_34px_rgba(24,24,27,0.07)] backdrop-blur";
 
 const PROJECT_STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
   LEAD: "BRIEFING",
@@ -274,6 +281,123 @@ function HelpLegend({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function toProjectYmd(value: string | null | undefined) {
+  return value?.slice(0, 10) ?? "";
+}
+
+function parseProjectYmd(value: string | null | undefined) {
+  const ymd = toProjectYmd(value);
+  if (!ymd) return undefined;
+  const parsed = parse(ymd, "yyyy-MM-dd", new Date());
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>
+      <path d="M7 2a1 1 0 011 1v1h8V3a1 1 0 112 0v1h1.5A2.5 2.5 0 0122 6.5v12A2.5 2.5 0 0119.5 21h-15A2.5 2.5 0 012 18.5v-12A2.5 2.5 0 014.5 4H6V3a1 1 0 011-1zm12.5 8h-15v8.5a.5.5 0 00.5.5h14a.5.5 0 00.5-.5V10zM5 6a.5.5 0 00-.5.5V8h15V6.5A.5.5 0 0019 6H5z" />
+    </svg>
+  );
+}
+
+function ProjectEventDatePicker({
+  startDate,
+  endDate,
+  onRangeChange,
+}: {
+  startDate: string;
+  endDate: string;
+  onRangeChange: (start: string, end: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const selected = React.useMemo<DateRange | undefined>(
+    () => ({
+      from: parseProjectYmd(startDate),
+      to: parseProjectYmd(endDate),
+    }),
+    [startDate, endDate],
+  );
+  const summary =
+    startDate && endDate
+      ? `${fmtDate(startDate)} — ${fmtDate(endDate)}`
+      : startDate
+        ? `c ${fmtDate(startDate)}`
+        : endDate
+          ? `до ${fmtDate(endDate)}`
+          : "Выбрать период";
+
+  function applyRange(range: DateRange | undefined) {
+    if (!range?.from) {
+      onRangeChange("", "");
+      return;
+    }
+    const nextStart = format(range.from, "yyyy-MM-dd");
+    const nextEnd = format(range.to ?? range.from, "yyyy-MM-dd");
+    onRangeChange(nextStart, nextEnd);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex w-full items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 px-3 py-3 text-left text-sm font-bold text-zinc-950 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700">
+            <CalendarIcon />
+          </span>
+          <span className="min-w-0 truncate">{summary}</span>
+        </span>
+        <span className="text-xs font-black uppercase tracking-[0.12em] text-violet-700">Изменить</span>
+      </button>
+      {open
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[95] flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm"
+              onMouseDown={() => setOpen(false)}
+            >
+              <div
+                className="w-full max-w-[44rem] overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 p-4 shadow-[0_30px_90px_rgba(24,24,27,0.22)]"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Даты мероприятия</div>
+                    <div className="mt-1 text-xl font-black text-zinc-950">Выбор периода</div>
+                  </div>
+                  <button type="button" onClick={() => setOpen(false)} className={secondaryBtn}>
+                    Закрыть
+                  </button>
+                </div>
+                <div className="mt-4 rounded-[1.5rem] border border-violet-100 bg-[linear-gradient(135deg,rgba(250,245,255,0.86),rgba(255,255,255,0.96))] p-3">
+                  <DayPicker
+                    mode="range"
+                    selected={selected}
+                    onSelect={applyRange}
+                    locale={ru}
+                    numberOfMonths={2}
+                    weekStartsOn={1}
+                    fixedWeeks
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <button type="button" onClick={() => onRangeChange("", "")} className={secondaryBtn}>
+                    Очистить даты
+                  </button>
+                  <button type="button" onClick={() => setOpen(false)} className={primaryBtn}>
+                    Готово
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -1010,10 +1134,10 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="rounded-[30px] border border-violet-200/70 bg-[linear-gradient(135deg,rgba(124,58,237,0.12),rgba(255,255,255,0.98),rgba(250,204,21,0.09))] shadow-sm">
-            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.18),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(250,204,21,0.20),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.78),rgba(255,255,255,0.92))] shadow-[0_22px_70px_rgba(76,29,149,0.12)] backdrop-blur">
+            <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px]">
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-800">Проект</div>
+                <div className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-800">Проект</div>
                 <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     {editingField === "title" && !readOnly ? (
@@ -1049,27 +1173,27 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => !readOnly && setEditingField("title")}
                         disabled={readOnly}
-                        className={`block break-words text-left text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl ${
+                        className={`block break-words text-left text-4xl font-black tracking-tight text-zinc-950 sm:text-5xl ${
                           readOnly ? "cursor-default" : "rounded-2xl outline-none transition hover:text-violet-900 focus:ring-4 focus:ring-violet-100"
                         }`}
                       >
                         {project.title}
                       </button>
                     )}
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div className="mt-5 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-sm font-black shadow-[0_12px_28px_rgba(24,24,27,0.08)] ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
-                        Статус: {PROJECT_STATUS_LABEL[project.status]}
+                        {PROJECT_STATUS_LABEL[project.status]}
                       </button>
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-base font-bold shadow-sm ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-sm font-black shadow-[0_12px_28px_rgba(24,24,27,0.08)] ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         Мяч: {PROJECT_BALL_LABEL[project.ball]}
                       </button>
@@ -1102,16 +1226,17 @@ export default function ProjectDetailPage() {
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ответственный</div>
                     <div className="mt-1 text-sm font-semibold text-zinc-950">{project.owner.displayName}</div>
                   </div>
-                  <div className={heroStatCard}>
+                  <div className={`${heroStatCard} sm:col-span-2 xl:col-span-1`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
                       {!readOnly ? (
                         <button
                           type="button"
                           onClick={() => setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
-                          className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white text-violet-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-violet-50"
+                          aria-label="Изменить даты"
                         >
-                          Изменить
+                          <CalendarIcon />
                         </button>
                       ) : null}
                     </div>
@@ -1122,28 +1247,23 @@ export default function ProjectDetailPage() {
                       {project.eventDateConfirmed ? "Дата подтверждена" : "Дата не подтверждена"}
                     </div>
                     {editingField === "eventDates" && !readOnly ? (
-                      <div className="mt-3 space-y-2">
-                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                          <input
-                            type="date"
-                            value={eventStartDate}
-                            onChange={(e) => setEventStartDate(e.target.value)}
-                            className={inputField}
-                          />
-                          <input
-                            type="date"
-                            value={eventEndDate}
-                            onChange={(e) => setEventEndDate(e.target.value)}
-                            className={inputField}
-                          />
-                        </div>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-700">
+                      <div className="mt-3 space-y-3">
+                        <ProjectEventDatePicker
+                          startDate={eventStartDate}
+                          endDate={eventEndDate}
+                          onRangeChange={(start, end) => {
+                            setEventStartDate(start);
+                            setEventEndDate(end);
+                          }}
+                        />
+                        <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-bold text-zinc-700 shadow-sm">
+                          <span>Дата подтверждена</span>
                           <input
                             type="checkbox"
                             checked={eventDateConfirmed}
                             onChange={(e) => setEventDateConfirmed(e.target.checked)}
+                            className="h-5 w-5 accent-violet-600"
                           />
-                          Дата подтверждена
                         </label>
                         <div className="flex gap-2">
                           <button
@@ -1185,8 +1305,8 @@ export default function ProjectDetailPage() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="rounded-2xl border border-white/80 bg-white/92 p-3 shadow-sm">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Быстрые действия</div>
+                <div className="rounded-[1.4rem] border border-white/85 bg-white/78 p-3 shadow-[0_16px_42px_rgba(24,24,27,0.08)] backdrop-blur">
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Действия</div>
                   <div className="mt-3 flex flex-col gap-2">
                     <Link
                       href={buildProjectCatalogHref({
@@ -1198,7 +1318,7 @@ export default function ProjectDetailPage() {
                         e.preventDefault();
                         openProjectCatalogEntry();
                       }}
-                      className={`${primaryBtn} w-full text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                      className={`${primaryBtn} w-full rounded-2xl py-3 text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
                       aria-disabled={readOnly}
                     >
                       Каталог → реквизит
@@ -1208,7 +1328,7 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
-                        className={`${secondaryBtn} w-full justify-center`}
+                        className={`${secondaryBtn} w-full justify-center rounded-2xl py-3`}
                         title={
                           canArchiveProject
                             ? undefined

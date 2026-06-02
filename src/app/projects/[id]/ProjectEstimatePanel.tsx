@@ -229,6 +229,22 @@ function isEditableOrderStatus(status: string) {
   return EDITABLE_ORDER_STATUSES.includes(status as (typeof EDITABLE_ORDER_STATUSES)[number]);
 }
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M12 3a1 1 0 011 1v8.59l2.3-2.3a1 1 0 111.4 1.42l-4 4a1 1 0 01-1.4 0l-4-4a1 1 0 111.4-1.42l2.3 2.3V4a1 1 0 011-1zM5 17a1 1 0 011 1v1h12v-1a1 1 0 112 0v1.5A1.5 1.5 0 0118.5 21h-13A1.5 1.5 0 014 19.5V18a1 1 0 011-1z" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden>
+      <path d="M12 8a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+    </svg>
+  );
+}
+
 function formatOrderMoney(n: number) {
   return formatMoneyRub(n);
 }
@@ -724,8 +740,10 @@ export function ProjectEstimatePanel({
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
   const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [downloadOpen, setDownloadOpen] = React.useState(false);
   const versionPickerWrapRef = React.useRef<HTMLDivElement>(null);
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
+  const downloadWrapRef = React.useRef<HTMLDivElement>(null);
   const saveBarRef = React.useRef<HTMLDivElement | null>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
@@ -823,6 +841,7 @@ export function ProjectEstimatePanel({
             setError(null);
             setVersionPickerOpen(false);
             setActionsOpen(false);
+            setDownloadOpen(false);
           }
         })
         .catch(() => {
@@ -847,17 +866,19 @@ export function ProjectEstimatePanel({
   }, [load, selectedVersion]);
 
   React.useEffect(() => {
-    if (!versionPickerOpen && !actionsOpen) return;
+    if (!versionPickerOpen && !actionsOpen && !downloadOpen) return;
     function handlePointerDown(e: MouseEvent) {
       const t = e.target as Node;
       if (versionPickerWrapRef.current?.contains(t)) return;
       if (actionsWrapRef.current?.contains(t)) return;
+      if (downloadWrapRef.current?.contains(t)) return;
       setVersionPickerOpen(false);
       setActionsOpen(false);
+      setDownloadOpen(false);
     }
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [versionPickerOpen, actionsOpen]);
+  }, [versionPickerOpen, actionsOpen, downloadOpen]);
 
   function refreshActivity() {
     window.dispatchEvent(new CustomEvent("project-activity-refresh"));
@@ -1491,55 +1512,6 @@ export function ProjectEstimatePanel({
   return (
     <div className="space-y-4 rounded-[1.75rem] border border-white/70 bg-white/80 p-3 shadow-[0_18px_55px_rgba(24,24,27,0.10)] backdrop-blur sm:p-4">
       <UnitPresetDatalist />
-      <div className="overflow-hidden rounded-[1.5rem] border border-violet-100 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.14),transparent_34%),linear-gradient(135deg,rgba(250,245,255,0.95),rgba(255,255,255,0.92),rgba(255,251,235,0.72))] px-4 py-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-700">
-                Финансы
-              </span>
-              <EstimateHelpLegend title="Как работать со сметами">
-                В проекте может быть несколько отдельных смет: основная, доп. соглашение, отдельный блок подрядчиков.
-                В итог проекта попадают только сметы с отметкой «В итогах проекта». Заявку можно подтянуть в одну смету,
-                чтобы финансы не посчитались дважды.
-              </EstimateHelpLegend>
-            </div>
-            <div className="mt-2 text-2xl font-black tracking-tight text-zinc-950 sm:text-3xl">Сметы проекта</div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-500">
-              <span className="rounded-full border border-white/70 bg-white/70 px-3 py-1">
-                {data?.versions.length ?? 0} смет
-              </span>
-              {currentVersionMeta ? (
-                <span className="rounded-full border border-violet-100 bg-white/70 px-3 py-1 text-violet-800">
-                  {currentVersionMeta.includeInProjectTotals ? "В итогах проекта" : "Не входит в итог"}
-                </span>
-              ) : null}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            {vn != null ? (
-              <>
-                <a
-                  href={exportHrefInternal}
-                  className="rounded-xl border border-emerald-600/35 bg-emerald-50/90 px-3 py-2 text-xs font-extrabold text-emerald-900 shadow-sm hover:bg-emerald-100"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  XLSX внутр.
-                </a>
-                <a
-                  href={exportHrefClient}
-                  className="rounded-xl border border-indigo-500/35 bg-indigo-50/90 px-3 py-2 text-xs font-extrabold text-indigo-950 shadow-sm hover:bg-indigo-100"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  XLSX клиент
-                </a>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -1563,24 +1535,25 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="grid gap-4 rounded-[1.5rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.72),rgba(255,251,235,0.42))] p-4 shadow-[0_18px_50px_rgba(76,29,149,0.10)] lg:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-violet-100 bg-white/75 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-violet-700">
-                  Смета
-                </span>
-                <span className="text-xs font-semibold text-zinc-500">
-                  отдельный финансовый документ проекта
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-[1.75rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.78),rgba(255,251,235,0.38))] p-4 shadow-[0_20px_58px_rgba(76,29,149,0.12)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-700">Финансы</span>
+                  <EstimateHelpLegend title="Как работать со сметами">
+                    Создавай отдельные сметы для основного договора и доп. соглашений. В общий итог проекта попадают только сметы с отметкой «В итогах проекта».
+                  </EstimateHelpLegend>
+                </div>
+                <div className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Сметы проекта</div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
-                    className="inline-flex min-h-16 min-w-[17rem] items-center justify-between gap-4 rounded-[1.25rem] border border-white/80 bg-white/90 px-4 py-3 text-left shadow-[0_14px_35px_rgba(24,24,27,0.10)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white"
+                    className="inline-flex min-h-16 min-w-[17rem] items-center justify-between gap-4 rounded-[1.25rem] border border-white/85 bg-white/88 px-4 py-3 text-left shadow-[0_14px_35px_rgba(24,24,27,0.10)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
                       setActionsOpen(false);
+                      setDownloadOpen(false);
                     }}
                   >
                     <span>
@@ -1609,13 +1582,13 @@ export function ProjectEstimatePanel({
                         >
                           <span className="min-w-0">
                             <span className="block font-semibold">{v.title?.trim() || `Смета ${v.versionNumber}`}</span>
-                            <span className="block text-xs text-zinc-500">
-                              {v.includeInProjectTotals ? "Учитывается в финансах проекта" : "Не входит в итог проекта"}
-                            </span>
+                          <span className="block text-xs text-zinc-500">
+                            {v.includeInProjectTotals ? "Учитывается в финансах проекта" : "Не входит в итог проекта"}
                           </span>
-                          {v.isPrimary ? (
+                        </span>
+                          {v.includeInProjectTotals ? (
                             <span className="rounded-full border border-violet-200 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
-                              первая
+                              итог
                             </span>
                           ) : null}
                         </button>
@@ -1627,37 +1600,65 @@ export function ProjectEstimatePanel({
                 {currentVersionMeta ? (
                   <>
                     <span
-                      className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-extrabold shadow-sm ${
-                        currentVersionMeta.isPrimary
-                          ? "border border-violet-200 bg-white/80 text-violet-800"
-                          : "border border-zinc-200 bg-white/70 text-zinc-700"
-                      }`}
+                      className="inline-flex items-center rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-xs font-extrabold text-violet-800 shadow-sm"
                     >
                       {currentVersionMeta.includeInProjectTotals ? "В итогах проекта" : "Не входит в итог"}
                     </span>
                     <span className="rounded-full border border-white/70 bg-white/55 px-3 py-1.5 text-xs font-semibold text-zinc-500">
-                      {new Date(currentVersionMeta.createdAt).toLocaleDateString("ru-RU")} · {currentVersionMeta.createdBy.displayName}
+                      {new Date(currentVersionMeta.createdAt).toLocaleDateString("ru-RU")}
                     </span>
                   </>
                 ) : null}
+                </div>
               </div>
-            </div>
 
-            {!readOnly ? (
+              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+                {vn != null ? (
+                  <div className="relative" ref={downloadWrapRef}>
+                    <button
+                      type="button"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/80 bg-white/85 text-violet-800 shadow-[0_14px_35px_rgba(24,24,27,0.10)] transition hover:-translate-y-0.5 hover:bg-white"
+                      aria-label="Скачать смету"
+                      onClick={() => {
+                        setDownloadOpen((v) => !v);
+                        setActionsOpen(false);
+                        setVersionPickerOpen(false);
+                      }}
+                    >
+                      <DownloadIcon />
+                    </button>
+                    {downloadOpen ? (
+                      <div className={menuPanel}>
+                        <a href={exportHrefInternal} className={menuAction} target="_blank" rel="noreferrer">
+                          <span>
+                            <span className="block font-semibold">Внутренняя XLSX</span>
+                            <span className="block text-xs text-zinc-500">Себестоимость, оплата, маржа</span>
+                          </span>
+                        </a>
+                        <a href={exportHrefClient} className={menuAction} target="_blank" rel="noreferrer">
+                          <span>
+                            <span className="block font-semibold">Клиентская XLSX</span>
+                            <span className="block text-xs text-zinc-500">Только то, что уходит клиенту</span>
+                          </span>
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {!readOnly ? (
               <div className="relative flex items-start justify-start lg:justify-end" ref={actionsWrapRef}>
                 <button
                   type="button"
                   disabled={busy}
-                  className="inline-flex min-h-12 items-center gap-2 rounded-[1.1rem] border border-white/70 bg-zinc-950 px-4 py-3 text-sm font-extrabold text-white shadow-[0_14px_35px_rgba(24,24,27,0.18)] transition hover:-translate-y-0.5 disabled:opacity-50"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/80 bg-zinc-950 text-white shadow-[0_14px_35px_rgba(24,24,27,0.18)] transition hover:-translate-y-0.5 disabled:opacity-50"
+                  aria-label="Действия со сметой"
                   onClick={() => {
                     setActionsOpen((v) => !v);
                     setVersionPickerOpen(false);
+                    setDownloadOpen(false);
                   }}
                 >
-                  Управление
-                  <svg viewBox="0 0 20 20" className={`h-4 w-4 text-white/70 transition ${actionsOpen ? "rotate-180" : ""}`} aria-hidden>
-                    <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
-                  </svg>
+                  <MoreIcon />
                 </button>
                 {actionsOpen ? (
                   <div className={menuPanel}>
@@ -1761,7 +1762,9 @@ export function ProjectEstimatePanel({
                   </div>
                 ) : null}
               </div>
-            ) : null}
+                ) : null}
+              </div>
+            </div>
           </div>
 
           {!data.current ? (

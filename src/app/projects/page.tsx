@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
+import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import {
@@ -618,8 +619,9 @@ function ProjectsContent() {
             </ul>
           ) : null}
 
-          {createModalOpen ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm">
+          {createModalOpen && typeof document !== "undefined"
+            ? createPortal(
+            <div className="fixed inset-0 z-[1000] flex min-h-dvh items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-md">
               <form
                 onSubmit={createProject}
                 className="w-full max-w-2xl overflow-visible rounded-[2rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(245,243,255,0.94))] p-5 shadow-[0_30px_100px_rgba(24,24,27,0.28)]"
@@ -713,8 +715,10 @@ function ProjectsContent() {
                   </button>
                 </div>
               </form>
-            </div>
-          ) : null}
+            </div>,
+            document.body,
+          )
+            : null}
         </div>
       )}
     </AppShell>

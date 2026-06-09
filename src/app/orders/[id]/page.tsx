@@ -186,6 +186,22 @@ const orderDangerButtonClass =
 const orderWarningButtonClass =
   "rounded-2xl border border-amber-300/70 bg-[linear-gradient(135deg,#f59e0b,#d97706)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(217,119,6,0.2)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(217,119,6,0.24)] disabled:translate-y-0 disabled:opacity-50";
 
+function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92-9.06 9.06zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function fmtDate(s: string) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
@@ -782,6 +798,8 @@ export default function OrderDetailsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const orderEditSaveRef = React.useRef<HTMLButtonElement | null>(null);
+  const [showFloatingOrderSave, setShowFloatingOrderSave] = React.useState(false);
 
   type ReturnLineDraft = { comment: string; rows: SplitRowRaw[] };
   const [declareOpen, setDeclareOpen] = React.useState(false);
@@ -970,6 +988,27 @@ export default function OrderDetailsPage() {
     if (!order || !isWarehouse) return;
     setInternalNoteDraft(order.warehouseInternalNote ?? "");
   }, [order, isWarehouse]);
+
+  React.useEffect(() => {
+    if (!isEditing || typeof IntersectionObserver === "undefined") {
+      setShowFloatingOrderSave(false);
+      return;
+    }
+
+    const saveButton = orderEditSaveRef.current;
+    if (!saveButton) {
+      setShowFloatingOrderSave(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowFloatingOrderSave(!entry.isIntersecting),
+      { threshold: 0.1 },
+    );
+
+    observer.observe(saveButton);
+    return () => observer.disconnect();
+  }, [isEditing]);
 
   React.useEffect(() => {
     if (!order) return;
@@ -1636,9 +1675,11 @@ export default function OrderDetailsPage() {
                   setInternalNoteOpen((v) => !v);
                   setInternalNoteDraft(order.warehouseInternalNote ?? "");
                 }}
-                className={orderSecondaryButtonClass + " px-3 py-1.5 text-xs"}
+                aria-label={internalNoteOpen ? "Закрыть внутренний комментарий" : "Редактировать внутренний комментарий"}
+                title={internalNoteOpen ? "Закрыть" : "Редактировать внутренний комментарий"}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-zinc-200/80 bg-white/85 text-zinc-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-violet-700 disabled:translate-y-0 disabled:opacity-50"
               >
-                {internalNoteOpen ? "Закрыть" : "Редактировать"}
+                {internalNoteOpen ? <CloseIcon /> : <PencilIcon />}
               </button>
             </div>
             {order.warehouseInternalNote && !internalNoteOpen ? (
@@ -1709,6 +1750,7 @@ export default function OrderDetailsPage() {
                 {isEditing ? (
                   <>
                     <button
+                      ref={orderEditSaveRef}
                       type="button"
                       disabled={busy}
                       onClick={saveOrderEdit}
@@ -2836,6 +2878,26 @@ export default function OrderDetailsPage() {
           )}
         </div>
         ) : null}
+
+        {showFloatingOrderSave && typeof document !== "undefined"
+          ? createPortal(
+              <button
+                type="button"
+                disabled={busy}
+                onClick={saveOrderEdit}
+                className="fixed bottom-6 right-6 z-[170] inline-flex items-center gap-2 rounded-2xl border border-violet-500/30 bg-[linear-gradient(135deg,#7c1fff,#b409e8)] px-5 py-3 text-sm font-black text-white shadow-[0_18px_45px_rgba(124,31,255,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_52px_rgba(124,31,255,0.36)] disabled:translate-y-0 disabled:opacity-50"
+              >
+                {busy
+                  ? "Сохраняю…"
+                  : isClosedServiceCostEdit
+                    ? "Сохранить затраты"
+                    : isGreenwich
+                      ? "Запросить изменения"
+                      : "Сохранить заявку"}
+              </button>,
+              document.body,
+            )
+          : null}
       </div>
   );
 

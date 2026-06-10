@@ -16,17 +16,17 @@ import { RelaxZone } from "./RelaxZone";
 import { WowstorgIdleText } from "./WowstorgIdleText";
 
 const DASH_SECTION_SHELL =
-  "rounded-3xl border border-violet-200/90 bg-[linear-gradient(135deg,rgba(124,58,237,0.14),rgba(250,204,21,0.10))] p-4 shadow-sm";
+  "rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_32%),radial-gradient(circle_at_92%_8%,rgba(250,204,21,0.14),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.84),rgba(250,247,255,0.72))] p-4 shadow-[0_24px_70px_rgba(76,29,149,0.10)] ring-1 ring-violet-100/70 backdrop-blur-xl sm:p-5";
 const DASH_CARD =
-  "rounded-2xl border border-violet-100/90 bg-white/95 p-4 shadow-sm backdrop-blur-[2px]";
-const DASH_SUBCARD = "rounded-2xl border border-zinc-200/90 bg-white/95 overflow-hidden";
+  "rounded-[1.55rem] border border-white/80 bg-white/78 p-4 shadow-[0_14px_42px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/55 backdrop-blur-xl";
+const DASH_SUBCARD = "overflow-hidden rounded-[1.45rem] border border-white/80 bg-white/82 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/50 backdrop-blur-xl";
 const BTN_PRIMARY =
-  "rounded-lg border border-violet-200/90 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 transition hover:bg-violet-100 inline-flex items-center";
+  "inline-flex items-center rounded-xl border border-violet-200/80 bg-white/75 px-3 py-1.5 text-sm font-semibold text-violet-800 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-violet-50 hover:shadow-md";
 const BTN_WARM =
-  "rounded-lg border border-amber-300/90 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 inline-flex items-center";
-const BADGE_PRIMARY = "rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-800";
-const BADGE_NEUTRAL = "rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-semibold text-zinc-700";
-const LINK_SUBTLE = "rounded-lg border border-violet-200/80 bg-white px-2.5 py-1 text-xs font-semibold text-violet-700 transition hover:bg-violet-50";
+  "inline-flex items-center rounded-xl border border-amber-200/90 bg-white/75 px-3 py-1.5 text-sm font-semibold text-amber-900 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-amber-50 hover:shadow-md";
+const BADGE_PRIMARY = "rounded-full border border-violet-200/80 bg-white/70 px-2.5 py-1 text-xs font-semibold text-violet-800 shadow-sm backdrop-blur-md";
+const BADGE_NEUTRAL = "rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-semibold text-zinc-700 shadow-sm backdrop-blur-md";
+const LINK_SUBTLE = "rounded-xl border border-violet-200/70 bg-white/68 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-violet-50 hover:shadow-md";
 const BTN_ICON_ROUND =
   "group inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/90 bg-white/90 text-zinc-600 shadow-sm backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-violet-300/80 hover:bg-violet-50 hover:text-violet-800";
 
@@ -774,16 +774,16 @@ function operationKindLabel(kind: OperationsEvent["kind"]): string {
 }
 
 function operationPillClass(urgency: OperationsEvent["urgency"]) {
-  if (urgency === "critical" || urgency === "overdue") return "border-rose-200 bg-rose-50 text-rose-800";
-  if (urgency === "today") return "border-violet-200 bg-violet-50 text-violet-800";
-  if (urgency === "soon") return "border-amber-200 bg-amber-50 text-amber-900";
-  return "border-zinc-200 bg-zinc-50 text-zinc-700";
+  if (urgency === "critical" || urgency === "overdue") return "border-rose-200/80 bg-rose-50/85 text-rose-800 shadow-rose-950/5";
+  if (urgency === "today") return "border-violet-200/80 bg-violet-50/85 text-violet-800 shadow-violet-950/5";
+  if (urgency === "soon") return "border-amber-200/90 bg-amber-50/85 text-amber-900 shadow-amber-950/5";
+  return "border-zinc-200/80 bg-white/75 text-zinc-700 shadow-zinc-950/5";
 }
 
 function signalClass(severity: OperationsSignal["severity"]) {
-  if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-950";
-  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
-  return "border-sky-200 bg-sky-50 text-sky-950";
+  if (severity === "critical") return "border-rose-200/80 bg-[linear-gradient(135deg,rgba(255,241,242,0.96),rgba(255,255,255,0.82))] text-rose-950 shadow-rose-950/5";
+  if (severity === "warning") return "border-amber-200/90 bg-[linear-gradient(135deg,rgba(255,251,235,0.96),rgba(255,255,255,0.82))] text-amber-950 shadow-amber-950/5";
+  return "border-sky-200/80 bg-[linear-gradient(135deg,rgba(240,249,255,0.96),rgba(255,255,255,0.82))] text-sky-950 shadow-sky-950/5";
 }
 
 function signalEntityLabel(kind: OperationsSignal["entityKind"]) {
@@ -798,12 +798,12 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
     <Link
       href={event.href}
       className={[
-        "block rounded-xl border px-3 py-2 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50/40",
+        "block rounded-[1.15rem] border px-3.5 py-3 shadow-[0_9px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/55 backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(76,29,149,0.10)]",
         isPersonalTask
-          ? "border-amber-300 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.96))] ring-1 ring-amber-100"
+          ? "border-amber-300/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.84))] ring-amber-100"
           : event.urgency === "critical" || event.urgency === "overdue"
-            ? "border-rose-200 bg-white"
-            : "border-zinc-200 bg-white",
+            ? "border-rose-200/80 bg-[linear-gradient(135deg,rgba(255,241,242,0.94),rgba(255,255,255,0.84))]"
+            : "border-white/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.90),rgba(248,247,255,0.72))]",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
@@ -818,7 +818,7 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
           </div>
           {event.subtitle ? <div className="mt-0.5 truncate text-xs text-zinc-500">{event.subtitle}</div> : null}
         </div>
-        <span className={["shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold", operationPillClass(event.urgency)].join(" ")}>
+        <span className={["shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-sm backdrop-blur-md", operationPillClass(event.urgency)].join(" ")}>
           {operationKindLabel(event.kind)}
         </span>
       </div>
@@ -901,19 +901,19 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
     <div className="space-y-3">
       <div className={DASH_CARD}>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
+          <div className="rounded-[1.35rem] border border-violet-200/75 bg-[linear-gradient(135deg,rgba(245,243,255,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(124,58,237,0.08)] ring-1 ring-white/70 backdrop-blur-md">
             <div className="text-xs font-semibold text-violet-700">Сегодня</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-violet-950">{data?.summary.todayCount ?? 0}</div>
           </div>
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="rounded-[1.35rem] border border-rose-200/75 bg-[linear-gradient(135deg,rgba(255,241,242,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(190,18,60,0.07)] ring-1 ring-white/70 backdrop-blur-md">
             <div className="text-xs font-semibold text-rose-700">Просрочено</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-rose-950">{data?.summary.overdueCount ?? 0}</div>
           </div>
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="rounded-[1.35rem] border border-amber-200/85 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(180,83,9,0.07)] ring-1 ring-white/70 backdrop-blur-md">
             <div className="text-xs font-semibold text-amber-800">Сигналы</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-amber-950">{data?.summary.signalCount ?? 0}</div>
           </div>
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <div className="rounded-[1.35rem] border border-white/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(248,250,252,0.74))] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-violet-100/55 backdrop-blur-md">
             <div className="text-xs font-semibold text-zinc-600">Ближайшая заявка</div>
             <div className="mt-1 truncate text-sm font-bold text-zinc-950">{data?.summary.nearestOrderTitle ?? "Нет активных"}</div>
           </div>
@@ -924,13 +924,13 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
         <div className={`${DASH_CARD} xl:col-span-7`}>
-          <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
-            <div className="text-sm font-semibold text-zinc-900">Сегодня</div>
+          <div className="flex items-center justify-between gap-3 border-b border-violet-100/70 pb-3">
+            <div className="text-sm font-black tracking-tight text-zinc-950">Сегодня</div>
             <Link href="/tasks" className={LINK_SUBTLE}>Доска</Link>
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {!loading && !error && data?.today.length === 0 ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 md:col-span-2">
+              <div className="rounded-[1.2rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.80))] px-4 py-3 text-sm font-semibold text-emerald-900 shadow-sm md:col-span-2">
                 Сегодня спокойно.
               </div>
             ) : null}
@@ -941,8 +941,8 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         </div>
 
         <div className={`${DASH_CARD} xl:col-span-5`}>
-          <div className="flex items-center justify-between gap-3 border-b border-zinc-100 pb-3">
-            <div className="text-sm font-semibold text-zinc-900">Сигналы</div>
+          <div className="flex items-center justify-between gap-3 border-b border-violet-100/70 pb-3">
+            <div className="text-sm font-black tracking-tight text-zinc-950">Сигналы</div>
             <div className="flex items-center gap-3">
               <Link href="/orders" className={LINK_SUBTLE}>Заявки</Link>
               <Link href="/projects" className={LINK_SUBTLE}>Проекты</Link>
@@ -950,12 +950,12 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           </div>
           <div className="mt-3 space-y-2">
             {!loading && !error && data?.signals.length === 0 ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              <div className="rounded-[1.2rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.80))] px-4 py-3 text-sm font-semibold text-emerald-900 shadow-sm">
                 Критичных сигналов нет.
               </div>
             ) : null}
             {(data?.signals ?? []).slice(0, 5).map((signal) => (
-              <div key={signal.id} className={["rounded-2xl border px-3 py-2 shadow-sm transition hover:-translate-y-0.5", signalClass(signal.severity)].join(" ")}>
+              <div key={signal.id} className={["rounded-[1.2rem] border px-3.5 py-3 shadow-[0_9px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/60 backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(76,29,149,0.10)]", signalClass(signal.severity)].join(" ")}>
                 <div className="flex items-start justify-between gap-2">
                   <Link href={signal.href} className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -991,12 +991,12 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
       <div className={DASH_CARD}>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold text-zinc-900">Ближайшие дни</div>
+          <div className="text-sm font-black tracking-tight text-zinc-950">Ближайшие дни</div>
           <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
           {(data?.upcomingDays ?? []).map((day) => (
-            <div key={day.date} className="min-h-[9rem] rounded-2xl border border-zinc-200 bg-zinc-50/70 p-2">
+            <div key={day.date} className="min-h-[9rem] rounded-[1.35rem] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(248,247,255,0.58))] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.80)] ring-1 ring-violet-100/45 backdrop-blur-md">
               <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
                 <div className="text-sm font-bold text-zinc-950">{day.label}</div>
                 <div className="flex items-center gap-1.5">
@@ -1008,7 +1008,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
               </div>
               <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
                 {day.events.length === 0 ? (
-                  <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-500">Пусто</div>
+                  <div className="rounded-xl border border-white/80 bg-white/70 px-3 py-2 text-xs font-medium text-zinc-500 shadow-sm">Пусто</div>
                 ) : (
                   day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)
                 )}

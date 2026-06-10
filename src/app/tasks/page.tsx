@@ -693,6 +693,144 @@ function TaskCard({
   );
 }
 
+function ArchivedChecklistPreview({ task }: { task: BoardTask }) {
+  if (task.checklistTotal === 0) {
+    return (
+      <div className="border-t border-black/25 bg-[#283040] px-3 py-2.5 text-xs font-medium text-sky-400">
+        Подзадач нет
+      </div>
+    );
+  }
+
+  const progressPct = Math.round((task.checklistDone / task.checklistTotal) * 100);
+
+  return (
+    <div className="border-t border-black/25 bg-[#283040]">
+      <div className="flex w-full items-center gap-2 px-3 py-2.5">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
+          <div
+            className={[
+              "h-full rounded-full",
+              progressPct === 100 ? "bg-emerald-400" : "bg-white/45",
+            ].join(" ")}
+            style={{ width: `${progressPct > 0 ? Math.max(progressPct, 6) : 0}%` }}
+          />
+        </div>
+        <span className="shrink-0 text-[11px] tabular-nums text-slate-300/90">
+          {task.checklistDone}/{task.checklistTotal}
+        </span>
+      </div>
+      <div className="space-y-1 px-3 pb-3">
+        {task.checklistItems.map((item) => (
+          <div key={item.id} className="flex items-start gap-2 text-xs leading-snug text-slate-100/82">
+            <span
+              className={[
+                "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold",
+                item.isDone
+                  ? "border-emerald-400 bg-emerald-500 text-white"
+                  : "border-white/40 bg-white/15 text-white/40",
+              ].join(" ")}
+            >
+              {item.isDone ? "✓" : ""}
+            </span>
+            <span className={item.isDone ? "line-through opacity-65" : ""}>{item.title}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ArchivedTaskCard({
+  task,
+  onRestore,
+}: {
+  task: BoardTask & { columnTitle: string };
+  onRestore: (taskId: string) => void;
+}) {
+  const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
+  const taskDone = Boolean(task.completedAt);
+  const textTone = cardTextColor(task.color);
+
+  return (
+    <article
+      className={[
+        "group overflow-hidden rounded-xl border border-black/10 bg-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.18)]",
+        textTone,
+      ].join(" ")}
+      style={{ backgroundColor: task.color ?? "#334155" }}
+    >
+      <div className="px-3 py-3">
+        <div className="flex items-start gap-2">
+          <span
+            className={[
+              "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold",
+              taskDone
+                ? "border-emerald-400 bg-emerald-500 text-white shadow-sm shadow-emerald-950/20"
+                : "border-white/40 bg-white/15 text-white/50",
+            ].join(" ")}
+          >
+            {taskDone ? "✓" : ""}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div
+              className={[
+                "px-1 py-0.5 text-sm font-semibold leading-snug",
+                taskDone ? "opacity-70 line-through" : "",
+              ].join(" ")}
+              title={task.title}
+            >
+              {task.title}
+            </div>
+            <TaskCardContext task={task} />
+            {task.description ? (
+              <div className="mt-1 whitespace-pre-wrap break-words px-1 py-0.5 text-xs leading-snug text-slate-100/80">
+                {task.description}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => onRestore(task.id)}
+            className="shrink-0 rounded-lg border border-white/20 bg-white/12 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/20"
+          >
+            Вернуть
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
+          <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+            {task.columnTitle}
+          </span>
+          {task.dueDate ? (
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+              {fmtDate(task.dueDate)}
+            </span>
+          ) : null}
+          {isUrgent ? (
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
+              {PRIORITY_LABEL[task.priority]}
+            </span>
+          ) : null}
+          {task.assignee ? (
+            <span
+              className="ml-auto inline-flex items-center gap-2 rounded-full bg-white/12 py-0.5 pl-1 pr-2 text-[11px] font-semibold text-white"
+              title={task.assignee.displayName}
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-pink-600 text-[11px] font-bold">
+                {initials(task.assignee.displayName)}
+              </span>
+              <span className="max-w-32 truncate">{task.assignee.displayName}</span>
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <ArchivedChecklistPreview task={task} />
+    </article>
+  );
+}
+
 function ChecklistEditorItem({
   item,
   onToggle,
@@ -2068,7 +2206,7 @@ function TasksPageContent() {
             onClick={() => setArchiveOpen(false)}
             aria-label="Закрыть архив"
           />
-          <section className="relative flex max-h-[min(720px,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] shadow-[0_28px_90px_rgba(15,23,42,0.28)]">
+          <section className="relative flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/80 bg-[linear-gradient(180deg,#ffffff,#f8f7ff)] shadow-[0_28px_90px_rgba(15,23,42,0.28)]">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-violet-100 px-5 py-4">
               <div>
                 <div className="text-lg font-black text-zinc-950">Архив задач</div>
@@ -2092,32 +2230,13 @@ function TasksPageContent() {
                   Архив пока пуст.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {archiveTasks.map((task) => (
-                    <div
+                    <ArchivedTaskCard
                       key={task.id}
-                      className="flex flex-col gap-3 rounded-2xl border border-zinc-200/80 bg-white/85 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-black text-zinc-950">{task.title}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs font-bold text-zinc-500">
-                          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5">{task.columnTitle}</span>
-                          {task.dueDate ? (
-                            <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-violet-700">
-                              {fmtDate(task.dueDate)}
-                            </span>
-                          ) : null}
-                          {task.assignee ? <span>{task.assignee.displayName}</span> : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void restoreArchivedTask(task.id)}
-                        className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-bold text-violet-800 hover:bg-violet-100"
-                      >
-                        Вернуть
-                      </button>
-                    </div>
+                      task={task}
+                      onRestore={(taskId) => void restoreArchivedTask(taskId)}
+                    />
                   ))}
                 </div>
               )}

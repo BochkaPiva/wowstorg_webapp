@@ -63,6 +63,41 @@ function fmtDateTime(iso: string) {
   });
 }
 
+function EntryBody({ body }: { body: string }) {
+  const urlRe = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of body.matchAll(urlRe)) {
+    const rawUrl = match[0];
+    const index = match.index ?? 0;
+
+    if (index > lastIndex) {
+      parts.push(body.slice(lastIndex, index));
+    }
+
+    const href = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+    parts.push(
+      <a
+        key={`${rawUrl}-${index}`}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="break-all font-semibold text-violet-700 underline decoration-violet-300 underline-offset-2 hover:text-violet-900"
+      >
+        {rawUrl}
+      </a>,
+    );
+    lastIndex = index + rawUrl.length;
+  }
+
+  if (lastIndex < body.length) {
+    parts.push(body.slice(lastIndex));
+  }
+
+  return <div className="mt-1 min-w-0 whitespace-pre-wrap break-words text-zinc-800">{parts}</div>;
+}
+
 export function ProjectContactsPanel({
   projectId,
   readOnly,
@@ -330,7 +365,7 @@ export function ProjectContactsPanel({
             <li
               key={c.id}
               className={[
-                "relative rounded-2xl border bg-white p-0 shadow-sm transition-shadow hover:shadow-md",
+                "relative min-w-0 rounded-2xl border bg-white p-0 shadow-sm transition-shadow hover:shadow-md",
                 c.isActive ? CATEGORY_TONE[c.category] : "border-zinc-300 opacity-75",
               ].join(" ")}
               draggable={!readOnly}
@@ -415,7 +450,7 @@ export function ProjectContactsPanel({
                   />
                 ) : null}
 
-                <div className="rounded-xl border border-white/80 bg-white/80 p-3">
+                <div className="min-w-0 overflow-hidden rounded-xl border border-white/80 bg-white/80 p-3">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                     Переговоры
                   </div>
@@ -423,17 +458,17 @@ export function ProjectContactsPanel({
                     <p className="mt-2 text-sm text-zinc-500">Пока нет записей.</p>
                   ) : (
                     <>
-                      <ul className="mt-2 space-y-2">
+                      <ul className="mt-2 min-w-0 space-y-2">
                         {(showAllHistoryFor[c.id] ? c.entries : c.entries.slice(0, 3)).map((e) => (
                           <li
                             key={e.id}
-                            className="rounded-lg border border-zinc-100 bg-zinc-50/80 px-2 py-2 text-sm"
+                            className="min-w-0 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50/80 px-2 py-2 text-sm"
                           >
                             <div className="flex flex-wrap justify-between gap-1 text-xs text-zinc-500">
                               <span>{e.author.displayName}</span>
                               <span>{fmtDateTime(e.createdAt)}</span>
                             </div>
-                            <p className="mt-1 whitespace-pre-wrap text-zinc-800">{e.body}</p>
+                            <EntryBody body={e.body} />
                           </li>
                         ))}
                       </ul>

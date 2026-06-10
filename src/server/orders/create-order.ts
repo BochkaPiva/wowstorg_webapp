@@ -93,6 +93,20 @@ function parseDateOnlyToUtcMidnight(value: string): Date {
   return dt;
 }
 
+function addDateOnlyDays(value: string, days: number): string {
+  const [y, m, d] = value.split("-").map((v) => Number(v));
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 0, 0, 0, 0));
+  if (Number.isNaN(dt.getTime())) throw new CreateOrderError("INVALID_DATE");
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function resolveReadyByDateInput(input: CreateOrderInput, isWarehouse: boolean): string {
+  if (!isWarehouse) return input.readyByDate;
+  const warehouseReadyByDate = addDateOnlyDays(input.startDate, -1);
+  const minCalendarDay = utcTodayDateOnlyString();
+  return warehouseReadyByDate >= minCalendarDay ? warehouseReadyByDate : minCalendarDay;
+}
+
 function groupLines(lines: InputLine[]): Array<InputLine & { qty: number }> {
   const grouped = new Map<string, InputLine & { qty: number }>();
   for (const line of lines) {
@@ -138,12 +152,13 @@ export async function createOrderInTransaction(
     throw new CreateOrderError("CUSTOMER_REQUIRED");
   }
 
-  const readyByDate = parseDateOnlyToUtcMidnight(input.readyByDate);
+  const readyByDateInput = resolveReadyByDateInput(input, isWarehouse);
+  const readyByDate = parseDateOnlyToUtcMidnight(readyByDateInput);
   const startDate = parseDateOnlyToUtcMidnight(input.startDate);
   const endDate = parseDateOnlyToUtcMidnight(input.endDate);
   const minCalendarDay = utcTodayDateOnlyString();
   if (
-    input.readyByDate < minCalendarDay ||
+    readyByDateInput < minCalendarDay ||
     input.startDate < minCalendarDay ||
     input.endDate < minCalendarDay
   ) {

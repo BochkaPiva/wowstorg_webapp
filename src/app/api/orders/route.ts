@@ -69,6 +69,20 @@ const BodySchema = z.object({
   lines: z.array(LineSchema).min(1).max(500),
 });
 
+function addDateOnlyDays(value: string, days: number): string {
+  const [y, m, d] = value.split("-").map((v) => Number(v));
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 0, 0, 0, 0));
+  if (Number.isNaN(dt.getTime())) return value;
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function resolveReadyByDateInput(args: { readyByDate: string; startDate: string; isWarehouse: boolean }) {
+  if (!args.isWarehouse) return args.readyByDate;
+  const warehouseReadyByDate = addDateOnlyDays(args.startDate, -1);
+  const minCalendarDay = utcTodayDateOnlyString();
+  return warehouseReadyByDate >= minCalendarDay ? warehouseReadyByDate : minCalendarDay;
+}
+
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
@@ -100,13 +114,18 @@ export async function POST(req: Request) {
   if (!hasProjectId && !hasCustomerId && !hasCustomerName) {
     return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");
   }
-  const readyByDate = parseDateOnlyToUtcMidnight(data.readyByDate);
+  const effectiveReadyByDate = resolveReadyByDateInput({
+    readyByDate: data.readyByDate,
+    startDate: data.startDate,
+    isWarehouse,
+  });
+  const readyByDate = parseDateOnlyToUtcMidnight(effectiveReadyByDate);
   const startDate = parseDateOnlyToUtcMidnight(data.startDate);
   const endDate = parseDateOnlyToUtcMidnight(data.endDate);
 
   const minCalendarDay = utcTodayDateOnlyString();
   if (
-    data.readyByDate < minCalendarDay ||
+    effectiveReadyByDate < minCalendarDay ||
     data.startDate < minCalendarDay ||
     data.endDate < minCalendarDay
   ) {
@@ -131,7 +150,7 @@ export async function POST(req: Request) {
           actorRole: auth.user.role,
           customerId: data.customerId,
           customerName: data.customerName,
-          readyByDate: data.readyByDate,
+          readyByDate: effectiveReadyByDate,
           startDate: data.startDate,
           endDate: data.endDate,
           rentalStartPartOfDay: data.rentalStartPartOfDay,

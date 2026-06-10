@@ -9,7 +9,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
-import { catalogDatesFromStorage } from "@/lib/catalogDates";
+import { addDays, catalogDatesFromStorage, todayDateOnly } from "@/lib/catalogDates";
 import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-costs";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
@@ -671,6 +671,14 @@ export default function CartPage() {
     totalForPeriod + deliveryPriceNum + montagePriceNum + demontagePriceNum;
   const taxAmount = Math.round(totalWithServices * ORDER_TAX_RATE);
   const totalWithTax = Math.round(totalWithServices + taxAmount);
+  const checkoutReadyByDate =
+    isWarehouse && startDate
+      ? (() => {
+          const warehouseReadyByDate = addDays(startDate, -1);
+          const min = todayDateOnly();
+          return warehouseReadyByDate >= min ? warehouseReadyByDate : min;
+        })()
+      : readyByDate;
 
   const canCheckoutGreenwich =
     isGreenwich && cart.length > 0 && canSubmitCustomer;
@@ -683,7 +691,7 @@ export default function CartPage() {
     ? cart.length > 0 && Boolean(projectContext)
     : isQuickSupplement
       ? cart.length > 0 && Boolean(startDate && endDate && readyByDate)
-      : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && readyByDate);
+      : (canCheckoutGreenwich || canCheckoutWarehouse) && Boolean(startDate && endDate && checkoutReadyByDate);
 
   async function submit() {
     if (isProjectDemoCart && projectContext) {
@@ -730,7 +738,7 @@ export default function CartPage() {
         setSubmitting(false);
       }
     }
-    if (!startDate || !endDate || !readyByDate) return;
+    if (!startDate || !endDate || !checkoutReadyByDate) return;
     if (isProjectCart && !projectContext) {
       setError("Не загружены данные проекта");
       return;
@@ -822,7 +830,7 @@ export default function CartPage() {
             customerId: projectContext.customerId,
             projectId: projectContext.id,
             targetEstimateVersionId: estimateVersionId ?? undefined,
-            readyByDate,
+            readyByDate: checkoutReadyByDate,
             startDate,
             endDate,
             rentalStartPartOfDay,
@@ -839,7 +847,7 @@ export default function CartPage() {
           }
         : {
             ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
-            readyByDate,
+            readyByDate: checkoutReadyByDate,
             startDate,
             endDate,
             rentalStartPartOfDay,
@@ -1133,10 +1141,10 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                {readyByDate && startDate && endDate && !isProjectDemoCart ? (
+                {checkoutReadyByDate && startDate && endDate && !isProjectDemoCart ? (
                   <div className="co-dates">
                     <div className="co-datePill">
-                      Готовность: <strong>{formatDateRu(readyByDate)}</strong>
+                      Готовность: <strong>{formatDateRu(checkoutReadyByDate)}</strong>
                     </div>
                     <div className="co-datePill">
                       Период: <strong>{formatDateRu(startDate)}</strong> —{" "}

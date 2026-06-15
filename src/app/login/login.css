@@ -336,5 +336,20 @@
   .wow-h2 {
     display: none;
   }
+
+  .wow-form,
+  .wow-form:hover,
+  .wow-form:focus-within {
+    transform: none;
+  }
+
+  .wow-form {
+    transition: box-shadow var(--duration) var(--ease);
+  }
+
+  .wow-form:before,
+  .wow-form:after {
+    display: none;
+  }
 }
 

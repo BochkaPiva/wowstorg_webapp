@@ -52,6 +52,18 @@ type EstLine = {
   paymentStatus?: string | null;
   contractorNote?: string | null;
   contractorRequisites?: string | null;
+  internalExpenses?: EstLineInternalExpense[];
+};
+
+type EstLineInternalExpense = {
+  id: string;
+  sortOrder: number;
+  title: string | null;
+  cost: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  contractorNote: string | null;
+  contractorRequisites: string | null;
 };
 
 type RequisiteOrderLine = {
@@ -130,8 +142,20 @@ type LocalDraftLine = {
   paymentStatus: string | null;
   contractorNote: string | null;
   contractorRequisites: string | null;
+  internalExpenses: LocalDraftLineInternalExpense[];
   orderLineId: null;
   itemId: null;
+};
+
+type LocalDraftLineInternalExpense = {
+  id: string;
+  sortOrder: number;
+  title: string | null;
+  cost: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  contractorNote: string | null;
+  contractorRequisites: string | null;
 };
 
 type LocalDraftSection = {
@@ -396,7 +420,7 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
-const ESTIMATE_DRAFT_SCHEMA_VERSION = 4;
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 5;
 
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -503,6 +527,60 @@ function UnitPresetDatalist() {
   );
 }
 
+function cloneLineInternalExpenses(line: {
+  internalExpenses?: EstLineInternalExpense[] | LocalDraftLineInternalExpense[] | null;
+}): LocalDraftLineInternalExpense[] {
+  return (line.internalExpenses ?? [])
+    .map((expense, index) => ({
+      id: expense.id,
+      sortOrder: Number.isFinite(expense.sortOrder) ? expense.sortOrder : index,
+      title: expense.title?.trim() || null,
+      cost: expense.cost == null || expense.cost === "" ? null : String(expense.cost),
+      paymentMethod: expense.paymentMethod?.trim() || null,
+      paymentStatus: expense.paymentStatus?.trim() || null,
+      contractorNote: expense.contractorNote ?? null,
+      contractorRequisites: expense.contractorRequisites ?? null,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function normalizeInternalExpensesForCompare(expenses: LocalDraftLineInternalExpense[]) {
+  return [...expenses]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((expense, index) => ({
+      title: expense.title?.trim() || null,
+      cost: expense.cost == null || expense.cost === "" ? null : String(Number(expense.cost)),
+      paymentMethod: expense.paymentMethod?.trim() || null,
+      paymentStatus: expense.paymentStatus?.trim() || null,
+      contractorNote: expense.contractorNote?.trim() || null,
+      contractorRequisites: expense.contractorRequisites?.trim() || null,
+      sortOrder: index,
+    }));
+}
+
+function lineInternalTotal(line: {
+  costInternal?: string | number | null;
+  internalExpenses?: Array<{ cost?: string | number | null }> | null;
+}): number {
+  return roundMoney(
+    getNumericAmount(line.costInternal) +
+      (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0),
+  );
+}
+
+function lineCashInternalTotal(line: {
+  costInternal?: string | number | null;
+  paymentMethod?: string | null;
+  internalExpenses?: Array<{ cost?: string | number | null; paymentMethod?: string | null }> | null;
+}): number {
+  const primary = isCashPaymentMethod(line.paymentMethod) ? getNumericAmount(line.costInternal) : 0;
+  const extra = (line.internalExpenses ?? []).reduce(
+    (sum, expense) => sum + (isCashPaymentMethod(expense.paymentMethod) ? getNumericAmount(expense.cost) : 0),
+    0,
+  );
+  return roundMoney(primary + extra);
+}
+
 function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
   return sections
     .filter(
@@ -535,6 +613,7 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
         paymentStatus: line.paymentStatus ?? null,
         contractorNote: line.contractorNote ?? null,
         contractorRequisites: line.contractorRequisites ?? null,
+        internalExpenses: cloneLineInternalExpenses(line),
         orderLineId: null,
         itemId: null,
       })),
@@ -574,6 +653,7 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
         paymentStatus: line.paymentStatus?.trim() || null,
         contractorNote: line.contractorNote?.trim() || null,
         contractorRequisites: line.contractorRequisites?.trim() || null,
+        internalExpenses: normalizeInternalExpensesForCompare(line.internalExpenses ?? []),
         position: lineIndex,
         lineNumber: lineIndex + 1,
       })),
@@ -1187,6 +1267,14 @@ export function ProjectEstimatePanel({
                       patch.contractorRequisites == null ? null : String(patch.contractorRequisites),
                   };
                 }
+                if (Array.isArray(patch.internalExpenses)) {
+                  next = {
+                    ...next,
+                    internalExpenses: cloneLineInternalExpenses({
+                      internalExpenses: patch.internalExpenses as LocalDraftLineInternalExpense[],
+                    }).map((expense, index) => ({ ...expense, sortOrder: index })),
+                  };
+                }
                 const q = next.qty != null ? Number(next.qty.replace(",", ".")) : NaN;
                 const up =
                   next.unitPriceClient != null ? Number(next.unitPriceClient.replace(",", ".")) : NaN;
@@ -1234,6 +1322,7 @@ export function ProjectEstimatePanel({
       paymentStatus: null,
       contractorNote: null,
       contractorRequisites: null,
+      internalExpenses: [],
     });
   }
 
@@ -1251,6 +1340,7 @@ export function ProjectEstimatePanel({
       paymentStatus: string | null;
       contractorNote: string | null;
       contractorRequisites: string | null;
+      internalExpenses?: LocalDraftLineInternalExpense[];
     },
   ) {
     mutateLocalSections((prev) =>
@@ -1284,12 +1374,119 @@ export function ProjectEstimatePanel({
               paymentStatus: payload.paymentStatus?.trim() || null,
               contractorNote: payload.contractorNote?.trim() || null,
               contractorRequisites: payload.contractorRequisites?.trim() || null,
+              internalExpenses: cloneLineInternalExpenses({ internalExpenses: payload.internalExpenses ?? [] }),
               orderLineId: null,
               itemId: null,
             },
           ],
         };
       }),
+    );
+  }
+
+  function addLineInternalExpense(sectionId: string, lineId: string) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines.map((line) => {
+                if (line.id !== lineId) return line;
+                const nextIndex = line.internalExpenses.length;
+                return {
+                  ...line,
+                  internalExpenses: [
+                    ...line.internalExpenses,
+                    {
+                      id: makeTempId("expense"),
+                      sortOrder: nextIndex,
+                      title: null,
+                      cost: null,
+                      paymentMethod: null,
+                      paymentStatus: null,
+                      contractorNote: null,
+                      contractorRequisites: null,
+                    },
+                  ],
+                };
+              }),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function patchLineInternalExpense(
+    sectionId: string,
+    lineId: string,
+    expenseId: string,
+    patch: Partial<LocalDraftLineInternalExpense>,
+  ) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines.map((line) =>
+                line.id === lineId
+                  ? {
+                      ...line,
+                      internalExpenses: line.internalExpenses.map((expense) =>
+                        expense.id === expenseId
+                          ? {
+                              ...expense,
+                              ...(Object.prototype.hasOwnProperty.call(patch, "title")
+                                ? { title: patch.title == null ? null : String(patch.title) }
+                                : {}),
+                              ...(Object.prototype.hasOwnProperty.call(patch, "cost")
+                                ? { cost: patch.cost == null || String(patch.cost).trim() === "" ? null : String(patch.cost) }
+                                : {}),
+                              ...(Object.prototype.hasOwnProperty.call(patch, "paymentMethod")
+                                ? { paymentMethod: patch.paymentMethod?.trim() || null }
+                                : {}),
+                              ...(Object.prototype.hasOwnProperty.call(patch, "paymentStatus")
+                                ? { paymentStatus: patch.paymentStatus?.trim() || null }
+                                : {}),
+                              ...(Object.prototype.hasOwnProperty.call(patch, "contractorNote")
+                                ? { contractorNote: patch.contractorNote == null ? null : String(patch.contractorNote) }
+                                : {}),
+                              ...(Object.prototype.hasOwnProperty.call(patch, "contractorRequisites")
+                                ? {
+                                    contractorRequisites:
+                                      patch.contractorRequisites == null ? null : String(patch.contractorRequisites),
+                                  }
+                                : {}),
+                            }
+                          : expense,
+                      ),
+                    }
+                  : line,
+              ),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function deleteLineInternalExpense(sectionId: string, lineId: string, expenseId: string) {
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines.map((line) =>
+                line.id === lineId
+                  ? {
+                      ...line,
+                      internalExpenses: line.internalExpenses
+                        .filter((expense) => expense.id !== expenseId)
+                        .map((expense, index) => ({ ...expense, sortOrder: index })),
+                    }
+                  : line,
+              ),
+            }
+          : section,
+      ),
     );
   }
 
@@ -1343,6 +1540,27 @@ export function ProjectEstimatePanel({
               paymentStatus: line.paymentStatus?.trim() || null,
               contractorNote: line.contractorNote?.trim() || null,
               contractorRequisites: line.contractorRequisites?.trim() || null,
+              internalExpenses: line.internalExpenses
+                .filter(
+                  (expense) =>
+                    (expense.title?.trim() ?? "") ||
+                    (expense.cost != null && String(expense.cost).trim() !== "") ||
+                    (expense.contractorNote?.trim() ?? "") ||
+                    (expense.contractorRequisites?.trim() ?? ""),
+                )
+                .map((expense, expenseIndex) => ({
+                  id: expense.id.startsWith("draft-") ? undefined : expense.id,
+                  sortOrder: expenseIndex,
+                  title: expense.title?.trim() || null,
+                  cost:
+                    expense.cost == null || String(expense.cost).trim() === ""
+                      ? null
+                      : Number(String(expense.cost).replace(",", ".")),
+                  paymentMethod: expense.paymentMethod?.trim() || null,
+                  paymentStatus: expense.paymentStatus?.trim() || null,
+                  contractorNote: expense.contractorNote?.trim() || null,
+                  contractorRequisites: expense.contractorRequisites?.trim() || null,
+                })),
             })),
           })),
         }),
@@ -1459,11 +1677,9 @@ export function ProjectEstimatePanel({
     for (const s of sections) {
       for (const l of s.lines) {
         clientSubtotal += getNumericAmount(l.costClient);
-        const internalCost = getNumericAmount(l.costInternal);
+        const internalCost = lineInternalTotal(l);
         internalSubtotal += internalCost;
-        if (isCashPaymentMethod(l.paymentMethod)) {
-          cashInternalSubtotal += internalCost;
-        }
+        cashInternalSubtotal += lineCashInternalTotal(l);
       }
     }
     const roundedClientSubtotal = roundMoney(clientSubtotal);
@@ -1949,6 +2165,9 @@ export function ProjectEstimatePanel({
                               busy={busy}
                               onSave={saveLine}
                               onDelete={deleteLine}
+                              onAddInternalExpense={addLineInternalExpense}
+                              onPatchInternalExpense={patchLineInternalExpense}
+                              onDeleteInternalExpense={deleteLineInternalExpense}
                             />
                           ))}
 
@@ -2207,7 +2426,7 @@ function EstimateSectionBlock({
     sec.lines.reduce((sum, line) => sum + getNumericAmount(line.costClient), 0),
   );
   const sectionInternalSubtotal = roundMoney(
-    sec.lines.reduce((sum, line) => sum + getNumericAmount(line.costInternal), 0),
+    sec.lines.reduce((sum, line) => sum + lineInternalTotal(line), 0),
   );
 
   return (
@@ -2475,6 +2694,9 @@ function LineEditor({
   busy,
   onSave,
   onDelete,
+  onAddInternalExpense,
+  onPatchInternalExpense,
+  onDeleteInternalExpense,
 }: {
   sectionId: string;
   sectionKind: "LOCAL" | "CONTRACTOR";
@@ -2484,6 +2706,14 @@ function LineEditor({
   busy: boolean;
   onSave: (sectionId: string, id: string, p: Record<string, unknown>) => void;
   onDelete: (sectionId: string, id: string) => void;
+  onAddInternalExpense?: (sectionId: string, lineId: string) => void;
+  onPatchInternalExpense?: (
+    sectionId: string,
+    lineId: string,
+    expenseId: string,
+    patch: Partial<LocalDraftLineInternalExpense>,
+  ) => void;
+  onDeleteInternalExpense?: (sectionId: string, lineId: string, expenseId: string) => void;
 }) {
   const isContractor = sectionKind === "CONTRACTOR";
   const paymentStatusRaw = "paymentStatus" in line ? line.paymentStatus : null;
@@ -2501,6 +2731,8 @@ function LineEditor({
     const paymentMethodRaw = ("paymentMethod" in line ? line.paymentMethod : null)?.trim() || "";
     const contractorNote = "contractorNote" in line ? (line.contractorNote ?? "") : "";
     const contractorRequisites = "contractorRequisites" in line ? (line.contractorRequisites ?? "") : "";
+    const internalExpenses =
+      "internalExpenses" in line ? ((line.internalExpenses ?? []) as LocalDraftLineInternalExpense[]) : [];
     const clientSum = displayLocalLineClientSum(line);
     const contractorClientGrid =
       "grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1.1fr)_5.5rem_5.5rem_6rem_7rem]";
@@ -2618,7 +2850,12 @@ function LineEditor({
         </div>
 
         <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-zinc-600">Внутреннее</div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-600">Внутреннее</div>
+            <div className="text-[11px] font-semibold tabular-nums text-zinc-600">
+              Всего: {formatMoneyRub(lineInternalTotal(line))} ₽
+            </div>
+          </div>
           <div className="grid gap-2 xl:grid-cols-[6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Внутр. ₽
@@ -2701,6 +2938,160 @@ function LineEditor({
               />
             </label>
           </div>
+
+          {internalExpenses.length > 0 ? (
+            <div className="mt-3 space-y-2 border-t border-dashed border-zinc-200 pt-3">
+              {internalExpenses.map((expense, expenseIndex) => {
+                const expensePaymentMethod = expense.paymentMethod?.trim() || "";
+                const expensePaymentStatus = expense.paymentStatus?.trim() || "";
+                return (
+                  <div
+                    key={expense.id}
+                    className="rounded-2xl border border-white/80 bg-white/85 p-2 shadow-sm"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                        Внутр. трата #{expenseIndex + 1}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-400 shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                        onClick={() => onDeleteInternalExpense?.(sectionId, line.id, expense.id)}
+                        title="Удалить внутреннюю трату"
+                        aria-label="Удалить внутреннюю трату"
+                      >
+                        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden>
+                          <path
+                            d="M5.75 5.75l8.5 8.5m0-8.5l-8.5 8.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeLinecap="round"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
+                      <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Название
+                        <input
+                          value={expense.title ?? ""}
+                          onChange={(e) =>
+                            onPatchInternalExpense?.(sectionId, line.id, expense.id, { title: e.target.value })
+                          }
+                          className={`mt-1 w-full ${cellXs}`}
+                          placeholder="Например, аренда PS5"
+                        />
+                      </label>
+                      <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Внутр. ₽
+                        <input
+                          value={expense.cost ?? ""}
+                          onChange={(e) =>
+                            onPatchInternalExpense?.(sectionId, line.id, expense.id, { cost: e.target.value })
+                          }
+                          className={`mt-1 w-full ${cellXs} tabular-nums`}
+                          inputMode="decimal"
+                        />
+                      </label>
+                      <div className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Оплата
+                        <div className="mt-1 grid min-h-8 grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
+                          {paymentMethodOptions.map((opt) => {
+                            const active = expensePaymentMethod === opt.value;
+                            return (
+                              <button
+                                key={opt.value || "empty"}
+                                type="button"
+                                className={`min-w-0 truncate rounded-lg px-1.5 py-1.5 text-[11px] font-semibold leading-none transition ${
+                                  active ? "bg-violet-600 text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-50"
+                                }`}
+                                onClick={() =>
+                                  onPatchInternalExpense?.(sectionId, line.id, expense.id, {
+                                    paymentMethod: opt.value === "" ? null : opt.value,
+                                  })
+                                }
+                                title={opt.label}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Статус оплаты
+                        <div className="mt-1 grid min-h-8 grid-cols-3 rounded-xl border border-zinc-200 bg-white p-0.5 shadow-sm">
+                          {paymentStatusOptions.map((opt) => {
+                            const active = expensePaymentStatus === opt.value;
+                            const paid = opt.value === PAYMENT_STATUS_PAID;
+                            const unpaid = opt.value === PAYMENT_STATUS_UNPAID;
+                            return (
+                              <button
+                                key={opt.value || "empty"}
+                                type="button"
+                                className={`min-w-0 truncate rounded-lg px-1.5 py-1.5 text-[11px] font-semibold leading-none transition ${
+                                  active
+                                    ? paid
+                                      ? "bg-emerald-600 text-white shadow-sm"
+                                      : unpaid
+                                        ? "bg-rose-600 text-white shadow-sm"
+                                        : "bg-zinc-700 text-white shadow-sm"
+                                    : "text-zinc-600 hover:bg-zinc-50"
+                                }`}
+                                onClick={() =>
+                                  onPatchInternalExpense?.(sectionId, line.id, expense.id, {
+                                    paymentStatus: opt.value === "" ? null : opt.value,
+                                  })
+                                }
+                                title={opt.label}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Коммент.
+                        <input
+                          value={expense.contractorNote ?? ""}
+                          onChange={(e) =>
+                            onPatchInternalExpense?.(sectionId, line.id, expense.id, {
+                              contractorNote: e.target.value,
+                            })
+                          }
+                          className={`mt-1 w-full ${cellXs}`}
+                        />
+                      </label>
+                      <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                        Реквизиты / счёт
+                        <input
+                          value={expense.contractorRequisites ?? ""}
+                          onChange={(e) =>
+                            onPatchInternalExpense?.(sectionId, line.id, expense.id, {
+                              contractorRequisites: e.target.value,
+                            })
+                          }
+                          className={`mt-1 w-full ${cellXs}`}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            disabled={busy}
+            className="mt-3 inline-flex items-center rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-800 shadow-sm transition hover:bg-violet-50 disabled:opacity-50"
+            onClick={() => onAddInternalExpense?.(sectionId, line.id)}
+          >
+            + Внутр. трата
+          </button>
         </div>
       </div>
     );
@@ -2723,7 +3114,7 @@ function LineEditor({
           <div className="font-medium">{line.name}</div>
           {line.description ? <div className="text-[11px] text-zinc-600">{line.description}</div> : null}
           <div className="text-[11px]">
-            {qtyStr || "—"} × {upStr || "—"} → {displayLocalLineClientSum(line)} ₽ · внутр. {line.costInternal ?? "—"}
+            {qtyStr || "—"} × {upStr || "—"} → {displayLocalLineClientSum(line)} ₽ · внутр. {formatMoneyRub(lineInternalTotal(line))}
           </div>
         </div>
       ) : (

@@ -8,6 +8,19 @@ import { scheduleAfterResponse } from "@/server/notifications/schedule-after-res
 import { buildProjectEstimateReadModel } from "@/server/projects/estimate-read-model";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
+const DraftLineInternalExpenseSchema = z
+  .object({
+    id: z.string().trim().min(1).optional(),
+    sortOrder: z.number().int().min(0).max(10000),
+    title: z.string().trim().max(500).nullable().optional(),
+    cost: z.number().finite().nullable().optional(),
+    paymentMethod: z.string().trim().max(40).nullable().optional(),
+    paymentStatus: z.string().trim().max(120).nullable().optional(),
+    contractorNote: z.string().trim().max(5000).nullable().optional(),
+    contractorRequisites: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
 const DraftLineSchema = z
   .object({
     id: z.string().trim().min(1).optional(),
@@ -25,6 +38,7 @@ const DraftLineSchema = z
     paymentStatus: z.string().trim().max(120).nullable().optional(),
     contractorNote: z.string().trim().max(5000).nullable().optional(),
     contractorRequisites: z.string().trim().max(500).nullable().optional(),
+    internalExpenses: z.array(DraftLineInternalExpenseSchema).max(100).optional(),
   })
   .strict();
 
@@ -122,6 +136,11 @@ export async function PATCH(
         include: {
           lines: {
             orderBy: { position: "asc" },
+            include: {
+              internalExpenses: {
+                orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+              },
+            },
           },
         },
         orderBy: { sortOrder: "asc" },
@@ -221,13 +240,61 @@ export async function PATCH(
                 : lineDraft.contractorRequisites?.trim() || null,
           };
 
-          if (lineDraft.id && existingLineMap.has(lineDraft.id)) {
-            await tx.projectEstimateLine.update({
+          const savedLine =
+            lineDraft.id && existingLineMap.has(lineDraft.id)
+              ? await tx.projectEstimateLine.update({
               where: { id: lineDraft.id },
               data,
-            });
-          } else {
-            await tx.projectEstimateLine.create({ data });
+                })
+              : await tx.projectEstimateLine.create({ data });
+
+          const existingExpenses = existingLineMap.get(savedLine.id)?.internalExpenses ?? [];
+          const existingExpenseMap = new Map(existingExpenses.map((expense) => [expense.id, expense]));
+          const expenseDrafts = lineDraft.internalExpenses ?? [];
+          const keptExpenseIds = new Set(
+            expenseDrafts
+              .map((expense) => expense.id)
+              .filter((id): id is string => typeof id === "string" && id.length > 0)
+              .filter((id) => existingExpenseMap.has(id)),
+          );
+
+          for (const expense of existingExpenses) {
+            if (!keptExpenseIds.has(expense.id)) {
+              await tx.projectEstimateLineInternalExpense.delete({ where: { id: expense.id } });
+            }
+          }
+
+          for (const expenseDraft of expenseDrafts.sort((a, b) => a.sortOrder - b.sortOrder)) {
+            const expenseData = {
+              lineId: savedLine.id,
+              sortOrder: expenseDraft.sortOrder,
+              title: expenseDraft.title?.trim() || null,
+              cost: expenseDraft.cost == null ? null : new Prisma.Decimal(expenseDraft.cost),
+              paymentMethod:
+                expenseDraft.paymentMethod === undefined
+                  ? undefined
+                  : expenseDraft.paymentMethod?.trim() || null,
+              paymentStatus:
+                expenseDraft.paymentStatus === undefined
+                  ? undefined
+                  : expenseDraft.paymentStatus?.trim() || null,
+              contractorNote:
+                expenseDraft.contractorNote === undefined
+                  ? undefined
+                  : expenseDraft.contractorNote?.trim() || null,
+              contractorRequisites:
+                expenseDraft.contractorRequisites === undefined
+                  ? undefined
+                  : expenseDraft.contractorRequisites?.trim() || null,
+            };
+            if (expenseDraft.id && existingExpenseMap.has(expenseDraft.id)) {
+              await tx.projectEstimateLineInternalExpense.update({
+                where: { id: expenseDraft.id },
+                data: expenseData,
+              });
+            } else {
+              await tx.projectEstimateLineInternalExpense.create({ data: expenseData });
+            }
           }
         }
       }

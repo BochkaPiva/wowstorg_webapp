@@ -783,6 +783,12 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                   qty: true,
                   unitPriceClient: true,
                   paymentMethod: true,
+                  internalExpenses: {
+                    select: {
+                      cost: true,
+                      paymentMethod: true,
+                    },
+                  },
                 },
               },
             },
@@ -869,10 +875,19 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
               qty: line.qty != null ? Number(line.qty) : null,
               unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
             }) ?? 0;
-          const lineInternal = getNumericAmount(line.costInternal);
+          const extraInternal = line.internalExpenses.reduce(
+            (sum, expense) => sum + getNumericAmount(expense.cost),
+            0,
+          );
+          const lineInternal = getNumericAmount(line.costInternal) + extraInternal;
           internalSubtotal += lineInternal;
           if (isCashPaymentMethod(line.paymentMethod)) {
-            cashInternalCostTax += calcCashInternalCostTaxAmount(lineInternal);
+            cashInternalCostTax += calcCashInternalCostTaxAmount(getNumericAmount(line.costInternal));
+          }
+          for (const expense of line.internalExpenses) {
+            if (isCashPaymentMethod(expense.paymentMethod)) {
+              cashInternalCostTax += calcCashInternalCostTaxAmount(getNumericAmount(expense.cost));
+            }
           }
         }
       }

@@ -18,7 +18,6 @@ import {
   percentOfFormula,
   setXlsxFormula,
   setXlsxMoneyFormat,
-  subtractFormulaRefs,
   sumColumnFormula,
   sumRangesFormula,
   type XlsxDataRowRange,
@@ -106,12 +105,20 @@ function lineClient(line: ProjectEstimateReadLine): number {
 }
 
 function lineInternal(line: ProjectEstimateReadLine): number {
-  return getNumericAmount(line.costInternal);
+  return getNumericAmount(line.costInternal) +
+    (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0);
 }
 
 function lineCashInternalCostTax(line: ProjectEstimateReadLine): number {
-  if (!isCashPaymentMethod(line.paymentMethod)) return 0;
-  return calcCashInternalCostTaxAmount(lineInternal(line));
+  const primary = isCashPaymentMethod(line.paymentMethod)
+    ? calcCashInternalCostTaxAmount(getNumericAmount(line.costInternal))
+    : 0;
+  const extra = (line.internalExpenses ?? []).reduce(
+    (sum, expense) =>
+      sum + (isCashPaymentMethod(expense.paymentMethod) ? calcCashInternalCostTaxAmount(getNumericAmount(expense.cost)) : 0),
+    0,
+  );
+  return primary + extra;
 }
 
 function unitLabel(line: ProjectEstimateReadLine): string {
@@ -294,6 +301,24 @@ function setMoneyFormats(ws: ExcelJS.Worksheet, row: number, cols: number[]) {
   setXlsxMoneyFormat(ws, row, cols);
 }
 
+function wrapFormulaExpr(formula: string): string {
+  return formula === "0" || /^[A-Z]+\d+$/.test(formula) ? formula : `(${formula})`;
+}
+
+function addFormulaExpressions(parts: string[]): string {
+  const cleaned = parts.filter((part) => part.trim().length > 0);
+  if (cleaned.length === 0) return "0";
+  return cleaned.map(wrapFormulaExpr).join("+");
+}
+
+function subtractFormulaExpressions(left: string, right: string): string {
+  return `${wrapFormulaExpr(left)}-${wrapFormulaExpr(right)}`;
+}
+
+function percentOfExpression(rate: number, formula: string, decimals = 2): string {
+  return `ROUND(${wrapFormulaExpr(formula)}*${rate},${decimals})`;
+}
+
 function addClientSectionTotal(
   ws: ExcelJS.Worksheet,
   colCount: number,
@@ -325,6 +350,7 @@ function addInternalFooterRow(
   label: string,
   formula: string,
   result: number,
+  opts: { numFmt?: string } = {},
 ) {
   const cells: CellValue[] = [label, "", "", "", "", "", "", ""];
   while (cells.length < colCount) cells.push("");
@@ -341,7 +367,11 @@ function addInternalFooterRow(
     });
   }
   setXlsxFormula(ws, row, 8, formula, result);
-  setMoneyFormats(ws, row, [8]);
+  if (opts.numFmt) {
+    ws.getCell(row, 8).numFmt = opts.numFmt;
+  } else {
+    setMoneyFormats(ws, row, [8]);
+  }
   return row;
 }
 
@@ -704,58 +734,53 @@ export async function buildProjectEstimateXlsx(args: {
       });
     }
 
-    const revenueRow = addInternalFooterRow(
+    const internalRow = addInternalFooterRow(
       ws,
       colCount,
-      "Сумма клиентских строк",
-      projectClientFormula,
-      roundMoney(clientSubtotal),
+      "Расход по смете",
+      projectInternalFormula,
+      roundMoney(internalSubtotal),
     );
-    const revenueRef = xlsxCellRef(revenueRow, 8);
-    const commissionRow = addInternalFooterRow(
-      ws,
-      colCount,
-      `Комиссия ${roundMoney(financeRates.commissionRate * 100)}%`,
-      percentOfFormula(financeRates.commissionRate, revenueRef),
-      projectTotals.commission,
-    );
-    const clientWithCommissionRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Итого клиент до налога",
-      addFormulaRefFormula(revenueRef, xlsxCellRef(commissionRow, 8)),
-      roundMoney(projectTotals.clientSubtotal + projectTotals.commission),
-    );
-    const clientWithCommissionRef = xlsxCellRef(clientWithCommissionRow, 8);
-    let revenueTotalRef = clientWithCommissionRef;
+    const internalRef = xlsxCellRef(internalRow, 8);
+    const revenueParts = [projectClientFormula];
+    let taxableClientFormula = projectClientFormula;
+
+    if (financeRates.commissionRate > 0) {
+      const commissionRow = addInternalFooterRow(
+        ws,
+        colCount,
+        `Комиссия агентства ${roundMoney(financeRates.commissionRate * 100)}%`,
+        percentOfExpression(financeRates.commissionRate, projectClientFormula),
+        projectTotals.commission,
+      );
+      const commissionRef = xlsxCellRef(commissionRow, 8);
+      revenueParts.push(commissionRef);
+      taxableClientFormula = addFormulaExpressions([projectClientFormula, commissionRef]);
+    }
+
     if (financeRates.clientChargeTaxRate > 0) {
       const clientChargeTaxRow = addInternalFooterRow(
         ws,
         colCount,
         `Налог клиенту ${roundMoney(financeRates.clientChargeTaxRate * 100)}%`,
-        percentOfFormula(financeRates.clientChargeTaxRate, clientWithCommissionRef),
+        percentOfExpression(financeRates.clientChargeTaxRate, taxableClientFormula),
         projectTotals.clientChargeTax,
       );
-      revenueTotalRef = xlsxCellRef(
-        addInternalFooterRow(
-          ws,
-          colCount,
-          "Итого клиенту",
-          addFormulaRefFormula(clientWithCommissionRef, xlsxCellRef(clientChargeTaxRow, 8)),
-          projectTotals.revenueTotal,
-        ),
-        8,
-      );
+      revenueParts.push(xlsxCellRef(clientChargeTaxRow, 8));
     }
-    const internalRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Себестоимость проекта",
-      projectInternalFormula,
-      roundMoney(internalSubtotal),
-    );
-    const internalRef = xlsxCellRef(internalRow, 8);
-    let expensesRef = internalRef;
+
+    const expenseParts = [internalRef];
+    if (financeRates.taxRate > 0) {
+      const nonCashTaxRow = addInternalFooterRow(
+        ws,
+        colCount,
+        `Налог безнал ${roundMoney(financeRates.taxRate * 100)}%`,
+        percentOfExpression(financeRates.taxRate, taxableClientFormula),
+        projectTotals.tax,
+      );
+      expenseParts.push(xlsxCellRef(nonCashTaxRow, 8));
+    }
+
     if (cashInternalCostTax > 0) {
       const cashTaxParts = allInternalDataRanges
         .map(({ firstRow, lastRow }) =>
@@ -765,46 +790,40 @@ export async function buildProjectEstimateXlsx(args: {
       const cashTaxRow = addInternalFooterRow(
         ws,
         colCount,
-        "Налог на наличку 3.5%",
+        "Налог нал 3.5%",
         cashTaxParts || "0",
         roundMoney(cashInternalCostTax),
       );
-      expensesRef = xlsxCellRef(
-        addInternalFooterRow(
-          ws,
-          colCount,
-          "Расходы всего",
-          addFormulaRefFormula(internalRef, xlsxCellRef(cashTaxRow, 8)),
-          projectTotals.internalExpensesTotal,
-        ),
-        8,
-      );
-    } else {
-      expensesRef = xlsxCellRef(
-        addInternalFooterRow(ws, colCount, "Расходы всего", internalRef, projectTotals.internalExpensesTotal),
-        8,
-      );
+      expenseParts.push(xlsxCellRef(cashTaxRow, 8));
     }
-    const grossRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Валовая маржа проекта",
-      subtractFormulaRefs(revenueTotalRef, expensesRef),
-      projectTotals.grossMargin,
+
+    const totalExpensesFormula = addFormulaExpressions(expenseParts);
+    const totalExpenses = roundMoney(
+      projectTotals.internalSubtotal + projectTotals.cashInternalCostTax + projectTotals.tax,
     );
-    const taxRow = addInternalFooterRow(
+    const totalExpensesRow = addInternalFooterRow(
       ws,
       colCount,
-      `Условный расходный налог ${roundMoney(financeRates.taxRate * 100)}%`,
-      percentOfFormula(financeRates.taxRate, clientWithCommissionRef),
-      projectTotals.tax,
+      "Итого расходов",
+      totalExpensesFormula,
+      totalExpenses,
+    );
+    const totalExpensesRef = xlsxCellRef(totalExpensesRow, 8);
+    const revenueTotalFormula = addFormulaExpressions(revenueParts);
+    const profitRow = addInternalFooterRow(
+      ws,
+      colCount,
+      "Заработок",
+      subtractFormulaExpressions(revenueTotalFormula, totalExpensesRef),
+      projectTotals.marginAfterTax,
     );
     addInternalFooterRow(
       ws,
       colCount,
-      "Маржа после налога",
-      subtractFormulaRefs(xlsxCellRef(grossRow, 8), xlsxCellRef(taxRow, 8)),
-      projectTotals.marginAfterTax,
+      "Рентабельность",
+      `IFERROR(${xlsxCellRef(profitRow, 8)}/${wrapFormulaExpr(revenueTotalFormula)},0)`,
+      projectTotals.marginAfterTaxPct / 100,
+      { numFmt: "0.00%" },
     );
   }
 

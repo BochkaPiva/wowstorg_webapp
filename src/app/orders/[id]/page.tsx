@@ -1650,16 +1650,27 @@ export default function OrderDetailsPage() {
                   }
                 />
               ) : null}
-              {order.estimateFileKey ? (
-                <p className="mt-3">
+              {order.estimateFileKey || isWarehouse ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {order.estimateFileKey ? (
                   <a
                     href={`/api/orders/${order.id}/estimate`}
                     className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
                     download
                   >
-                    📥 Скачать смету (xlsx)
+                    📥 Клиентская смета
                   </a>
-                </p>
+                  ) : null}
+                  {isWarehouse ? (
+                    <a
+                      href={`/api/orders/${order.id}/estimate/internal`}
+                      className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
+                      download
+                    >
+                      📥 Внутренняя смета
+                    </a>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>

@@ -1,9 +1,9 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-05-28T06:03:31.890Z
-> **Файлов route.ts:** 113
-> Команда: `npm run brain:inventory`
-> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).
+> **Сгенерировано:** 2026-06-15T07:32:18.719Z  
+> **Файлов route.ts:** 114  
+> Команда: `npm run brain:inventory`  
+> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
 
 | HTTP | Путь (App Router) | Файл |
@@ -55,6 +55,7 @@
 | POST | `/api/orders/[id]/approve` | `src/app/api/orders/[id]/approve/route.ts` |
 | POST | `/api/orders/[id]/cancel` | `src/app/api/orders/[id]/cancel/route.ts` |
 | POST | `/api/orders/[id]/check-in` | `src/app/api/orders/[id]/check-in/route.ts` |
+| GET | `/api/orders/[id]/estimate/internal` | `src/app/api/orders/[id]/estimate/internal/route.ts` |
 | GET | `/api/orders/[id]/estimate` | `src/app/api/orders/[id]/estimate/route.ts` |
 | PATCH | `/api/orders/[id]/greenwich-edit` | `src/app/api/orders/[id]/greenwich-edit/route.ts` |
 | PATCH | `/api/orders/[id]/internal-note` | `src/app/api/orders/[id]/internal-note/route.ts` |

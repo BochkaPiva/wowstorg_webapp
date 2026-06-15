@@ -86,7 +86,16 @@ export async function POST(
           include: {
             sections: {
               orderBy: { sortOrder: "asc" },
-              include: { lines: { orderBy: { position: "asc" } } },
+              include: {
+                lines: {
+                  orderBy: { position: "asc" },
+                  include: {
+                    internalExpenses: {
+                      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+                    },
+                  },
+                },
+              },
             },
           },
         });
@@ -132,6 +141,17 @@ export async function POST(
                 contractorRequisites: ln.contractorRequisites ?? undefined,
                 orderLineId: ln.orderLineId ?? undefined,
                 itemId: ln.itemId ?? undefined,
+                internalExpenses: {
+                  create: ln.internalExpenses.map((expense) => ({
+                    sortOrder: expense.sortOrder,
+                    title: expense.title ?? undefined,
+                    cost: expense.cost ?? undefined,
+                    paymentMethod: expense.paymentMethod ?? undefined,
+                    paymentStatus: expense.paymentStatus ?? undefined,
+                    contractorNote: expense.contractorNote ?? undefined,
+                    contractorRequisites: expense.contractorRequisites ?? undefined,
+                  })),
+                },
               },
             });
           }

@@ -701,6 +701,8 @@ model ProjectEstimateLine {
   contractorNote       String? @db.Text
   contractorRequisites String? @db.VarChar(500)
 
+  internalExpenses ProjectEstimateLineInternalExpense[]
+
   orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
@@ -709,6 +711,25 @@ model ProjectEstimateLine {
 
   @@index([sectionId, position])
   @@index([orderLineId])
+}
+
+model ProjectEstimateLineInternalExpense {
+  id     String              @id @default(cuid())
+  lineId String
+  line   ProjectEstimateLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  sortOrder Int @default(0)
+
+  title                String?  @db.VarChar(500)
+  cost                 Decimal? @db.Decimal(14, 2)
+  paymentMethod        String?  @db.VarChar(40)
+  paymentStatus        String?  @db.VarChar(120)
+  contractorNote       String?  @db.Text
+  contractorRequisites String?  @db.VarChar(500)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([lineId, sortOrder])
 }
 
 /// День тайминга (дата текстом или «День 1»).

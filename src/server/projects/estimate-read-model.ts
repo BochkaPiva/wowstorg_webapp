@@ -29,6 +29,32 @@ function unitLabelFromExtras(extras: Record<string, { unit?: string | null }>, l
   return t.length > 0 ? t : null;
 }
 
+function lineInternalTotal(line: {
+  costInternal?: { toString(): string } | string | number | null;
+  internalExpenses?: Array<{ cost?: { toString(): string } | string | number | null }> | null;
+}) {
+  return (
+    getNumericAmount(line.costInternal) +
+    (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0)
+  );
+}
+
+function lineCashInternalTotal(line: {
+  costInternal?: { toString(): string } | string | number | null;
+  paymentMethod?: string | null;
+  internalExpenses?: Array<{
+    cost?: { toString(): string } | string | number | null;
+    paymentMethod?: string | null;
+  }> | null;
+}) {
+  const primary = isCashPaymentMethod(line.paymentMethod) ? getNumericAmount(line.costInternal) : 0;
+  const extra = (line.internalExpenses ?? []).reduce(
+    (sum, expense) => sum + (isCashPaymentMethod(expense.paymentMethod) ? getNumericAmount(expense.cost) : 0),
+    0,
+  );
+  return primary + extra;
+}
+
 const EDITABLE_ORDER_STATUSES = new Set([
   "SUBMITTED",
   "ESTIMATE_SENT",
@@ -59,6 +85,18 @@ export type ProjectEstimateReadLine = {
   paymentStatus?: string | null;
   contractorNote?: string | null;
   contractorRequisites?: string | null;
+  internalExpenses?: ProjectEstimateReadLineInternalExpense[];
+};
+
+export type ProjectEstimateReadLineInternalExpense = {
+  id: string;
+  sortOrder: number;
+  title: string | null;
+  cost: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  contractorNote: string | null;
+  contractorRequisites: string | null;
 };
 
 export type ProjectEstimateReadSection = {
@@ -186,6 +224,11 @@ export async function buildProjectEstimateReadModel(args: {
               include: {
                 lines: {
                   orderBy: { position: "asc" },
+                  include: {
+                    internalExpenses: {
+                      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+                    },
+                  },
                 },
               },
             },
@@ -253,7 +296,11 @@ export async function buildProjectEstimateReadModel(args: {
     include: {
       sections: {
         include: {
-          lines: true,
+          lines: {
+            include: {
+              internalExpenses: true,
+            },
+          },
         },
       },
     },
@@ -315,10 +362,10 @@ export async function buildProjectEstimateReadModel(args: {
             qty: line.qty != null ? Number(line.qty) : null,
             unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
           });
-          const internalCost = getNumericAmount(line.costInternal);
+          const internalCost = lineInternalTotal(line);
           clientSubtotal += getNumericAmount(costClient);
           internalSubtotal += internalCost;
-          if (isCashPaymentMethod(line.paymentMethod)) cashInternalSubtotal += internalCost;
+          cashInternalSubtotal += lineCashInternalTotal(line);
         }
       }
     }
@@ -602,6 +649,16 @@ export async function buildProjectEstimateReadModel(args: {
                     paymentStatus: line.paymentStatus ?? null,
                     contractorNote: line.contractorNote ?? null,
                     contractorRequisites: line.contractorRequisites ?? null,
+                    internalExpenses: line.internalExpenses.map((expense) => ({
+                      id: expense.id,
+                      sortOrder: expense.sortOrder,
+                      title: expense.title,
+                      cost: dec(expense.cost),
+                      paymentMethod: expense.paymentMethod,
+                      paymentStatus: expense.paymentStatus,
+                      contractorNote: expense.contractorNote,
+                      contractorRequisites: expense.contractorRequisites,
+                    })),
                   };
                 }),
               };

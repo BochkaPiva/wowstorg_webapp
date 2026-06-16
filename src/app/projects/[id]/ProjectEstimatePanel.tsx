@@ -534,7 +534,7 @@ function cloneLineInternalExpenses(line: {
     .map((expense, index) => ({
       id: expense.id,
       sortOrder: Number.isFinite(expense.sortOrder) ? expense.sortOrder : index,
-      title: expense.title?.trim() || null,
+      title: null,
       cost: expense.cost == null || expense.cost === "" ? null : String(expense.cost),
       paymentMethod: expense.paymentMethod?.trim() || null,
       paymentStatus: expense.paymentStatus?.trim() || null,
@@ -548,7 +548,7 @@ function normalizeInternalExpensesForCompare(expenses: LocalDraftLineInternalExp
   return [...expenses]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((expense, index) => ({
-      title: expense.title?.trim() || null,
+      title: null,
       cost: expense.cost == null || expense.cost === "" ? null : String(Number(expense.cost)),
       paymentMethod: expense.paymentMethod?.trim() || null,
       paymentStatus: expense.paymentStatus?.trim() || null,
@@ -1543,15 +1543,16 @@ export function ProjectEstimatePanel({
               internalExpenses: line.internalExpenses
                 .filter(
                   (expense) =>
-                    (expense.title?.trim() ?? "") ||
                     (expense.cost != null && String(expense.cost).trim() !== "") ||
                     (expense.contractorNote?.trim() ?? "") ||
-                    (expense.contractorRequisites?.trim() ?? ""),
+                    (expense.contractorRequisites?.trim() ?? "") ||
+                    (expense.paymentMethod?.trim() ?? "") ||
+                    (expense.paymentStatus?.trim() ?? ""),
                 )
                 .map((expense, expenseIndex) => ({
                   id: expense.id.startsWith("draft-") ? undefined : expense.id,
                   sortOrder: expenseIndex,
-                  title: expense.title?.trim() || null,
+                  title: null,
                   cost:
                     expense.cost == null || String(expense.cost).trim() === ""
                       ? null
@@ -2922,7 +2923,7 @@ function LineEditor({
               </div>
             </div>
             <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Коммент. подрядчику
+              Комментарий
               <input
                 value={contractorNote}
                 onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}
@@ -2972,18 +2973,7 @@ function LineEditor({
                         </svg>
                       </button>
                     </div>
-                    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
-                      <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                        Название
-                        <input
-                          value={expense.title ?? ""}
-                          onChange={(e) =>
-                            onPatchInternalExpense?.(sectionId, line.id, expense.id, { title: e.target.value })
-                          }
-                          className={`mt-1 w-full ${cellXs}`}
-                          placeholder="Например, аренда PS5"
-                        />
-                      </label>
+                    <div className="grid gap-2 xl:grid-cols-[6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
                       <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                         Внутр. ₽
                         <input
@@ -3054,7 +3044,7 @@ function LineEditor({
                         </div>
                       </div>
                       <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                        Коммент.
+                        Комментарий
                         <input
                           value={expense.contractorNote ?? ""}
                           onChange={(e) =>
@@ -3232,7 +3222,7 @@ function LineEditor({
                   </datalist>
                 </label>
                 <label className="block min-w-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 xl:col-span-1">
-                  Коммент. подрядчику
+                  Комментарий
                   <input
                     value={"contractorNote" in line ? (line.contractorNote ?? "") : ""}
                     onChange={(e) => onSave(sectionId, line.id, { contractorNote: e.target.value })}

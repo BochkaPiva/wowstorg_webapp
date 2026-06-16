@@ -121,6 +121,53 @@ function lineCashInternalCostTax(line: ProjectEstimateReadLine): number {
   return primary + extra;
 }
 
+type InternalExpensePart = {
+  cost: number;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  contractorNote: string | null;
+  contractorRequisites: string | null;
+};
+
+function hasInternalExpensePartData(part: InternalExpensePart): boolean {
+  return (
+    part.cost !== 0 ||
+    Boolean(part.paymentMethod?.trim()) ||
+    Boolean(part.paymentStatus?.trim()) ||
+    Boolean(part.contractorNote?.trim()) ||
+    Boolean(part.contractorRequisites?.trim())
+  );
+}
+
+function buildInternalExpenseParts(line: ProjectEstimateReadLine): InternalExpensePart[] {
+  const primary: InternalExpensePart = {
+    cost: getNumericAmount(line.costInternal),
+    paymentMethod: line.paymentMethod ?? null,
+    paymentStatus: line.paymentStatus ?? null,
+    contractorNote: line.contractorNote ?? null,
+    contractorRequisites: line.contractorRequisites ?? null,
+  };
+  const extras = (line.internalExpenses ?? []).map((expense) => ({
+    cost: getNumericAmount(expense.cost),
+    paymentMethod: expense.paymentMethod ?? null,
+    paymentStatus: expense.paymentStatus ?? null,
+    contractorNote: expense.contractorNote ?? null,
+    contractorRequisites: expense.contractorRequisites ?? null,
+  }));
+  const parts = [primary, ...extras].filter(hasInternalExpensePartData);
+  return parts.length > 0
+    ? parts
+    : [
+        {
+          cost: 0,
+          paymentMethod: null,
+          paymentStatus: null,
+          contractorNote: null,
+          contractorRequisites: null,
+        },
+      ];
+}
+
 function unitLabel(line: ProjectEstimateReadLine): string {
   const u = line.unit?.trim();
   return u && u.length > 0 ? u : "шт";
@@ -568,7 +615,7 @@ export async function buildProjectEstimateXlsx(args: {
         "Внутр.",
         "Оплата",
         "Статус оплаты",
-        "Комментарий подрядчику",
+        "Комментарий",
         "Реквизиты",
       ];
   ws.addRow(headerCells);
@@ -625,10 +672,9 @@ export async function buildProjectEstimateXlsx(args: {
       clientSubtotal += client;
       internalSubtotal += internal;
       cashInternalCostTax += lineCashTax;
-      dataRowIndex += 1;
-      sectionLineCount += 1;
-
       if (isClient) {
+        dataRowIndex += 1;
+        sectionLineCount += 1;
         ws.addRow([
           "",
           line.name,
@@ -639,35 +685,70 @@ export async function buildProjectEstimateXlsx(args: {
           unitPriceLabel(line),
           "",
         ]);
-      } else {
-        const isContractor = section.kind === "CONTRACTOR";
-        ws.addRow([
-          "",
-          line.name,
-          line.description ?? "",
-          unitLabel(line),
-          qtyLabel(line),
-          plannedDaysLabel(line),
-          unitPriceLabel(line),
-          "",
-          internal || "",
-          isContractor ? (line.paymentMethod ?? "") : "",
-          isContractor ? (line.paymentStatus ?? "") : "",
-          isContractor ? (line.contractorNote ?? "") : "",
-          isContractor ? (line.contractorRequisites ?? "") : "",
-        ]);
-      }
-
-      const row = ws.lastRow!.number;
-      if (sectionLineCount === 1) sectionFirstRow = row;
-      sectionLastRow = row;
-      styleDataRow(ws, row, colCount, dataRowIndex % 2 === 0);
-      ws.getCell(row, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
-      applyLineFormulas(ws, row, lineCols, sectionStartRow, client);
-      if (isClient) {
+        const row = ws.lastRow!.number;
+        if (sectionLineCount === 1) sectionFirstRow = row;
+        sectionLastRow = row;
+        styleDataRow(ws, row, colCount, dataRowIndex % 2 === 0);
+        ws.getCell(row, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
+        applyLineFormulas(ws, row, lineCols, sectionStartRow, client);
         setMoneyFormats(ws, row, [7, 8]);
       } else {
-        setMoneyFormats(ws, row, [7, 8, 9]);
+        const isContractor = section.kind === "CONTRACTOR";
+        const expenseParts = isContractor
+          ? buildInternalExpenseParts(line)
+          : [
+              {
+                cost: internal,
+                paymentMethod: null,
+                paymentStatus: null,
+                contractorNote: null,
+                contractorRequisites: null,
+              },
+            ];
+        const firstRow = ws.lastRow!.number + 1;
+        expenseParts.forEach((part, partIndex) => {
+          dataRowIndex += 1;
+          sectionLineCount += 1;
+          ws.addRow([
+            "",
+            partIndex === 0 ? line.name : "",
+            partIndex === 0 ? (line.description ?? "") : "",
+            partIndex === 0 ? unitLabel(line) : "",
+            partIndex === 0 ? qtyLabel(line) : "",
+            partIndex === 0 ? plannedDaysLabel(line) : "",
+            partIndex === 0 ? unitPriceLabel(line) : "",
+            "",
+            part.cost || "",
+            isContractor ? (part.paymentMethod ?? "") : "",
+            isContractor ? (part.paymentStatus ?? "") : "",
+            isContractor ? (part.contractorNote ?? "") : "",
+            isContractor ? (part.contractorRequisites ?? "") : "",
+          ]);
+
+          const row = ws.lastRow!.number;
+          if (sectionLineCount === 1) sectionFirstRow = row;
+          sectionLastRow = row;
+          styleDataRow(ws, row, colCount, dataRowIndex % 2 === 0);
+          if (partIndex === 0) {
+            ws.getCell(row, 2).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.ink } };
+            applyLineFormulas(ws, row, lineCols, sectionStartRow, client);
+            setMoneyFormats(ws, row, [7, 8, 9]);
+          } else {
+            setMoneyFormats(ws, row, [9]);
+          }
+        });
+
+        const lastRow = ws.lastRow!.number;
+        if (expenseParts.length > 1) {
+          for (let col = 1; col <= 8; col += 1) {
+            ws.mergeCells(firstRow, col, lastRow, col);
+            ws.getCell(firstRow, col).alignment = {
+              vertical: "middle",
+              horizontal: col === 1 || col >= 4 ? "center" : "left",
+              wrapText: true,
+            };
+          }
+        }
       }
     }
 

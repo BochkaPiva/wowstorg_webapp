@@ -516,7 +516,7 @@ function AddLineRow({
           i.name.toLowerCase().includes(search.trim().toLowerCase()),
         );
   return (
-    <div className="space-y-3">
+    <div className={`relative space-y-3 ${open ? "z-[90]" : ""}`}>
       <div className="text-sm font-medium text-zinc-600">Добавить позицию</div>
       {selected ? (
         <div className="flex flex-wrap items-center gap-3">
@@ -600,7 +600,7 @@ function AddLineRow({
           </button>
         </div>
       ) : (
-        <div className="relative">
+        <div className="relative z-[90]">
           <input
             type="text"
             value={search}
@@ -612,12 +612,12 @@ function AddLineRow({
           {open && (
             <>
               <div
-                className="fixed inset-0 z-40"
+                className="fixed inset-0 z-[80]"
                 aria-hidden
                 onClick={() => setOpen(false)}
               />
               <ul
-                className="absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-auto rounded-2xl border border-white/75 bg-white/95 shadow-[0_18px_45px_rgba(24,24,27,0.14)] backdrop-blur"
+                className="absolute left-0 right-0 top-full z-[100] mt-2 max-h-64 overflow-auto rounded-2xl border border-white/75 bg-white/95 shadow-[0_18px_45px_rgba(24,24,27,0.14)] backdrop-blur"
                 role="listbox"
               >
                 {filtered.length === 0 ? (

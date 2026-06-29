@@ -46,9 +46,9 @@ export function AppShell({
   const { state, refresh } = useAuth();
   const [navOpen, setNavOpen] = React.useState(false);
 
-  function sectionBackHref(path: string): string {
+  function sectionBackHref(path: string, role: string): string {
     // Явные “разделы” (чтобы кнопка была предсказуемой)
-    if (path.startsWith("/orders/")) return "/orders";
+    if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
     if (path.startsWith("/projects/")) return "/projects";
     if (path.startsWith("/warehouse/")) return "/home";
     if (path.startsWith("/admin/")) return "/admin";
@@ -202,7 +202,7 @@ export function AppShell({
             {showBack ? (
               <button
                 type="button"
-                onClick={() => router.push(sectionBackHref(pathname))}
+                onClick={() => router.push(sectionBackHref(pathname, state.user.role))}
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-800 hover:bg-violet-50 sm:px-3"
                 aria-label="Назад"
                 title="Назад"

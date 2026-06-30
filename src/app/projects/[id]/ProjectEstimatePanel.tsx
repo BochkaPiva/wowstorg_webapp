@@ -6,7 +6,6 @@ import { createPortal } from "react-dom";
 
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { usableStockUnits } from "@/lib/inventory-stock";
-import { ORDER_TAX_RATE } from "@/lib/constants";
 import {
   calcOrderServicesInternalCosts,
   isCashPaymentMethod,
@@ -30,6 +29,7 @@ import {
   getNumericAmount,
 } from "@/lib/project-estimate-totals";
 import { formatMoneyRub, roundMoney } from "@/lib/money";
+import { calcOrderPricing } from "@/lib/order-pricing";
 
 type EstLine = {
   id: string;
@@ -112,6 +112,9 @@ type RequisiteOrder = {
   demontageInternalCost: number | null;
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   payMultiplier?: number | null;
+  rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
+  rentalDiscountPercent?: number | null;
+  rentalDiscountAmount?: number | null;
   lines: RequisiteOrderLine[];
 };
 
@@ -3641,20 +3644,125 @@ function RequisiteSectionEditor({
     });
   }, [order]);
 
-  const rentalTotal = React.useMemo(() => {
-    if (!order) return 0;
-    const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-    return lines.reduce(
-      (sum, line) =>
-        sum + (line.pricePerDaySnapshot ?? 0) * line.requestedQty * billableRentalDayCount * multiplier,
-      0,
-    );
-  }, [billableRentalDayCount, lines, order]);
   const servicesTotal =
     (services.deliveryEnabled ? Number(services.deliveryPrice || 0) : 0) +
     (services.montageEnabled ? Number(services.montagePrice || 0) : 0) +
     (services.demontageEnabled ? Number(services.demontagePrice || 0) : 0);
-  const taxAmount = roundMoney((rentalTotal + servicesTotal) * ORDER_TAX_RATE);
+  const orderPricing = React.useMemo(() => {
+    if (!order) return null;
+    return calcOrderPricing({
+      startDate: new Date(`${order.startDate.slice(0, 10)}T00:00:00.000Z`),
+      endDate: new Date(`${order.endDate.slice(0, 10)}T00:00:00.000Z`),
+      rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+      rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
+      payMultiplier: order.payMultiplier,
+      deliveryEnabled: services.deliveryEnabled,
+      deliveryPrice: services.deliveryPrice,
+      montageEnabled: services.montageEnabled,
+      montagePrice: services.montagePrice,
+      demontageEnabled: services.demontageEnabled,
+      demontagePrice: services.demontagePrice,
+      lines: linesForCap,
+      discount: order,
+    });
+  }, [linesForCap, order, services]);
+  const savedLineClientTotalsByOrderLineId = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const line of sec.lines) {
+      if (line.orderLineId) map.set(line.orderLineId, getNumericAmount(line.costClient));
+    }
+    return map;
+  }, [sec.lines]);
+  const savedRentalTotal = React.useMemo(
+    () =>
+      roundMoney(
+        sec.lines
+          .filter((line) => line.lineType === "RENTAL")
+          .reduce((sum, line) => sum + getNumericAmount(line.costClient), 0),
+      ),
+    [sec.lines],
+  );
+  const savedServicesTotal = React.useMemo(
+    () =>
+      roundMoney(
+        sec.lines
+          .filter((line) => line.lineType === "SERVICE")
+          .reduce((sum, line) => sum + getNumericAmount(line.costClient), 0),
+      ),
+    [sec.lines],
+  );
+  const hasOrderDraftChanges = React.useMemo(() => {
+    if (!order) return false;
+    if (lines.length !== order.lines.length) return true;
+    for (let index = 0; index < lines.length; index += 1) {
+      const draft = lines[index];
+      const original = order.lines[index];
+      if (!original) return true;
+      if (draft.id !== original.id) return true;
+      if (draft.requestedQty !== original.requestedQty) return true;
+      if ((draft.warehouseComment ?? "") !== (original.warehouseComment ?? "")) return true;
+    }
+    const servicePairs: Array<[boolean, string, string, string, OrderServicePaymentMethod | undefined]> = [
+      [
+        order.deliveryEnabled,
+        order.deliveryComment ?? "",
+        order.deliveryPrice != null ? String(order.deliveryPrice) : "",
+        order.deliveryInternalCost != null ? String(order.deliveryInternalCost) : "",
+        order.deliveryInternalPaymentMethod,
+      ],
+      [
+        order.montageEnabled,
+        order.montageComment ?? "",
+        order.montagePrice != null ? String(order.montagePrice) : "",
+        order.montageInternalCost != null ? String(order.montageInternalCost) : "",
+        order.montageInternalPaymentMethod,
+      ],
+      [
+        order.demontageEnabled,
+        order.demontageComment ?? "",
+        order.demontagePrice != null ? String(order.demontagePrice) : "",
+        order.demontageInternalCost != null ? String(order.demontageInternalCost) : "",
+        order.demontageInternalPaymentMethod,
+      ],
+    ];
+    const draftPairs: Array<[boolean, string, string, string, OrderServicePaymentMethod]> = [
+      [
+        services.deliveryEnabled,
+        services.deliveryComment,
+        services.deliveryPrice,
+        services.deliveryInternalCost,
+        services.deliveryInternalPaymentMethod,
+      ],
+      [
+        services.montageEnabled,
+        services.montageComment,
+        services.montagePrice,
+        services.montageInternalCost,
+        services.montageInternalPaymentMethod,
+      ],
+      [
+        services.demontageEnabled,
+        services.demontageComment,
+        services.demontagePrice,
+        services.demontageInternalCost,
+        services.demontageInternalPaymentMethod,
+      ],
+    ];
+    return servicePairs.some((original, index) => {
+      const draft = draftPairs[index];
+      return (
+        original[0] !== draft[0] ||
+        original[1] !== draft[1] ||
+        original[2] !== draft[2] ||
+        original[3] !== draft[3] ||
+        (original[4] ?? "NON_CASH") !== draft[4]
+      );
+    });
+  }, [lines, order, services]);
+  const useSavedEstimateTotals = !hasOrderDraftChanges;
+  const rentalTotal = useSavedEstimateTotals ? savedRentalTotal : (orderPricing?.rentalSubtotalAfterDiscount ?? 0);
+  const rentalDiscountAmount = useSavedEstimateTotals ? 0 : (orderPricing?.discountAmount ?? 0);
+  const orderBlockClientTotal = roundMoney(rentalTotal + (useSavedEstimateTotals ? savedServicesTotal : servicesTotal));
 
   const summaryTitleAddon =
     order && !loading ? (
@@ -3767,13 +3875,17 @@ function RequisiteSectionEditor({
                       ? 0
                       : Math.max(1, Number.parseInt(qtyDraftRaw, 10) || 0)
                     : line.requestedQty;
+                const savedLineTotal = line.id ? savedLineClientTotalsByOrderLineId.get(line.id) : undefined;
                 const lineTotal =
+                  (useSavedEstimateTotals ? savedLineTotal : undefined) ??
+                  orderPricing?.lineAllocations[index]?.rentalAfterDiscount ??
                   calcProjectEstimateRequisiteTotal({
                     pricePerDay: line.pricePerDaySnapshot ?? 0,
                     qty: qtyDisplay,
                     plannedDays: dayC,
                     payMultiplier: mult,
-                  }) ?? 0;
+                  }) ??
+                  0;
                 const ppu =
                   calcProjectEstimateRequisiteUnitPricePerDay({
                     totalClient: lineTotal,
@@ -4013,17 +4125,26 @@ function RequisiteSectionEditor({
                 <span>Аренда</span>
                 <span className="font-semibold text-zinc-950">{formatOrderMoney(rentalTotal)} ₽</span>
               </div>
+              {rentalDiscountAmount > 0 ? (
+                <div className="flex items-center justify-between gap-3 text-emerald-700">
+                  <span>
+                    Скидка
+                    {orderPricing?.discountType === "PERCENT" && orderPricing.discountPercent != null
+                      ? ` ${formatOrderMoney(orderPricing.discountPercent)}%`
+                      : ""}
+                  </span>
+                  <span className="font-semibold">−{formatOrderMoney(rentalDiscountAmount)} ₽</span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between gap-3">
                 <span>Доп. услуги</span>
-                <span className="font-semibold text-zinc-950">{formatOrderMoney(servicesTotal)} ₽</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span>Налог {Math.round(ORDER_TAX_RATE * 100)}%</span>
-                <span className="font-semibold text-zinc-950">{formatOrderMoney(taxAmount)} ₽</span>
+                <span className="font-semibold text-zinc-950">
+                  {formatOrderMoney(useSavedEstimateTotals ? savedServicesTotal : servicesTotal)} ₽
+                </span>
               </div>
               <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base font-bold text-violet-950">
                 <span>Всего</span>
-                <span>{formatOrderMoney(rentalTotal + servicesTotal + taxAmount)} ₽</span>
+                <span>{formatOrderMoney(orderBlockClientTotal)} ₽</span>
               </div>
             </div>
           </div>

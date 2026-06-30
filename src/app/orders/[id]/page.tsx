@@ -508,6 +508,8 @@ function AddLineRow({
   const [selected, setSelected] = React.useState<CatalogItemOption | null>(null);
   const [qty, setQty] = React.useState<number | "">(1);
   const [open, setOpen] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const [dropdownRect, setDropdownRect] = React.useState<{ left: number; top: number; width: number } | null>(null);
   const available = catalogItems.filter((i) => !existingItemIds.includes(i.id));
   const filtered =
     search.trim() === ""
@@ -515,6 +517,86 @@ function AddLineRow({
       : available.filter((i) =>
           i.name.toLowerCase().includes(search.trim().toLowerCase()),
         );
+  const syncDropdownRect = React.useCallback(() => {
+    const rect = inputRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setDropdownRect({ left: rect.left, top: rect.bottom + 8, width: rect.width });
+  }, []);
+  const showDropdown = React.useCallback(() => {
+    syncDropdownRect();
+    setOpen(true);
+  }, [syncDropdownRect]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    syncDropdownRect();
+    const handleViewportChange = () => syncDropdownRect();
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [open, syncDropdownRect]);
+
+  const dropdown =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9990]"
+              aria-hidden
+              onClick={() => setOpen(false)}
+            />
+            <ul
+              className="fixed z-[10000] max-h-64 overflow-auto rounded-2xl border border-white/75 bg-white/95 shadow-[0_18px_45px_rgba(24,24,27,0.14)] backdrop-blur"
+              style={{
+                left: dropdownRect?.left ?? 0,
+                top: dropdownRect?.top ?? 0,
+                width: dropdownRect?.width ?? 0,
+              }}
+              role="listbox"
+            >
+              {filtered.length === 0 ? (
+                <li className="px-4 py-3 text-sm text-zinc-500">
+                  {available.length === 0 ? "\u0412\u0441\u0435 \u043f\u043e\u0437\u0438\u0446\u0438\u0438 \u0443\u0436\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b" : "\u041d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u043e"}
+                </li>
+              ) : (
+                filtered.map((i) => (
+                  <li key={i.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected(i);
+                        setOpen(false);
+                        setSearch("");
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-violet-50 focus:bg-violet-50 focus:outline-none"
+                      role="option"
+                    >
+                      <ProductIdentity
+                        itemId={i.id}
+                        photo1Key={i.photo1Key}
+                        name={i.name}
+                        subtitle={
+                          i.availableForDates != null ? (
+                            <>
+                              {"\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e: "}
+                              <span className="font-semibold text-zinc-700">{i.availableForDates}</span>
+                            </>
+                          ) : undefined
+                        }
+                      />
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className={`relative space-y-3 ${open ? "z-[90]" : ""}`}>
       <div className="text-sm font-medium text-zinc-600">Добавить позицию</div>
@@ -602,60 +684,15 @@ function AddLineRow({
       ) : (
         <div className="relative z-[90]">
           <input
+            ref={inputRef}
             type="text"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
-            onFocus={() => setOpen(true)}
+            onChange={(e) => { setSearch(e.target.value); showDropdown(); }}
+            onFocus={showDropdown}
             placeholder="Найти позицию по названию…"
             className={orderInputClass + " w-full"}
           />
-          {open && (
-            <>
-              <div
-                className="fixed inset-0 z-[80]"
-                aria-hidden
-                onClick={() => setOpen(false)}
-              />
-              <ul
-                className="absolute left-0 right-0 top-full z-[100] mt-2 max-h-64 overflow-auto rounded-2xl border border-white/75 bg-white/95 shadow-[0_18px_45px_rgba(24,24,27,0.14)] backdrop-blur"
-                role="listbox"
-              >
-                {filtered.length === 0 ? (
-                  <li className="px-4 py-3 text-sm text-zinc-500">
-                    {available.length === 0 ? "Все позиции уже добавлены" : "Ничего не найдено"}
-                  </li>
-                ) : (
-                  filtered.map((i) => (
-                    <li key={i.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected(i);
-                          setOpen(false);
-                          setSearch("");
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-violet-50 focus:bg-violet-50 focus:outline-none"
-                        role="option"
-                      >
-                        <ProductIdentity
-                          itemId={i.id}
-                          photo1Key={i.photo1Key}
-                          name={i.name}
-                          subtitle={
-                            i.availableForDates != null ? (
-                              <>
-                                Доступно: <span className="font-semibold text-zinc-700">{i.availableForDates}</span>
-                              </>
-                            ) : undefined
-                          }
-                        />
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </>
-          )}
+          {dropdown}
         </div>
       )}
     </div>

@@ -92,13 +92,22 @@ export default function InventoryPositionsPage() {
               </Link>
             </div>
 
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              Обновить
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="/api/inventory/positions/export"
+                className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-violet-200/70 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-200/80"
+              >
+                <span aria-hidden="true">↓</span>
+                Скачать реквизит
+              </a>
+              <button
+                type="button"
+                onClick={load}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+              >
+                Обновить
+              </button>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">

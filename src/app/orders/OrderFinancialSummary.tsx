@@ -9,6 +9,7 @@ type OrderPricingSummary = {
 
 type WarehouseProfitSummary = {
   internalCostTotal: number;
+  clientTaxAmount: number;
   cashInternalCostTax: number;
   internalCostWithCashTax: number;
   profitEstimate: number;
@@ -63,6 +64,9 @@ export function OrderFinancialSummary({
   const showWarehouse = Boolean(warehouse);
   const profit = warehouse?.profitEstimate ?? 0;
   const profitTone = profit >= 0 ? "text-emerald-950" : "text-rose-700";
+  const warehouseExpenseTotal = warehouse
+    ? warehouse.internalCostWithCashTax + warehouse.clientTaxAmount
+    : 0;
 
   return (
     <div className="mt-4 space-y-3">
@@ -106,9 +110,15 @@ export function OrderFinancialSummary({
                     value={`${formatMoneyRub(warehouse.cashInternalCostTax)} ₽`}
                   />
                 ) : null}
+                {warehouse.clientTaxAmount > 0 ? (
+                  <SummaryRow
+                    label={`Расходный налог ${taxPercent}%`}
+                    value={`${formatMoneyRub(warehouse.clientTaxAmount)} ₽`}
+                  />
+                ) : null}
                 <SummaryRow
                   label="Расходы всего"
-                  value={`${formatMoneyRub(warehouse.internalCostWithCashTax)} ₽`}
+                  value={`${formatMoneyRub(warehouseExpenseTotal)} ₽`}
                   strong
                 />
               </div>

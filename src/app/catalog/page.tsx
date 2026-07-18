@@ -839,6 +839,8 @@ export default function CatalogPage() {
         ) : null}
 
         <div className="mk-head">
+          <div className="mk-headIntro">
+            <div className="mk-headCopy">
           <div className="mk-title">
             {isQuickSupplement
               ? "Быстрая доп.-выдача"
@@ -855,7 +857,17 @@ export default function CatalogPage() {
                 ? "Выбирай позиции и даты — оформи заявку реквизита в корзине; заказчик подставится из проекта."
                 : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
           </div>
+            </div>
+            <Link href={cartHref} className="mk-cartPill mk-headCart">
+              <span>{isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}</span>
+              <strong>{cartTotalQty}</strong>
+              {cartTotalForPeriod > 0 ? (
+                <small>{Math.round(cartTotalForPeriod)} ₽{isProjectDemoCatalog ? " / день" : ""}</small>
+              ) : null}
+            </Link>
+          </div>
 
+          <div className="mk-headOperations">
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
               <div className={["mk-datesRowGrouped", isGreenwich ? "mk-datesRowGrouped--withReady" : ""].filter(Boolean).join(" ")}>
@@ -946,7 +958,9 @@ export default function CatalogPage() {
               </div>
             </div>
           )}
+          </div>
 
+          <div className="mk-catalogNav">
           <div className="mk-toolbar">
             <div className="mk-searchWrap">
               <input
@@ -971,14 +985,6 @@ export default function CatalogPage() {
                   ✕
                 </button>
               ) : null}
-            </div>
-            <div className="flex items-center gap-2 justify-between md:justify-end">
-              <Link href={cartHref} className="mk-cartPill">
-                {isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}: <strong>{cartTotalQty}</strong>
-                {cartTotalForPeriod > 0
-                  ? ` · ${Math.round(cartTotalForPeriod)} ₽${isProjectDemoCatalog ? " / предв. день" : ""}`
-                  : ""}
-              </Link>
             </div>
           </div>
 
@@ -1016,6 +1022,7 @@ export default function CatalogPage() {
             >
               Пакеты
             </button>
+          </div>
           </div>
 
           {activeTab !== "kits" && categories.length ? (

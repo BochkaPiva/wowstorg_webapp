@@ -2397,3 +2397,499 @@ a.mk-cartPill:hover,
   .mk-cardPhoto { transition: none; }
 }
 
+/* 2026 catalog composition: landing vocabulary, internal-tool density. */
+.mk-head {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d9d8d3;
+  border-top: 4px solid var(--mk-yellow);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.mk-headIntro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 32px;
+  padding: clamp(24px, 3vw, 42px) clamp(20px, 3vw, 42px) 26px;
+}
+
+.mk-headCopy {
+  max-width: 980px;
+}
+
+.mk-headIntro .mk-title {
+  max-width: 950px;
+  font-size: clamp(2.15rem, 3.6vw, 4rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+.mk-headIntro .mk-subtitle {
+  max-width: 920px;
+  margin-top: 14px;
+  font-size: clamp(0.95rem, 1.2vw, 1.15rem);
+  line-height: 1.5;
+}
+
+.mk-headCart {
+  position: static;
+  min-width: 148px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid #0a0a0a;
+  border-radius: 999px;
+  background: #0a0a0a;
+  color: #fff;
+  box-shadow: none;
+}
+
+.mk-headCart strong {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--mk-yellow);
+  color: #0a0a0a;
+}
+
+.mk-headCart small {
+  grid-column: 1 / -1;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.mk-headOperations {
+  display: flex;
+  align-items: end;
+  gap: 22px;
+  padding: 20px clamp(20px, 3vw, 42px);
+  border-top: 1px solid #e4e3de;
+  border-bottom: 1px solid #e4e3de;
+  background: #f6f6f3;
+}
+
+.mk-headOperations .mk-datesRowGrouped {
+  margin: 0;
+}
+
+.mk-headOperations .mk-catalogDateSummary {
+  margin: 0 0 7px;
+  white-space: nowrap;
+}
+
+.mk-catalogNav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  grid-template-areas: "tabs search";
+  align-items: end;
+  gap: 28px;
+  padding: 20px clamp(20px, 3vw, 42px) 0;
+}
+
+.mk-catalogNav .mk-toolbar {
+  grid-area: search;
+  padding: 0 0 14px;
+}
+
+.mk-catalogNav .mk-searchWrap {
+  width: 100%;
+}
+
+.mk-catalogNav .mk-search {
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid #a9a8a2;
+  border-radius: 0;
+  padding: 10px 38px 10px 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 1rem;
+}
+
+.mk-catalogNav .mk-search:focus {
+  border-color: #0a0a0a;
+  box-shadow: none;
+}
+
+.mk-catalogNav .mk-tabs {
+  grid-area: tabs;
+  margin: 0;
+  border-bottom: 1px solid #d8d7d2;
+}
+
+.mk-catalogNav .mk-tab {
+  min-height: 52px;
+  padding: 0 2px 14px;
+  border-radius: 0;
+}
+
+.mk-categoryBar {
+  margin: 0;
+  padding: 16px clamp(20px, 3vw, 42px) 22px;
+  border-top: 0;
+  background: #fff;
+}
+
+.mk-chipRow {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.mk-chip {
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+/* Product detail mirrors the public catalog: image stage + dark editorial panel. */
+.mk-modalOverlay {
+  align-items: center;
+  padding: 22px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(7px);
+}
+
+.mk-modal {
+  position: relative;
+  width: min(1540px, calc(100vw - 44px));
+  height: calc(100dvh - 44px);
+  max-height: none;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: #0b0b0b;
+  color: #f4f4f0;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55);
+}
+
+.mk-modalGrid {
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+  height: 100%;
+}
+
+.mk-modalMedia {
+  min-height: 0;
+  background: #171717;
+}
+
+.mk-modalMediaBtn {
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.mk-modalMediaBtn img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mk-modalMediaBtn:hover img {
+  transform: scale(1.018);
+}
+
+.mk-modalMediaHint {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.58);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.mk-modalMediaBtn:hover .mk-modalMediaHint,
+.mk-modalMediaBtn:focus-visible .mk-modalMediaHint {
+  opacity: 1;
+}
+
+.mk-modalPlaceholder {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mk-modalBody {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: clamp(68px, 8vh, 118px) clamp(34px, 5vw, 82px) 48px;
+  background: #0b0b0b;
+}
+
+.mk-modalEyebrow {
+  color: var(--mk-yellow);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mk-modalTitle {
+  max-width: 720px;
+  margin: 18px 0 0;
+  color: #fff;
+  font-size: clamp(3rem, 5vw, 6rem);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.055em;
+}
+
+.mk-modalDescription {
+  max-width: 680px;
+  margin: 26px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: clamp(0.98rem, 1.15vw, 1.18rem);
+  line-height: 1.55;
+}
+
+.mk-modalFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: auto;
+  padding-top: 42px;
+}
+
+.mk-modalFacts > div {
+  display: grid;
+  gap: 7px;
+  padding: 18px 22px 18px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mk-modalFacts > div + div {
+  padding-left: 22px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.mk-modalFacts span {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.mk-modalFacts strong {
+  color: #fff;
+  font-size: clamp(1.1rem, 1.45vw, 1.45rem);
+}
+
+.mk-modalActions {
+  margin-top: 22px;
+}
+
+.mk-modalAddBtn,
+.mk-modalQty {
+  display: inline-flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  min-width: min(360px, 100%);
+  padding: 0 22px;
+  border: 1px solid var(--mk-yellow);
+  border-radius: 999px;
+  background: var(--mk-yellow);
+  color: #0a0a0a;
+  font-weight: 800;
+}
+
+.mk-modalAddBtn {
+  cursor: pointer;
+}
+
+.mk-modalAddBtn:hover:not(:disabled) {
+  background: #ffe169;
+}
+
+.mk-modalAddBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mk-modalQty {
+  padding: 4px;
+}
+
+.mk-modalQty button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+.mk-modalQty button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.mk-modalQty input {
+  width: 70px;
+  border: 0;
+  background: transparent;
+  color: #0a0a0a;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 800;
+  outline: none;
+}
+
+.mk-modalAvailabilityNote {
+  margin: 13px 0 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 0.78rem;
+}
+
+.mk-modal > .mk-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
+  border-color: rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  background: rgba(10, 10, 10, 0.58);
+  color: #fff;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.mk-modal > .mk-close:hover {
+  border-color: var(--mk-yellow);
+  background: var(--mk-yellow);
+  color: #0a0a0a;
+}
+
+/* Keep the compact date explainer independent of the product modal. */
+.mk-modal.mk-dateHelpModal {
+  width: min(440px, calc(100vw - 32px));
+  height: auto;
+  max-height: calc(100dvh - 32px);
+  border-color: #d9d8d3;
+  border-radius: 8px;
+  background: #fff;
+  color: #0a0a0a;
+  overflow-y: auto;
+}
+
+.mk-dateHelpModal .mk-close {
+  position: static;
+  color: #0a0a0a;
+  background: #fff;
+  border-color: #d9d8d3;
+}
+
+@media (max-width: 900px) {
+  .mk-headIntro {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .mk-headCart {
+    justify-self: start;
+  }
+
+  .mk-headOperations {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mk-headOperations .mk-catalogDateSummary {
+    margin: 0;
+  }
+
+  .mk-catalogNav {
+    grid-template-columns: 1fr;
+    grid-template-areas: "search" "tabs";
+    gap: 8px;
+  }
+
+  .mk-modalGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(350px, 0.9fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .mk-modalOverlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .mk-modal {
+    width: 100%;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    overflow-y: auto;
+  }
+
+  .mk-modalGrid {
+    display: block;
+    height: auto;
+  }
+
+  .mk-modalMedia {
+    height: min(52vh, 430px);
+  }
+
+  .mk-modalBody {
+    min-height: 48vh;
+    overflow: visible;
+    padding: 34px 20px max(30px, env(safe-area-inset-bottom));
+  }
+
+  .mk-modalTitle {
+    font-size: clamp(2.4rem, 13vw, 4rem);
+  }
+
+  .mk-modalDescription {
+    margin-top: 20px;
+  }
+
+  .mk-modalFacts {
+    margin-top: 34px;
+    padding-top: 0;
+  }
+
+  .mk-modalActions,
+  .mk-modalAddBtn,
+  .mk-modalQty {
+    width: 100%;
+  }
+
+  .mk-modalMediaHint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-modalMediaBtn img,
+  .mk-modalMediaHint {
+    transition: none;
+  }
+}
+

@@ -132,20 +132,20 @@ function TaskCardContext({ task }: { task: BoardTask }) {
         <a
           href={`/projects/${task.project.id}`}
           onClick={(event) => event.stopPropagation()}
-          className="block truncate text-[11px] leading-snug text-zinc-600 underline-offset-2 transition hover:text-violet-700 hover:underline"
+          className="block truncate text-[11px] leading-snug text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
           title={task.project.title}
         >
-          <span className="font-semibold text-zinc-400">Проект ·</span> {task.project.title}
+          <span className="font-semibold text-white/50">Проект ·</span> {task.project.title}
         </a>
       ) : null}
       {task.order ? (
         <a
           href={`/orders/${task.order.id}`}
           onClick={(event) => event.stopPropagation()}
-          className="block truncate text-[11px] leading-snug text-zinc-600 underline-offset-2 transition hover:text-violet-700 hover:underline"
+          className="block truncate text-[11px] leading-snug text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
           title={orderContextLabel(task.order)}
         >
-          <span className="font-semibold text-zinc-400">Заявка ·</span> {orderContextLabel(task.order)}
+          <span className="font-semibold text-white/50">Заявка ·</span> {orderContextLabel(task.order)}
         </a>
       ) : null}
     </div>
@@ -176,7 +176,7 @@ function getModalPortalHost(): HTMLElement | null {
 
 function cardTextColor(color: string | null): string {
   void color;
-  return "text-zinc-950";
+  return "text-white";
 }
 
 function RoundCheckbox({
@@ -201,11 +201,11 @@ function RoundCheckbox({
       }}
       onMouseDown={(event) => event.stopPropagation()}
       className={[
-        "inline-flex shrink-0 items-center justify-center rounded border font-bold transition",
+        "inline-flex shrink-0 items-center justify-center rounded-full border font-bold transition-colors",
         dim,
         checked
-          ? "border-zinc-950 bg-zinc-950 text-white"
-          : "border-zinc-300 bg-white text-zinc-400 hover:border-zinc-950 hover:text-zinc-950",
+          ? "border-emerald-300 bg-emerald-500 text-white"
+          : "border-white/40 bg-white/10 text-white/50 hover:border-white hover:bg-white/20 hover:text-white",
         className,
       ].join(" ")}
       aria-pressed={checked}
@@ -322,7 +322,7 @@ function ChecklistTreeSection({
           }}
           className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}
         >
-          <div className="flex items-center gap-1 border border-zinc-200 bg-zinc-50 px-2.5 py-2">
+          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-2">
             <RoundCheckbox
               size="sm"
               checked={item.isDone}
@@ -331,7 +331,7 @@ function ChecklistTreeSection({
             <span
               className={[
                 "min-w-0 flex-1 text-xs leading-snug",
-                item.isDone ? "text-zinc-400 line-through opacity-70" : "text-zinc-800",
+                item.isDone ? "text-white/50 line-through" : "text-white/90",
               ].join(" ")}
             >
               {item.title}
@@ -344,7 +344,7 @@ function ChecklistTreeSection({
                   onDeleteChecklistItem(item.id);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
-                className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-zinc-400 opacity-0 transition-opacity duration-150 hover:bg-rose-50 hover:text-rose-700 group-hover/delete:opacity-100"
+                className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-white/45 opacity-0 transition-opacity duration-150 hover:bg-white/10 hover:text-white group-hover/delete:opacity-100"
                 aria-label="Удалить подзадачу"
               >
                 ×
@@ -375,14 +375,14 @@ function ChecklistTreeSection({
             }}
             onMouseDown={(event) => event.stopPropagation()}
             placeholder="Название подзадачи"
-            className="w-full rounded border border-zinc-300 bg-white px-2.5 py-2 text-xs text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-violet-600"
+            className="w-full rounded-md border border-white/20 !bg-[#202733] px-2.5 py-2 text-xs !text-white caret-white outline-none placeholder:!text-white/40 focus:border-white/55"
           />
         ) : (
           <button
             type="button"
             onClick={onAddClick}
             onMouseDown={(event) => event.stopPropagation()}
-            className="py-0.5 text-xs font-semibold text-violet-700 transition hover:text-violet-950"
+            className="py-0.5 text-xs font-semibold text-sky-300 transition-colors hover:text-white"
           >
             + Создать подзадачу
           </button>
@@ -432,12 +432,12 @@ function TaskChecklistPanel({
 
   if (!hasChecklist && !adding) {
     return (
-      <div className="border-t border-zinc-200 bg-zinc-50 px-3 py-2.5">
+      <div className="border-t border-black/25 bg-[#283040] px-3 py-2.5">
         <button
           type="button"
           onClick={startAdding}
           onMouseDown={(event) => event.stopPropagation()}
-          className="text-xs font-semibold text-violet-700 transition hover:text-violet-950"
+          className="text-xs font-semibold text-sky-300 transition-colors hover:text-white"
         >
           + Создать подзадачу
         </button>
@@ -446,7 +446,7 @@ function TaskChecklistPanel({
   }
 
   return (
-    <div className="border-t border-zinc-200 bg-zinc-50">
+    <div className="border-t border-black/25 bg-[#283040]">
       {hasChecklist ? (
         <button
           type="button"
@@ -455,21 +455,21 @@ function TaskChecklistPanel({
             onToggleExpanded(task.id);
           }}
           onMouseDown={(event) => event.stopPropagation()}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-zinc-100"
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
         >
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
             <div
               className={[
                 "h-full rounded-full transition-all duration-200",
-                progressPct === 100 ? "bg-emerald-500" : "bg-violet-700",
+                progressPct === 100 ? "bg-emerald-400" : "bg-white/45",
               ].join(" ")}
               style={{ width: `${progressPct > 0 ? Math.max(progressPct, 6) : 0}%` }}
             />
           </div>
-          <span className="shrink-0 text-[11px] tabular-nums text-zinc-600">
+          <span className="shrink-0 text-[11px] tabular-nums text-slate-300/90">
             {task.checklistDone}/{task.checklistTotal}
           </span>
-          <span className="shrink-0 text-[10px] text-zinc-500">{expanded ? "▴" : "▾"}</span>
+          <span className="shrink-0 text-[10px] text-slate-300/75">{expanded ? "▴" : "▾"}</span>
         </button>
       ) : null}
 
@@ -600,11 +600,11 @@ function TaskCard({
       }}
       onDragEnd={onDragEnd}
       className={[
-        "group overflow-hidden rounded-md border border-zinc-300 border-l-4 bg-white",
-        "cursor-grab transition-colors duration-150 hover:border-zinc-950 active:cursor-grabbing",
+        "group overflow-hidden rounded-lg border border-black/15 bg-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.16)]",
+        "cursor-grab transition-[filter,box-shadow] duration-150 hover:brightness-[1.04] hover:shadow-[0_10px_24px_rgba(15,23,42,0.22)] active:cursor-grabbing",
         textTone,
       ].join(" ")}
-      style={{ borderLeftColor: task.color ?? "#334155" }}
+      style={{ backgroundColor: task.color ?? "#334155" }}
     >
       <div className="px-3 py-3">
         <div className="flex items-start gap-2">
@@ -622,8 +622,8 @@ function TaskCard({
                 }
               }}
               className={[
-                "block w-full rounded bg-white px-1 py-0.5 text-sm font-semibold leading-snug text-zinc-950 outline-none transition",
-                "hover:bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-violet-200",
+                "block w-full rounded !bg-transparent px-1 py-0.5 text-sm font-semibold leading-snug !text-white caret-white outline-none transition-colors",
+                "hover:!bg-white/5 focus:!bg-black/12 focus:ring-1 focus:ring-white/35",
                 taskDone ? "opacity-60 line-through" : "",
               ].join(" ")}
             />
@@ -646,13 +646,13 @@ function TaskCard({
               onMouseDown={(event) => event.stopPropagation()}
               placeholder="Описание"
               rows={1}
-              className="mt-1 block w-full resize-none overflow-hidden rounded bg-white px-1 py-0.5 text-xs leading-snug text-zinc-700 outline-none transition placeholder:text-zinc-400 hover:bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-violet-200"
+              className="mt-1 block w-full resize-none overflow-hidden rounded !bg-transparent px-1 py-0.5 text-xs leading-snug !text-white/80 caret-white outline-none transition-colors placeholder:!text-white/40 hover:!bg-white/5 focus:!bg-black/10 focus:ring-1 focus:ring-white/30"
             />
           </div>
           <button
             type="button"
             onClick={() => onOpen(task)}
-            className="rounded px-1.5 py-1 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950"
+            className="rounded px-1.5 py-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
             title="Открыть полное редактирование"
           >
             ⋮
@@ -661,12 +661,12 @@ function TaskCard({
 
         <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
           {task.dueDate ? (
-            <span className="rounded border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-700">
+            <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-white/90">
               {fmtDate(task.dueDate)}
             </span>
           ) : null}
           {isUrgent ? (
-            <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900">
+            <span className="rounded border border-amber-200/50 bg-amber-300/20 px-2 py-0.5 text-[11px] text-amber-50">
               {PRIORITY_LABEL[task.priority]}
             </span>
           ) : null}
@@ -1941,7 +1941,7 @@ function TasksPageContent() {
   return (
     <div
       className={[
-        "rounded-lg border border-zinc-300 bg-[#f4f4f0]",
+        "rounded-lg border border-zinc-300 bg-[#e9e8ed]",
         viewParams.embedded ? "p-3" : "p-4",
       ].join(" ")}
     >
@@ -2035,8 +2035,8 @@ function TasksPageContent() {
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
-                "relative flex w-[320px] shrink-0 flex-col overflow-hidden rounded-md border bg-zinc-50 transition",
-                dragOverColumnId === column.id ? "border-violet-600 ring-2 ring-violet-100" : "border-zinc-300",
+                "relative flex w-[320px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#f5f4f7] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition",
+                dragOverColumnId === column.id ? "border-violet-500 ring-2 ring-violet-200" : "border-zinc-300",
                 draggingColumnId === column.id ? "opacity-60" : "",
               ].join(" ")}
             >
@@ -2067,8 +2067,8 @@ function TasksPageContent() {
                   setDraggingColumnId(null);
                   setDragOverColumn(null);
                 }}
-                className="cursor-grab border-b border-t-4 border-b-zinc-300 bg-white px-3 py-3 active:cursor-grabbing"
-                style={{ borderTopColor: column.color ?? "#334155" }}
+                className="cursor-grab border-b border-black/15 px-3 py-3 text-white active:cursor-grabbing"
+                style={{ backgroundColor: column.color ?? "#334155" }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <input
@@ -2087,14 +2087,14 @@ function TasksPageContent() {
                     onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="min-w-0 flex-1 bg-white text-base font-bold text-zinc-950 outline-none placeholder:text-zinc-400"
+                    className="min-w-0 flex-1 !bg-transparent text-base font-bold !text-white caret-white outline-none placeholder:!text-white/45"
                   />
                   <button
                     type="button"
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-bold text-zinc-700 hover:border-zinc-950"
+                    className="rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-bold text-white transition-colors hover:bg-white/20"
                     title="Колонка завершения"
                   >
                     {column.isDone ? "✓" : "○"}
@@ -2106,7 +2106,7 @@ function TasksPageContent() {
                     onClick={() => setEditor({ task: null, columnId: column.id })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="text-sm font-bold text-violet-700 hover:text-violet-950"
+                    className="text-sm font-bold text-white/90 transition-colors hover:text-white"
                   >
                     + Добавить задачу
                   </button>
@@ -2116,7 +2116,7 @@ function TasksPageContent() {
                       onClick={() => void archiveCompletedTasks(column)}
                       disabled={viewParams.readOnly}
                       draggable={false}
-                      className="ml-auto rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-bold text-zinc-700 hover:border-zinc-950 disabled:opacity-45"
+                      className="ml-auto rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-bold text-white transition-colors hover:bg-white/20 disabled:opacity-45"
                       title="Убрать выполненные задачи из доски в архив"
                     >
                       Архивировать
@@ -2127,7 +2127,7 @@ function TasksPageContent() {
                       type="button"
                       onClick={() => void deleteColumn(column.id)}
                       draggable={false}
-                    className="ml-auto text-xs font-bold text-zinc-500 hover:text-rose-700"
+                    className="ml-auto text-xs font-bold text-white/65 hover:text-white"
                     >
                       удалить
                     </button>
@@ -2187,7 +2187,7 @@ function TasksPageContent() {
                   />
                 ))}
                 {column.tasks.length === 0 ? (
-                  <div className="rounded border border-dashed border-zinc-300 bg-white px-3 py-4 text-sm font-semibold text-zinc-500">
+                  <div className="rounded-md border border-dashed border-zinc-300 bg-white/70 px-3 py-4 text-sm font-semibold text-zinc-500">
                     {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
                   </div>
                 ) : null}

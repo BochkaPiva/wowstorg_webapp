@@ -13,14 +13,14 @@ type CatalogItem = {
   availability: { availableNow: number; availableForDates?: number };
 };
 
-function typeLabelRu(t: CatalogItem["type"]) {
-  switch (t) {
+function typeLabelRu(type: CatalogItem["type"]) {
+  switch (type) {
     case "ASSET":
-      return "Штучный";
+      return "Штучный реквизит";
     case "BULK":
-      return "Мерный";
+      return "Мерный реквизит";
     case "CONSUMABLE":
-      return "Расходник";
+      return "Расходный материал";
   }
 }
 
@@ -52,6 +52,14 @@ export function ItemModal({
     setQtyDraft(qtyInCart > 0 ? String(qtyInCart) : "");
   }, [qtyInCart]);
 
+  React.useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   function commitQty(raw: string) {
     if (raw.trim() === "") {
       onSetQty(0);
@@ -71,8 +79,8 @@ export function ItemModal({
   }
 
   React.useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
       if (isPreviewOpen) {
         setIsPreviewOpen(false);
         return;
@@ -85,8 +93,18 @@ export function ItemModal({
 
   const modal = (
     <>
-      <div className="mk-modalOverlay" onMouseDown={onClose} role="dialog" aria-modal="true">
-        <div className="mk-modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="mk-modalOverlay"
+        onMouseDown={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="catalog-item-title"
+      >
+        <div className="mk-modal" onMouseDown={(event) => event.stopPropagation()}>
+          <button className="mk-close" type="button" onClick={onClose} aria-label="Закрыть карточку">
+            ×
+          </button>
+
           <div className="mk-modalGrid">
             <div className="mk-modalMedia">
               {item.photo1Key ? (
@@ -94,64 +112,57 @@ export function ItemModal({
                   type="button"
                   className="mk-modalMediaBtn"
                   onClick={() => setIsPreviewOpen(true)}
-                  aria-label="Открыть фото на весь экран"
-                  title="Открыть фото"
+                  aria-label="Увеличить фотографию"
                 >
                   <img
                     src={`/api/inventory/positions/${item.id}/photo`}
                     alt={item.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0, borderRadius: "inherit" }}
+                    decoding="async"
                   />
+                  <span className="mk-modalMediaHint">Увеличить</span>
                 </button>
               ) : (
-                <div className="mk-placeholder" style={{ position: "absolute" }}>
-                  <div className="mk-placeholderBadge">WOWSTORG · PREVIEW</div>
+                <div className="mk-modalPlaceholder">
+                  <span>Фото пока нет</span>
                 </div>
               )}
             </div>
-            <div className="mk-modalBody">
-              <div className="mk-modalTop">
+
+            <article className="mk-modalBody">
+              <span className="mk-modalEyebrow">{typeLabelRu(item.type)}</span>
+              <h2 id="catalog-item-title" className="mk-modalTitle">
+                {item.name}
+              </h2>
+              <p className="mk-modalDescription">
+                {item.description?.trim() || "Описание пока не добавлено."}
+              </p>
+
+              <div className="mk-modalFacts" aria-label="Цена и наличие">
                 <div>
-                  <div className="mk-name" style={{ fontSize: "1.35rem" }}>
-                    {item.name}
-                  </div>
-                  <div className="mk-meta">
-                    <span className="mk-pill">{typeLabelRu(item.type)}</span>
-                    <span className="mk-available">
-                      Доступно:{" "}
-                      <strong>{availableForDates ?? item.availability.availableNow}</strong>
-                    </span>
-                  </div>
+                  <span>Аренда</span>
+                  <strong>{item.pricePerDay} ₽ / сутки</strong>
                 </div>
-                <button className="mk-close" onClick={onClose} aria-label="Закрыть">
-                  ✕
-                </button>
+                <div>
+                  <span>В наличии</span>
+                  <strong>{available}</strong>
+                </div>
               </div>
 
-              <div className="mk-desc" style={{ WebkitLineClamp: "unset" as never }}>
-                {item.description?.trim()
-                  ? item.description
-                  : "Описание пока не добавлено. Склад может заполнить его в инвентаре."}
-              </div>
-
-              <div className="mk-actions">
-                <div className="mk-price">
-                  <strong>{item.pricePerDay}</strong>
-                  <span className="mk-priceUnit">р/сут</span>
-                </div>
-
+              <div className="mk-modalActions">
                 {qtyInCart <= 0 ? (
                   <button
-                    className="mk-addBtn"
+                    className="mk-modalAddBtn"
+                    type="button"
                     onClick={onAdd}
                     disabled={!canAddMore}
                     title={!canAddMore ? "Нет доступных на выбранные даты" : undefined}
                   >
-                    В корзину
+                    {canAddMore ? "Добавить в корзину" : "Нет в наличии"}
+                    {canAddMore ? <span aria-hidden="true">+</span> : null}
                   </button>
                 ) : (
-                  <div className="mk-qty" aria-label="Количество в корзине">
-                    <button onClick={onDec} aria-label="Минус">
+                  <div className="mk-modalQty" aria-label="Количество в корзине">
+                    <button type="button" onClick={onDec} aria-label="Уменьшить количество">
                       −
                     </button>
                     <input
@@ -159,26 +170,27 @@ export function ItemModal({
                       inputMode="numeric"
                       pattern="[0-9]*"
                       value={qtyDraft}
-                      onChange={(e) => {
-                        let next = e.target.value.replace(/\D+/g, "");
+                      onChange={(event) => {
+                        let next = event.target.value.replace(/\D+/g, "");
                         if (next !== "" && available > 0) {
-                          const n = Number.parseInt(next, 10);
-                          if (Number.isFinite(n) && n > available) next = String(available);
+                          const value = Number.parseInt(next, 10);
+                          if (Number.isFinite(value) && value > available) next = String(available);
                         }
                         setQtyDraft(next);
                       }}
                       onBlur={() => commitQty(qtyDraft)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
                           commitQty(qtyDraft);
-                          (e.currentTarget as HTMLInputElement).blur();
+                          event.currentTarget.blur();
                         }
                       }}
                       aria-label="Количество"
                     />
                     <button
+                      type="button"
                       onClick={onInc}
-                      aria-label="Плюс"
+                      aria-label="Увеличить количество"
                       disabled={!canAddMore}
                     >
                       +
@@ -187,13 +199,14 @@ export function ItemModal({
                 )}
               </div>
 
-              <div className="mk-subtitle" style={{ marginTop: "0.9rem" }}>
-                Нажми <strong>Esc</strong> или кликни по фону, чтобы закрыть.
-              </div>
-            </div>
+              {availableForDates !== undefined ? (
+                <p className="mk-modalAvailabilityNote">Наличие рассчитано на выбранный период аренды.</p>
+              ) : null}
+            </article>
           </div>
         </div>
       </div>
+
       {isPreviewOpen && item.photo1Key ? (
         <div
           className="mk-photoPreviewOverlay"
@@ -206,12 +219,11 @@ export function ItemModal({
             type="button"
             className="mk-photoPreviewClose"
             onClick={() => setIsPreviewOpen(false)}
-            aria-label="Закрыть фото"
-            title="Закрыть"
+            aria-label="Закрыть фотографию"
           >
-            ✕
+            ×
           </button>
-          <div className="mk-photoPreviewFrame" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="mk-photoPreviewFrame" onMouseDown={(event) => event.stopPropagation()}>
             <img
               className="mk-photoPreviewImage"
               src={`/api/inventory/positions/${item.id}/photo`}
@@ -228,4 +240,3 @@ export function ItemModal({
   }
   return modal;
 }
-

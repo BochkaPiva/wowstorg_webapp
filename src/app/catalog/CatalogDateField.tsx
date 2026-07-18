@@ -26,6 +26,7 @@ export function CatalogDateField({
   min,
   max,
   endAccessory,
+  inputCaption,
 }: {
   label: string;
   value: string;
@@ -35,6 +36,8 @@ export function CatalogDateField({
   max?: string;
   /** Компактный контрол справа от поля даты (например тумблер «утро/вечер»). */
   endAccessory?: React.ReactNode;
+  /** Short in-control caption used by dense catalog date controls. */
+  inputCaption?: string;
 }) {
   const safeMin = min;
   const safeMax =
@@ -203,27 +206,30 @@ export function CatalogDateField({
 
   const dateWrap = (
     <span className="mk-dateWrap" ref={wrapRef}>
-      <input
-        className="mk-dateText"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          const parsed = parseRuToDateOnly(text);
-          if (parsed) {
-            let d = parsed;
-            if (safeMin && d < safeMin) d = safeMin;
-            if (safeMax && d > safeMax) d = safeMax;
-            onChange(d);
-            setText(formatDateRu(d));
-          } else {
-            setText(formatDateRu(value));
-          }
-        }}
-        inputMode="numeric"
-        placeholder="ДД.ММ.ГГГГ"
-        aria-label={label}
-        title={inputTitle}
-      />
+      <span className="mk-dateTextCell">
+        {inputCaption ? <span className="mk-dateTextCaption">{inputCaption}</span> : null}
+        <input
+          className="mk-dateText"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            const parsed = parseRuToDateOnly(text);
+            if (parsed) {
+              let d = parsed;
+              if (safeMin && d < safeMin) d = safeMin;
+              if (safeMax && d > safeMax) d = safeMax;
+              onChange(d);
+              setText(formatDateRu(d));
+            } else {
+              setText(formatDateRu(value));
+            }
+          }}
+          inputMode="numeric"
+          placeholder="ДД.ММ.ГГГГ"
+          aria-label={label}
+          title={inputTitle}
+        />
+      </span>
       <button
         type="button"
         className="mk-datePickBtn"

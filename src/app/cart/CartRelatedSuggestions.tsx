@@ -207,13 +207,14 @@ export function CartRelatedSuggestions({
     () =>
       [
         catalogItemIdsKey,
+        qtysKey,
         startDate ?? "",
         endDate ?? "",
         rentalStartPartOfDay,
         rentalEndPartOfDay,
         excludeOrderId ?? "",
       ].join("|"),
-    [catalogItemIdsKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
+    [catalogItemIdsKey, qtysKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
   );
 
   const fetchKey = variant === "catalog" ? catalogRequestKey : requestKey;
@@ -229,6 +230,7 @@ export function CartRelatedSuggestions({
     }
 
     let cancelled = false;
+    const controller = new AbortController();
     async function load() {
       if (groupsRef.current.length === 0) setLoading(true);
       try {
@@ -242,13 +244,16 @@ export function CartRelatedSuggestions({
           params.set("rentalEndPartOfDay", rentalEndPartOfDay);
         }
         if (excludeOrderId) params.set("excludeOrderId", excludeOrderId);
-        const res = await fetch(`/api/catalog/related?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(`/api/catalog/related?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const data = (await res.json().catch(() => null)) as { groups?: unknown } | null;
         if (!cancelled) {
           setGroups(res.ok ? normalizeGroups(data?.groups) : []);
         }
-      } catch {
-        if (!cancelled) setGroups([]);
+      } catch (error) {
+        if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) setGroups([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -256,9 +261,19 @@ export function CartRelatedSuggestions({
     void load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-    // fetchKey encodes cart lines, dates and excludeOrderId.
-  }, [disabled, fetchKey]);
+  }, [
+    disabled,
+    fetchKey,
+    itemIdsKey,
+    qtysKey,
+    startDate,
+    endDate,
+    rentalStartPartOfDay,
+    rentalEndPartOfDay,
+    excludeOrderId,
+  ]);
 
   const visibleGroups = React.useMemo(
     () =>
@@ -286,19 +301,7 @@ export function CartRelatedSuggestions({
   if (disabled || itemIds.length === 0) return null;
 
   if (isCatalog) {
-    if (visibleCount === 0) {
-      if (loading) {
-        return (
-          <div className="cart-related cart-related--catalog">
-            <section className="catalog-related-drum" aria-label="Рекомендуем добавить">
-              <h2 className="catalog-related-drum-title">Рекомендуем добавить</h2>
-              <p className="cart-related-loading catalog-related-drum-loading">Подбираем рекомендации…</p>
-            </section>
-          </div>
-        );
-      }
-      return null;
-    }
+    if (visibleCount === 0) return null;
 
     return (
       <div className="cart-related cart-related--catalog">

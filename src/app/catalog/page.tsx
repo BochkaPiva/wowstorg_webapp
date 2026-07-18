@@ -885,6 +885,7 @@ export default function CatalogPage() {
                   <div className="mk-dateColumn mk-dateColumn--ready">
                     <CatalogDateField
                       label="Готовность к дате"
+                      inputCaption="Дата"
                       value={readyByDate}
                       onChange={(v) => patchCatalogDates({ readyByDate: v })}
                       min={dateMin}

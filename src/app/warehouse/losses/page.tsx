@@ -3,6 +3,7 @@
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type LossRow = {
@@ -95,7 +96,7 @@ export default function WarehouseLossesBasePage() {
 
       <div className="mt-4">
         {loading ? (
-          <div className="text-sm text-zinc-600">Загрузка…</div>
+          <ListSkeleton rows={6} />
         ) : rows.length === 0 ? (
           <div className="text-sm text-zinc-600">Пусто.</div>
         ) : (

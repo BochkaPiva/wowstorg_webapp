@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import {
   achievementImageSrc,
@@ -91,7 +92,7 @@ export default function AchievementsPage() {
               Непрочитанных уведомлений: {data?.unreadNotifications ?? 0}
             </div>
 
-            {loading ? <div className="mt-4 text-sm text-zinc-600">Загрузка…</div> : null}
+            {loading ? <ListSkeleton className="mt-4" rows={6} /> : null}
             {error ? (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                 {error}

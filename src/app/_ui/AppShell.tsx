@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 
 import { InAppNotifications } from "@/app/_ui/InAppNotifications";
+import { AppWorkspaceSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type NavItem = { href: string; label: string };
@@ -136,12 +137,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   }
 
   if (state.status !== "authenticated") {
-    return (
-      <div className="app-loading" role="status">
-        <span className="app-loading__bar" aria-hidden="true" />
-        <span>Загружаем рабочее пространство</span>
-      </div>
-    );
+    return <AppWorkspaceSkeleton />;
   }
 
   const isWowstorg = state.user.role === "WOWSTORG";

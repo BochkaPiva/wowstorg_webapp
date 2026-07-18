@@ -6,6 +6,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { DashboardSkeleton, ListSkeleton, LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
@@ -16,7 +17,7 @@ import { WowstorgIdleText } from "./WowstorgIdleText";
 
 const BackgroundStackGame = dynamic(
   () => import("./BackgroundStackGame").then((module) => module.BackgroundStackGame),
-  { ssr: false, loading: () => <div className="h-[280px] rounded-xl bg-zinc-100" /> },
+  { ssr: false, loading: () => null },
 );
 
 const DASH_SECTION_SHELL =
@@ -368,7 +369,16 @@ function GreenwichAchievementsStrip({ isGreenwich }: { isGreenwich: boolean }) {
           </div>
         </div>
 
-        {loading ? <div className="mt-1 text-sm text-zinc-600">Загрузка…</div> : null}
+        {loading && !data ? (
+          <LoadingRegion className="grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6" label="Загрузка достижений">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div className="flex items-center gap-3 px-2 py-2" key={index}>
+                <Skeleton className="h-14 w-14 shrink-0 rounded-xl" />
+                <div className="min-w-0 flex-1 space-y-2"><Skeleton className="h-3 w-full" /><Skeleton className="h-2 w-2/3" /></div>
+              </div>
+            ))}
+          </LoadingRegion>
+        ) : null}
         {error ? (
           <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {error}
@@ -466,7 +476,7 @@ type GreenwichDashboardData = {
 
 function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
   const [data, setData] = React.useState<GreenwichDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -498,15 +508,15 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
         <div className="text-sm font-semibold text-zinc-900">Заявки</div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
           <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5">
-            Активных: <span className="font-semibold text-violet-800">{data?.activeCount ?? 0}</span>
+            Активных: <span className="inline-block min-w-4 font-semibold text-violet-800">{data ? data.activeCount : <Skeleton className="h-3 w-4" />}</span>
           </span>
           <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5">
-            Выполненных: <span className="font-semibold text-zinc-900">{data?.completedCount ?? 0}</span>
+            Выполненных: <span className="inline-block min-w-4 font-semibold text-zinc-900">{data ? data.completedCount : <Skeleton className="h-3 w-4" />}</span>
           </span>
         </div>
       </div>
 
-      {loading ? <div className="mt-4 text-sm text-zinc-600">Загрузка…</div> : null}
+      {loading && !data ? <ListSkeleton className="mt-4" rows={3} /> : null}
       {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
 
       {!loading && !error ? (
@@ -784,9 +794,9 @@ function operationPillClass(urgency: OperationsEvent["urgency"]) {
 }
 
 function signalClass(severity: OperationsSignal["severity"]) {
-  if (severity === "critical") return "border-rose-200/80 bg-[linear-gradient(135deg,rgba(255,241,242,0.96),rgba(255,255,255,0.82))] text-rose-950 shadow-rose-950/5";
-  if (severity === "warning") return "border-amber-200/90 bg-[linear-gradient(135deg,rgba(255,251,235,0.96),rgba(255,255,255,0.82))] text-amber-950 shadow-amber-950/5";
-  return "border-sky-200/80 bg-[linear-gradient(135deg,rgba(240,249,255,0.96),rgba(255,255,255,0.82))] text-sky-950 shadow-sky-950/5";
+  if (severity === "critical") return "border-rose-300 bg-rose-50 text-rose-950";
+  if (severity === "warning") return "border-amber-300 bg-amber-50 text-amber-950";
+  return "border-sky-300 bg-sky-50 text-sky-950";
 }
 
 function signalEntityLabel(kind: OperationsSignal["entityKind"]) {
@@ -801,12 +811,12 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
     <Link
       href={event.href}
       className={[
-        "block rounded-[1.15rem] border px-3.5 py-3 shadow-[0_9px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/55 backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(76,29,149,0.10)]",
+        "block rounded-md border px-3 py-2.5 transition-colors hover:border-zinc-500",
         isPersonalTask
-          ? "border-amber-300/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.84))] ring-amber-100"
+          ? "border-amber-300 bg-amber-50"
           : event.urgency === "critical" || event.urgency === "overdue"
-            ? "border-rose-200/80 bg-[linear-gradient(135deg,rgba(255,241,242,0.94),rgba(255,255,255,0.84))]"
-            : "border-white/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.90),rgba(248,247,255,0.72))]",
+            ? "border-rose-300 bg-rose-50"
+            : "border-zinc-200 bg-white",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
@@ -832,7 +842,7 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
 
 function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   const [data, setData] = React.useState<OperationsDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [snoozingSignalId, setSnoozingSignalId] = React.useState<string | null>(null);
 
@@ -900,9 +910,11 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
     }
   }, []);
 
+  if (loading && !data) return <DashboardSkeleton />;
+
   return (
-    <div className="space-y-3">
-      <div className={DASH_CARD}>
+    <div className="space-y-4">
+      <div className="overflow-hidden border border-zinc-300 bg-white">
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-300 bg-zinc-200 md:grid-cols-4">
           <div className="bg-white px-4 py-3">
             <div className="text-xs font-semibold text-violet-700">Сегодня</div>
@@ -921,8 +933,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
             <div className="mt-1 truncate text-sm font-bold text-zinc-950">{data?.summary.nearestOrderTitle ?? "Нет активных"}</div>
           </div>
         </div>
-        {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка...</div> : null}
-        {error ? <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+        {error ? <div className="border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
@@ -933,7 +944,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {!loading && !error && data?.today.length === 0 ? (
-              <div className="rounded-[1.2rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.80))] px-4 py-3 text-sm font-semibold text-emerald-900 shadow-sm md:col-span-2">
+              <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 md:col-span-2">
                 Сегодня спокойно.
               </div>
             ) : null}
@@ -953,12 +964,12 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           </div>
           <div className="mt-3 space-y-2">
             {!loading && !error && data?.signals.length === 0 ? (
-              <div className="rounded-[1.2rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.80))] px-4 py-3 text-sm font-semibold text-emerald-900 shadow-sm">
+              <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
                 Критичных сигналов нет.
               </div>
             ) : null}
             {(data?.signals ?? []).slice(0, 5).map((signal) => (
-              <div key={signal.id} className={["rounded-[1.2rem] border px-3.5 py-3 shadow-[0_9px_24px_rgba(15,23,42,0.06)] ring-1 ring-white/60 backdrop-blur-md transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(76,29,149,0.10)]", signalClass(signal.severity)].join(" ")}>
+              <div key={signal.id} className={["rounded-md border px-3 py-2.5 transition-colors hover:border-zinc-500", signalClass(signal.severity)].join(" ")}>
                 <div className="flex items-start justify-between gap-2">
                   <Link href={signal.href} className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -997,7 +1008,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           <div className="text-sm font-black tracking-tight text-zinc-950">Ближайшие дни</div>
           <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
         </div>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2 xl:grid-cols-5">
           {(data?.upcomingDays ?? []).map((day) => (
             <div key={day.date} className="min-h-[9rem] rounded-md border border-zinc-300 bg-zinc-50 p-2">
               <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
@@ -1011,7 +1022,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
               </div>
               <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
                 {day.events.length === 0 ? (
-                  <div className="rounded-xl border border-white/80 bg-white/70 px-3 py-2 text-xs font-medium text-zinc-500 shadow-sm">Пусто</div>
+                  <div className="px-1 py-2 text-xs font-medium text-zinc-500">Нет событий</div>
                 ) : (
                   day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)
                 )}
@@ -1042,14 +1053,14 @@ function CollapsibleIssuanceCalendar() {
           {open ? "Свернуть" : "Развернуть"}
         </button>
       </div>
-      {open ? <IssuanceCalendar className="mt-3 border-violet-100/90 shadow-[0_6px_24px_rgba(124,58,237,0.08)]" /> : null}
+      {open ? <IssuanceCalendar className="mt-3 border-0 p-0 shadow-none" /> : null}
     </div>
   );
 }
 
 function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   const [data, setData] = React.useState<WowstorgDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -1076,22 +1087,22 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   }, [isWowstorg]);
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-      <div className={`${DASH_CARD} md:col-span-8`}>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+      <div className={`${DASH_CARD} xl:col-span-8`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
           <div className="text-sm font-semibold text-zinc-900">Заявки</div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
             <span className={BADGE_PRIMARY}>
-              Активных: <span>{data?.activeCount ?? 0}</span>
+              Активных: <span className="inline-block min-w-4">{data ? data.activeCount : <Skeleton className="h-3 w-4" />}</span>
             </span>
             <span className={BADGE_NEUTRAL}>
-              Выполненных: <span>{data?.completedCount ?? 0}</span>
+              Выполненных: <span className="inline-block min-w-4">{data ? data.completedCount : <Skeleton className="h-3 w-4" />}</span>
             </span>
           </div>
         </div>
 
-        {loading ? <div className="mt-4 text-sm text-zinc-600">Загрузка…</div> : null}
+        {loading && !data ? <ListSkeleton className="mt-4" rows={4} /> : null}
         {error ? (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
             {error}
@@ -1102,8 +1113,8 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           <div className="mt-4">
             {data?.nearest ? (
               <div className="space-y-3">
-                <div className={DASH_SUBCARD}>
-                  <div className="px-4 py-4 bg-zinc-50">
+                <div className="overflow-hidden border border-zinc-300 bg-white">
+                  <div className="border-b border-zinc-300 bg-zinc-50 px-4 py-4">
                     <OrderStatusStepper status={data.nearest.status} />
                   </div>
                   <div className="p-4">
@@ -1146,17 +1157,17 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                 </div>
 
                 {data.activeOrders.length > 1 ? (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="border-t border-zinc-300 pt-3">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-600">
                       Остальные активные заявки
                     </div>
-                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                    <div className="max-h-56 divide-y divide-zinc-200 overflow-y-auto border border-zinc-200 bg-white">
                       {data.activeOrders
                         .filter((o) => o.id !== data.nearest?.id)
                         .map((o) => (
                           <div
                             key={o.id}
-                            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 flex items-center justify-between gap-3"
+                            className="flex items-center justify-between gap-3 px-3 py-2.5"
                           >
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-zinc-900">{o.customerName}</div>
@@ -1191,7 +1202,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         ) : null}
       </div>
 
-      <div className={`${DASH_CARD} md:col-span-4`}>
+      <div className={`${DASH_CARD} xl:col-span-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
           <div className="space-y-1">
             <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
@@ -1207,31 +1218,31 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           ) : null}
         </div>
 
-        {loading ? <div className="mt-3 text-sm text-zinc-600">Загрузка…</div> : null}
+        {loading && !data ? <ListSkeleton className="mt-3" rows={5} /> : null}
         {!loading && !error && data ? (
           <div className="mt-3 space-y-4">
-            <div className="grid grid-cols-2 gap-2 items-stretch">
-              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+            <div className="grid grid-cols-2 overflow-hidden border border-zinc-300 bg-zinc-200 items-stretch">
+              <div className="flex min-h-[6.1rem] flex-col border-b border-r border-zinc-300 bg-amber-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-amber-900">Ремонт</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-amber-900">{data.equipment.inRepairQty}</div>
                 <EquipmentCardArrowLink href="/inventory/repair?condition=NEEDS_REPAIR" label="Открыть базу «Требует ремонта»" />
               </div>
-              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col border-b border-zinc-300 bg-red-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-red-900">Сломано</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-red-900">{data.equipment.brokenQty}</div>
                 <EquipmentCardArrowLink href="/inventory/repair?condition=BROKEN" label="Открыть базу «Сломано»" />
               </div>
-              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col border-r border-zinc-300 bg-white px-3 py-2">
                 <div className="text-[11px] font-semibold text-zinc-800">Потеряно</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-zinc-900">{data.equipment.lostQty}</div>
                 <EquipmentCardArrowLink href="/inventory/losses" label="Открыть базу утерянного" />
               </div>
-              <div className="flex min-h-[6.1rem] flex-col rounded-xl border border-violet-200 bg-violet-50 px-3 py-2">
+              <div className="flex min-h-[6.1rem] flex-col bg-violet-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-violet-900">В наличии позиций</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{data.equipment.positionsInStockCount}</div>
                 <EquipmentCardArrowLink href="/inventory/positions" label="Открыть позиции каталога" />
               </div>
-              <div className="col-span-2 flex min-h-[6.8rem] flex-col rounded-xl border border-sky-200 bg-sky-50 px-3 py-2">
+              <div className="col-span-2 flex min-h-[6.8rem] flex-col border-t border-zinc-300 bg-sky-50 px-3 py-2">
                 <div className="text-[11px] font-semibold text-sky-900">В аренде сейчас</div>
                 <div className="mt-1 text-lg font-bold tabular-nums text-sky-900">
                   {data.equipment.rentedUnitsTotal} шт. · {data.equipment.rentedPositionsCount} поз.
@@ -1247,7 +1258,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
             </div>
 
             {data.equipment.endedPositions.length > 0 ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3">
+              <div className="border border-red-300 bg-red-50 px-3 py-3">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="text-sm font-semibold text-red-900">Закончившиеся позиции</div>
                   {data.equipment.endedPositions.length > 8 ? (
@@ -1258,7 +1269,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                   {data.equipment.endedPositions.slice(0, 8).map((p) => (
                     <div
                       key={p.id}
-                      className="rounded-lg border border-red-200 bg-white/60 px-2.5 py-2 flex items-center justify-between gap-2"
+                       className="flex items-center justify-between gap-2 border-t border-red-200 px-2.5 py-2 first:border-t-0"
                     >
                       <div className="min-w-0 text-sm font-medium text-red-900 truncate">{p.name}</div>
                       <Link
@@ -1356,10 +1367,10 @@ export default function HomeDashboardPage() {
                 <div className="text-sm font-semibold text-zinc-900">Дашборд</div>
               </div>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-6">
               <OperationsDashboardBlock isWowstorg={isWowstorg} />
-              <CollapsibleIssuanceCalendar />
               <WowstorgDashboardBlock isWowstorg={isWowstorg} />
+              <CollapsibleIssuanceCalendar />
             </div>
           </div>
         ) : null}

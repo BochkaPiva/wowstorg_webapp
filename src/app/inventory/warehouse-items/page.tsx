@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type Item = {
@@ -185,7 +186,7 @@ export default function WarehouseItemsPage() {
           ) : null}
 
           {loading ? (
-            <div className="text-sm text-zinc-600">Загрузка…</div>
+            <ListSkeleton rows={6} />
           ) : sortedItems.length === 0 ? (
             <div className="text-sm text-zinc-600">Пусто.</div>
           ) : (

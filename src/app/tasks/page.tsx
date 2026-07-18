@@ -4,6 +4,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { BoardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -1990,7 +1991,7 @@ function TasksPageContent() {
         </div>
       </div>
 
-      {loading ? <div className="px-4 py-6 text-sm text-zinc-600">Загрузка...</div> : null}
+      {loading ? <BoardSkeleton /> : null}
       {error ? <div className="mx-1 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div> : null}
 
       {!loading && board ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 
 type CalendarPayload = {
   year: number;
@@ -182,13 +183,22 @@ export function IssuanceCalendar({ className = "" }: { className?: string }) {
         </label>
       </div>
 
-      {loading ? <div className="mt-4 text-sm text-zinc-600">Загрузка…</div> : null}
+      {loading && !data ? (
+        <LoadingRegion className="mt-4" label="Загрузка календаря">
+          <Skeleton className="h-3 w-28" />
+          <div className="mt-3 grid grid-cols-[40px_repeat(18,minmax(0,1fr))] gap-1 overflow-hidden">
+            {Array.from({ length: 126 }, (_, index) => (
+              <Skeleton key={index} className="aspect-square min-w-2 rounded-sm" />
+            ))}
+          </div>
+        </LoadingRegion>
+      ) : null}
       {error ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
 
-      {!loading && !error && data ? (
-        <div className="mt-4 w-full">
+      {!error && data ? (
+        <div className="mt-4 w-full" aria-busy={loading || undefined}>
           <p className="mb-2 text-xs text-zinc-500 sm:hidden">
             На узком экране график шире области — листайте вправо, чтобы смотреть весь год.
           </p>

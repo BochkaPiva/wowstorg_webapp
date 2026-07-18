@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type RentItem = {
@@ -101,7 +102,7 @@ export default function InRentPage() {
           </div>
 
           {loading ? (
-            <div className="text-sm text-zinc-600">Загрузка…</div>
+            <ListSkeleton rows={6} />
           ) : error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
           ) : data ? (

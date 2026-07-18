@@ -6,6 +6,7 @@ import React, { Suspense } from "react";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import {
   PROJECT_BALL_LABEL,
   PROJECT_STATUS_GROUP_LABEL,
@@ -489,7 +490,7 @@ function ProjectsContent() {
           ) : null}
 
           {loading ? (
-            <div className="text-sm text-zinc-600">Загрузка…</div>
+            <ListSkeleton rows={5} />
           ) : !listError && projects.length === 0 ? (
             <div className="text-sm text-zinc-600">Пока нет проектов.</div>
           ) : !listError ? (
@@ -798,7 +799,7 @@ function ProjectsContent() {
 function ProjectsPageFallback() {
   return (
     <AppShell title="Проекты">
-      <div className="text-sm text-zinc-600">Загрузка…</div>
+      <ListSkeleton rows={5} />
     </AppShell>
   );
 }

@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { DashboardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type Scope = { from: string; to: string };
@@ -440,7 +441,7 @@ export default function AdminAnalyticsPage() {
           </div>
 
           {loading ? (
-            <p className="text-sm text-zinc-500">Загрузка…</p>
+            <DashboardSkeleton />
           ) : error ? (
             <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>
           ) : data ? (

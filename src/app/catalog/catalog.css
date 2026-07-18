@@ -1936,6 +1936,21 @@ a.mk-cartPill:hover,
   gap: 14px;
 }
 
+.mk-cardSkeleton { pointer-events: none; }
+.mk-cardSkeleton__number { position: absolute; z-index: 2; top: 14px; left: 14px; width: 32px; height: 32px; border-radius: 50%; background: #262625; }
+.mk-cardSkeleton__media { width: 100%; min-height: 0; border-radius: inherit; }
+.mk-cardSkeleton__pill { width: 86px; height: 24px; border-radius: 999px; }
+.mk-cardSkeleton__title { width: 84%; height: 20px; margin-top: 14px; }
+.mk-cardSkeleton__title--short { width: 58%; margin-top: 7px; }
+.mk-cardSkeleton__facts { display: grid; grid-template-columns: 1fr 0.72fr; gap: 14px; margin-top: 22px; }
+.mk-cardSkeleton__facts > * { height: 15px; }
+.mk-cardSkeleton__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.mk-cardSkeleton__actions > * { height: 42px; border-radius: 8px; }
+.mk-refreshProgress { height: 2px; overflow: hidden; background: #e5e5e1; }
+.mk-refreshProgress > span { display: block; width: 30%; height: 100%; background: var(--mk-yellow, #ffd21f); animation: mk-refresh-progress 900ms ease-in-out infinite alternate; }
+@keyframes mk-refresh-progress { from { transform: translateX(-15%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .mk-refreshProgress > span { width: 100%; animation: none; opacity: 0.75; } }
+
 .mk-card,
 .mk-kit {
   overflow: hidden;

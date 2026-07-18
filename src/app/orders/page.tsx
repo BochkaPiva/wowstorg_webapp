@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
@@ -444,7 +445,7 @@ export default function OrdersPage() {
   return (
     <AppShell title="Мои заявки">
       {loading ? (
-        <div className="text-sm text-zinc-600">Загрузка…</div>
+        <ListSkeleton rows={6} />
       ) : orders.length === 0 ? (
         <div className="text-sm text-zinc-600">Пока нет заявок.</div>
       ) : (

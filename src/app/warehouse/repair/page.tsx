@@ -4,6 +4,7 @@ import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 type IncidentRow = {
@@ -195,7 +196,7 @@ function RepairPageInner() {
 
       <div className="mt-4">
         {loading ? (
-          <div className="text-sm text-zinc-600">Загрузка…</div>
+          <ListSkeleton rows={6} />
         ) : null}
 
         {!loading && itemRows.length > 0 ? (
@@ -322,7 +323,7 @@ export default function WarehouseRepairBasePage() {
     <Suspense
       fallback={
         <AppShell title="Ремонт / сломано">
-          <div className="text-sm text-zinc-600">Загрузка…</div>
+          <ListSkeleton rows={6} />
         </AppShell>
       }
     >

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, type CartLine } from "@/lib/cart";
@@ -47,6 +48,34 @@ type CatalogItem = {
 };
 
 const CATALOG_PAGE_SIZE = 32;
+
+function CatalogGridSkeleton() {
+  return (
+    <LoadingRegion className="mk-grid mk-grid--skeleton" label="Загрузка каталога">
+      {Array.from({ length: 10 }, (_, index) => (
+        <article className="mk-card mk-cardSkeleton" key={index}>
+          <div className="mk-cardInner">
+            <Skeleton className="mk-cardSkeleton__number" />
+            <Skeleton className="mk-box mk-cardSkeleton__media" />
+          </div>
+          <div className="mk-content">
+            <Skeleton className="mk-cardSkeleton__pill" />
+            <Skeleton className="mk-cardSkeleton__title" />
+            <Skeleton className="mk-cardSkeleton__title mk-cardSkeleton__title--short" />
+            <div className="mk-cardSkeleton__facts">
+              <Skeleton />
+              <Skeleton />
+            </div>
+            <div className="mk-cardSkeleton__actions">
+              <Skeleton />
+              <Skeleton />
+            </div>
+          </div>
+        </article>
+      ))}
+    </LoadingRegion>
+  );
+}
 
 function buildPaginationTokens(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
   if (totalPages <= 7) {
@@ -1059,15 +1088,21 @@ export default function CatalogPage() {
         </div>
 
         {catalogRelatedSuggestions}
+        {loading && items.length > 0 ? (
+          <div className="mk-refreshProgress" role="status" aria-live="polite">
+            <span className="sr-only">Обновляем доступность каталога</span>
+            <span aria-hidden="true" />
+          </div>
+        ) : null}
 
         {activeTab === "positions" ? (
-          loading ? (
-            <div className="text-sm text-zinc-600">Загрузка каталога…</div>
+          loading && items.length === 0 ? (
+            <CatalogGridSkeleton />
           ) : items.length === 0 ? (
             <div className="text-sm text-zinc-600">По выбранным параметрам ничего не найдено.</div>
           ) : (
             <>
-              <div className="mk-grid">
+              <div className="mk-grid" aria-busy={loading || undefined}>
                 {items.map((it, index) => (
                   <CatalogItemCard
                     key={it.id}
@@ -1090,13 +1125,13 @@ export default function CatalogPage() {
             <div className="mk-emptyTab">
               <p className="mk-subtitle">Выберите категорию выше — отобразятся позиции этой категории.</p>
             </div>
-          ) : loading ? (
-            <div className="text-sm text-zinc-600">Загрузка…</div>
+          ) : loading && items.length === 0 ? (
+            <CatalogGridSkeleton />
           ) : items.length === 0 ? (
             <div className="text-sm text-zinc-600">В этой категории пока нет позиций по выбранным параметрам.</div>
           ) : (
             <>
-              <div className="mk-grid">
+              <div className="mk-grid" aria-busy={loading || undefined}>
                 {items.map((it, index) => (
                   <CatalogItemCard
                     key={it.id}

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import {
   achievementImageSrc,
@@ -329,7 +330,7 @@ export default function AdminUsersPage() {
             </div>
           )}
           {loading ? (
-            <p className="text-sm text-zinc-500">Загрузка…</p>
+            <ListSkeleton rows={6} />
           ) : (
             <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden">
               <table className="w-full text-sm">

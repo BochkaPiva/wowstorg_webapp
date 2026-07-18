@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
@@ -941,7 +942,7 @@ export default function CartPage() {
         </div>
 
         {loading ? (
-          <p className="cart-muted">Загрузка…</p>
+          <ListSkeleton rows={4} />
         ) : lines.length === 0 ? (
           <div className="cart-empty">
             <p className="cart-muted">Корзина пуста.</p>

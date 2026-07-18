@@ -1344,9 +1344,7 @@ export default function HomeDashboardPage() {
               </div>
             </div>
             {showBackgroundGame ? (
-              <div className="mt-3">
-                <BackgroundStackGame />
-              </div>
+              <BackgroundStackGame />
             ) : null}
           </div>
         ) : null}

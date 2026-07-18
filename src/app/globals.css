@@ -55,6 +55,9 @@
   --wow-radius: 12px;
   --wow-radius-lg: 16px;
   --wow-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --app-sidebar-width: 248px;
+  --z-background-game: 30;
+  --z-sidebar: 40;
   --background: var(--wow-paper);
   --foreground: var(--wow-ink);
 }
@@ -178,22 +181,42 @@ tbody tr:hover {
 .app-shell {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
   background: var(--wow-paper);
 }
 
 .app-sidebar {
   position: sticky;
   top: 0;
+  z-index: var(--z-sidebar);
   height: 100dvh;
   display: flex;
   min-width: 0;
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
+  isolation: isolate;
   background: var(--wow-ink);
   color: #f5f5f2;
   border-right: 1px solid #242423;
+}
+
+.home-stack-game-layer {
+  position: fixed;
+  right: 0;
+  bottom: -38px;
+  left: var(--app-sidebar-width);
+  height: 36vh;
+  min-height: 240px;
+  max-height: 400px;
+}
+
+.home-stack-game-layer--score {
+  z-index: calc(var(--z-background-game) - 1);
+}
+
+.home-stack-game-layer--scene {
+  z-index: var(--z-background-game);
 }
 
 .app-brand {
@@ -590,6 +613,10 @@ tbody tr:hover {
 @media (max-width: 1023px) {
   .app-shell {
     display: block;
+  }
+
+  .home-stack-game-layer {
+    left: 0;
   }
 
   .app-sidebar {

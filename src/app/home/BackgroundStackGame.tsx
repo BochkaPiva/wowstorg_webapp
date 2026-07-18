@@ -514,7 +514,7 @@ export function BackgroundStackGame() {
   if (!mounted || !showGame) return null;
   return createPortal(
     <>
-      <div className="fixed inset-x-0 bottom-[-38px] z-[29] h-[36vh] min-h-[240px] max-h-[400px] pointer-events-none">
+      <div className="home-stack-game-layer home-stack-game-layer--score pointer-events-none">
         <div
           className={[
             "pointer-events-none absolute inset-0 flex items-end justify-center font-black tabular-nums tracking-[-0.04em] transition-all duration-700",
@@ -529,7 +529,7 @@ export function BackgroundStackGame() {
           </span>
         </div>
       </div>
-      <div className="fixed inset-x-0 bottom-[-38px] z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_68%,transparent_96%)] [mask-repeat:no-repeat]">
+      <div className="home-stack-game-layer home-stack-game-layer--scene overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_68%,transparent_96%)] [mask-repeat:no-repeat]">
         {/* Нижняя «полка» фона: в простое башня не висит в вакууме */}
         <div
           className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_95%_72%_at_50%_100%,rgba(139,92,246,0.07)_0%,transparent_58%),radial-gradient(ellipse_70%_50%_at_18%_92%,rgba(250,204,21,0.05)_0%,transparent_50%),radial-gradient(ellipse_70%_50%_at_82%_90%,rgba(167,139,250,0.06)_0%,transparent_50%)]"

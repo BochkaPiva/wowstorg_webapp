@@ -1750,7 +1750,7 @@ export function ProjectEstimatePanel({
   }
 
   return (
-    <div className="space-y-4 rounded-[1.75rem] border border-white/70 bg-white/80 p-3 shadow-[0_18px_55px_rgba(24,24,27,0.10)] backdrop-blur sm:p-4">
+    <div className="space-y-4 rounded-lg border border-zinc-300 bg-white p-3 sm:p-4">
       <UnitPresetDatalist />
 
       {loading ? (
@@ -1775,7 +1775,7 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="rounded-[1.75rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.78),rgba(255,251,235,0.38))] p-4 shadow-[0_20px_58px_rgba(76,29,149,0.12)]">
+          <div className="rounded-md border border-zinc-300 border-t-4 border-t-yellow-400 bg-zinc-50 p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1789,7 +1789,7 @@ export function ProjectEstimatePanel({
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
-                    className="inline-flex min-h-16 min-w-[17rem] items-center justify-between gap-4 rounded-[1.25rem] border border-white/85 bg-white/88 px-4 py-3 text-left shadow-[0_14px_35px_rgba(24,24,27,0.10)] transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white"
+                    className="inline-flex min-h-14 min-w-[17rem] items-center justify-between gap-4 rounded-md border border-zinc-300 bg-white px-4 py-3 text-left transition-colors hover:border-zinc-950"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
                       setActionsOpen(false);
@@ -2102,7 +2102,7 @@ export function ProjectEstimatePanel({
                   ) : null}
                   <form
                     onSubmit={addSection}
-                    className="grid gap-3 rounded-[1.4rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(250,245,255,0.74))] p-3 shadow-[0_12px_35px_rgba(76,29,149,0.08)] sm:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid gap-3 rounded-md border border-zinc-300 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
                     <input
                       value={newSectionTitle}
@@ -2194,7 +2194,7 @@ export function ProjectEstimatePanel({
                 )}
               </div>
 
-              <div className="rounded-[1.5rem] border border-white/70 bg-white/75 p-3 shadow-[0_16px_45px_rgba(24,24,27,0.08)]">
+              <div className="rounded-md border border-zinc-300 bg-white p-3">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Выбранная смета</div>

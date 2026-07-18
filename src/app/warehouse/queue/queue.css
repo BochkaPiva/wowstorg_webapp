@@ -179,8 +179,9 @@
 }
 
 .queue-order__summary {
-  display: flex;
-  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  min-height: 72px;
   align-items: stretch;
 }
 
@@ -188,7 +189,7 @@
   display: grid;
   min-width: 0;
   flex: 1;
-  grid-template-columns: 24px minmax(160px, 1.15fr) minmax(110px, 0.58fr) minmax(86px, 0.42fr) minmax(190px, 1fr) minmax(90px, 0.45fr);
+  grid-template-columns: minmax(168px, 1.1fr) minmax(112px, 0.58fr) 112px minmax(224px, 1fr) 104px;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -204,14 +205,9 @@
 }
 
 .queue-order__chevron {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid var(--wow-line);
-  border-radius: 6px;
-  color: var(--wow-muted);
-  font-size: 1rem;
+  display: inline-block;
+  color: currentColor;
+  font-size: 0.95rem;
   transition: transform 180ms var(--wow-ease);
 }
 
@@ -253,6 +249,22 @@
 .queue-order__amount {
   font-size: 0.78rem;
   font-weight: 650;
+}
+
+.queue-order__date,
+.queue-order__period {
+  align-content: center;
+  min-height: 42px;
+}
+
+.queue-order__date small,
+.queue-order__period small {
+  min-height: 1em;
+}
+
+.queue-order__date strong,
+.queue-order__period strong {
+  min-height: 1.25em;
 }
 
 .queue-order__amount {
@@ -301,6 +313,26 @@
   padding: 10px 12px 10px 4px;
 }
 
+.queue-order__progress {
+  padding: 9px 14px 8px;
+  border-top: 1px solid #ecece8;
+  background: #fafaf7;
+}
+
+.queue-order__progress .order-progress {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.queue-order__progress .order-progress__stepper {
+  padding: 0;
+}
+
+.queue-order__progress .order-progress__stepper > div {
+  min-width: 680px;
+}
+
 .queue-button {
   display: inline-flex;
   min-height: 36px;
@@ -333,6 +365,19 @@
 
 .queue-button--quiet:hover {
   border-color: var(--wow-ink);
+}
+
+.queue-button--disclosure {
+  gap: 6px;
+  min-width: 84px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--wow-muted);
+}
+
+.queue-button--disclosure:hover {
+  background: #f1f1ed;
+  color: var(--wow-ink);
 }
 
 .queue-confirm,
@@ -621,10 +666,10 @@
 }
 
 @media (max-width: 1180px) {
+  .queue-order__summary { grid-template-columns: minmax(0, 1fr) 230px; }
   .queue-order__toggle {
-    grid-template-columns: 24px minmax(150px, 1fr) minmax(104px, 0.55fr) minmax(84px, 0.42fr) minmax(130px, 0.7fr);
+    grid-template-columns: minmax(140px, 1fr) minmax(100px, 0.55fr) 96px minmax(150px, 0.8fr) 86px;
   }
-  .queue-order__period { display: none; }
   .queue-filters { grid-template-columns: 1fr 1fr; }
 }
 
@@ -632,21 +677,21 @@
   .queue-toolbar__top { align-items: stretch; flex-direction: column; }
   .queue-tabs button { flex: 1; }
   .queue-filters { grid-template-columns: 1fr; }
-  .queue-order__summary { display: grid; }
+  .queue-order__summary { grid-template-columns: 1fr; }
   .queue-order__toggle {
-    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "chevron identity status"
-      ". date amount";
-    min-height: 82px;
+      "identity status"
+      "date amount"
+      "period period";
+    min-height: 104px;
   }
-  .queue-order__chevron { grid-area: chevron; }
   .queue-order__identity { grid-area: identity; }
   .queue-status { grid-area: status; }
   .queue-order__date { grid-area: date; }
   .queue-order__amount { grid-area: amount; }
-  .queue-order__period { display: none; }
-  .queue-order__actions { padding: 0 12px 12px 48px; }
+  .queue-order__period { display: grid; grid-area: period; }
+  .queue-order__actions { padding: 0 12px 12px; }
   .queue-preview { grid-template-columns: 1fr; }
   .queue-preview__aside { border-top: 1px solid var(--wow-line); border-left: 0; }
   .queue-family__children { padding-left: 12px; }

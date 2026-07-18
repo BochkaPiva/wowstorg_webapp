@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
@@ -311,7 +312,6 @@ function WarehouseQueueContent() {
             aria-expanded={expanded}
             aria-controls={`queue-preview-${order.id}`}
           >
-            <span className="queue-order__chevron" aria-hidden="true">⌄</span>
             <span className="queue-order__identity">
               <strong>{order.customer.name}</strong>
               <span>{sourceLabel}{order.project ? ` · ${order.project.title}` : ""}</span>
@@ -335,8 +335,34 @@ function WarehouseQueueContent() {
               </button>
             ) : null}
             <Link href={`/orders/${order.id}?from=warehouse-queue`} className="queue-button queue-button--quiet">Открыть</Link>
+            <button
+              type="button"
+              className="queue-button queue-button--disclosure"
+              onClick={() => {
+                setExpandedId(expanded ? null : order.id);
+                setActionConfirmId(null);
+                setActionError(null);
+              }}
+              aria-expanded={expanded}
+              aria-controls={`queue-preview-${order.id}`}
+              aria-label={expanded ? "Свернуть предпросмотр" : "Развернуть предпросмотр"}
+            >
+              <span>{expanded ? "Свернуть" : "Быстро"}</span>
+              <span className="queue-order__chevron" aria-hidden="true">⌄</span>
+            </button>
           </div>
         </div>
+
+        {tab === "active" ? (
+          <div className="queue-order__progress" aria-label={`Этап заявки: ${STATUS_LABEL[order.status] ?? order.status}`}>
+            <OrderStatusStepper
+              status={order.status as OrderStatus}
+              source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"}
+              compactWindow={8}
+              showSummary={false}
+            />
+          </div>
+        ) : null}
 
         {confirming && action ? (
           <div className="queue-confirm" role="group" aria-label="Подтверждение действия">

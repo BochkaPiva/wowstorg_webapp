@@ -1018,16 +1018,18 @@ export default function CatalogPage() {
             </button>
           </div>
 
-          {activeTab === "categories" && categories.length ? (
+          {activeTab !== "kits" && categories.length ? (
+            <div className="mk-categoryBar">
             <div className="mk-chipRow" aria-label="Категории">
               <button
                 className={["mk-chip", !categoryId ? "mk-chipActive" : ""].join(" ")}
                 onClick={() => {
                   setCategoryId(null);
+                  setActiveTab("positions");
                   setCurrentPage(1);
                 }}
               >
-                Все
+                Весь реквизит
               </button>
               {categories.map((c) => (
                 <button
@@ -1035,12 +1037,15 @@ export default function CatalogPage() {
                   className={["mk-chip", categoryId === c.id ? "mk-chipActive" : ""].join(" ")}
                   onClick={() => {
                     setCategoryId(c.id);
+                    setActiveTab("categories");
                     setCurrentPage(1);
                   }}
                 >
                   {c.name}
                 </button>
               ))}
+            </div>
+            {pagination ? <span className="mk-catalogCount">{pagination.total} позиций</span> : null}
             </div>
           ) : null}
         </div>
@@ -1055,10 +1060,11 @@ export default function CatalogPage() {
           ) : (
             <>
               <div className="mk-grid">
-                {items.map((it) => (
+                {items.map((it, index) => (
                   <CatalogItemCard
                     key={it.id}
                     item={it}
+                    displayIndex={(currentPage - 1) * CATALOG_PAGE_SIZE + index + 1}
                     qtyInCart={qtyByItemId[it.id] ?? 0}
                     onDetail={openDetail}
                     onAdd={handleCardAdd}
@@ -1083,10 +1089,11 @@ export default function CatalogPage() {
           ) : (
             <>
               <div className="mk-grid">
-                {items.map((it) => (
+                {items.map((it, index) => (
                   <CatalogItemCard
                     key={it.id}
                     item={it}
+                    displayIndex={(currentPage - 1) * CATALOG_PAGE_SIZE + index + 1}
                     qtyInCart={qtyByItemId[it.id] ?? 0}
                     onDetail={openDetail}
                     onAdd={handleCardAdd}

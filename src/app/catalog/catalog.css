@@ -2060,3 +2060,340 @@ a.mk-cartPill:hover,
   }
 }
 
+/* Client catalog parity: keep the operational controls, reuse the public
+   catalog's compact grid, paper cards and black/yellow action hierarchy. */
+.mk-section {
+  padding: 16px;
+}
+
+.mk-head {
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--mk-border);
+  border-top: 4px solid var(--mk-yellow);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mk-title {
+  max-width: 860px;
+  font-size: clamp(1.75rem, 2.3vw, 2.8rem);
+  line-height: 1.02;
+}
+
+.mk-subtitle {
+  max-width: 820px;
+  line-height: 1.45;
+}
+
+.mk-datesRowGrouped {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid #e7e7e2;
+}
+
+.mk-rentalPeriod-trigger,
+.mk-dateWrap {
+  border-radius: 6px;
+}
+
+.mk-toolbar {
+  margin-top: 4px;
+  gap: 8px;
+}
+
+.mk-search,
+.mk-searchWrap {
+  min-height: 44px;
+  border-radius: 6px;
+}
+
+.mk-search {
+  background: #fff;
+  font-weight: 550;
+}
+
+.mk-cartPill {
+  min-height: 44px;
+  border-radius: 6px;
+}
+
+.mk-tabs {
+  width: 100%;
+  margin-top: 4px;
+  padding: 0;
+  gap: 28px;
+  border: 0;
+  border-bottom: 1px solid var(--mk-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.mk-tab {
+  position: relative;
+  min-height: 42px;
+  padding: 10px 0 12px;
+  border-radius: 0;
+  color: var(--mk-muted);
+}
+
+.mk-tab:hover,
+.mk-tabActive,
+.mk-tabActive:hover {
+  background: transparent;
+  color: var(--mk-text);
+}
+
+.mk-tabActive::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 3px;
+  background: var(--mk-yellow);
+  content: "";
+}
+
+.mk-categoryBar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mk-chipRow {
+  margin-top: 2px;
+  gap: 6px;
+}
+
+.mk-chip {
+  min-height: 34px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.mk-catalogCount {
+  flex: 0 0 auto;
+  padding-bottom: 6px;
+  color: var(--mk-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.mk-card {
+  min-width: 0;
+  border-color: rgb(10 10 10 / 14%);
+  border-radius: 6px;
+  background: #f7f7f4;
+  contain-intrinsic-size: auto 430px;
+  transition: border-color 180ms var(--wow-ease, ease);
+}
+
+.mk-card:hover {
+  border-color: rgb(10 10 10 / 38%);
+}
+
+.mk-cardInner {
+  height: auto;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 0;
+  background: #30205f;
+}
+
+.mk-box {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #30205f;
+}
+
+.mk-cardPhoto {
+  border-radius: 0 !important;
+  transition: transform 500ms var(--wow-ease, ease);
+}
+
+.mk-card:hover .mk-cardPhoto {
+  transform: scale(1.025);
+}
+
+.mk-cardNumber {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-content {
+  min-height: 242px;
+  padding: 14px;
+}
+
+.mk-meta {
+  min-height: 26px;
+  margin: 0 0 10px;
+}
+
+.mk-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.67rem;
+}
+
+.mk-cardLink {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mk-name {
+  min-height: 2.3em;
+  font-size: 1.02rem;
+  line-height: 1.15;
+}
+
+.mk-desc {
+  min-height: 2.7em;
+  margin-top: 7px;
+  color: #70706b;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.mk-cardFacts {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #deded8;
+}
+
+.mk-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.78rem;
+}
+
+.mk-priceUnit {
+  margin: 0;
+  font-size: 0.68rem;
+}
+
+.mk-available {
+  color: var(--mk-muted);
+  font-size: 0.67rem;
+  white-space: nowrap;
+}
+
+.mk-actions {
+  gap: 7px;
+  padding-top: 12px;
+}
+
+.mk-detailBtn,
+.mk-addBtn,
+.mk-qty {
+  min-height: 38px;
+  border-radius: 999px;
+}
+
+.mk-detailBtn {
+  display: inline-flex;
+  flex: 1 1 50%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid #0a0a0a;
+  background: transparent;
+  color: #0a0a0a;
+  font-size: 0.69rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mk-detailBtn:hover {
+  background: #fff;
+}
+
+.mk-addBtn {
+  flex: 1 1 50%;
+  padding: 7px 10px;
+  border: 1px solid #0a0a0a;
+  font-size: 0.69rem;
+}
+
+.mk-qty {
+  flex: 1 1 50%;
+  justify-content: space-between;
+  gap: 0;
+  padding: 2px 5px;
+  border-color: #0a0a0a;
+  background: #0a0a0a;
+}
+
+.mk-qty button {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+
+.mk-qty input {
+  width: 30px;
+  min-width: 30px;
+  color: #fff;
+}
+
+@media (max-width: 1450px) {
+  .mk-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1140px) {
+  .mk-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 780px) {
+  .mk-section { padding: 10px; }
+  .mk-head { padding: 16px 12px; }
+  .mk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .mk-categoryBar { align-items: stretch; flex-direction: column; gap: 2px; }
+  .mk-catalogCount { padding: 0; }
+}
+
+@media (max-width: 520px) {
+  .mk-grid { grid-template-columns: 1fr; }
+  .mk-tabs { gap: 18px; overflow-x: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-cardPhoto { transition: none; }
+}
+

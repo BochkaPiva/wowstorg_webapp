@@ -70,11 +70,13 @@ export function OrderStatusStepper({
   status,
   source,
   compactWindow = 7,
+  showSummary = true,
   className,
 }: {
   status: OrderStatus;
   source?: OrderSource;
   compactWindow?: number;
+  showSummary?: boolean;
   className?: string;
 }) {
   const owner = turnOwner(status, source);
@@ -83,7 +85,7 @@ export function OrderStatusStepper({
 
   return (
     <div className={["order-progress", className ?? ""].join(" ")} data-status={status}>
-      <div className="order-progress__summary">
+      {showSummary ? <div className="order-progress__summary">
         <div className="order-progress__current">
           <span className="order-progress__dot" aria-hidden="true" />
           <div>
@@ -98,7 +100,7 @@ export function OrderStatusStepper({
           <summary aria-label="Что означает статус">?</summary>
           <div>{STATUS_DETAIL[status]}</div>
         </details>
-      </div>
+      </div> : null}
 
       {status !== "CANCELLED" ? (
         <Stepper

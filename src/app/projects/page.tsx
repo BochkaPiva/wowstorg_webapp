@@ -365,11 +365,10 @@ function ProjectsContent() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white p-5">
+          <section className="overflow-hidden rounded-lg border border-zinc-300 border-t-4 border-t-yellow-400 bg-white p-5">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
-                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Рабочий центр</div>
-                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Проекты</h1>
+                <h1 className="text-3xl font-black leading-none text-zinc-950 sm:text-4xl">Проекты</h1>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <button
@@ -391,9 +390,9 @@ function ProjectsContent() {
                       setSort("updated_desc");
                     }}
                     className={[
-                      "rounded-xl px-4 py-3 text-sm font-black transition",
+                      "rounded-md px-4 py-2.5 text-sm font-black transition-colors",
                       tab === "active"
-                        ? "bg-violet-700 text-white shadow-violet-200"
+                        ? "bg-zinc-950 text-white"
                         : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                     ].join(" ")}
                   >
@@ -406,9 +405,9 @@ function ProjectsContent() {
                       setSort("updated_desc");
                     }}
                     className={[
-                      "rounded-xl px-4 py-3 text-sm font-black transition",
+                      "rounded-md px-4 py-2.5 text-sm font-black transition-colors",
                       tab === "archive"
-                        ? "bg-violet-700 text-white shadow-violet-200"
+                        ? "bg-zinc-950 text-white"
                         : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                     ].join(" ")}
                   >
@@ -425,13 +424,13 @@ function ProjectsContent() {
                   value={qInput}
                   onChange={(e) => setQInput(e.target.value)}
                   placeholder="Найти проект"
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-violet-700 focus:ring-2 focus:ring-violet-100"
                   aria-label="Найти проект"
                 />
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-violet-700 focus:ring-2 focus:ring-violet-100"
                   aria-label="Сортировка"
                 >
                   {PROJECT_SORT_OPTIONS.map((o) => (
@@ -443,7 +442,7 @@ function ProjectsContent() {
                 <select
                   value={stageFilter}
                   onChange={(e) => setStageFilter(parseStageFilter(e.target.value))}
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-violet-700 focus:ring-2 focus:ring-violet-100"
                   aria-label="Статус"
                 >
                   {PROJECT_STAGE_FILTERS.map((o) => (
@@ -455,7 +454,7 @@ function ProjectsContent() {
                 <select
                   value={ballFilter}
                   onChange={(e) => setBallFilter(parseBallFilter(e.target.value))}
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
+                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-900 outline-none focus:border-violet-700 focus:ring-2 focus:ring-violet-100"
                   aria-label="Мяч"
                 >
                   {PROJECT_BALL_FILTERS.map((o) => (
@@ -499,14 +498,20 @@ function ProjectsContent() {
                 const archiveHeader = tab === "archive" ? projectArchiveHeader(p.status) : null;
                 const isCancelledArchive = Boolean(archiveHeader?.muted);
                 return (
-                  <li key={p.id}>
+                  <li
+                    key={p.id}
+                    className={[
+                      "overflow-hidden rounded-lg border bg-white transition-colors duration-150",
+                      isCancelledArchive ? "border-zinc-200 opacity-80 hover:opacity-100" : "border-zinc-300 hover:border-zinc-950",
+                    ].join(" ")}
+                  >
                     <Link
                       href={`/projects/${p.id}`}
                       className={[
-                        "group block overflow-hidden rounded-xl border p-0 transition-colors duration-150",
+                        "group block p-0 transition-colors duration-150",
                         isCancelledArchive
-                          ? "border-zinc-200 bg-zinc-50 opacity-80 hover:border-zinc-400 hover:opacity-100"
-                          : "border-zinc-200 bg-white hover:border-zinc-400",
+                          ? "bg-zinc-50"
+                          : "bg-white",
                       ].join(" ")}
                     >
                     {archiveHeader ? (
@@ -537,11 +542,11 @@ function ProjectsContent() {
                           >
                             {p.title}
                           </h2>
-                          <span className="rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-bold text-zinc-600">
+                          <span className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-bold text-zinc-600">
                             {p.customer.name}
                           </span>
                           {projectDateLine(p) ? (
-                            <span className="rounded-full border border-violet-100 bg-violet-50/80 px-2.5 py-1 text-xs font-bold text-violet-800">
+                            <span className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-800">
                               {projectDateLine(p)}
                               {p.eventDateConfirmed ? "" : " · черновик"}
                             </span>
@@ -574,7 +579,7 @@ function ProjectsContent() {
                           </span>
                         </div>
                       </div>
-                      <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
+                      <div className="shrink-0 border-l border-zinc-200 pl-3 text-xs font-bold tabular-nums text-zinc-500">
                         {fmtDate(p.updatedAt)}
                       </div>
                     </div>
@@ -583,13 +588,13 @@ function ProjectsContent() {
                         {p.archiveNote.trim()}
                       </p>
                     ) : null}
-                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
                       <div
                         className={[
-                          "rounded-2xl border px-4 py-3",
+                          "border-0 bg-white px-4 py-3",
                           isCancelledArchive
-                            ? "border-zinc-200/90 bg-white/60"
-                            : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
+                            ? "text-zinc-500"
+                            : "",
                         ].join(" ")}
                       >
                         <div
@@ -611,12 +616,12 @@ function ProjectsContent() {
                       </div>
                       <div
                         className={[
-                          "rounded-2xl border px-4 py-3",
+                          "border-0 bg-white px-4 py-3",
                           isCancelledArchive
-                            ? "border-zinc-200/90 bg-white/60"
+                            ? "text-zinc-500"
                             : p.finance.marginAfterTax < 0
-                            ? "border-red-200 bg-[linear-gradient(135deg,rgba(254,242,242,0.95),rgba(255,255,255,0.78))]"
-                            : "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.78))]",
+                            ? ""
+                            : "",
                         ].join(" ")}
                       >
                         <div
@@ -636,7 +641,7 @@ function ProjectsContent() {
                           {formatMoney(p.finance.marginAfterTax)}
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
+                      <div className="bg-white px-4 py-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Маржа</div>
                         <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
                           {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
@@ -646,7 +651,7 @@ function ProjectsContent() {
                     </div>
                     </Link>
                     {tab === "active" && p.status !== "COMPLETED" && p.status !== "CANCELLED" ? (
-                      <div className="mt-1 flex min-h-11 items-center justify-end gap-2 border border-zinc-200 bg-zinc-50 px-3 py-2">
+                      <div className="flex min-h-12 items-center justify-end gap-2 border-t border-zinc-300 bg-zinc-50 px-4 py-2.5">
                         {completeConfirmId === p.id ? (
                           <>
                             <span className="mr-auto text-xs font-medium text-zinc-600">Завершить проект и перенести его в архив?</span>
@@ -671,7 +676,7 @@ function ProjectsContent() {
                           <button
                             type="button"
                             onClick={() => setCompleteConfirmId(p.id)}
-                            className="px-2 py-1 text-xs font-bold text-zinc-600 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-zinc-950"
+                            className="rounded border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-700 transition-colors hover:border-zinc-950 hover:text-zinc-950"
                           >
                             Завершить проект
                           </button>

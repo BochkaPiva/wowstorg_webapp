@@ -20,9 +20,9 @@ const BackgroundStackGame = dynamic(
 );
 
 const DASH_SECTION_SHELL =
-  "rounded-2xl border border-zinc-200 bg-zinc-100/70 p-3 sm:p-4";
-const DASH_CARD = "rounded-xl border border-zinc-200 bg-white p-4";
-const DASH_SUBCARD = "overflow-hidden rounded-xl border border-zinc-200 bg-white";
+  "p-0";
+const DASH_CARD = "rounded-lg border border-zinc-300 bg-white p-4";
+const DASH_SUBCARD = "overflow-hidden rounded-lg border border-zinc-300 bg-white";
 const BTN_PRIMARY =
   "inline-flex items-center rounded-lg border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
 const BTN_WARM =
@@ -903,20 +903,20 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   return (
     <div className="space-y-3">
       <div className={DASH_CARD}>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <div className="rounded-[1.35rem] border border-violet-200/75 bg-[linear-gradient(135deg,rgba(245,243,255,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(124,58,237,0.08)] ring-1 ring-white/70 backdrop-blur-md">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-300 bg-zinc-200 md:grid-cols-4">
+          <div className="bg-white px-4 py-3">
             <div className="text-xs font-semibold text-violet-700">Сегодня</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-violet-950">{data?.summary.todayCount ?? 0}</div>
           </div>
-          <div className="rounded-[1.35rem] border border-rose-200/75 bg-[linear-gradient(135deg,rgba(255,241,242,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(190,18,60,0.07)] ring-1 ring-white/70 backdrop-blur-md">
+          <div className="bg-white px-4 py-3">
             <div className="text-xs font-semibold text-rose-700">Просрочено</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-rose-950">{data?.summary.overdueCount ?? 0}</div>
           </div>
-          <div className="rounded-[1.35rem] border border-amber-200/85 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.72))] px-4 py-3 shadow-[0_12px_28px_rgba(180,83,9,0.07)] ring-1 ring-white/70 backdrop-blur-md">
+          <div className="bg-white px-4 py-3">
             <div className="text-xs font-semibold text-amber-800">Сигналы</div>
             <div className="mt-1 text-2xl font-black tabular-nums text-amber-950">{data?.summary.signalCount ?? 0}</div>
           </div>
-          <div className="rounded-[1.35rem] border border-white/85 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(248,250,252,0.74))] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] ring-1 ring-violet-100/55 backdrop-blur-md">
+          <div className="bg-white px-4 py-3">
             <div className="text-xs font-semibold text-zinc-600">Ближайшая заявка</div>
             <div className="mt-1 truncate text-sm font-bold text-zinc-950">{data?.summary.nearestOrderTitle ?? "Нет активных"}</div>
           </div>
@@ -999,7 +999,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
           {(data?.upcomingDays ?? []).map((day) => (
-            <div key={day.date} className="min-h-[9rem] rounded-[1.35rem] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(248,247,255,0.58))] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.80)] ring-1 ring-violet-100/45 backdrop-blur-md">
+            <div key={day.date} className="min-h-[9rem] rounded-md border border-zinc-300 bg-zinc-50 p-2">
               <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
                 <div className="text-sm font-bold text-zinc-950">{day.label}</div>
                 <div className="flex items-center gap-1.5">

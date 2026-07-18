@@ -352,7 +352,7 @@ export function ProjectDraftOrderPanel({
   }
 
   return (
-    <div className="space-y-4 rounded-2xl border border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.95),rgba(255,255,255,0.98))] p-4 shadow-sm">
+    <div className="space-y-4 rounded-lg border border-zinc-300 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-lg font-extrabold tracking-tight text-fuchsia-950">Demo-заявка без дат</div>

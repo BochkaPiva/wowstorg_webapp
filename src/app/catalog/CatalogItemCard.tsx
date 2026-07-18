@@ -25,6 +25,7 @@ function typeLabelRu(t: CatalogGridItem["type"]) {
 
 export const CatalogItemCard = React.memo(function CatalogItemCard({
   item,
+  displayIndex,
   qtyInCart,
   onDetail,
   onAdd,
@@ -33,6 +34,7 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
   onSetQty,
 }: {
   item: CatalogGridItem;
+  displayIndex: number;
   qtyInCart: number;
   onDetail: (id: string) => void;
   onAdd: (id: string, pricePerDay: number) => void;
@@ -71,6 +73,7 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
   return (
     <article className="mk-card">
       <div className="mk-cardInner">
+        <span className="mk-cardNumber" aria-hidden="true">{String(displayIndex).padStart(2, "0")}</span>
         <div className="mk-box">
           {item.photo1Key ? (
             <img
@@ -99,45 +102,29 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
           )}
         </div>
 
-        <div className="mk-corner">
-          <button
-            type="button"
-            className="mk-cornerBtn"
-            onClick={() => onDetail(item.id)}
-            aria-label="Подробнее"
-            title="Подробнее"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden>
-              <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3z" />
-              <path d="M5 5h6v2H7v10h10v-4h2v6H5V5z" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       <div className="mk-content">
-        <div className="mk-nameRow">
-          <button type="button" className="mk-cardLink" onClick={() => onDetail(item.id)}>
-            <div className="mk-name">{item.name}</div>
-          </button>
-          <div className="mk-price">
-            <strong>{item.pricePerDay}</strong>
-            <span className="mk-priceUnit">р/сут</span>
-          </div>
-        </div>
         <div className="mk-meta">
           <span className="mk-pill">{typeLabelRu(item.type)}</span>
-          <span className="mk-available">
-            Доступно: <strong>{available}</strong>
-          </span>
         </div>
-        <div className="mk-desc">
-          {item.description?.trim()
-            ? item.description
-            : "Описание будет добавлено складом — пока можно оформить заявку по названию."}
+        <button type="button" className="mk-cardLink" onClick={() => onDetail(item.id)}>
+          <div className="mk-name">{item.name}</div>
+        </button>
+        {item.description?.trim() ? <div className="mk-desc">{item.description}</div> : null}
+
+        <div className="mk-cardFacts">
+          <div className="mk-price">
+            <strong>{item.pricePerDay}</strong>
+            <span className="mk-priceUnit">₽ / сутки</span>
+          </div>
+          <span className="mk-available">В наличии: <strong>{available}</strong></span>
         </div>
 
         <div className="mk-actions">
+          <button type="button" className="mk-detailBtn" onClick={() => onDetail(item.id)}>
+            Подробнее <span aria-hidden="true">→</span>
+          </button>
           {qtyInCart <= 0 ? (
             <button
               type="button"

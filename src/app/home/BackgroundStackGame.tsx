@@ -1,174 +1,578 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
+import { gsap } from "gsap";
+import * as THREE from "three";
 
-type TowerBlock = { id: number; width: number; offset: number };
+type GameState = "ready" | "playing" | "ended" | "resetting";
 
-const BASE_WIDTH = 210;
-const TRAVEL = 116;
-const BLOCK_HEIGHT = 23;
+/** Должно совпадать с Tailwind у fixed-контейнера игры. */
+const GAME_BOTTOM_OFFSET_PX = 38;
+const GAME_HEIGHT_MIN_PX = 240;
+const GAME_HEIGHT_MAX_PX = 400;
+const GAME_HEIGHT_VH = 0.36;
+const GAME_OVERLAP_BUFFER_PX = 40;
+/** Ниже этой высоты окна проверяем пересечение карточек навигации с зоной игры. */
+const MIN_VIEWPORT_HEIGHT_FOR_GAME = 860;
+const HOME_NAV_CARDS_SELECTOR = "[data-home-nav-cards]";
 
-function initialTower(): TowerBlock[] {
-  return [{ id: 0, width: BASE_WIDTH, offset: 0 }];
+function getGameZoneTop(viewportHeight: number): number {
+  const height = Math.min(
+    Math.max(viewportHeight * GAME_HEIGHT_VH, GAME_HEIGHT_MIN_PX),
+    GAME_HEIGHT_MAX_PX,
+  );
+  return viewportHeight + GAME_BOTTOM_OFFSET_PX - height;
+}
+
+function shouldShowBackgroundGame(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const desktopMedia = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (!desktopMedia || window.innerWidth < 1024) return false;
+
+  const viewportHeight = window.innerHeight;
+  if (viewportHeight >= MIN_VIEWPORT_HEIGHT_FOR_GAME) return true;
+
+  const navCards = document.querySelector(HOME_NAV_CARDS_SELECTOR);
+  if (!navCards) return false;
+
+  const gameZoneTop = getGameZoneTop(viewportHeight);
+  const cardsBottom = navCards.getBoundingClientRect().bottom;
+  return cardsBottom <= gameZoneTop - GAME_OVERLAP_BUFFER_PX;
+}
+
+type BlockState = "active" | "stopped" | "missed";
+
+class Stage {
+  scene: THREE.Scene;
+  camera: THREE.OrthographicCamera;
+  renderer: THREE.WebGLRenderer;
+  container: HTMLDivElement;
+  viewSize: number;
+
+  constructor(container: HTMLDivElement) {
+    this.container = container;
+    this.scene = new THREE.Scene();
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(this.renderer.domElement);
+
+    const aspect = container.clientWidth / Math.max(1, container.clientHeight);
+    this.viewSize = 12;
+    this.camera = new THREE.OrthographicCamera(
+      -this.viewSize * aspect,
+      this.viewSize * aspect,
+      this.viewSize,
+      -this.viewSize,
+      -100,
+      1000,
+    );
+    this.camera.position.set(2, 2, 2);
+    this.camera.lookAt(0, 0, 0);
+
+    const light = new THREE.DirectionalLight(0xffffff, 0.7);
+    light.position.set(0, 499, 0);
+    this.scene.add(light);
+    this.scene.add(new THREE.HemisphereLight(0xfacc15, 0x8b5cf6, 0.95));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+  }
+
+  onResize() {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    this.renderer.setSize(width, height);
+    const aspect = width / Math.max(1, height);
+    this.camera.left = -this.viewSize * aspect;
+    this.camera.right = this.viewSize * aspect;
+    this.camera.top = this.viewSize;
+    this.camera.bottom = -this.viewSize;
+    this.camera.updateProjectionMatrix();
+  }
+
+  setCamera(y: number, speed = 0.3) {
+    gsap.to(this.camera.position, { y: y + 0.8, duration: speed, ease: "power1.inOut" });
+  }
+
+  render() {
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  destroy() {
+    this.renderer.dispose();
+    this.container.innerHTML = "";
+  }
+}
+
+class Block {
+  index: number;
+  state: BlockState;
+  targetBlock: Block | null;
+  mesh: THREE.Mesh;
+  material: THREE.MeshPhongMaterial;
+  dimension: { width: number; height: number; depth: number };
+  position: { x: number; y: number; z: number };
+  /** Положительное |скорость| в координатах сцены за кадр при 60 FPS (до перевода на u/s). */
+  moveMagPerFrameRef: number;
+  /** Единицы сцены в секунду — движение не зависит от FPS монитора. */
+  speedPerSecond: number;
+  directionSign: number;
+  workingPlane: "x" | "z";
+  workingDimension: "width" | "depth";
+  readonly moveAmount = 12;
+  colorOffset: number;
+
+  constructor(block: Block | null) {
+    this.targetBlock = block;
+    this.index = (this.targetBlock ? this.targetBlock.index : 0) + 1;
+    this.workingPlane = this.index % 2 ? "x" : "z";
+    this.workingDimension = this.index % 2 ? "width" : "depth";
+    this.dimension = {
+      width: this.targetBlock ? this.targetBlock.dimension.width : 14,
+      height: this.targetBlock ? this.targetBlock.dimension.height : 2.8,
+      depth: this.targetBlock ? this.targetBlock.dimension.depth : 14,
+    };
+    this.position = {
+      x: this.targetBlock ? this.targetBlock.position.x : 0,
+      y: this.dimension.height * this.index,
+      z: this.targetBlock ? this.targetBlock.position.z : 0,
+    };
+    this.colorOffset = this.targetBlock ? this.targetBlock.colorOffset : Math.round(Math.random() * 100);
+
+    let color = new THREE.Color(0xa78bfa);
+    if (this.targetBlock) {
+      const offset = this.index + this.colorOffset;
+      const mix = (Math.sin(0.34 * offset) + 1) * 0.5;
+      const violet = new THREE.Color(0x8b5cf6);
+      const yellow = new THREE.Color(0xfde047);
+      color = violet.clone().lerp(yellow, mix);
+      const coolShift = (Math.sin(0.21 * offset + 1.2) + 1) * 0.06;
+      color.offsetHSL(-0.01, 0.02, coolShift - 0.03);
+    }
+
+    this.state = this.index > 1 ? "active" : "stopped";
+    // Как раньше: ускоряется с уровнем, потолок сохранён.
+    this.moveMagPerFrameRef = Math.min(8, 0.22 + this.index * 0.02);
+    this.speedPerSecond = this.moveMagPerFrameRef * 60;
+
+    const geometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
+    geometry.translate(this.dimension.width / 2, this.dimension.height / 2, this.dimension.depth / 2);
+    this.material = new THREE.MeshPhongMaterial({
+      color,
+      shininess: 36,
+      specular: new THREE.Color(0xf3e8ff),
+      emissive: color.clone().multiplyScalar(0.12),
+    });
+    this.mesh = new THREE.Mesh(geometry, this.material);
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.mesh.position.set(this.position.x, this.position.y, this.position.z);
+
+    this.directionSign = 1;
+    if (this.state === "active") {
+      this.position[this.workingPlane] = Math.random() > 0.5 ? -this.moveAmount : this.moveAmount;
+      this.mesh.position[this.workingPlane] = this.position[this.workingPlane];
+      // К центру платформы: с «+края» в сторону нуля — знак минус; с «−края» — плюс.
+      this.directionSign = this.position[this.workingPlane] > 0 ? -1 : 1;
+    }
+  }
+
+  tick(deltaSeconds: number) {
+    if (this.state !== "active") return;
+    const p = this.workingPlane;
+    const B = this.moveAmount;
+    let v = this.position[p];
+    const dt = Math.min(1 / 15, Math.max(0, deltaSeconds));
+    v += this.directionSign * this.speedPerSecond * dt;
+    let guard = 0;
+    while ((v > B || v < -B) && guard++ < 48) {
+      if (v > B) {
+        v = 2 * B - v;
+        this.directionSign = -1;
+      } else {
+        v = -2 * B - v;
+        this.directionSign = 1;
+      }
+    }
+    this.position[p] = v;
+    this.mesh.position[p] = v;
+  }
+
+  place() {
+    this.state = "stopped";
+    const impulseDir = this.directionSign * this.moveMagPerFrameRef;
+
+    if (!this.targetBlock) return { plane: this.workingPlane, direction: impulseDir };
+
+    let overlap =
+      this.targetBlock.dimension[this.workingDimension] -
+      Math.abs(this.position[this.workingPlane] - this.targetBlock.position[this.workingPlane]);
+    const result: {
+      plane: "x" | "z";
+      direction: number;
+      bonus?: boolean;
+      placed?: THREE.Mesh;
+      chopped?: THREE.Mesh;
+    } = {
+      plane: this.workingPlane,
+      direction: impulseDir,
+    };
+
+    if (this.dimension[this.workingDimension] - overlap < 0.1) {
+      overlap = this.dimension[this.workingDimension];
+      result.bonus = true;
+      this.position.x = this.targetBlock.position.x;
+      this.position.z = this.targetBlock.position.z;
+      this.dimension.width = this.targetBlock.dimension.width;
+      this.dimension.depth = this.targetBlock.dimension.depth;
+    }
+
+    if (overlap <= 0) {
+      this.state = "missed";
+      this.dimension[this.workingDimension] = overlap;
+      return result;
+    }
+
+    const choppedDimensions = {
+      width: this.dimension.width,
+      height: this.dimension.height,
+      depth: this.dimension.depth,
+    };
+    choppedDimensions[this.workingDimension] -= overlap;
+    this.dimension[this.workingDimension] = overlap;
+
+    const placedGeometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
+    placedGeometry.translate(this.dimension.width / 2, this.dimension.height / 2, this.dimension.depth / 2);
+    const placedMesh = new THREE.Mesh(placedGeometry, this.material);
+
+    const choppedGeometry = new THREE.BoxGeometry(
+      choppedDimensions.width,
+      choppedDimensions.height,
+      choppedDimensions.depth,
+    );
+    choppedGeometry.translate(choppedDimensions.width / 2, choppedDimensions.height / 2, choppedDimensions.depth / 2);
+    const choppedMesh = new THREE.Mesh(choppedGeometry, this.material);
+
+    const choppedPosition = { ...this.position };
+    if (this.position[this.workingPlane] < this.targetBlock.position[this.workingPlane]) {
+      this.position[this.workingPlane] = this.targetBlock.position[this.workingPlane];
+    } else {
+      choppedPosition[this.workingPlane] += overlap;
+    }
+    placedMesh.position.set(this.position.x, this.position.y, this.position.z);
+    choppedMesh.position.set(choppedPosition.x, choppedPosition.y, choppedPosition.z);
+
+    result.placed = placedMesh;
+    if (!result.bonus) result.chopped = choppedMesh;
+    return result;
+  }
 }
 
 export function BackgroundStackGame() {
-  const [blocks, setBlocks] = React.useState<TowerBlock[]>(initialTower);
-  const [ended, setEnded] = React.useState(false);
-  const [started, setStarted] = React.useState(false);
-  const activeRef = React.useRef<HTMLDivElement | null>(null);
-  const activeXRef = React.useRef(-TRAVEL);
-  const directionRef = React.useRef(1);
-  const frameRef = React.useRef<number | null>(null);
-  const lastTimeRef = React.useRef(0);
-  const reducedMotionRef = React.useRef(false);
-
-  const score = Math.max(0, blocks.length - 1);
-  const topBlock = blocks[blocks.length - 1] ?? initialTower()[0]!;
+  const gameRef = React.useRef<HTMLDivElement | null>(null);
+  const gameStateRef = React.useRef<GameState>("ready");
+  const [mounted, setMounted] = React.useState(false);
+  const [showGame, setShowGame] = React.useState(false);
+  const [score, setScore] = React.useState(0);
+  const [showHud, setShowHud] = React.useState(false);
+  const [isGameActive, setIsGameActive] = React.useState(false);
 
   React.useEffect(() => {
-    reducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!started || ended || reducedMotionRef.current) {
-      activeXRef.current = topBlock.offset;
-      if (activeRef.current) activeRef.current.style.transform = `translateX(${topBlock.offset}px)`;
-      return;
-    }
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
-    const tick = (time: number) => {
-      const delta = Math.min(40, time - (lastTimeRef.current || time));
-      lastTimeRef.current = time;
-      let next = activeXRef.current + directionRef.current * delta * 0.105;
-      if (next >= TRAVEL) {
-        next = TRAVEL;
-        directionRef.current = -1;
-      } else if (next <= -TRAVEL) {
-        next = -TRAVEL;
-        directionRef.current = 1;
-      }
-      activeXRef.current = next;
-      if (activeRef.current) activeRef.current.style.transform = `translateX(${next}px)`;
-      frameRef.current = window.requestAnimationFrame(tick);
+  React.useEffect(() => {
+    if (!mounted) return;
+
+    const evaluate = () => {
+      setShowGame(shouldShowBackgroundGame());
     };
 
-    frameRef.current = window.requestAnimationFrame(tick);
+    evaluate();
+    window.addEventListener("resize", evaluate);
+    window.addEventListener("scroll", evaluate, { passive: true });
+
+    let ro: ResizeObserver | undefined;
+    const anchor = document.querySelector(HOME_NAV_CARDS_SELECTOR);
+    if (anchor && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(evaluate);
+      ro.observe(anchor);
+    }
+
     return () => {
-      if (frameRef.current != null) window.cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      lastTimeRef.current = 0;
+      window.removeEventListener("resize", evaluate);
+      window.removeEventListener("scroll", evaluate);
+      ro?.disconnect();
     };
-  }, [ended, started, topBlock.offset]);
+  }, [mounted]);
 
-  function reportScore(value: number) {
-    if (value <= 0) return;
-    void fetch("/api/greenwich/tower-score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score: value }),
-    }).catch(() => null);
-  }
+  React.useEffect(() => {
+    if (!mounted || !showGame) return;
+    const gameEl = gameRef.current;
+    if (!gameEl) return;
 
-  function reset() {
-    setBlocks(initialTower());
-    setEnded(false);
-    setStarted(false);
-    activeXRef.current = -TRAVEL;
-    directionRef.current = 1;
-  }
+    const stage = new Stage(gameEl);
+    const newBlocks = new THREE.Group();
+    const placedBlocks = new THREE.Group();
+    const choppedBlocks = new THREE.Group();
+    stage.scene.add(newBlocks, placedBlocks, choppedBlocks);
 
-  function placeBlock() {
-    if (ended) {
-      reset();
-      return;
-    }
-    if (!started) {
-      setStarted(true);
-      activeXRef.current = reducedMotionRef.current ? 0 : -TRAVEL;
-      return;
-    }
+    const blocks: Block[] = [];
+    let state: GameState = "ready";
+    gameStateRef.current = state;
+    let raf = 0;
+    let lastFrameTime = performance.now();
+    let reportedBest = 0;
+    const reportTowerScore = (score: number) => {
+      if (score <= 0) return;
+      if (score <= reportedBest) return;
+      reportedBest = score;
+      void fetch("/api/greenwich/tower-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ score }),
+      }).catch(() => {
+        // Silent fail: game UX must never depend on network.
+      });
+    };
+    const applyVerticalShift = (count: number) => {
+      // Рост блока по Y ~dimension.height (~2.8); смещение чуть ниже — верх медленнее уходит к меню, зона падения почти стабильна.
+      const linear = Math.max(0, (count - 2) * 2.5);
+      const extra = Math.max(0, count - 17) * 0.58;
+      const sink = Math.min(158, linear + extra);
+      gsap.to(newBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
+      gsap.to(placedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
+      gsap.to(choppedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
+    };
 
-    const previous = blocks[blocks.length - 1]!;
-    const activeOffset = activeXRef.current;
-    const difference = activeOffset - previous.offset;
-    const overlap = previous.width - Math.abs(difference);
+    const addBlock = (updateScore = true) => {
+      const last = blocks[blocks.length - 1];
+      if (last && last.state === "missed") {
+        state = "ended";
+        gameStateRef.current = state;
+        setShowHud(false);
+        setIsGameActive(false);
+        reportTowerScore(Math.max(0, blocks.length - 1));
+        return;
+      }
+      const block = new Block(last ?? null);
+      blocks.push(block);
+      if (updateScore) setScore(Math.max(0, blocks.length - 1));
+      newBlocks.add(block.mesh);
+      applyVerticalShift(blocks.length);
+      const followY = Math.min(0.95, blocks.length * 0.026);
+      stage.setCamera(followY);
+    };
 
-    if (overlap < 16) {
-      setEnded(true);
-      reportScore(score);
-      return;
-    }
+    const placeBlock = () => {
+      const current = blocks[blocks.length - 1];
+      if (!current) return;
+      const parts = current.place();
+      newBlocks.remove(current.mesh);
+      if (parts.placed) placedBlocks.add(parts.placed);
+      if (parts.chopped) {
+        choppedBlocks.add(parts.chopped);
+        const dirVal = 40 * Math.abs(parts.direction);
+        const position = parts.chopped.position;
+        gsap.to(position, {
+          duration: 0.95,
+          y: position.y - 26,
+          [parts.plane]: position[parts.plane] + (position[parts.plane] > (parts.placed?.position[parts.plane] ?? 0) ? dirVal : -dirVal),
+          ease: "power1.in",
+          onComplete: () => {
+            choppedBlocks.remove(parts.chopped!);
+          },
+        });
+        gsap.to(parts.chopped.rotation, {
+          duration: 0.95,
+          x: parts.plane === "z" ? (Math.random() * 8 - 4) : 0.3,
+          z: parts.plane === "x" ? (Math.random() * 8 - 4) : 0.3,
+          y: Math.random() * 0.2,
+        });
+      }
+      addBlock();
+    };
 
-    const nextOffset = previous.offset + difference / 2;
-    setBlocks((current) => [
-      ...current,
-      { id: current.length, width: overlap, offset: nextOffset },
-    ]);
-    activeXRef.current = directionRef.current > 0 ? -TRAVEL : TRAVEL;
-  }
+    const startGame = () => {
+      if (state === "playing") return;
+      state = "playing";
+      gameStateRef.current = state;
+      setShowHud(true);
+      setIsGameActive(true);
+      if (blocks.length <= 1) addBlock();
+    };
 
-  const visibleBlocks = blocks.slice(-8);
+    const restartGame = () => {
+      state = "resetting";
+      gameStateRef.current = state;
+      setIsGameActive(false);
+      const old = [...placedBlocks.children];
+      const removeSpeed = 0.2;
+      const delayAmount = 0.02;
+      old.forEach((obj, i) => {
+        gsap.to(obj.scale, {
+          duration: removeSpeed,
+          x: 0,
+          y: 0,
+          z: 0,
+          delay: (old.length - i) * delayAmount,
+          ease: "power1.in",
+          onComplete: () => {
+            placedBlocks.remove(obj);
+          },
+        });
+      });
+      const cameraMove = removeSpeed * 2 + old.length * delayAmount;
+      stage.setCamera(2, cameraMove);
+      blocks.splice(1);
+      applyVerticalShift(blocks.length);
+      setScore(0);
+      setShowHud(false);
+      window.setTimeout(() => {
+        state = "ready";
+        gameStateRef.current = state;
+        startGame();
+      }, cameraMove * 1000);
+    };
 
-  return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white" aria-label="Башня">
-      <header className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
-        <div>
-          <h3 className="text-sm font-semibold text-zinc-950">Башня</h3>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {!started ? "Нажми на поле, чтобы начать" : ended ? "Промах. Нажми, чтобы начать заново" : "Поставь блок кликом или пробелом"}
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-[11px] text-zinc-500">Счёт</div>
-          <div className="text-xl font-bold tabular-nums text-violet-800">{score}</div>
-        </div>
-      </header>
+    const resetToIdle = () => {
+      state = "ready";
+      gameStateRef.current = state;
+      setShowHud(false);
+      setIsGameActive(false);
+      setScore(0);
+      blocks.length = 0;
+      newBlocks.clear();
+      placedBlocks.clear();
+      choppedBlocks.clear();
+      gsap.killTweensOf([newBlocks.position, placedBlocks.position, choppedBlocks.position, stage.camera.position]);
+      newBlocks.position.set(0, 0, 0);
+      placedBlocks.position.set(0, 0, 0);
+      choppedBlocks.position.set(0, 0, 0);
+      stage.camera.position.set(2, 2, 2);
+      stage.camera.lookAt(0, 0, 0);
+      addBlock(false);
+      addBlock(false);
+    };
 
-      <button
-        type="button"
-        className="relative block h-[280px] w-full overflow-hidden border-0 bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-violet-700"
-        onClick={placeBlock}
-        onKeyDown={(event) => {
-          if (event.code === "Space") {
-            event.preventDefault();
-            placeBlock();
-          }
-        }}
-        aria-label={ended ? "Начать башню заново" : "Поставить блок башни"}
-      >
-        <span className="pointer-events-none absolute inset-x-0 bottom-4 text-center text-[11px] font-medium text-zinc-400">
-          {!started ? "Старт" : ended ? `Результат: ${score}` : "Клик / пробел"}
-        </span>
+    const onAction = () => {
+      if (state === "ready") {
+        startGame();
+        placeBlock();
+      } else if (state === "playing") {
+        placeBlock();
+      } else if (state === "ended") {
+        restartGame();
+      }
+    };
 
-        <span className="pointer-events-none absolute inset-x-0 bottom-10 flex h-[210px] items-end justify-center">
-          <span className="relative block h-full w-[460px] max-w-full">
-            {visibleBlocks.map((block, index) => (
-              <span
-                key={block.id}
-                className="absolute left-1/2 block border border-violet-900/10 bg-violet-500"
-                style={{
-                  width: block.width,
-                  height: BLOCK_HEIGHT,
-                  bottom: index * BLOCK_HEIGHT,
-                  transform: `translateX(calc(-50% + ${block.offset}px))`,
-                  backgroundColor: index % 2 === 0 ? "#7c3aed" : "#8b5cf6",
-                }}
-              />
-            ))}
-            {started && !ended ? (
-              <span
-                ref={activeRef}
-                className="absolute left-1/2 block border border-yellow-700/20 bg-yellow-400"
-                style={{
-                  width: topBlock.width,
-                  height: BLOCK_HEIGHT,
-                  bottom: visibleBlocks.length * BLOCK_HEIGHT,
-                  marginLeft: -topBlock.width / 2,
-                  transform: "translateX(0px)",
-                }}
-              />
-            ) : null}
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        onAction();
+      }
+    };
+    const onPointer = () => onAction();
+    const onGlobalPointerDown = (e: PointerEvent) => {
+      if (state === "ready" || state === "resetting") return;
+      const rect = gameEl.getBoundingClientRect();
+      if (e.clientY < rect.top) resetToIdle();
+    };
+    const onResize = () => stage.onResize();
+
+    addBlock();
+    addBlock();
+
+    const tickLoop = (now: number) => {
+      const deltaSeconds = Math.min(1 / 20, Math.max(0, (now - lastFrameTime) / 1000));
+      lastFrameTime = now;
+      blocks[blocks.length - 1]?.tick(deltaSeconds);
+      stage.render();
+      raf = window.requestAnimationFrame(tickLoop);
+    };
+    tickLoop(lastFrameTime);
+
+    window.addEventListener("resize", onResize);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onGlobalPointerDown, true);
+    gameEl.addEventListener("pointerdown", onPointer);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onGlobalPointerDown, true);
+      gameEl.removeEventListener("pointerdown", onPointer);
+      if (raf) window.cancelAnimationFrame(raf);
+      stage.destroy();
+    };
+  }, [mounted, showGame]);
+
+  if (!mounted || !showGame) return null;
+  return createPortal(
+    <>
+      <div className="fixed inset-x-0 bottom-[-38px] z-[29] h-[36vh] min-h-[240px] max-h-[400px] pointer-events-none">
+        <div
+          className={[
+            "pointer-events-none absolute inset-0 flex items-end justify-center font-black tabular-nums tracking-[-0.04em] transition-all duration-700",
+            showHud ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95",
+            "text-[clamp(116px,24vw,360px)] leading-none text-violet-600/24",
+          ].join(" ")}
+          style={{ paddingBottom: "86px" }}
+          aria-hidden
+        >
+          <span className="select-none transition-all duration-500 [text-shadow:0_0_36px_rgba(139,92,246,0.22)]">
+            {score}
           </span>
-        </span>
-      </button>
-    </section>
+        </div>
+      </div>
+      <div className="fixed inset-x-0 bottom-[-38px] z-[30] h-[36vh] min-h-[240px] max-h-[400px] overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_68%,transparent_96%)] [mask-repeat:no-repeat]">
+        {/* Нижняя «полка» фона: в простое башня не висит в вакууме */}
+        <div
+          className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_95%_72%_at_50%_100%,rgba(139,92,246,0.07)_0%,transparent_58%),radial-gradient(ellipse_70%_50%_at_18%_92%,rgba(250,204,21,0.05)_0%,transparent_50%),radial-gradient(ellipse_70%_50%_at_82%_90%,rgba(167,139,250,0.06)_0%,transparent_50%)]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 z-[5] opacity-[0.35]"
+          style={{
+            backgroundImage: [
+              "repeating-linear-gradient(-18deg, transparent, transparent 11px, rgba(139,92,246,0.02) 11px, rgba(139,92,246,0.02) 12px)",
+              "linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.05) 42%, rgba(250,250,252,0.55) 100%)",
+            ].join(","),
+          }}
+          aria-hidden
+        />
+        <div
+          ref={gameRef}
+          className={[
+            "absolute inset-0 z-10 pointer-events-auto cursor-pointer transition-[opacity,filter] duration-700 ease-out",
+            isGameActive ? "opacity-[0.94] [filter:saturate(1.02)_brightness(1)]" : "opacity-[0.22] [filter:saturate(0.72)_brightness(1.08)_blur(0.35px)]",
+          ].join(" ")}
+        />
+        {/* В простое лёгкая вуаль поверх WebGL — башня читается как текстура фона */}
+        <div
+          className={[
+            "pointer-events-none absolute inset-0 z-[11] transition-opacity duration-700",
+            isGameActive ? "opacity-0" : "opacity-100",
+          ].join(" ")}
+          style={{
+            background:
+              "linear-gradient(to top, rgba(250, 248, 255, 0.82) 0%, rgba(248, 246, 255, 0.42) 38%, rgba(252, 251, 255, 0.12) 72%, transparent 100%)",
+          }}
+          aria-hidden
+        />
+        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-[#f6f2ff]/66 via-[#f6f2ff]/18 to-[#f6f2ff]/00" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-[28%] max-w-48 bg-gradient-to-r from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-[28%] max-w-48 bg-gradient-to-l from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-[-34%] z-20 h-[54%] rounded-[50%] bg-white/22 blur-3xl" />
+        <div className="pointer-events-none absolute left-[8%] bottom-[6%] z-20 h-28 w-48 rounded-full bg-violet-200/25 blur-3xl" />
+        <div className="pointer-events-none absolute right-[10%] bottom-[8%] z-20 h-28 w-48 rounded-full bg-amber-200/22 blur-3xl" />
+        <div className="pointer-events-none absolute left-1/2 bottom-[2%] z-20 h-16 w-[min(72%,420px)] -translate-x-1/2 rounded-full bg-violet-300/10 blur-2xl" />
+      </div>
+    </>,
+    document.body,
   );
 }

@@ -137,32 +137,31 @@ function buildProjectCatalogHref(args: {
 }
 
 const sectionShell =
-  "rounded-[1.5rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.58),rgba(255,251,235,0.28))] p-3 shadow-[0_16px_42px_rgba(24,24,27,0.08)] backdrop-blur sm:p-4";
+  "rounded-lg border border-zinc-300 bg-white p-3 sm:p-4";
 const softShell =
-  "rounded-[1.65rem] border border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.50),rgba(255,251,235,0.24))] p-3 shadow-[0_18px_48px_rgba(24,24,27,0.08)] backdrop-blur sm:p-4";
+  "rounded-lg border border-zinc-300 bg-white p-3 sm:p-4";
 const glassSectionHeader =
-  "flex flex-col gap-3 rounded-[1.35rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_36%),linear-gradient(135deg,rgba(250,245,255,0.96),rgba(255,255,255,0.86),rgba(255,251,235,0.62))] px-4 py-3 shadow-[0_16px_42px_rgba(76,29,149,0.09)] sm:flex-row sm:items-center sm:justify-between";
-const glassSectionTitle = "text-lg font-black tracking-tight text-violet-950";
-const cardTile = "rounded-xl border border-zinc-100 bg-zinc-50/50 px-3 py-3";
+  "flex flex-col gap-3 border-b border-zinc-200 pb-3 sm:flex-row sm:items-center sm:justify-between";
+const glassSectionTitle = "text-lg font-black tracking-tight text-zinc-950";
 const inputField =
   "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const primaryBtn =
-  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50";
+  "rounded-md border border-zinc-950 bg-zinc-950 px-3 py-2 text-sm font-semibold text-white hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50";
 const secondaryBtn =
-  "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-50";
+  "rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:border-zinc-950 disabled:opacity-50";
 const iconBtn =
   "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50";
 const metaBadge =
-  "inline-flex items-center rounded-full border border-zinc-200 bg-white/85 px-2.5 py-1 text-xs font-medium text-zinc-700";
+  "inline-flex items-center rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700";
 const workTabBtn = (active: boolean) =>
   [
-    "min-h-12 rounded-2xl px-4 py-2 text-sm font-extrabold transition",
+    "min-h-11 rounded-md border px-4 py-2 text-sm font-extrabold transition-colors",
     active
-      ? "border border-violet-500 bg-zinc-950 text-white shadow-[0_12px_26px_rgba(24,24,27,0.18)]"
-      : "border border-zinc-200 bg-white/85 text-zinc-600 hover:border-violet-200 hover:bg-white hover:text-violet-900",
+      ? "border-zinc-950 bg-zinc-950 text-white"
+      : "border-zinc-300 bg-white text-zinc-600 hover:border-zinc-950 hover:text-zinc-950",
   ].join(" ");
 const heroStatCard =
-  "rounded-[1.25rem] border border-white/85 bg-white/82 p-3 shadow-[0_12px_34px_rgba(24,24,27,0.07)] backdrop-blur";
+  "rounded-md border border-zinc-200 bg-zinc-50 p-3";
 
 const PROJECT_STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
   LEAD: "BRIEFING",
@@ -1134,7 +1133,7 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.18),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(250,204,21,0.20),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,245,255,0.78),rgba(255,255,255,0.92))] shadow-[0_22px_70px_rgba(76,29,149,0.12)] backdrop-blur">
+          <section className="overflow-hidden rounded-lg border border-zinc-300 border-t-4 border-t-yellow-400 bg-white">
             <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px]">
               <div className="min-w-0">
                 <div className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-800">Проект</div>
@@ -1173,8 +1172,8 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => !readOnly && setEditingField("title")}
                         disabled={readOnly}
-                        className={`block break-words text-left text-4xl font-black tracking-tight text-zinc-950 sm:text-5xl ${
-                          readOnly ? "cursor-default" : "rounded-2xl outline-none transition hover:text-violet-900 focus:ring-4 focus:ring-violet-100"
+                        className={`block break-words text-left text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl ${
+                          readOnly ? "cursor-default" : "rounded outline-none transition-colors hover:text-violet-900 focus:ring-2 focus:ring-violet-100"
                         }`}
                       >
                         {project.title}
@@ -1305,7 +1304,7 @@ export default function ProjectDetailPage() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="rounded-[1.4rem] border border-white/85 bg-white/78 p-3 shadow-[0_16px_42px_rgba(24,24,27,0.08)] backdrop-blur">
+                <div className="rounded-md border border-zinc-300 bg-zinc-50 p-3">
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Действия</div>
                   <div className="mt-3 flex flex-col gap-2">
                     <Link
@@ -1318,7 +1317,7 @@ export default function ProjectDetailPage() {
                         e.preventDefault();
                         openProjectCatalogEntry();
                       }}
-                      className={`${primaryBtn} w-full rounded-2xl py-3 text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                      className={`${primaryBtn} w-full py-3 text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
                       aria-disabled={readOnly}
                     >
                       Каталог → реквизит
@@ -1328,7 +1327,7 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
-                        className={`${secondaryBtn} w-full justify-center rounded-2xl py-3`}
+                        className={`${secondaryBtn} w-full justify-center py-3`}
                         title={
                           canArchiveProject
                             ? undefined

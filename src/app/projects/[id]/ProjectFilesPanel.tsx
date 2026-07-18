@@ -622,7 +622,7 @@ export function ProjectFilesPanel({
   // (раньше использовалось для "быстрой загрузки", сейчас не нужно)
 
   return (
-    <div className="space-y-4 rounded-2xl border border-zinc-200 bg-[linear-gradient(180deg,rgba(250,250,250,0.98),rgba(244,244,245,0.92))] p-3 sm:p-4">
+    <div className="space-y-4 rounded-lg border border-zinc-300 bg-white p-3 sm:p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Файлы проекта</div>
         <div className="text-xs text-zinc-500">

@@ -223,7 +223,7 @@ export function ProjectSchedulePanel({
   const exportHref = `/api/projects/${projectId}/schedule/export`;
 
   return (
-    <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
+    <div className="space-y-3 rounded-lg border border-zinc-300 bg-white p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-lg font-extrabold tracking-tight text-violet-900">Тайминг-сценарий</div>
         <div className="flex flex-wrap items-center gap-2">

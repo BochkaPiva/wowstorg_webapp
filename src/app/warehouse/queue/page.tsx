@@ -5,10 +5,19 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
-import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
-import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
+
+import "./queue.css";
+
+type QueueLine = {
+  id: string;
+  itemId: string;
+  itemName: string;
+  requestedQty: number;
+  approvedQty: number | null;
+  issuedQty: number | null;
+};
 
 type QueueOrder = {
   id: string;
@@ -25,60 +34,73 @@ type QueueOrder = {
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
   warehouseInternalNote?: string | null;
   totalAmount?: number;
-  profitEstimate?: number;
   taxAmount?: number;
   discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
   project?: { id: string; title: string } | null;
+  lines?: QueueLine[];
+  services?: Array<{ label: string; amount: number }>;
 };
 
-const QUEUE_STATUS_OPTIONS = [
-  { value: "SUBMITTED", label: "Новая" },
+const STATUS_OPTIONS = [
+  { value: "SUBMITTED", label: "Новые" },
   { value: "ESTIMATE_SENT", label: "Смета отправлена" },
-  { value: "CHANGES_REQUESTED", label: "Запрошены изменения" },
-  { value: "APPROVED_BY_GREENWICH", label: "Согласовано Grinvich" },
-  { value: "PICKING", label: "Сборка" },
-  { value: "ISSUED", label: "Выдано" },
-  { value: "RETURN_DECLARED", label: "Возврат заявлен" },
+  { value: "CHANGES_REQUESTED", label: "Нужны изменения" },
+  { value: "APPROVED_BY_GREENWICH", label: "Согласованы" },
+  { value: "PICKING", label: "На сборке" },
+  { value: "ISSUED", label: "Выданы" },
+  { value: "RETURN_DECLARED", label: "На приёмке" },
 ] as const;
 
-const SORT_OPTIONS = [
-  { value: "smart", label: "По приоритету (важное сверху)" },
-  { value: "readyBy_asc", label: "Готовность: раньше → позже" },
-  { value: "readyBy_desc", label: "Готовность: позже → раньше" },
-  { value: "startDate_asc", label: "Начало периода ↑" },
-  { value: "startDate_desc", label: "Начало периода ↓" },
-  { value: "created_desc", label: "Создание: новые сверху" },
-  { value: "created_asc", label: "Создание: старые сверху" },
+const STATUS_LABEL: Record<string, string> = {
+  SUBMITTED: "Новая",
+  ESTIMATE_SENT: "Смета отправлена",
+  CHANGES_REQUESTED: "Нужны изменения",
+  APPROVED_BY_GREENWICH: "Согласована",
+  PICKING: "Сборка",
+  ISSUED: "Выдана",
+  RETURN_DECLARED: "Приёмка",
+  CLOSED: "Закрыта",
+  CANCELLED: "Отменена",
+};
+
+const ACTIVE_SORT_OPTIONS = [
+  { value: "smart", label: "Сначала требующие действия" },
+  { value: "readyBy_asc", label: "Срок готовности: сначала ближайшие" },
+  { value: "readyBy_desc", label: "Срок готовности: сначала дальние" },
+  { value: "startDate_asc", label: "Дата аренды: сначала ближайшие" },
+  { value: "startDate_desc", label: "Дата аренды: сначала дальние" },
+  { value: "created_desc", label: "Сначала новые" },
+  { value: "created_asc", label: "Сначала старые" },
+] as const;
+
+const ARCHIVE_SORT_OPTIONS = [
+  { value: "updated_desc", label: "Сначала недавно закрытые" },
+  { value: "updated_asc", label: "Сначала давно закрытые" },
 ] as const;
 
 const SOURCE_OPTIONS = [
   { value: "all", label: "Все источники" },
-  { value: "GREENWICH_INTERNAL", label: "От Grinvich" },
-  { value: "WOWSTORG_EXTERNAL", label: "Склад (внешние)" },
+  { value: "GREENWICH_INTERNAL", label: "Greenwich" },
+  { value: "WOWSTORG_EXTERNAL", label: "Внешние" },
 ] as const;
 
-const DEFAULT_SORT = "readyBy_asc";
+const DEFAULT_SORT = "smart";
 const ARCHIVE_DEFAULT_SORT = "updated_desc";
 
 function fmtDateRu(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const dd = String(d.getUTCDate()).padStart(2, "0");
-  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const yy = d.getUTCFullYear();
-  return `${dd}.${mm}.${yy}`;
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-function periodLineQueue(o: QueueOrder): string {
-  const startIso = o.startDate.slice(0, 10);
-  const endIso = o.endDate.slice(0, 10);
+function periodLine(order: QueueOrder): string {
   return formatRentalPeriodRangeRu({
-    startDateIso: startIso,
-    endDateIso: endIso,
-    startDateFormatted: fmtDateRu(o.startDate),
-    endDateFormatted: fmtDateRu(o.endDate),
-    rentalStartPartOfDay: o.rentalStartPartOfDay ?? undefined,
-    rentalEndPartOfDay: o.rentalEndPartOfDay ?? undefined,
+    startDateIso: order.startDate.slice(0, 10),
+    endDateIso: order.endDate.slice(0, 10),
+    startDateFormatted: fmtDateRu(order.startDate),
+    endDateFormatted: fmtDateRu(order.endDate),
+    rentalStartPartOfDay: order.rentalStartPartOfDay ?? undefined,
+    rentalEndPartOfDay: order.rentalEndPartOfDay ?? undefined,
   });
 }
 
@@ -86,61 +108,60 @@ function formatMoney(value: number): string {
   return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
 }
 
-function statusHeaderClass(status: string): string {
-  return status === "CANCELLED"
-    ? "bg-zinc-100/90 text-zinc-500"
-    : status === "CLOSED"
-      ? "bg-violet-50/80 text-violet-900"
-      : "bg-white/80";
-}
-
-function parseStatusSetFromUrl(raw: string | null): Set<string> {
-  const all = new Set(QUEUE_STATUS_OPTIONS.map((o) => o.value));
+function parseStatusSet(raw: string | null): Set<string> {
+  const all = new Set(STATUS_OPTIONS.map((option) => option.value));
   if (!raw?.trim()) return all;
-  const picked = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  return picked.size > 0 ? picked : all;
+  const selected = new Set(raw.split(",").map((value) => value.trim()).filter(Boolean));
+  return selected.size ? selected : all;
 }
 
-function buildQueueQuery(args: {
-  sort: string;
-  q: string;
-  source: string;
-  statusSet: Set<string>;
-}): string {
+function buildQueueQuery(args: { sort: string; q: string; source: string; statusSet: Set<string> }) {
   const params = new URLSearchParams();
-  if (args.sort && args.sort !== DEFAULT_SORT) params.set("sort", args.sort);
-  const q = args.q.trim();
-  if (q) params.set("q", q);
+  if (args.sort !== DEFAULT_SORT) params.set("sort", args.sort);
+  if (args.q.trim()) params.set("q", args.q.trim());
   if (args.source !== "all") params.set("source", args.source);
-  const allStatuses = new Set(QUEUE_STATUS_OPTIONS.map((o) => o.value));
-  const allSelected =
-    args.statusSet.size === allStatuses.size && [...allStatuses].every((s) => args.statusSet.has(s));
-  if (!allSelected && args.statusSet.size > 0) {
+  if (args.statusSet.size !== STATUS_OPTIONS.length) {
     params.set("status", [...args.statusSet].sort().join(","));
   }
   return params.toString();
 }
 
-function buildArchiveQuery(args: {
-  sort: string;
-  q: string;
-  source: string;
-  status: string;
-}): string {
+function buildArchiveQuery(args: { sort: string; q: string; source: string; status: string }) {
   const params = new URLSearchParams();
-  if (args.sort && args.sort !== ARCHIVE_DEFAULT_SORT) params.set("sort", args.sort);
-  const q = args.q.trim();
-  if (q) params.set("q", q);
+  if (args.sort !== ARCHIVE_DEFAULT_SORT) params.set("sort", args.sort);
+  if (args.q.trim()) params.set("q", args.q.trim());
   if (args.source !== "all") params.set("source", args.source);
   if (args.status !== "all") params.set("status", args.status);
   return params.toString();
+}
+
+type QuickAction = { endpoint: string; label: string; confirm: string };
+
+function quickActionFor(order: QueueOrder): QuickAction | null {
+  if (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") {
+    return { endpoint: "send-estimate", label: "Отправить смету", confirm: "Сформировать и отправить смету?" };
+  }
+  if (order.status === "APPROVED_BY_GREENWICH") {
+    return { endpoint: "start-picking", label: "Начать сборку", confirm: "Перевести заявку на сборку?" };
+  }
+  if (order.status === "PICKING") {
+    return { endpoint: "issue", label: "Выдать", confirm: "Подтвердить выдачу всех позиций?" };
+  }
+  if (order.status === "ISSUED" && !order.greenwichUser) {
+    return { endpoint: "return-declared", label: "На приёмку", confirm: "Отправить заявку на приёмку?" };
+  }
+  return null;
+}
+
+async function responseError(response: Response): Promise<string> {
+  const data = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+  return data?.error?.message ?? `Ошибка ${response.status}`;
 }
 
 function WarehouseQueueContent() {
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
-
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -150,90 +171,106 @@ function WarehouseQueueContent() {
   );
   const [orders, setOrders] = React.useState<QueueOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [editingNoteOrderId, setEditingNoteOrderId] = React.useState<string | null>(null);
-  const [editingNoteValue, setEditingNoteValue] = React.useState("");
-  const [noteSaveBusy, setNoteSaveBusy] = React.useState(false);
-
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [actionConfirmId, setActionConfirmId] = React.useState<string | null>(null);
+  const [actionBusyId, setActionBusyId] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<{ id: string; message: string } | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null);
+  const [noteValue, setNoteValue] = React.useState("");
+  const [noteBusy, setNoteBusy] = React.useState(false);
   const [sort, setSort] = React.useState(
     () => searchParams.get("sort") || (searchParams.get("tab") === "archive" ? ARCHIVE_DEFAULT_SORT : DEFAULT_SORT),
   );
   const [qInput, setQInput] = React.useState(() => searchParams.get("q") ?? "");
   const [qDebounced, setQDebounced] = React.useState(() => searchParams.get("q") ?? "");
   const [source, setSource] = React.useState(() => searchParams.get("source") || "all");
-  const [statusSet, setStatusSet] = React.useState(() => parseStatusSetFromUrl(searchParams.get("status")));
+  const [statusSet, setStatusSet] = React.useState(() => parseStatusSet(searchParams.get("status")));
   const [archiveStatus, setArchiveStatus] = React.useState(() => searchParams.get("status") || "all");
-
   const [filtersOpen, setFiltersOpen] = React.useState(false);
 
   React.useEffect(() => {
-    const nextTab = searchParams.get("tab") === "archive" ? "archive" : "active";
-    setTab(nextTab);
-    const t = window.setTimeout(() => setQDebounced(qInput), 320);
-    return () => window.clearTimeout(t);
-  }, [qInput, searchParams]);
+    const timer = window.setTimeout(() => setQDebounced(qInput), 240);
+    return () => window.clearTimeout(timer);
+  }, [qInput]);
 
-  const loadOrders = React.useCallback(() => {
+  const loadOrders = React.useCallback(async (showLoading = true) => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
-    const qs =
-      tab === "archive"
-        ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
-        : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
-    fetch(`/api/warehouse/${tab === "archive" ? "archive" : "queue"}${qs ? `?${qs}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then((data: { orders?: QueueOrder[] } | null) => setOrders(data?.orders ?? []))
-      .catch(() => setOrders([]));
-  }, [state.status, role, sort, qDebounced, source, statusSet, archiveStatus, tab]);
+    const query = tab === "archive"
+      ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
+      : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
+    if (showLoading) setLoading(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(`/api/warehouse/${tab === "archive" ? "archive" : "queue"}${query ? `?${query}` : ""}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(await responseError(response));
+      const data = (await response.json()) as { orders?: QueueOrder[] };
+      setOrders(data.orders ?? []);
+    } catch (error) {
+      setOrders([]);
+      setLoadError(error instanceof Error ? error.message : "Не удалось загрузить очередь");
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [state.status, role, tab, sort, qDebounced, source, archiveStatus, statusSet]);
 
   React.useEffect(() => {
-    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
-    let cancelled = false;
-    const qs =
-      tab === "archive"
-        ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
-        : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
-    const tabQs = new URLSearchParams(qs);
-    if (tab === "archive") tabQs.set("tab", "archive");
-    router.replace(tabQs.toString() ? `${pathname}?${tabQs.toString()}` : pathname, { scroll: false });
-    setLoading(true);
-    fetch(`/api/warehouse/${tab === "archive" ? "archive" : "queue"}${qs ? `?${qs}` : ""}`, { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then((data: { orders?: QueueOrder[] } | null) => {
-        if (!cancelled) setOrders(data?.orders ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setOrders([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [state.status, role, sort, qDebounced, source, statusSet, archiveStatus, tab, pathname, router]);
+    void loadOrders();
+    const query = tab === "archive"
+      ? buildArchiveQuery({ sort, q: qDebounced, source, status: archiveStatus })
+      : buildQueueQuery({ sort, q: qDebounced, source, statusSet });
+    const pageQuery = new URLSearchParams(query);
+    if (tab === "archive") pageQuery.set("tab", "archive");
+    router.replace(pageQuery.size ? `${pathname}?${pageQuery}` : pathname, { scroll: false });
+  }, [loadOrders, tab, sort, qDebounced, source, archiveStatus, statusSet, pathname, router]);
 
-  async function saveInternalNote(orderId: string) {
-    setNoteSaveBusy(true);
+  React.useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  async function runQuickAction(order: QueueOrder, action: QuickAction) {
+    setActionBusyId(order.id);
+    setActionError(null);
     try {
-      const res = await fetch(`/api/orders/${orderId}/internal-note`, {
+      const response = await fetch(`/api/orders/${order.id}/${action.endpoint}`, { method: "POST" });
+      if (!response.ok) throw new Error(await responseError(response));
+      setActionConfirmId(null);
+      setNotice(`${order.customer.name}: ${action.label.toLowerCase()} — готово`);
+      await loadOrders(false);
+    } catch (error) {
+      setActionError({ id: order.id, message: error instanceof Error ? error.message : "Действие не выполнено" });
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function saveNote(orderId: string) {
+    setNoteBusy(true);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/internal-note`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: editingNoteValue.trim() || null }),
+        body: JSON.stringify({ note: noteValue.trim() || null }),
       });
-      if (res.ok) {
-        setEditingNoteOrderId(null);
-        loadOrders();
-      }
+      if (!response.ok) throw new Error(await responseError(response));
+      setEditingNoteId(null);
+      setNotice("Комментарий сохранён");
+      await loadOrders(false);
+    } catch (error) {
+      setActionError({ id: orderId, message: error instanceof Error ? error.message : "Комментарий не сохранён" });
     } finally {
-      setNoteSaveBusy(false);
+      setNoteBusy(false);
     }
   }
 
   function toggleStatus(value: string) {
-    setStatusSet((prev) => {
-      const next = new Set(prev);
+    setStatusSet((current) => {
+      const next = new Set(current);
       if (next.has(value)) {
-        if (next.size <= 1) return next;
-        next.delete(value);
+        if (next.size > 1) next.delete(value);
       } else {
         next.add(value);
       }
@@ -241,394 +278,218 @@ function WarehouseQueueContent() {
     });
   }
 
-  function selectAllStatuses() {
-    setStatusSet(new Set(QUEUE_STATUS_OPTIONS.map((o) => o.value)));
-  }
-
   const grouped = React.useMemo(() => {
-    const byId = new Map(orders.map((o) => [o.id, o]));
-    const childrenByParent = new Map<string, QueueOrder[]>();
-    for (const o of orders) {
-      if (!o.parentOrderId) continue;
-      const arr = childrenByParent.get(o.parentOrderId) ?? [];
-      arr.push(o);
-      childrenByParent.set(o.parentOrderId, arr);
+    const byId = new Map(orders.map((order) => [order.id, order]));
+    const children = new Map<string, QueueOrder[]>();
+    for (const order of orders) {
+      if (!order.parentOrderId) continue;
+      children.set(order.parentOrderId, [...(children.get(order.parentOrderId) ?? []), order]);
     }
-    const roots = orders.filter((o) => !o.parentOrderId || !byId.has(o.parentOrderId));
-    return roots.map((root) => ({
-      root,
-      children: childrenByParent.get(root.id) ?? [],
-    }));
+    return orders
+      .filter((order) => !order.parentOrderId || !byId.has(order.parentOrderId))
+      .map((root) => ({ root, children: children.get(root.id) ?? [] }));
   }, [orders]);
 
-  function renderQueueCard(o: QueueOrder, kind: "root" | "child") {
-    const isCancelled = o.status === "CANCELLED";
-    const isCancelledArchive = tab === "archive" && isCancelled;
-    const isSupplement = Boolean(o.parentOrderId);
-    const discountLabel = o.discount
-      ? o.discount.type === "PERCENT" && o.discount.percent != null
-        ? `${o.discount.percent}%`
-        : formatMoney(o.discount.amount)
-      : null;
+  function renderOrder(order: QueueOrder, child = false) {
+    const expanded = expandedId === order.id;
+    const action = tab === "active" ? quickActionFor(order) : null;
+    const confirming = actionConfirmId === order.id;
+    const lineCount = order.lines?.length ?? 0;
+    const sourceLabel = order.source === "WOWSTORG_EXTERNAL" ? "Внешняя" : "Greenwich";
 
     return (
-      <div
-        key={o.id}
-        className={[
-          "overflow-hidden rounded-[1.75rem] border p-0 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5",
-          isCancelledArchive
-            ? "border-zinc-200/90 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 hover:border-zinc-300 hover:opacity-100"
-            : o.project
-              ? "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.82))] hover:border-violet-300 hover:shadow-[0_24px_70px_rgba(109,40,217,0.14)]"
-              : isSupplement
-                ? "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.8))] hover:border-amber-300"
-                : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
-          kind === "child" ? "ml-8" : "",
-        ].join(" ")}
-      >
-        <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
-          <OrderStatusStepper status={o.status as OrderStatus} source={o.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+      <article key={order.id} className="queue-order" data-expanded={expanded || undefined} data-child={child || undefined}>
+        <div className="queue-order__summary">
+          <button
+            type="button"
+            className="queue-order__toggle"
+            onClick={() => {
+              setExpandedId(expanded ? null : order.id);
+              setActionConfirmId(null);
+              setActionError(null);
+            }}
+            aria-expanded={expanded}
+            aria-controls={`queue-preview-${order.id}`}
+          >
+            <span className="queue-order__chevron" aria-hidden="true">⌄</span>
+            <span className="queue-order__identity">
+              <strong>{order.customer.name}</strong>
+              <span>{sourceLabel}{order.project ? ` · ${order.project.title}` : ""}</span>
+            </span>
+            <span className="queue-status" data-status={order.status}>{STATUS_LABEL[order.status] ?? order.status}</span>
+            <span className="queue-order__date">
+              <small>Готовность</small>
+              <strong>{fmtDateRu(order.readyByDate)}</strong>
+            </span>
+            <span className="queue-order__period">
+              <small>Аренда</small>
+              <strong>{periodLine(order)}</strong>
+            </span>
+            <span className="queue-order__amount">{order.totalAmount != null ? formatMoney(order.totalAmount) : "—"}</span>
+          </button>
+
+          <div className="queue-order__actions">
+            {action ? (
+              <button type="button" className="queue-button queue-button--primary" onClick={() => setActionConfirmId(confirming ? null : order.id)}>
+                {action.label}
+              </button>
+            ) : null}
+            <Link href={`/orders/${order.id}?from=warehouse-queue`} className="queue-button queue-button--quiet">Открыть</Link>
+          </div>
         </div>
-        <div className="p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div
-                className={[
-                  "text-xl font-black leading-tight",
-                  isCancelledArchive ? "text-zinc-500" : "text-zinc-950",
-                ].join(" ")}
-              >
-                {o.customer.name}
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm font-semibold text-zinc-500">
-                {o.greenwichUser ? (
-                  <span>
-                    {o.greenwichUser.displayName}
-                    {o.greenwichUser.ratingScore != null ? ` · рейтинг ${o.greenwichUser.ratingScore}` : ""}
-                  </span>
-                ) : null}
-                {o.project ? <span>Проект: {o.project.title}</span> : null}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                <span
-                  className={[
-                    "rounded-full border px-2.5 py-1 font-bold",
-                    isSupplement
-                      ? "border-amber-200 bg-amber-50/85 text-amber-900"
-                      : "border-violet-200 bg-violet-50/85 text-violet-800",
-                  ].join(" ")}
-                >
-                  {isSupplement ? `Доп. к ${o.parentOrderId?.slice(0, 8)}` : "Основная"}
-                </span>
-                {o.project ? (
-                  <span className="rounded-full border border-violet-200 bg-white/75 px-2.5 py-1 font-bold text-violet-800">
-                    Проект
-                  </span>
-                ) : null}
-                {isCancelledArchive ? (
-                  <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
-                    Не учитывается
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
-              Создана {fmtDateRu(o.createdAt)}
-            </div>
-          </div>
 
-          <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(9rem,0.75fr)_minmax(16rem,1.35fr)_minmax(9rem,0.9fr)]">
-            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Готовность</div>
-              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                {fmtDateRu(o.readyByDate)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Период</div>
-              <div className={["mt-1 text-base font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                {periodLineQueue(o)}
-              </div>
-            </div>
-
-            <div
-              className={[
-                "rounded-2xl border px-4 py-3",
-                isCancelledArchive
-                  ? "border-zinc-200/90 bg-white/60"
-                  : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
-              ].join(" ")}
-            >
-              <div
-                className={[
-                  "text-[10px] font-black uppercase tracking-[0.16em]",
-                  isCancelledArchive ? "text-zinc-400" : "text-violet-600",
-                ].join(" ")}
-              >
-                Сумма
-              </div>
-              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-violet-950"].join(" ")}>
-                {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-            <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-500">ID {o.id.slice(0, 8)}</span>
-            {tab === "archive" ? (
-              <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-500">Архив</span>
-            ) : null}
-            {isCancelled && !isCancelledArchive ? (
-              <span className="rounded-full border border-zinc-300 bg-zinc-100 px-2.5 py-1 text-zinc-600">Отменена</span>
-            ) : null}
-            {o.taxAmount != null ? (
-              <span className="rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-zinc-600">
-                Налог {formatMoney(o.taxAmount)}
-              </span>
-            ) : null}
-            {discountLabel ? (
-              <span className="rounded-full border border-emerald-200 bg-emerald-50/80 px-2.5 py-1 text-emerald-800">
-                Скидка {discountLabel}
-              </span>
-            ) : null}
-            {o.profitEstimate != null ? (
-              <span
-                className={[
-                  "rounded-full border px-2.5 py-1",
-                  o.profitEstimate < 0
-                    ? "border-red-200 bg-red-50/85 text-red-800"
-                    : "border-emerald-200 bg-emerald-50/85 text-emerald-800",
-                ].join(" ")}
-              >
-                Прибыль {formatMoney(o.profitEstimate)}
-              </span>
-            ) : null}
-          </div>
-
-          {o.warehouseInternalNote ? (
-            <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
-              <span className="font-black text-amber-900">Комментарий склада:</span>{" "}
-              <span className="whitespace-pre-wrap">{o.warehouseInternalNote}</span>
-            </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {o.status === "ISSUED" && o.greenwichUser && !o.parentOrderId ? (
-              <Link
-                href={`/catalog?quickParentId=${o.id}`}
-                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-black text-amber-900 hover:bg-amber-100"
-              >
-                Быстрая доп.-выдача
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                setEditingNoteOrderId(o.id);
-                setEditingNoteValue(o.warehouseInternalNote ?? "");
-              }}
-              className="rounded-2xl border border-zinc-200 bg-white/75 px-4 py-2 text-sm font-black text-zinc-700 hover:bg-white"
-            >
-              Комментарий
+        {confirming && action ? (
+          <div className="queue-confirm" role="group" aria-label="Подтверждение действия">
+            <span>{action.confirm}</span>
+            <button type="button" disabled={actionBusyId === order.id} onClick={() => void runQuickAction(order, action)}>
+              {actionBusyId === order.id ? "Выполняю…" : "Подтвердить"}
             </button>
-            <Link
-              href={`/orders/${o.id}?from=warehouse-queue`}
-              className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-800 hover:bg-violet-100"
-            >
-              Открыть заявку
-            </Link>
+            <button type="button" className="queue-confirm__cancel" onClick={() => setActionConfirmId(null)}>Отмена</button>
           </div>
-          {editingNoteOrderId === o.id ? (
-            <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/70 p-4">
-              <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                Внутренний комментарий
-              </label>
-              <textarea
-                value={editingNoteValue}
-                onChange={(e) => setEditingNoteValue(e.target.value)}
-                rows={3}
-                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold shadow-inner outline-none transition focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                placeholder="Заметка для сотрудников склада…"
-              />
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  disabled={noteSaveBusy}
-                  onClick={() => saveInternalNote(o.id)}
-                  className="rounded-2xl border border-violet-300 bg-violet-600 px-4 py-2 text-sm font-black text-white hover:bg-violet-700 disabled:opacity-50"
-                >
-                  {noteSaveBusy ? "…" : "Сохранить"}
-                </button>
-                <button
-                  type="button"
-                  disabled={noteSaveBusy}
-                  onClick={() => {
-                    setEditingNoteOrderId(null);
-                    setEditingNoteValue("");
-                  }}
-                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm font-black text-zinc-700 hover:bg-zinc-50"
-                >
-                  Отмена
-                </button>
-              </div>
+        ) : null}
+
+        {actionError?.id === order.id ? <div className="queue-inlineError" role="alert">{actionError.message}</div> : null}
+
+        <div id={`queue-preview-${order.id}`} className="queue-order__reveal" aria-hidden={!expanded}>
+          <div className="queue-order__revealInner">
+            <div className="queue-preview">
+              <section className="queue-preview__main">
+                <div className="queue-preview__heading">
+                  <div>
+                    <h3>Состав заявки</h3>
+                    <p>{lineCount ? `${lineCount} позиций` : "Состав доступен в полной карточке"}</p>
+                  </div>
+                  <span>ID {order.id.slice(0, 8)}</span>
+                </div>
+                {lineCount ? (
+                  <div className="queue-lines">
+                    {order.lines!.slice(0, 7).map((line) => (
+                      <div key={line.id} className="queue-line">
+                        <span>{line.itemName}</span>
+                        <strong>× {line.issuedQty ?? line.approvedQty ?? line.requestedQty}</strong>
+                      </div>
+                    ))}
+                    {lineCount > 7 ? <div className="queue-lines__more">Ещё {lineCount - 7} — в полной карточке</div> : null}
+                  </div>
+                ) : null}
+              </section>
+
+              <aside className="queue-preview__aside">
+                <dl className="queue-facts">
+                  <div><dt>Ответственный</dt><dd>{order.greenwichUser?.displayName ?? "Склад"}</dd></div>
+                  <div><dt>Создана</dt><dd>{fmtDateRu(order.createdAt)}</dd></div>
+                  {order.services?.length ? (
+                    <div><dt>Услуги</dt><dd>{order.services.map((service) => service.label).join(", ")}</dd></div>
+                  ) : null}
+                  {order.discount?.amount ? <div><dt>Скидка</dt><dd>{formatMoney(order.discount.amount)}</dd></div> : null}
+                  {order.taxAmount ? <div><dt>Налог</dt><dd>{formatMoney(order.taxAmount)}</dd></div> : null}
+                </dl>
+
+                {order.warehouseInternalNote ? (
+                  <div className="queue-note"><strong>Комментарий</strong><span>{order.warehouseInternalNote}</span></div>
+                ) : null}
+
+                <div className="queue-preview__links">
+                  <button
+                    type="button"
+                    className="queue-textButton"
+                    onClick={() => {
+                      setEditingNoteId(editingNoteId === order.id ? null : order.id);
+                      setNoteValue(order.warehouseInternalNote ?? "");
+                    }}
+                  >
+                    {order.warehouseInternalNote ? "Изменить комментарий" : "Добавить комментарий"}
+                  </button>
+                  {order.status === "RETURN_DECLARED" ? (
+                    <Link href={`/orders/${order.id}?from=warehouse-queue#check-in`} className="queue-textButton">Открыть приёмку →</Link>
+                  ) : null}
+                </div>
+              </aside>
             </div>
-          ) : null}
+
+            {editingNoteId === order.id ? (
+              <div className="queue-noteEditor">
+                <label htmlFor={`note-${order.id}`}>Внутренний комментарий</label>
+                <textarea id={`note-${order.id}`} value={noteValue} onChange={(event) => setNoteValue(event.target.value)} rows={3} autoFocus />
+                <div>
+                  <button type="button" disabled={noteBusy} onClick={() => void saveNote(order.id)}>{noteBusy ? "Сохраняю…" : "Сохранить"}</button>
+                  <button type="button" className="queue-noteEditor__cancel" onClick={() => setEditingNoteId(null)}>Отмена</button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </article>
     );
   }
 
   return (
-    <AppShell title="Очередь склада">
+    <AppShell title="Очередь заявок">
       {forbidden ? (
-        <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
+        <div className="queue-empty">Этот раздел доступен только сотрудникам Wowstorg.</div>
       ) : (
-        <div className="space-y-6">
-          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.2),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Склад</div>
-                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Очередь заявок</h1>
+        <div className="queue-page">
+          <header className="queue-toolbar">
+            <div className="queue-toolbar__top">
+              <div>
+                <h2>Очередь заявок</h2>
+                <p>{loading ? "Обновляем…" : `${orders.length} ${orders.length === 1 ? "заявка" : "заявок"}`}</p>
               </div>
-              <div
-                className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
-                role="group"
-                aria-label="Область заявок"
-              >
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("active");
-                  setSort(DEFAULT_SORT);
-                }}
-                className={[
-                  "rounded-xl px-4 py-3 text-sm font-black transition",
-                  tab === "active"
-                    ? "bg-violet-700 text-white"
-                    : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
-                ].join(" ")}
-              >
-                Активные
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("archive");
-                  setSort(ARCHIVE_DEFAULT_SORT);
-                }}
-                className={[
-                  "rounded-xl px-4 py-3 text-sm font-black transition",
-                  tab === "archive"
-                    ? "bg-violet-700 text-white"
-                    : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
-                ].join(" ")}
-              >
-                Архив
-              </button>
-            </div>
-            </div>
-
-            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
-              <div className={["grid gap-2", tab === "archive" ? "xl:grid-cols-[minmax(22rem,1fr)_minmax(12rem,16rem)_minmax(10rem,14rem)_minmax(10rem,14rem)]" : "xl:grid-cols-[minmax(22rem,1fr)_minmax(12rem,16rem)_minmax(10rem,14rem)]"].join(" ")}>
-                <input
-                  type="search"
-                  value={qInput}
-                  onChange={(e) => setQInput(e.target.value)}
-                  placeholder="Найти заявку"
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                  aria-label="Найти заявку"
-                />
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                  aria-label="Сортировка"
-                >
-                  {SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                  className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                  aria-label="Источник"
-                >
-                  {SOURCE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                {tab === "archive" ? (
-                  <select
-                    value={archiveStatus}
-                    onChange={(e) => setArchiveStatus(e.target.value)}
-                    className="h-12 rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                    aria-label="Статус"
-                  >
-                    <option value="all">Все</option>
-                    <option value="CLOSED">Завершена</option>
-                    <option value="CANCELLED">Отменена</option>
-                  </select>
-                ) : null}
+              <div className="queue-tabs" role="tablist" aria-label="Область заявок">
+                <button type="button" role="tab" aria-selected={tab === "active"} onClick={() => { setTab("active"); setSort(DEFAULT_SORT); }}>Активные</button>
+                <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => { setTab("archive"); setSort(ARCHIVE_DEFAULT_SORT); }}>Архив</button>
               </div>
             </div>
 
-            {tab === "active" ? (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen((v) => !v)}
-                  className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-violet-700 transition hover:bg-white hover:text-violet-950"
-                >
-                  {filtersOpen ? "Скрыть статусы" : "Статусы"}
+            <div className="queue-filters">
+              <label className="queue-search">
+                <span aria-hidden="true">⌕</span>
+                <input type="search" value={qInput} onChange={(event) => setQInput(event.target.value)} placeholder="Клиент, сотрудник или ID" aria-label="Поиск заявок" />
+              </label>
+              <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Сортировка">
+                {(tab === "archive" ? ARCHIVE_SORT_OPTIONS : ACTIVE_SORT_OPTIONS).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <select value={source} onChange={(event) => setSource(event.target.value)} aria-label="Источник">
+                {SOURCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              {tab === "archive" ? (
+                <select value={archiveStatus} onChange={(event) => setArchiveStatus(event.target.value)} aria-label="Статус">
+                  <option value="all">Все статусы</option>
+                  <option value="CLOSED">Закрытые</option>
+                  <option value="CANCELLED">Отменённые</option>
+                </select>
+              ) : (
+                <button type="button" className="queue-filterToggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>
+                  Статусы <span>{statusSet.size}/{STATUS_OPTIONS.length}</span>
                 </button>
-                {filtersOpen ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={selectAllStatuses}
-                      className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-zinc-600 hover:bg-white"
-                    >
-                      Все статусы
-                    </button>
-                    {QUEUE_STATUS_OPTIONS.map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-violet-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={statusSet.has(opt.value)}
-                          onChange={() => toggleStatus(opt.value)}
-                          className="rounded border-zinc-300 accent-violet-700"
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
+              )}
+            </div>
+
+            {tab === "active" && filtersOpen ? (
+              <div className="queue-statusFilters">
+                {STATUS_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" aria-pressed={statusSet.has(option.value)} onClick={() => toggleStatus(option.value)}>{option.label}</button>
+                ))}
+                <button type="button" className="queue-statusFilters__reset" onClick={() => setStatusSet(new Set(STATUS_OPTIONS.map((option) => option.value)))}>Все</button>
               </div>
             ) : null}
-          </section>
+          </header>
+
+          {notice ? <div className="queue-notice" role="status">{notice}</div> : null}
+          {loadError ? <div className="queue-error" role="alert">{loadError}<button type="button" onClick={() => void loadOrders()}>Повторить</button></div> : null}
 
           {loading ? (
-            <div className="text-sm text-zinc-600">Загрузка…</div>
-          ) : orders.length === 0 ? (
-            <div className="text-sm text-zinc-600">Нет заявок по текущим фильтрам.</div>
+            <div className="queue-skeleton" aria-label="Загрузка заявок">{Array.from({ length: 4 }, (_, index) => <span key={index} />)}</div>
+          ) : !loadError && !orders.length ? (
+            <div className="queue-empty"><strong>Заявок не найдено</strong><span>Измените поиск или фильтры.</span></div>
           ) : (
-            <div className="space-y-4">
+            <div className="queue-list">
               {grouped.map(({ root, children }) => (
-                <div key={root.id} className="rounded-[2rem] border border-white/70 bg-white/35 p-2 shadow-[0_18px_52px_rgba(24,24,27,0.06)]">
-                  {renderQueueCard(root, "root")}
-                  {children.length > 0 ? (
-                    <div className="mt-2 space-y-2 border-l-2 border-amber-300/70 pl-2">
-                      {children.map((c) => renderQueueCard(c, "child"))}
-                    </div>
-                  ) : null}
+                <div key={root.id} className="queue-family">
+                  {renderOrder(root)}
+                  {children.length ? <div className="queue-family__children">{children.map((child) => renderOrder(child, true))}</div> : null}
                 </div>
               ))}
             </div>
@@ -641,13 +502,7 @@ function WarehouseQueueContent() {
 
 export default function WarehouseQueuePage() {
   return (
-    <React.Suspense
-      fallback={
-        <AppShell title="Очередь склада">
-          <div className="text-sm text-zinc-600">Загрузка…</div>
-        </AppShell>
-      }
-    >
+    <React.Suspense fallback={<AppShell title="Очередь заявок"><div className="queue-empty">Загрузка…</div></AppShell>}>
       <WarehouseQueueContent />
     </React.Suspense>
   );

@@ -636,3 +636,123 @@ tbody tr:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Full order progress: every stage remains visible, long explanations stay on demand. */
+.order-progress {
+  display: grid;
+  gap: 12px;
+}
+
+.order-progress__summary {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.order-progress__current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.order-progress__dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--wow-yellow);
+  box-shadow: 0 0 0 4px rgba(255, 210, 31, 0.22);
+}
+
+.order-progress[data-status="CLOSED"] .order-progress__dot {
+  background: #238143;
+  box-shadow: 0 0 0 4px rgba(35, 129, 67, 0.14);
+}
+
+.order-progress[data-status="CANCELLED"] .order-progress__dot {
+  background: #922e24;
+  box-shadow: 0 0 0 4px rgba(146, 46, 36, 0.12);
+}
+
+.order-progress__current > div {
+  display: grid;
+  gap: 2px;
+}
+
+.order-progress__current strong {
+  font-size: 0.86rem;
+}
+
+.order-progress__current span {
+  color: var(--wow-muted);
+  font-size: 0.7rem;
+}
+
+.order-progress__help {
+  position: relative;
+}
+
+.order-progress__help summary {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid var(--wow-line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--wow-muted);
+  font-size: 0.74rem;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+
+.order-progress__help summary::-webkit-details-marker {
+  display: none;
+}
+
+.order-progress__help[open] summary {
+  border-color: var(--wow-ink);
+  color: var(--wow-ink);
+}
+
+.order-progress__help > div {
+  position: absolute;
+  z-index: var(--z-tooltip, 60);
+  top: 34px;
+  right: 0;
+  width: min(280px, calc(100vw - 48px));
+  padding: 10px 11px;
+  border: 1px solid var(--wow-line);
+  border-radius: 8px;
+  background: #fff;
+  color: #4c4c48;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.09);
+}
+
+.order-progress__stepper {
+  border-top: 1px solid var(--wow-line);
+  padding-top: 12px;
+}
+
+.order-actionbar {
+  position: sticky;
+  z-index: var(--z-sticky, 30);
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #b9b9b3;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.08);
+}
+
+.order-actionbar > div:first-child {
+  flex: 1 1 100%;
+}

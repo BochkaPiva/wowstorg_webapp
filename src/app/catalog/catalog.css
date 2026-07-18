@@ -1915,7 +1915,7 @@ a.mk-cartPill:hover,
 
 .mk-chip {
   border-color: var(--mk-border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: #ffffff;
   box-shadow: none;
 }
@@ -1940,17 +1940,17 @@ a.mk-cartPill:hover,
 .mk-kit {
   overflow: hidden;
   border: 1px solid var(--mk-border);
-  border-radius: 14px;
+  border-radius: 10px;
   background: #ffffff;
   box-shadow: none;
-  transition: border-color 180ms var(--wow-ease, ease), transform 180ms var(--wow-ease, ease);
+  transition: border-color 160ms var(--wow-ease, ease);
 }
 
 .mk-card:hover,
 .mk-kit:hover {
   border-color: #a9a9a3;
   box-shadow: none;
-  transform: translateY(-2px);
+  transform: none;
 }
 
 .mk-cardInner,
@@ -2038,7 +2038,7 @@ a.mk-cartPill:hover,
 }
 
 .mk-floatingCart {
-  border-radius: 12px;
+  border-radius: 8px;
   backdrop-filter: none;
 }
 

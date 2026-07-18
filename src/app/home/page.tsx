@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import React from "react";
 
@@ -10,10 +11,13 @@ import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
-import { BackgroundStackGame } from "./BackgroundStackGame";
 import { IssuanceCalendar } from "./IssuanceCalendar";
-import { RelaxZone } from "./RelaxZone";
 import { WowstorgIdleText } from "./WowstorgIdleText";
+
+const BackgroundStackGame = dynamic(
+  () => import("./BackgroundStackGame").then((module) => module.BackgroundStackGame),
+  { ssr: false, loading: () => <div className="h-[280px] rounded-xl bg-zinc-100" /> },
+);
 
 const DASH_SECTION_SHELL =
   "rounded-2xl border border-zinc-200 bg-zinc-100/70 p-3 sm:p-4";
@@ -156,12 +160,12 @@ function GreenwichRatingCard() {
     window.setTimeout(() => setRiding(false), 1600);
   }
 
-  const dinoPct = Math.max(3, Math.min(97, pct));
+  const dinoPct = Math.max(5, Math.min(95, pct));
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4">
       <style jsx>{`
-        @keyframes dinoBounce {
+        @keyframes dinoNudge {
           0% {
             transform: translateY(0px) rotate(-6deg) scale(1);
           }
@@ -178,8 +182,8 @@ function GreenwichRatingCard() {
             transform: translateY(0px) rotate(-6deg) scale(1);
           }
         }
-        .dinoBounce {
-          animation: dinoBounce 1.2s ease-in-out 1;
+        .dinoNudge {
+          animation: dinoNudge 520ms cubic-bezier(0.22, 1, 0.36, 1) 1;
         }
       `}</style>
       <div className="relative flex items-start justify-between gap-3">
@@ -190,7 +194,7 @@ function GreenwichRatingCard() {
         <button
           type="button"
           onClick={() => setShowInfo((v) => !v)}
-          className="shrink-0 rounded-lg border border-violet-200/80 bg-white/85 px-2.5 py-1 text-xs font-semibold text-violet-700 shadow-sm transition hover:bg-violet-50"
+          className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700 transition hover:border-zinc-950"
           aria-expanded={showInfo}
           title="Как считается"
         >
@@ -199,7 +203,7 @@ function GreenwichRatingCard() {
         {showInfo ? (
           <div
             ref={infoRef}
-            className="absolute right-0 top-9 z-20 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-zinc-200 bg-white/95 p-3 shadow-xl backdrop-blur"
+            className="absolute right-0 top-9 z-20 w-[300px] max-w-[calc(100vw-2rem)] rounded-xl border border-zinc-200 bg-white p-3 shadow-lg"
           >
             <div className="text-sm font-semibold text-zinc-900">Как считается</div>
             <div className="mt-1 text-sm text-zinc-700 space-y-1">
@@ -211,17 +215,17 @@ function GreenwichRatingCard() {
         ) : null}
       </div>
 
-      <div className="mt-4 flex items-start gap-4">
-        <div className="min-w-[72px] text-4xl font-extrabold tabular-nums text-violet-800 leading-none drop-shadow-sm">
+      <div className="mt-4 grid grid-cols-[64px_minmax(0,1fr)] items-start gap-3">
+        <div className="text-3xl font-extrabold tabular-nums text-violet-800 leading-none">
           {s}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-zinc-800">{phrase}</div>
 
           <div className="mt-3 relative">
-            <div className="h-3 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">
               <div
-                className="h-full bg-gradient-to-r from-violet-500 to-violet-700 transition-all"
+                className="h-full bg-violet-700 transition-[width] duration-200"
                 style={{
                   width: `${pct}%`,
                   boxShadow: riding ? "0 0 18px rgba(124,58,237,0.45)" : undefined,
@@ -230,7 +234,7 @@ function GreenwichRatingCard() {
             </div>
 
             <div
-              className="absolute top-[-24px]"
+              className="absolute top-[-22px]"
               style={{
                 left: `${dinoPct}%`,
                 transform: "translateX(-50%)",
@@ -242,11 +246,11 @@ function GreenwichRatingCard() {
                 onClick={rideDino}
                 aria-label="Покатать динозаврика"
                 title="Нажми"
-                className="h-10 w-10 flex items-center justify-center p-0 bg-transparent border-0"
+                className="flex h-9 w-9 items-center justify-center border-0 bg-transparent p-0"
               >
-                <div className={riding ? "dinoBounce" : ""}>
-                  <div className="relative h-10 w-10">
-                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="40px" />
+                <div className={riding ? "dinoNudge" : ""}>
+                  <div className="relative h-9 w-9">
+                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="36px" />
                   </div>
                 </div>
               </button>
@@ -1283,7 +1287,6 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 export default function HomeDashboardPage() {
   const { state } = useAuth();
   const [hasActiveOrders, setHasActiveOrders] = React.useState<boolean | null>(null);
-  const [disableGreenwichStarsOnMobile, setDisableGreenwichStarsOnMobile] = React.useState(false);
 
   const isWowstorg =
     state.status === "authenticated" && state.user.role === "WOWSTORG";
@@ -1312,28 +1315,11 @@ export default function HomeDashboardPage() {
     };
   }, [isGreenwich, isWowstorg]);
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const media = window.matchMedia("(max-width: 767px), (hover: none) and (pointer: coarse)");
-    const apply = () => setDisableGreenwichStarsOnMobile(media.matches);
-    apply();
-    const onChange = () => apply();
-    if (typeof media.addEventListener === "function") {
-      media.addEventListener("change", onChange);
-      return () => media.removeEventListener("change", onChange);
-    }
-    media.addListener(onChange);
-    return () => media.removeListener(onChange);
-  }, []);
-
   const showBackgroundGame = isGreenwich && hasActiveOrders === false;
-  const showGlobalStars = isGreenwich && !disableGreenwichStarsOnMobile;
 
   return (
     <AppShell title="Главная">
       <div className="relative space-y-6">
-        {showGlobalStars ? <RelaxZone /> : null}
-        {showBackgroundGame ? <BackgroundStackGame /> : null}
         <div className="relative z-10 space-y-6">
         {isGreenwich ? (
           <div className={DASH_SECTION_SHELL}>
@@ -1357,6 +1343,11 @@ export default function HomeDashboardPage() {
                 <GreenwichRatingCard />
               </div>
             </div>
+            {showBackgroundGame ? (
+              <div className="mt-3">
+                <BackgroundStackGame />
+              </div>
+            ) : null}
           </div>
         ) : null}
 

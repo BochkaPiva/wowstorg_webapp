@@ -153,7 +153,15 @@ export async function GET(req: Request) {
         },
       },
       lines: {
-        select: { requestedQty: true, pricePerDaySnapshot: true },
+        orderBy: [{ position: "asc" }],
+        select: {
+          id: true,
+          requestedQty: true,
+          approvedQty: true,
+          issuedQty: true,
+          pricePerDaySnapshot: true,
+          item: { select: { id: true, name: true } },
+        },
       },
     },
   });
@@ -208,6 +216,19 @@ export async function GET(req: Request) {
               amount: pricing.discountAmount,
             }
           : null,
+      lines: o.lines.map((line) => ({
+        id: line.id,
+        itemId: line.item.id,
+        itemName: line.item.name,
+        requestedQty: line.requestedQty,
+        approvedQty: line.approvedQty,
+        issuedQty: line.issuedQty,
+      })),
+      services: [
+        o.deliveryEnabled ? { label: "Доставка", amount: Number(o.deliveryPrice ?? 0) } : null,
+        o.montageEnabled ? { label: "Монтаж", amount: Number(o.montagePrice ?? 0) } : null,
+        o.demontageEnabled ? { label: "Демонтаж", amount: Number(o.demontagePrice ?? 0) } : null,
+      ].filter((service): service is { label: string; amount: number } => service != null),
     };
   });
 

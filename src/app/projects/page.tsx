@@ -202,6 +202,9 @@ function ProjectsContent() {
   const [listError, setListError] = React.useState<string | null>(null);
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [completeConfirmId, setCompleteConfirmId] = React.useState<string | null>(null);
+  const [projectActionBusyId, setProjectActionBusyId] = React.useState<string | null>(null);
+  const [projectActionError, setProjectActionError] = React.useState<string | null>(null);
   const [createBusy, setCreateBusy] = React.useState(false);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [title, setTitle] = React.useState("");
@@ -336,13 +339,33 @@ function ProjectsContent() {
     }
   }
 
+  async function completeProject(project: ProjectCard) {
+    setProjectActionBusyId(project.id);
+    setProjectActionError(null);
+    try {
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
+      const data = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(data?.error?.message ?? `Ошибка ${response.status}`);
+      setCompleteConfirmId(null);
+      loadProjects();
+    } catch (error) {
+      setProjectActionError(error instanceof Error ? error.message : "Не удалось завершить проект");
+    } finally {
+      setProjectActionBusyId(null);
+    }
+  }
+
   return (
     <AppShell title="Проекты">
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-6">
-          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.24),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.22),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white p-5">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Рабочий центр</div>
@@ -352,12 +375,12 @@ function ProjectsContent() {
                 <button
                   type="button"
                   onClick={openCreateModal}
-                  className="rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(24,24,27,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
+                  className="rounded-lg border border-yellow-400 bg-yellow-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition-colors hover:bg-yellow-300"
                 >
                   Создать проект
                 </button>
                 <div
-                  className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
+                  className="inline-flex shrink-0 items-center rounded-lg border border-zinc-200 bg-zinc-50 p-1"
                   role="group"
                   aria-label="Область проектов"
                 >
@@ -395,7 +418,7 @@ function ProjectsContent() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
+            <div className="mt-5 border-t border-zinc-200 pt-4">
               <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(10rem,13rem)_minmax(12rem,15rem)_minmax(9rem,12rem)]">
                 <input
                   type="search"
@@ -457,6 +480,15 @@ function ProjectsContent() {
             </div>
           ) : null}
 
+          {projectActionError ? (
+            <div className="flex items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <span>{projectActionError}</span>
+              <button type="button" className="font-bold underline" onClick={() => setProjectActionError(null)}>
+                Закрыть
+              </button>
+            </div>
+          ) : null}
+
           {loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>
           ) : !listError && projects.length === 0 ? (
@@ -471,10 +503,10 @@ function ProjectsContent() {
                     <Link
                       href={`/projects/${p.id}`}
                       className={[
-                        "group block overflow-hidden rounded-[1.75rem] border p-0 transition hover:-translate-y-0.5",
+                        "group block overflow-hidden rounded-xl border p-0 transition-colors duration-150",
                         isCancelledArchive
-                          ? "border-zinc-200/80 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 shadow-[0_14px_42px_rgba(24,24,27,0.06)] hover:border-zinc-300 hover:opacity-100 hover:shadow-[0_18px_54px_rgba(24,24,27,0.1)]"
-                          : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] shadow-[0_18px_52px_rgba(24,24,27,0.08)] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
+                          ? "border-zinc-200 bg-zinc-50 opacity-80 hover:border-zinc-400 hover:opacity-100"
+                          : "border-zinc-200 bg-white hover:border-zinc-400",
                       ].join(" ")}
                     >
                     {archiveHeader ? (
@@ -613,6 +645,39 @@ function ProjectsContent() {
                     </div>
                     </div>
                     </Link>
+                    {tab === "active" && p.status !== "COMPLETED" && p.status !== "CANCELLED" ? (
+                      <div className="mt-1 flex min-h-11 items-center justify-end gap-2 border border-zinc-200 bg-zinc-50 px-3 py-2">
+                        {completeConfirmId === p.id ? (
+                          <>
+                            <span className="mr-auto text-xs font-medium text-zinc-600">Завершить проект и перенести его в архив?</span>
+                            <button
+                              type="button"
+                              disabled={projectActionBusyId === p.id}
+                              onClick={() => void completeProject(p)}
+                              className="border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
+                            >
+                              {projectActionBusyId === p.id ? "Завершаем…" : "Да, завершить"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={projectActionBusyId === p.id}
+                              onClick={() => setCompleteConfirmId(null)}
+                              className="border border-zinc-300 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 transition-colors hover:border-zinc-500 disabled:opacity-50"
+                            >
+                              Отмена
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCompleteConfirmId(p.id)}
+                            className="px-2 py-1 text-xs font-bold text-zinc-600 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-zinc-950"
+                          >
+                            Завершить проект
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}

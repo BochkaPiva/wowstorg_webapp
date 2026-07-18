@@ -244,6 +244,27 @@ function defaultScope(): Scope {
   return { from: `${year}-01-01`, to: `${year}-${month}-${day}` };
 }
 
+type PeriodPreset = "month" | "30days" | "year";
+
+function dateOnlyLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function presetScope(preset: PeriodPreset): Scope {
+  const now = new Date();
+  const from = new Date(now);
+  if (preset === "month") from.setDate(1);
+  if (preset === "30days") from.setDate(now.getDate() - 29);
+  if (preset === "year") {
+    from.setMonth(0);
+    from.setDate(1);
+  }
+  return { from: dateOnlyLocal(from), to: dateOnlyLocal(now) };
+}
+
 function formatInt(n: number) {
   return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
 }
@@ -262,18 +283,18 @@ function formatRatio(n: number | null) {
 
 function kpiTone(tone: "violet" | "emerald" | "amber" | "rose" | "slate") {
   const map = {
-    violet: "border-violet-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.12),transparent_55%),rgba(255,255,255,0.72)] text-violet-950",
-    emerald: "border-emerald-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.13),transparent_55%),rgba(255,255,255,0.72)] text-emerald-950",
-    amber: "border-amber-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(250,204,21,0.18),transparent_55%),rgba(255,255,255,0.72)] text-amber-950",
-    rose: "border-rose-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(244,63,94,0.12),transparent_55%),rgba(255,255,255,0.72)] text-rose-950",
-    slate: "border-white/70 bg-white/70 text-zinc-950",
+    violet: "border-violet-200 bg-violet-50 text-violet-950",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    amber: "border-amber-200 bg-amber-50 text-amber-950",
+    rose: "border-rose-200 bg-rose-50 text-rose-950",
+    slate: "border-zinc-200 bg-white text-zinc-950",
   } satisfies Record<string, string>;
   return map[tone];
 }
 
 function KpiCard(props: { label: string; value: string | number; note?: string; tone?: "violet" | "emerald" | "amber" | "rose" | "slate" }) {
   return (
-    <div className={`rounded-2xl border p-4 shadow-[0_16px_40px_rgba(76,29,149,0.08)] backdrop-blur ${kpiTone(props.tone ?? "slate")}`}>
+    <div className={`rounded-lg border p-4 ${kpiTone(props.tone ?? "slate")}`}>
       <div className="text-xs font-black uppercase tracking-[0.14em] opacity-65">{props.label}</div>
       <div className="mt-2 text-2xl font-black tabular-nums">{props.value}</div>
       {props.note ? <div className="mt-1 text-xs font-semibold opacity-65">{props.note}</div> : null}
@@ -283,8 +304,8 @@ function KpiCard(props: { label: string; value: string | number; note?: string; 
 
 function SectionCard(props: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/70 shadow-[0_22px_60px_rgba(76,29,149,0.09)] backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(245,243,255,0.58))] p-4">
+    <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 p-4">
         <h2 className="text-lg font-black text-zinc-950">{props.title}</h2>
         {props.action}
       </div>
@@ -308,8 +329,8 @@ function ExportButton(props: { section: "global" | "requisites" | "projects" | "
       onClick={onClick}
       className={
         props.primary
-          ? "rounded-2xl border border-black/10 bg-zinc-950 px-4 py-2 text-sm font-black text-white shadow-[0_18px_34px_rgba(17,24,39,0.22)] transition hover:-translate-y-0.5 hover:bg-violet-700"
-          : "rounded-2xl border border-violet-200/70 bg-white/75 px-3 py-2 text-sm font-black text-violet-800 shadow-[0_12px_26px_rgba(109,40,217,0.09)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-violet-50"
+          ? "rounded-lg border border-zinc-950 bg-zinc-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-zinc-800"
+          : "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-500"
       }
     >
       {props.children}
@@ -326,9 +347,10 @@ export default function AdminAnalyticsPage() {
   const [activeTab, setActiveTab] = React.useState<Tab>("overview");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const scopeError = scope.from && scope.to && scope.from > scope.to ? "Начальная дата не может быть позже конечной." : null;
 
   React.useEffect(() => {
-    if (forbidden) return;
+    if (forbidden || scopeError) return;
     const params = new URLSearchParams();
     if (scope.from) params.set("from", scope.from);
     if (scope.to) params.set("to", scope.to);
@@ -342,7 +364,7 @@ export default function AdminAnalyticsPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
       .finally(() => setLoading(false));
-  }, [forbidden, scope]);
+  }, [forbidden, scope, scopeError]);
 
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "overview", label: "Обзор" },
@@ -361,18 +383,34 @@ export default function AdminAnalyticsPage() {
             ← Админка
           </Link>
 
-          <div className="rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.16),transparent_35%),radial-gradient(circle_at_100%_10%,rgba(250,204,21,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.94),rgba(250,245,255,0.78))] p-5 shadow-[0_26px_70px_rgba(76,29,149,0.12)] backdrop-blur">
+          <div className="rounded-xl border border-zinc-200 bg-white p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <div className="text-sm font-semibold text-violet-950">Глобальный период отчета</div>
-                <div className="mt-1 text-xs text-violet-700">Один период применяется ко всем вкладкам и XLSX.</div>
+                <div className="text-sm font-bold text-zinc-950">Период отчёта</div>
+                <div className="mt-1 text-xs text-zinc-500">Один интервал для всех вкладок и выгрузки.</div>
+                <div className="mt-3 flex flex-wrap gap-1" aria-label="Быстрый выбор периода">
+                  {([
+                    ["month", "Этот месяц"],
+                    ["30days", "30 дней"],
+                    ["year", "Этот год"],
+                  ] as Array<[PeriodPreset, string]>).map(([preset, label]) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setScope(presetScope(preset))}
+                      className="border border-zinc-300 bg-zinc-50 px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:border-zinc-500 hover:bg-white"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1 text-sm text-zinc-700">
                   С даты
                   <input
                     type="date"
-                    className="h-11 rounded-2xl border border-white/80 bg-white/80 px-3 font-semibold shadow-sm outline-none backdrop-blur focus:border-violet-300"
+                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 font-semibold outline-none focus:border-violet-500"
                     value={scope.from}
                     onChange={(e) => setScope((s) => ({ ...s, from: e.target.value }))}
                   />
@@ -381,7 +419,7 @@ export default function AdminAnalyticsPage() {
                   По дату
                   <input
                     type="date"
-                    className="h-11 rounded-2xl border border-white/80 bg-white/80 px-3 font-semibold shadow-sm outline-none backdrop-blur focus:border-violet-300"
+                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 font-semibold outline-none focus:border-violet-500"
                     value={scope.to}
                     onChange={(e) => setScope((s) => ({ ...s, to: e.target.value }))}
                   />
@@ -389,7 +427,7 @@ export default function AdminAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setScope(initialScope)}
-                  className="h-11 rounded-2xl border border-white/80 bg-white/80 px-4 text-sm font-black text-zinc-800 shadow-sm backdrop-blur hover:bg-white"
+                  className="h-11 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-500"
                 >
                   Сбросить
                 </button>
@@ -398,6 +436,7 @@ export default function AdminAnalyticsPage() {
                 </ExportButton>
               </div>
             </div>
+            {scopeError ? <p className="mt-3 text-sm font-medium text-red-700">{scopeError}</p> : null}
           </div>
 
           {loading ? (
@@ -406,16 +445,16 @@ export default function AdminAnalyticsPage() {
             <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>
           ) : data ? (
             <>
-              <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-2 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
+              <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white p-1">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={[
-                      "rounded-xl px-4 py-2 text-sm font-semibold transition",
+                      "rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
                       activeTab === tab.id
-                        ? "bg-zinc-950 text-white shadow-[0_12px_28px_rgba(17,24,39,0.2)]"
+                        ? "bg-zinc-950 text-white"
                         : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
                     ].join(" ")}
                   >
@@ -429,7 +468,7 @@ export default function AdminAnalyticsPage() {
               {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
               {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
 
-              <details className="group rounded-[1.75rem] border border-white/70 bg-white/70 shadow-[0_22px_60px_rgba(76,29,149,0.09)] backdrop-blur">
+              <details className="group rounded-xl border border-zinc-200 bg-white">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-bold text-zinc-900">
                   <span>Как считаются показатели</span>
                   <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600 transition group-open:rotate-180">
@@ -438,7 +477,7 @@ export default function AdminAnalyticsPage() {
                 </summary>
                 <div className="grid gap-3 border-t border-zinc-100 p-4 md:grid-cols-2">
                   {data.methodology.map((row) => (
-                    <div key={row.section} className="rounded-2xl border border-white/70 bg-white/75 p-3 text-sm shadow-sm">
+                    <div key={row.section} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm">
                       <div className="font-semibold text-zinc-900">{row.section}</div>
                       <div className="mt-1 text-zinc-600">{row.rule}</div>
                     </div>
@@ -460,30 +499,30 @@ function OverviewTab({ data }: { data: AnalyticsPayload }) {
   return (
     <div className="space-y-5">
       <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_0.9fr]">
-        <section className="rounded-[2rem] border border-emerald-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.18),transparent_42%),linear-gradient(135deg,rgba(236,253,245,0.88),rgba(255,255,255,0.72))] p-5 text-emerald-950 shadow-[0_26px_70px_rgba(6,95,70,0.10)] backdrop-blur">
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Факт</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.fact.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Прибыль за закрытые деньги периода</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Закрытые заявки без проекта + завершённые проекты</div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <KpiCard label="Самостоятельные заявки" value={formatMoney(finance.fact.standaloneOrdersProfit)} note={formatMoney(finance.fact.standaloneOrdersRevenue)} />
             <KpiCard label="Завершенные проекты" value={formatMoney(finance.fact.completedProjectsProfit)} note={formatMoney(finance.fact.completedProjectsRevenue)} />
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-violet-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,0.18),transparent_42%),linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.72))] p-5 text-violet-950 shadow-[0_26px_70px_rgba(76,29,149,0.10)] backdrop-blur">
+        <section className="rounded-xl border border-violet-200 bg-violet-50 p-5 text-violet-950">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Ожидаемая прибыль по активным заявкам и проектам</div>
+          <div className="mt-1 text-sm font-medium opacity-80">Активные заявки без проекта + незавершённые проекты</div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <KpiCard label="Заявки без проекта" value={formatMoney(finance.forecast.standaloneOrdersProfit)} note={`${finance.forecast.standaloneOrdersTotal} шт. · ${formatMoney(finance.forecast.standaloneOrdersRevenue)}`} />
             <KpiCard label="Активные проекты" value={formatMoney(finance.forecast.activeProjectsProfit)} note={`${k.activeProjects} шт. · ${formatMoney(finance.forecast.activeProjectsRevenue)}`} />
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-amber-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(250,204,21,0.24),transparent_42%),linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.72))] p-5 text-amber-950 shadow-[0_26px_70px_rgba(146,64,14,0.10)] backdrop-blur">
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
           <div className="text-sm font-bold uppercase tracking-wide opacity-70">Бонусы {finance.bonuses.ratePercent}%</div>
           <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.bonuses.factPool)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Факт, пул на {finance.bonuses.recipients} человек</div>
+          <div className="mt-1 text-sm font-medium opacity-80">{finance.bonuses.ratePercent}% от фактической прибыли · {finance.bonuses.recipients} получателей</div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <KpiCard label="Факт на человека" value={formatMoney(finance.bonuses.factPerPerson)} />
             <KpiCard label="Прогноз на человека" value={formatMoney(finance.bonuses.forecastPerPerson)} note={formatMoney(finance.bonuses.forecastPool)} />

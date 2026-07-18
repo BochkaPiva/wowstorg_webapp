@@ -168,23 +168,23 @@ const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label
 ];
 
 const orderShellClass =
-  "overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(246,241,255,0.82)_52%,rgba(255,247,218,0.72))] shadow-[0_24px_70px_rgba(76,29,149,0.12)]";
+  "overflow-hidden rounded-xl border border-zinc-200 bg-white";
 const orderGlassCardClass =
-  "rounded-[1.5rem] border border-white/75 bg-white/76 shadow-[0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur";
+  "rounded-xl border border-zinc-200 bg-white";
 const orderSoftCardClass =
-  "rounded-[1.35rem] border border-zinc-200/70 bg-white/82 shadow-[0_12px_34px_rgba(24,24,27,0.06)] backdrop-blur";
+  "rounded-lg border border-zinc-200 bg-zinc-50";
 const orderSectionHeaderClass =
-  "border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.88),rgba(245,240,255,0.78))] px-5 py-4";
+  "border-b border-zinc-200 bg-zinc-50 px-5 py-4";
 const orderInputClass =
-  "rounded-2xl border border-zinc-200/80 bg-white/88 px-4 py-2.5 text-sm shadow-inner shadow-zinc-950/[0.03] outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100";
+  "rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-zinc-500 focus:border-violet-700 focus:ring-2 focus:ring-violet-100";
 const orderPrimaryButtonClass =
-  "rounded-2xl border border-violet-500/30 bg-[linear-gradient(135deg,#7c1fff,#b409e8)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(124,31,255,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(124,31,255,0.28)] disabled:translate-y-0 disabled:opacity-50";
+  "rounded-lg border border-yellow-400 bg-yellow-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50";
 const orderSecondaryButtonClass =
-  "rounded-2xl border border-zinc-200/80 bg-white/85 px-4 py-2.5 text-sm font-bold text-zinc-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white disabled:translate-y-0 disabled:opacity-50";
+  "rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white disabled:opacity-50";
 const orderDangerButtonClass =
-  "rounded-2xl border border-rose-200 bg-white/85 px-4 py-2.5 text-sm font-bold text-rose-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-50 disabled:translate-y-0 disabled:opacity-50";
+  "rounded-lg border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition-colors duration-150 hover:bg-rose-50 disabled:opacity-50";
 const orderWarningButtonClass =
-  "rounded-2xl border border-amber-300/70 bg-[linear-gradient(135deg,#f59e0b,#d97706)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(217,119,6,0.2)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(217,119,6,0.24)] disabled:translate-y-0 disabled:opacity-50";
+  "rounded-lg border border-amber-600 bg-amber-600 px-4 py-2.5 text-sm font-bold text-white transition-colors duration-150 hover:bg-amber-700 disabled:opacity-50";
 
 function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -1588,12 +1588,12 @@ export default function OrderDetailsPage() {
       : "bg-white";
 
   const inner = (
-      <div className="space-y-6">
+      <div className="order-detail space-y-5">
         {!embed ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href={isWarehouse ? warehouseBackHref : "/orders"}
-              className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-4 py-2 text-sm font-bold text-zinc-700 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:text-zinc-950"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 transition-colors hover:border-zinc-950 hover:text-zinc-950"
             >
               ← {isWarehouse ? warehouseBackLabel : "Мои заявки"}
             </Link>
@@ -1605,19 +1605,19 @@ export default function OrderDetailsPage() {
             orderShellClass,
             order.status === "CANCELLED"
               ? "border-[#5b0b17]/20"
-              : "border-white/70",
+              : "border-zinc-200",
           ].join(" ")}
         >
-          <div className={["border-b border-white/70 px-4 py-5 sm:px-6", statusHeaderClass].join(" ")}>
-            <div className={orderGlassCardClass}>
-              <div className="p-4">
+          <div className={["border-b border-zinc-200 px-4 py-4 sm:px-5", statusHeaderClass].join(" ")}>
+            <div>
+              <div>
                 <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
               </div>
             </div>
           </div>
-          <div className="p-4 sm:p-6">
+          <div className="p-4 sm:p-5">
             <div className="space-y-4">
-              <div className="text-2xl font-black tracking-[-0.01em] text-zinc-950 sm:text-4xl">
+              <div className="text-xl font-bold tracking-[-0.02em] text-zinc-950 sm:text-2xl">
                 {order.customer.name}
                 {order.greenwichUser
                   ? ` · ${order.greenwichUser.displayName}${
@@ -1651,15 +1651,15 @@ export default function OrderDetailsPage() {
                 <strong>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</strong> —{" "}
                 <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</strong>
               </p>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-zinc-500">
                 Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}
               </p>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className={orderSoftCardClass + " p-4"}>
+              <div className="grid gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 md:grid-cols-3">
+                <div className="bg-zinc-50 p-3">
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Готовность</div>
                   <div className="mt-2 text-xl font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
                 </div>
-                <div className={orderSoftCardClass + " p-4 md:col-span-2"}>
+                <div className="bg-zinc-50 p-3 md:col-span-2">
                   <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Период</div>
                   <div className="mt-2 text-xl font-black text-zinc-950">
                     {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
@@ -2806,7 +2806,7 @@ export default function OrderDetailsPage() {
           (isWarehouse && order.status === "ISSUED") ||
           canCancel
         ) ? (
-        <div className="flex flex-wrap gap-2 rounded-[1.5rem] border border-white/70 bg-white/70 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
+        <div className="order-actionbar">
           {sendEstimateBlocked ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
               <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
@@ -2838,7 +2838,7 @@ export default function OrderDetailsPage() {
               type="button"
               disabled={busy}
               onClick={() => doAction("POST", `/api/orders/${orderId}/issue`)}
-              className="rounded-2xl border border-emerald-400/60 bg-[linear-gradient(135deg,#10b981,#059669)] px-4 py-2.5 text-sm font-black text-white shadow-[0_14px_30px_rgba(5,150,105,0.2)] transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-50"
+              className="rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-colors duration-150 hover:bg-emerald-800 disabled:opacity-50"
             >
               {busy ? "…" : "Выдать"}
             </button>
@@ -2933,7 +2933,7 @@ export default function OrderDetailsPage() {
                 type="button"
                 disabled={busy}
                 onClick={saveOrderEdit}
-                className="fixed bottom-6 right-6 z-[170] inline-flex items-center gap-2 rounded-2xl border border-violet-500/30 bg-[linear-gradient(135deg,#7c1fff,#b409e8)] px-5 py-3 text-sm font-black text-white shadow-[0_18px_45px_rgba(124,31,255,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_52px_rgba(124,31,255,0.36)] disabled:translate-y-0 disabled:opacity-50"
+                className="fixed bottom-5 right-5 z-[70] inline-flex items-center gap-2 rounded-lg border border-yellow-400 bg-yellow-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-lg transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50"
               >
                 {busy
                   ? "Сохраняю…"

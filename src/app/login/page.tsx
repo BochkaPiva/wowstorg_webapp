@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React from "react";
 
@@ -96,7 +97,7 @@ export default function LoginPage() {
         <div className="wow-inner">
           <div className="wow-brand">
             <div className="wow-brandLeft">
-              <img className="wow-brandIcon" src="/dino.png" alt="" aria-hidden="true" />
+              <Image className="wow-brandIcon" src="/brand/dino-catalog.webp" width={48} height={48} alt="" aria-hidden="true" />
               <div className="wow-brandText">
                 <div className="wow-brandName">Ваусторг</div>
                 <div className="wow-subtitle">склад и аренда</div>

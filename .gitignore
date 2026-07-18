@@ -40,6 +40,11 @@ notification-debug.log
 # generated estimate files
 /data/
 
+# local Codex project skills
+.agents/skills/
+skills-lock.json
+.codex/hooks.json
+
 # vercel
 .vercel
 

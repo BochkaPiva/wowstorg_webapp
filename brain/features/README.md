@@ -50,6 +50,7 @@
 | Задачи / рабочая доска | [`work-tasks.md`](./work-tasks.md) |
 | Операционный дашборд | [`dashboard-operations.md`](./dashboard-operations.md) (план в [`docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md`](../../docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md)) |
 | Пересборка карточки проекта | [`project-card-rebuild.md`](./project-card-rebuild.md) (план в [`docs/PROJECT_CARD_REBUILD_PLAN.md`](../../docs/PROJECT_CARD_REBUILD_PLAN.md)) |
+| Брендовый редизайн внутреннего приложения | [`internal-brand-redesign.md`](./internal-brand-redesign.md) |
 
 ## Индекс существующих крупных тем (в docs)
 

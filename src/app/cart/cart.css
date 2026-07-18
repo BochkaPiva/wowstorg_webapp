@@ -1,6 +1,6 @@
 .cart-section {
-  font-family: "Lato", system-ui, sans-serif;
-  color: #111827;
+  font-family: "Onest", system-ui, sans-serif;
+  color: var(--wow-ink, #0a0a0a);
   max-width: 56rem;
   margin: 0 auto;
 }
@@ -334,25 +334,18 @@
 .cart-section {
   max-width: 68rem;
   padding: clamp(0.85rem, 1.5vw, 1.25rem);
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    radial-gradient(760px 360px at 0% 0%, rgba(124, 58, 237, 0.13), transparent 62%),
-    radial-gradient(760px 360px at 100% 4%, rgba(250, 204, 21, 0.17), transparent 60%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(250, 245, 255, 0.78));
-  box-shadow: 0 28px 80px rgba(76, 29, 149, 0.12);
-  backdrop-filter: blur(14px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .cart-head {
   margin-bottom: 1.15rem;
   padding: 1.35rem 1.45rem;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    radial-gradient(520px 260px at 0% 0%, rgba(124, 58, 237, 0.18), transparent 58%),
-    radial-gradient(520px 260px at 100% 0%, rgba(250, 204, 21, 0.20), transparent 58%),
-    rgba(255, 255, 255, 0.58);
+  border-radius: 16px;
+  border: 1px solid var(--wow-line, #d4d4cf);
+  background: #ffffff;
   box-shadow: 0 22px 56px rgba(76, 29, 149, 0.09);
   backdrop-filter: blur(16px);
 }
@@ -492,10 +485,7 @@
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: 0.01em;
-  background: linear-gradient(90deg, #6d28d9 0%, #9333ea 52%, #ca8a04 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--wow-ink, #0a0a0a);
 }
 
 .catalog-related-drum-loading {
@@ -1430,5 +1420,110 @@
   transform: translateY(-2px);
   box-shadow: 0 12px 32px rgba(124, 58, 237, 0.5);
   color: #fff;
+}
+
+/* Brand-aligned cart: operationally dense, visually tied to the client catalog. */
+.cart-title {
+  color: var(--wow-ink, #0a0a0a);
+  font-family: "Madefor Display", "Onest", sans-serif;
+  letter-spacing: -0.035em;
+}
+
+.cart-subtitle,
+.cart-muted,
+.cart-periodInline,
+.cart-meta,
+.cart-unit,
+.cart-note {
+  color: var(--wow-muted, #686863);
+}
+
+.cart-empty,
+.cart-row,
+.cart-footer,
+.cart-related,
+.cart-related-group,
+.cart-related-row,
+.cart-related-target {
+  border-color: var(--wow-line, #d4d4cf);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.cart-row {
+  transition: border-color 160ms var(--wow-ease, ease), background-color 160ms var(--wow-ease, ease);
+}
+
+.cart-row:hover {
+  border-color: #b8a039;
+  background: #fffdf4;
+}
+
+.cart-thumbWrap,
+.cart-related-thumb,
+.cart-related-target-thumb,
+.cart-related-source-thumb {
+  border-color: var(--wow-line, #d4d4cf);
+  border-radius: 9px;
+  background: #f4f4f0;
+  box-shadow: none;
+}
+
+.cart-thumbPlaceholder {
+  background: var(--wow-purple-dark, #30205f);
+  color: #ffffff;
+}
+
+.cart-qty {
+  border-color: var(--wow-line, #d4d4cf);
+  border-radius: 9px;
+  background: #f4f4f0;
+}
+
+.cart-qty button:hover {
+  background: var(--wow-yellow, #ffd21f);
+  color: var(--wow-ink, #0a0a0a);
+}
+
+.cart-btn {
+  min-height: 42px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.cart-btn-secondary {
+  border-color: var(--wow-ink, #0a0a0a);
+  background: #ffffff;
+  color: var(--wow-ink, #0a0a0a);
+}
+
+.cart-btn-secondary:hover {
+  background: #ededeb;
+}
+
+.cart-btn-primary,
+.cart-related-add,
+.cart-floatCatalog {
+  border-color: var(--wow-ink, #0a0a0a);
+  border-radius: 10px;
+  background: var(--wow-ink, #0a0a0a);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.cart-btn-primary:hover,
+.cart-related-add:hover:not(:disabled),
+.cart-floatCatalog:hover {
+  border-color: var(--wow-yellow, #ffd21f);
+  background: var(--wow-yellow, #ffd21f);
+  color: var(--wow-ink, #0a0a0a);
+  box-shadow: none;
+  transform: none;
+}
+
+.cart-related::before,
+.cart-related--catalog::before {
+  background: var(--wow-yellow, #ffd21f);
 }
 

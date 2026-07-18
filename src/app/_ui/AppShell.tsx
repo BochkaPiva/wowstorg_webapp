@@ -1,68 +1,130 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 
-import { useAuth } from "@/app/providers";
 import { InAppNotifications } from "@/app/_ui/InAppNotifications";
+import { useAuth } from "@/app/providers";
 
-function NavLink({
-  href,
-  children,
-  onClick,
-}: {
-  href: string;
-  children: React.ReactNode;
-  onClick?: () => void;
-}) {
+type NavItem = { href: string; label: string };
+
+const commonItems: NavItem[] = [
+  { href: "/home", label: "Главная" },
+  { href: "/catalog", label: "Каталог" },
+  { href: "/cart", label: "Корзина" },
+];
+
+const warehouseItems: NavItem[] = [
+  { href: "/projects", label: "Проекты" },
+  { href: "/tasks", label: "Задачи" },
+  { href: "/warehouse/queue", label: "Очередь заявок" },
+];
+
+const inventoryItems: NavItem[] = [
+  { href: "/inventory/items", label: "Инвентарь" },
+  { href: "/inventory/positions", label: "Позиции" },
+  { href: "/inventory/collections", label: "Категории" },
+  { href: "/inventory/packages", label: "Пакеты" },
+  { href: "/inventory/warehouse-items", label: "Складской реквизит" },
+  { href: "/inventory/repair", label: "Ремонт и поломки" },
+  { href: "/inventory/losses", label: "Утерянное" },
+];
+
+function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
   const pathname = usePathname();
-  const active = pathname === href || pathname.startsWith(href + "/");
+  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
   return (
     <Link
-      href={href}
+      href={item.href}
       onClick={onClick}
-      className={[
-        "block rounded-lg px-3 py-2 text-sm",
-        active
-          ? "bg-violet-700 text-white shadow-sm"
-          : "text-zinc-800 hover:bg-violet-50",
-      ].join(" ")}
+      className="app-nav__link"
+      data-active={active || undefined}
+      aria-current={active ? "page" : undefined}
     >
-      {children}
+      <span>{item.label}</span>
+      <span className="app-nav__marker" aria-hidden="true" />
     </Link>
   );
 }
 
-export function AppShell({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Brand() {
+  return (
+    <Link href="/home" className="app-brand" aria-label="ВАУСТОРГ, на главную">
+      <span className="app-brand__mark" aria-hidden="true">
+        <Image src="/brand/dino-catalog.webp" width={48} height={48} alt="" />
+      </span>
+      <span className="app-brand__name">ВАУСТОРГ</span>
+      <span className="app-brand__caption">рабочее пространство</span>
+    </Link>
+  );
+}
+
+function Navigation({ isWowstorg, onNavigate }: { isWowstorg: boolean; onNavigate?: () => void }) {
+  return (
+    <nav className="app-nav" aria-label="Основная навигация">
+      <div className="app-nav__group">
+        {commonItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+        {!isWowstorg ? <NavLink item={{ href: "/orders", label: "Мои заявки" }} onClick={onNavigate} /> : null}
+      </div>
+      {isWowstorg ? (
+        <>
+          <div className="app-nav__group">
+            <div className="app-nav__label">Работа</div>
+            {warehouseItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+          </div>
+          <div className="app-nav__group">
+            <div className="app-nav__label">Склад</div>
+            {inventoryItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+          </div>
+          <div className="app-nav__group app-nav__group--last">
+            <NavLink item={{ href: "/admin", label: "Администрирование" }} onClick={onNavigate} />
+          </div>
+        </>
+      ) : null}
+    </nav>
+  );
+}
+
+function sectionBackHref(path: string, role: string): string {
+  if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
+  if (path.startsWith("/projects/")) return "/projects";
+  if (path.startsWith("/warehouse/")) return "/home";
+  if (path.startsWith("/admin/")) return "/admin";
+  if (path === "/inventory/items") return "/home";
+  if (path.startsWith("/inventory/")) return "/inventory/items";
+
+  const parts = path.split("?")[0]?.split("#")[0]?.split("/").filter(Boolean) ?? [];
+  if (parts.length <= 1) return "/home";
+  return `/${parts.slice(0, -1).join("/")}`;
+}
+
+export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { state, refresh } = useAuth();
   const [navOpen, setNavOpen] = React.useState(false);
 
-  function sectionBackHref(path: string, role: string): string {
-    // Явные “разделы” (чтобы кнопка была предсказуемой)
-    if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
-    if (path.startsWith("/projects/")) return "/projects";
-    if (path.startsWith("/warehouse/")) return "/home";
-    if (path.startsWith("/admin/")) return "/admin";
-    if (path === "/inventory/items") return "/home";
-    if (path.startsWith("/inventory/")) return "/inventory/items";
-
-    const parts = path.split("?")[0]?.split("#")[0]?.split("/").filter(Boolean) ?? [];
-    if (parts.length <= 1) return "/home";
-    return "/" + parts.slice(0, -1).join("/");
-  }
-
   React.useEffect(() => {
     if (state.status === "anonymous") router.replace("/login");
   }, [router, state.status]);
+
+  React.useEffect(() => setNavOpen(false), [pathname]);
+
+  React.useEffect(() => {
+    if (!navOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [navOpen]);
 
   async function logout() {
     try {
@@ -75,281 +137,85 @@ export function AppShell({
 
   if (state.status !== "authenticated") {
     return (
-      <div className="min-h-screen bg-[#f6f2ff] flex items-center justify-center">
-        <div className="text-sm text-zinc-600">Загрузка…</div>
+      <div className="app-loading" role="status">
+        <span className="app-loading__bar" aria-hidden="true" />
+        <span>Загружаем рабочее пространство</span>
       </div>
     );
   }
 
   const isWowstorg = state.user.role === "WOWSTORG";
   const showBack = pathname !== "/home";
-  const isCatalogRoute = pathname === "/catalog";
-
-  const headerSubtitle =
-    state.user.role === "GREENWICH"
-      ? state.user.displayName
-      : `${state.user.displayName} · ${state.user.role}`;
+  const headerSubtitle = state.user.role === "GREENWICH"
+    ? state.user.displayName
+    : `${state.user.displayName} · ВАУСТОРГ`;
 
   return (
-    <div className="relative min-h-screen w-full min-w-0 overflow-x-clip bg-[radial-gradient(1000px_600px_at_80%_10%,rgba(250,204,21,0.16),transparent_60%),radial-gradient(1000px_600px_at_10%_90%,rgba(124,58,237,0.20),transparent_60%),#f6f2ff]">
-      {isCatalogRoute ? (
-        <div
-          className="pointer-events-none absolute inset-0 overflow-hidden [contain:paint]"
-          aria-hidden="true"
-        >
-          {/* Боковые орбы только от sm+: на узкой ширине отрицательные offsets в Safari раздувают scrollWidth,
-              центрирующие блоки с mx-auto визуально «уезжают» вправо без горизонтального скролла. */}
-          <div
-            className="absolute -left-28 top-16 hidden h-[360px] w-[360px] rounded-full opacity-80 sm:block"
-            style={{
-              background:
-                "radial-gradient(circle at 35% 35%, rgba(124,58,237,0.22), rgba(124,58,237,0) 68%)",
-            }}
-          />
-          <div
-            className="absolute right-[-120px] top-28 hidden h-[340px] w-[340px] rounded-full opacity-80 sm:block"
-            style={{
-              background:
-                "radial-gradient(circle at 30% 30%, rgba(250,204,21,0.18), rgba(250,204,21,0) 70%)",
-            }}
-          />
-          <div
-            className="absolute bottom-20 left-[20%] h-[220px] w-[220px] rounded-full opacity-60 max-sm:left-[18%] sm:bottom-24 sm:left-1/3 sm:h-[280px] sm:w-[280px]"
-            style={{
-              background:
-                "radial-gradient(circle at 50% 50%, rgba(168,85,247,0.14), rgba(168,85,247,0) 72%)",
-            }}
-          />
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <Brand />
+        <Navigation isWowstorg={isWowstorg} />
+        <div className="app-sidebar__footer">
+          <span>{state.user.displayName}</span>
+          <button type="button" onClick={logout}>Выйти</button>
         </div>
-      ) : null}
-      {!isCatalogRoute ? (
-        <div className="wow-bg" aria-hidden="true">
-          <div
-            className="wow-orb wow-orb--violet"
-            style={{
-              width: 520,
-              height: 520,
-              top: -180,
-              left: -220,
-              ["--wow-x" as never]: "60px",
-              ["--wow-y" as never]: "90px",
-              ["--wow-duration" as never]: "16s",
-            }}
-          />
-          <div
-            className="wow-orb wow-orb--yellow"
-            style={{
-              width: 460,
-              height: 460,
-              bottom: -220,
-              right: -180,
-              ["--wow-x" as never]: "-70px",
-              ["--wow-y" as never]: "-60px",
-              ["--wow-duration" as never]: "18s",
-            }}
-          />
-          <div
-            className="wow-orb wow-orb--violet"
-            style={{
-              width: 320,
-              height: 320,
-              top: "38%",
-              right: "-140px",
-              opacity: 0.45,
-              ["--wow-x" as never]: "-60px",
-              ["--wow-y" as never]: "40px",
-              ["--wow-duration" as never]: "20s",
-            }}
-          />
-        </div>
-      ) : null}
-      {/* top bar */}
-      <div
-        className={[
-          "sticky top-0 z-10 border-b border-zinc-200",
-          isCatalogRoute
-            ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(249,245,255,0.94))]"
-            : "bg-white/70 backdrop-blur",
-        ].join(" ")}
-      >
-        <div className="mx-auto flex w-full min-w-0 max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+      </aside>
+
+      <div className="app-workspace">
+        <header className="app-topbar">
+          <div className="app-topbar__leading">
             <button
               type="button"
+              className="app-iconButton app-topbar__menu"
               onClick={() => setNavOpen(true)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white hover:bg-violet-50"
               aria-label="Открыть меню"
+              aria-expanded={navOpen}
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-zinc-800">
-                <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
-              </svg>
+              <span className="app-menuIcon" aria-hidden="true"><i /><i /><i /></span>
             </button>
-
-            <Link
-              href="/home"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-transparent hover:bg-violet-50"
-              aria-label="На главную"
-              title="На главную"
-            >
-              <img
-                src="/dino.png"
-                alt=""
-                aria-hidden="true"
-                className="h-8 w-8 object-contain [image-rendering:pixelated]"
-              />
-            </Link>
-
             {showBack ? (
               <button
                 type="button"
+                className="app-backButton"
                 onClick={() => router.push(sectionBackHref(pathname, state.user.role))}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-800 hover:bg-violet-50 sm:px-3"
-                aria-label="Назад"
-                title="Назад"
+                aria-label="Назад к разделу"
               >
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-zinc-800">
-                  <path d="M19 11H7.83l4.58-4.59L11 5l-7 7 7 7 1.41-1.41L7.83 13H19v-2z" />
-                </svg>
-                <span className="hidden sm:inline">Назад</span>
+                <span aria-hidden="true">←</span>
+                <span>Назад</span>
               </button>
             ) : null}
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-              <div className="truncate text-base font-semibold tracking-tight text-zinc-900">{title}</div>
-              <div className="truncate text-xs text-zinc-600" title={headerSubtitle}>
-                {headerSubtitle}
-              </div>
+            <div className="app-topbar__titleBlock">
+              <h1>{title}</h1>
+              <p>{headerSubtitle}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <InAppNotifications enabled={state.status === "authenticated"} />
-            <button
-              onClick={logout}
-              className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm text-zinc-800 hover:bg-violet-50 sm:px-3"
-            >
-              Выйти
-            </button>
+          <div className="app-topbar__actions">
+            <InAppNotifications enabled />
+            <span className="app-topbar__status">В работе</span>
           </div>
+        </header>
+
+        <div className="app-content">
+          <main className="app-content__main">{children}</main>
         </div>
       </div>
 
-      {/* drawer */}
       {navOpen ? (
-        <div className="fixed inset-0 z-20">
-          <button
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setNavOpen(false)}
-            aria-label="Закрыть меню"
-          />
-          <div className="absolute left-0 top-0 h-full w-[290px] border-r border-zinc-200 bg-white p-3 shadow-xl">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <div className="text-sm font-semibold text-zinc-900">Меню</div>
-              <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white hover:bg-violet-50"
-                onClick={() => setNavOpen(false)}
-                aria-label="Закрыть"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-zinc-800">
-                  <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.6l6.3-6.31z" />
-                </svg>
-              </button>
+        <div className="app-drawer" role="dialog" aria-modal="true" aria-label="Навигация">
+          <button className="app-drawer__backdrop" type="button" onClick={() => setNavOpen(false)} aria-label="Закрыть меню" />
+          <aside className="app-drawer__panel">
+            <div className="app-drawer__head">
+              <Brand />
+              <button className="app-iconButton" type="button" onClick={() => setNavOpen(false)} aria-label="Закрыть меню">×</button>
             </div>
-            <div className="space-y-1">
-              <NavLink href="/home" onClick={() => setNavOpen(false)}>
-                Главная
-              </NavLink>
-              <NavLink href="/catalog" onClick={() => setNavOpen(false)}>
-                Каталог
-              </NavLink>
-              <NavLink href="/cart" onClick={() => setNavOpen(false)}>
-                Корзина
-              </NavLink>
-              {isWowstorg ? (
-                <>
-                  <div className="mt-3 border-t border-zinc-100 pt-3 text-xs font-semibold text-zinc-500">
-                    Wowstorg
-                  </div>
-                  <NavLink href="/projects" onClick={() => setNavOpen(false)}>
-                    Проекты
-                  </NavLink>
-                  <NavLink href="/tasks" onClick={() => setNavOpen(false)}>
-                    Задачи
-                  </NavLink>
-                  <NavLink
-                    href="/warehouse/queue"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Очередь заявок
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/items"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Инвентарь
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/positions"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Позиции
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/collections"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Категории
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/packages"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Пакеты
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/warehouse-items"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Складской реквизит
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/repair"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Ремонт / сломано
-                  </NavLink>
-                  <NavLink
-                    href="/inventory/losses"
-                    onClick={() => setNavOpen(false)}
-                  >
-                    Утерянное
-                  </NavLink>
-                  <NavLink href="/admin" onClick={() => setNavOpen(false)}>
-                    Админка
-                  </NavLink>
-                </>
-              ) : (
-                <NavLink href="/orders" onClick={() => setNavOpen(false)}>
-                  Мои заявки
-                </NavLink>
-              )}
+            <Navigation isWowstorg={isWowstorg} onNavigate={() => setNavOpen(false)} />
+            <div className="app-sidebar__footer">
+              <span>{state.user.displayName}</span>
+              <button type="button" onClick={logout}>Выйти</button>
             </div>
-          </div>
+          </aside>
         </div>
       ) : null}
-
-      {/* content */}
-      <div className="mx-auto w-full min-w-0 max-w-7xl px-3 pb-4 pt-2 sm:px-5 sm:pb-8 sm:pt-5">
-        <main
-          className={[
-            "min-w-0 max-w-full rounded-2xl border border-violet-200/60 p-3 text-zinc-900 shadow-sm sm:p-5",
-            isCatalogRoute
-              ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,255,0.98))] shadow-[0_18px_45px_rgba(109,40,217,0.08)]"
-              : "bg-white/90 backdrop-blur",
-          ].join(" ")}
-        >
-          {children}
-        </main>
-      </div>
     </div>
   );
 }
-

@@ -16,19 +16,18 @@ import { RelaxZone } from "./RelaxZone";
 import { WowstorgIdleText } from "./WowstorgIdleText";
 
 const DASH_SECTION_SHELL =
-  "rounded-[2rem] border border-white/80 bg-[radial-gradient(circle_at_8%_0%,rgba(124,58,237,0.16),transparent_32%),radial-gradient(circle_at_92%_8%,rgba(250,204,21,0.14),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.84),rgba(250,247,255,0.72))] p-4 shadow-[0_24px_70px_rgba(76,29,149,0.10)] ring-1 ring-violet-100/70 backdrop-blur-xl sm:p-5";
-const DASH_CARD =
-  "rounded-[1.55rem] border border-white/80 bg-white/78 p-4 shadow-[0_14px_42px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/55 backdrop-blur-xl";
-const DASH_SUBCARD = "overflow-hidden rounded-[1.45rem] border border-white/80 bg-white/82 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-violet-100/50 backdrop-blur-xl";
+  "rounded-2xl border border-zinc-200 bg-zinc-100/70 p-3 sm:p-4";
+const DASH_CARD = "rounded-xl border border-zinc-200 bg-white p-4";
+const DASH_SUBCARD = "overflow-hidden rounded-xl border border-zinc-200 bg-white";
 const BTN_PRIMARY =
-  "inline-flex items-center rounded-xl border border-violet-200/80 bg-white/75 px-3 py-1.5 text-sm font-semibold text-violet-800 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-violet-50 hover:shadow-md";
+  "inline-flex items-center rounded-lg border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
 const BTN_WARM =
-  "inline-flex items-center rounded-xl border border-amber-200/90 bg-white/75 px-3 py-1.5 text-sm font-semibold text-amber-900 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-amber-50 hover:shadow-md";
-const BADGE_PRIMARY = "rounded-full border border-violet-200/80 bg-white/70 px-2.5 py-1 text-xs font-semibold text-violet-800 shadow-sm backdrop-blur-md";
-const BADGE_NEUTRAL = "rounded-full border border-zinc-200/80 bg-white/70 px-2.5 py-1 text-xs font-semibold text-zinc-700 shadow-sm backdrop-blur-md";
-const LINK_SUBTLE = "rounded-xl border border-violet-200/70 bg-white/68 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur-md transition hover:-translate-y-0.5 hover:bg-violet-50 hover:shadow-md";
+  "inline-flex items-center rounded-lg border border-yellow-400 bg-yellow-400 px-3 py-1.5 text-sm font-semibold text-zinc-950 transition hover:bg-yellow-300";
+const BADGE_PRIMARY = "rounded-full border border-yellow-300 bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-zinc-900";
+const BADGE_NEUTRAL = "rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-semibold text-zinc-700";
+const LINK_SUBTLE = "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 transition hover:border-zinc-950 hover:bg-zinc-950 hover:text-white";
 const BTN_ICON_ROUND =
-  "group inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/90 bg-white/90 text-zinc-600 shadow-sm backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-violet-300/80 hover:bg-violet-50 hover:text-violet-800";
+  "group inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
 
 function EquipmentCardArrowLink({
   href,
@@ -76,20 +75,20 @@ function CardLink({
     <Link
       href={href}
       className={[
-        "group rounded-2xl p-4 shadow-sm backdrop-blur-[2px] transition hover:-translate-y-0.5 hover:shadow-md",
+        "group rounded-xl border p-4 transition hover:-translate-y-px",
         variant === "highlight"
-          ? "border border-violet-300/80 bg-[linear-gradient(135deg,rgba(124,58,237,0.92),rgba(139,92,246,0.84),rgba(167,139,250,0.8))] text-white shadow-[0_14px_32px_rgba(124,58,237,0.18)]"
-          : "border border-zinc-200/90 bg-white/95",
+          ? "border-yellow-400 bg-yellow-400 text-zinc-950"
+          : "border-zinc-200 bg-white",
       ].join(" ")}
     >
       <div className="text-base font-semibold tracking-tight">{title}</div>
-      <div className={["mt-1 text-sm", variant === "highlight" ? "text-violet-50/95" : "text-zinc-600"].join(" ")}>
+      <div className={["mt-1 text-sm", variant === "highlight" ? "text-zinc-800" : "text-zinc-600"].join(" ")}>
         {description}
       </div>
       <div
         className={[
           "mt-3 inline-flex items-center gap-2 text-sm font-medium",
-          variant === "highlight" ? "text-white" : "text-violet-700",
+          variant === "highlight" ? "text-zinc-950" : "text-violet-700",
         ].join(" ")}
       >
         Открыть <span className="transition group-hover:translate-x-0.5">→</span>
@@ -160,7 +159,7 @@ function GreenwichRatingCard() {
   const dinoPct = Math.max(3, Math.min(97, pct));
 
   return (
-    <div className="rounded-3xl border border-violet-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-zinc-200 bg-white p-4">
       <style jsx>{`
         @keyframes dinoBounce {
           0% {

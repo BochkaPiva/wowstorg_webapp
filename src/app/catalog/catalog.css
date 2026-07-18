@@ -1,20 +1,18 @@
-@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap");
-
 :root {
-  --mk-text: #111827;
-  --mk-muted: #6b7280;
-  --mk-violet: #6d28d9;
-  --mk-violet-2: #7c3aed;
-  --mk-yellow: #facc15;
-  --mk-surface: rgba(255, 255, 255, 0.92);
-  --mk-border: rgba(124, 58, 237, 0.16);
-  --mk-shadow: 0 18px 50px rgba(17, 24, 39, 0.08);
+  --mk-text: var(--wow-ink, #0a0a0a);
+  --mk-muted: var(--wow-muted, #686863);
+  --mk-violet: var(--wow-purple, #5e20bb);
+  --mk-violet-2: var(--wow-purple-dark, #30205f);
+  --mk-yellow: var(--wow-yellow, #ffd21f);
+  --mk-surface: var(--wow-surface, #ffffff);
+  --mk-border: var(--wow-line, #d4d4cf);
+  --mk-shadow: 0 4px 8px rgba(10, 10, 10, 0.07);
   --mk-partday-compact-w: 58px;
   --mk-partday-compact-h: 28px;
 }
 
 .mk-section {
-  font-family: "Lato", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: "Onest", system-ui, sans-serif;
   color: var(--mk-text);
   min-width: 0;
 }
@@ -25,13 +23,11 @@
   flex-direction: column;
   gap: 0.75rem;
   padding: 1.2rem 1.15rem 1rem;
-  border-radius: 28px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  background:
-    radial-gradient(540px 220px at 0% 0%, rgba(124, 58, 237, 0.10), transparent 62%),
-    radial-gradient(420px 240px at 100% 18%, rgba(250, 204, 21, 0.12), transparent 62%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 247, 255, 0.96));
-  box-shadow: 0 22px 48px rgba(109, 40, 217, 0.07);
+  border-radius: 16px;
+  border: 1px solid var(--mk-border);
+  border-top: 5px solid var(--mk-yellow);
+  background: var(--mk-surface);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -52,13 +48,7 @@
 }
 
 .mk-head::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.18), transparent 38%),
-    radial-gradient(280px 160px at 12% 16%, rgba(255, 255, 255, 0.42), transparent 70%);
-  pointer-events: none;
+  content: none;
 }
 
 .mk-head > * {
@@ -67,7 +57,8 @@
 }
 
 .mk-title {
-  letter-spacing: 0.01em;
+  font-family: "Madefor Display", "Onest", sans-serif;
+  letter-spacing: -0.03em;
   font-size: clamp(1.7rem, 1.45rem + 0.8vw, 2.2rem);
   font-weight: 800;
 }
@@ -1719,14 +1710,10 @@ a.mk-cartPill:hover {
 /* Glass UI refresh */
 .mk-section {
   padding: clamp(0.85rem, 1.5vw, 1.25rem);
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    radial-gradient(760px 360px at 0% 0%, rgba(124, 58, 237, 0.13), transparent 62%),
-    radial-gradient(760px 360px at 100% 4%, rgba(250, 204, 21, 0.17), transparent 60%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(250, 245, 255, 0.78));
-  box-shadow: 0 28px 80px rgba(76, 29, 149, 0.12);
-  backdrop-filter: blur(14px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mk-head {
@@ -1863,5 +1850,213 @@ a.mk-cartPill:hover,
   border-color: rgba(255, 255, 255, 0.32);
   border-radius: 20px;
   backdrop-filter: blur(16px);
+}
+
+/* Brand system 2026: the internal catalog keeps its workflow, but shares the
+   client catalog's black / paper / signal-yellow material language. */
+.mk-toolbar,
+.mk-tabs,
+.mk-searchWrap,
+.mk-pagination,
+.mk-sectionBlock {
+  border-color: var(--mk-border);
+  background: var(--mk-surface);
+  box-shadow: none;
+}
+
+.mk-toolbar,
+.mk-sectionBlock {
+  border-radius: 14px;
+}
+
+.mk-tabs {
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #e9e9e5;
+}
+
+.mk-tab {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--mk-muted);
+  box-shadow: none;
+}
+
+.mk-tab:hover {
+  background: #ffffff;
+  color: var(--mk-text);
+}
+
+.mk-tabActive,
+.mk-tabActive:hover {
+  background: var(--mk-yellow);
+  color: var(--mk-text);
+  box-shadow: none;
+}
+
+.mk-search,
+.mk-dateWrap,
+.mk-rentalPeriod-trigger {
+  border-color: var(--mk-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.mk-search:focus,
+.mk-searchWrap:focus-within,
+.mk-dateWrap:focus-within,
+.mk-rentalPeriod-trigger:focus-visible {
+  border-color: var(--mk-violet);
+  box-shadow: 0 0 0 3px rgba(94, 32, 187, 0.13);
+}
+
+.mk-chip {
+  border-color: var(--mk-border);
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.mk-chip:hover {
+  border-color: #a4a49e;
+  background: #f7f7f4;
+}
+
+.mk-chipActive,
+.mk-chipActive:hover {
+  border-color: var(--mk-text);
+  background: var(--mk-text);
+  color: #ffffff;
+}
+
+.mk-grid {
+  gap: 14px;
+}
+
+.mk-card,
+.mk-kit {
+  overflow: hidden;
+  border: 1px solid var(--mk-border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: none;
+  transition: border-color 180ms var(--wow-ease, ease), transform 180ms var(--wow-ease, ease);
+}
+
+.mk-card:hover,
+.mk-kit:hover {
+  border-color: #a9a9a3;
+  box-shadow: none;
+  transform: translateY(-2px);
+}
+
+.mk-cardInner,
+.mk-box {
+  border-color: var(--mk-border);
+  background: #ffffff;
+}
+
+.mk-cardPhoto,
+.mk-placeholder,
+.mk-modalMedia {
+  background: #30205f;
+}
+
+.mk-placeholder {
+  color: #ffffff;
+}
+
+.mk-placeholderBadge,
+.mk-pill {
+  border-color: var(--mk-border);
+  background: #f4f4f0;
+  color: #4f4f4b;
+  box-shadow: none;
+}
+
+.mk-name {
+  color: var(--mk-text);
+  font-family: "Madefor Display", "Onest", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.mk-price {
+  color: var(--mk-text);
+}
+
+.mk-addBtn,
+.mk-cornerBtn,
+.mk-pageNumberActive,
+.mk-floatingCart {
+  border-color: var(--mk-text);
+  background: var(--mk-text);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.mk-addBtn:hover,
+.mk-cornerBtn:hover,
+.mk-floatingCart:hover {
+  border-color: var(--mk-yellow);
+  background: var(--mk-yellow);
+  color: var(--mk-text);
+  box-shadow: none;
+}
+
+.mk-cartPill,
+.mk-btn {
+  border-color: var(--mk-text);
+  border-radius: 10px;
+  background: var(--mk-text);
+  color: #ffffff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+a.mk-cartPill:hover,
+.mk-btn:hover {
+  border-color: var(--mk-yellow);
+  background: var(--mk-yellow);
+  color: var(--mk-text);
+  box-shadow: none;
+}
+
+.mk-modal {
+  overflow: hidden;
+  border: 1px solid var(--mk-border);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 16px rgba(10, 10, 10, 0.14);
+}
+
+.mk-modalOverlay {
+  background: rgba(0, 0, 0, 0.64);
+  backdrop-filter: blur(3px);
+}
+
+.mk-floatingCart {
+  border-radius: 12px;
+  backdrop-filter: none;
+}
+
+@media (max-width: 639px) {
+  .mk-head {
+    border-radius: 12px;
+  }
+
+  .mk-card:hover,
+  .mk-kit:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-card,
+  .mk-kit {
+    transform: none !important;
+  }
 }
 

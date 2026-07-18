@@ -1,8 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap");
-
 .co-section {
-  font-family: "Lato", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  color: #111827;
+  font-family: "Onest", system-ui, sans-serif;
+  color: var(--wow-ink, #0a0a0a);
   max-width: 56rem;
   margin: 0 auto;
 }
@@ -477,16 +475,11 @@ select.co-input {
   position: relative;
   overflow: hidden;
   gap: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 34px;
-  background:
-    radial-gradient(circle at 7% 0%, rgba(124, 58, 237, 0.18), transparent 34%),
-    radial-gradient(circle at 92% 14%, rgba(255, 221, 78, 0.24), transparent 32%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(250, 247, 255, 0.72));
-  box-shadow: 0 24px 70px rgba(31, 27, 54, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--wow-line, #d4d4cf);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: none;
   padding: clamp(1.45rem, 3vw, 2.4rem);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 .co-head::after {
@@ -694,5 +687,117 @@ select.co-input {
     margin-left: 0;
     width: 100%;
     text-align: center;
+  }
+}
+
+/* Brand-aligned request flow. */
+.co-title {
+  color: var(--wow-ink, #0a0a0a);
+  font-family: "Madefor Display", "Onest", sans-serif;
+  letter-spacing: -0.035em;
+}
+
+.co-subtitle,
+.co-help,
+.co-switchSub {
+  color: var(--wow-muted, #686863);
+}
+
+.co-head,
+.co-grid,
+.co-services,
+.co-dates {
+  border-color: var(--wow-line, #d4d4cf);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.co-head {
+  border-top: 5px solid var(--wow-yellow, #ffd21f);
+}
+
+.co-head::after {
+  content: none;
+}
+
+.co-datePill {
+  border-color: var(--wow-line, #d4d4cf);
+  background: #f4f4f0;
+}
+
+.co-link {
+  color: var(--wow-ink, #0a0a0a);
+  text-decoration-color: var(--wow-yellow, #ffd21f);
+  text-underline-offset: 4px;
+}
+
+.co-flipSwitch {
+  --co-radius: 12px;
+  --co-border: var(--wow-line, #d4d4cf);
+  --co-bg: #e9e9e5;
+  --co-card-bg: var(--wow-yellow, #ffd21f);
+  --co-text: var(--wow-ink, #0a0a0a);
+  --co-muted: var(--wow-muted, #686863);
+  --co-active: var(--wow-ink, #0a0a0a);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.co-cardFace {
+  border-color: var(--wow-yellow, #ffd21f);
+  background: var(--wow-yellow, #ffd21f);
+  box-shadow: none;
+}
+
+.co-switchButton:hover svg {
+  transform: none;
+  filter: none;
+}
+
+.co-input,
+.co-textarea,
+.co-combobox-dropdown {
+  border-color: var(--wow-line, #d4d4cf);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.co-input:focus,
+.co-textarea:focus {
+  border-color: var(--wow-purple, #5e20bb);
+  box-shadow: 0 0 0 3px rgba(94, 32, 187, 0.13);
+}
+
+.co-toggle--on .co-toggleTrack {
+  background: var(--wow-purple, #5e20bb);
+}
+
+.co-btn {
+  min-height: 44px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.co-btn--primary {
+  border: 1px solid var(--wow-ink, #0a0a0a);
+  background: var(--wow-ink, #0a0a0a);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.co-btn--primary:hover:not(:disabled) {
+  border-color: var(--wow-yellow, #ffd21f);
+  background: var(--wow-yellow, #ffd21f);
+  color: var(--wow-ink, #0a0a0a);
+}
+
+@media (max-width: 767px) {
+  .co-head,
+  .co-grid,
+  .co-services,
+  .co-dates {
+    border-radius: 12px;
   }
 }

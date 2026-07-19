@@ -14,6 +14,7 @@ import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-da
 
 import { IssuanceCalendar } from "./IssuanceCalendar";
 import { WowstorgIdleText } from "./WowstorgIdleText";
+import "./dashboard.css";
 
 const BackgroundStackGame = dynamic(
   () => import("./BackgroundStackGame").then((module) => module.BackgroundStackGame),
@@ -31,40 +32,6 @@ const BTN_WARM =
 const BADGE_PRIMARY = "rounded-full border border-yellow-300 bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-zinc-900";
 const BADGE_NEUTRAL = "rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-semibold text-zinc-700";
 const LINK_SUBTLE = "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800 transition hover:border-zinc-950 hover:bg-zinc-950 hover:text-white";
-const BTN_ICON_ROUND =
-  "group inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-600 transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
-
-function EquipmentCardArrowLink({
-  href,
-  label,
-}: {
-  href: string;
-  label: string;
-}) {
-  return (
-    <Link
-      href={href}
-      title={label}
-      aria-label={label}
-      className={`mt-auto ml-auto ${BTN_ICON_ROUND}`}
-    >
-      <svg
-        className="h-4 w-4 transition group-hover:translate-x-0.5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <path d="M5 12h14" />
-        <path d="M13 6l6 6-6 6" />
-      </svg>
-    </Link>
-  );
-}
-
 function CardLink({
   href,
   title,
@@ -913,124 +880,53 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   if (loading && !data) return <DashboardSkeleton />;
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden border border-zinc-300 bg-white">
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-zinc-300 bg-zinc-200 md:grid-cols-4">
-          <div className="bg-white px-4 py-3">
-            <div className="text-xs font-semibold text-violet-700">Сегодня</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-violet-950">{data?.summary.todayCount ?? 0}</div>
-          </div>
-          <div className="bg-white px-4 py-3">
-            <div className="text-xs font-semibold text-rose-700">Просрочено</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-rose-950">{data?.summary.overdueCount ?? 0}</div>
-          </div>
-          <div className="bg-white px-4 py-3">
-            <div className="text-xs font-semibold text-amber-800">Сигналы</div>
-            <div className="mt-1 text-2xl font-black tabular-nums text-amber-950">{data?.summary.signalCount ?? 0}</div>
-          </div>
-          <div className="bg-white px-4 py-3">
-            <div className="text-xs font-semibold text-zinc-600">Ближайшая заявка</div>
-            <div className="mt-1 truncate text-sm font-bold text-zinc-950">{data?.summary.nearestOrderTitle ?? "Нет активных"}</div>
+    <div className="ops-dashboard">
+      <section className="ops-overview" aria-label="Оперативная сводка">
+        <div className="ops-metric"><span>Сегодня</span><strong>{data?.summary.todayCount ?? 0}</strong></div>
+        <div className="ops-metric"><span>Просрочено</span><strong>{data?.summary.overdueCount ?? 0}</strong></div>
+        <div className="ops-metric"><span>Требуют внимания</span><strong>{data?.summary.signalCount ?? 0}</strong></div>
+        <div className="ops-next">
+          <div className="min-w-0"><span>Ближайшая заявка</span><strong>{data?.summary.nearestOrderTitle ?? "Нет активных"}</strong></div>
+          <i className="ops-next__mark" aria-hidden="true" />
+        </div>
+        {error ? <div className="col-span-full border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
+      </section>
+
+      <section className="ops-workspace" aria-label="Рабочий фокус">
+        <div className="ops-pane">
+          <div className="ops-pane__header"><h2>Сегодня</h2><Link href="/tasks" className={LINK_SUBTLE}>Открыть доску</Link></div>
+          <div className="ops-pane__body ops-pane__body--events">
+            {!loading && !error && data?.today.length === 0 ? <div className="ops-empty"><strong>Спокойный день.</strong> Срочных событий нет.</div> : null}
+            {(data?.today ?? []).slice(0, 6).map((event) => <OperationEventCard key={event.id} event={event} />)}
           </div>
         </div>
-        {error ? <div className="border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-        <div className={`${DASH_CARD} xl:col-span-7`}>
-          <div className="flex items-center justify-between gap-3 border-b border-violet-100/70 pb-3">
-            <div className="text-sm font-black tracking-tight text-zinc-950">Сегодня</div>
-            <Link href="/tasks" className={LINK_SUBTLE}>Доска</Link>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {!loading && !error && data?.today.length === 0 ? (
-              <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 md:col-span-2">
-                Сегодня спокойно.
-              </div>
-            ) : null}
-            {(data?.today ?? []).slice(0, 6).map((event) => (
-              <OperationEventCard key={event.id} event={event} />
-            ))}
-          </div>
-        </div>
-
-        <div className={`${DASH_CARD} xl:col-span-5`}>
-          <div className="flex items-center justify-between gap-3 border-b border-violet-100/70 pb-3">
-            <div className="text-sm font-black tracking-tight text-zinc-950">Сигналы</div>
-            <div className="flex items-center gap-3">
-              <Link href="/orders" className={LINK_SUBTLE}>Заявки</Link>
-              <Link href="/projects" className={LINK_SUBTLE}>Проекты</Link>
-            </div>
-          </div>
-          <div className="mt-3 space-y-2">
-            {!loading && !error && data?.signals.length === 0 ? (
-              <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
-                Критичных сигналов нет.
-              </div>
-            ) : null}
+        <div className="ops-pane">
+          <div className="ops-pane__header"><h2>Сигналы</h2><div className="flex gap-2"><Link href="/orders" className={LINK_SUBTLE}>Заявки</Link><Link href="/projects" className={LINK_SUBTLE}>Проекты</Link></div></div>
+          <div className="ops-pane__body">
+            {!loading && !error && data?.signals.length === 0 ? <div className="ops-empty"><strong>Всё под контролем.</strong> Критичных сигналов нет.</div> : null}
             {(data?.signals ?? []).slice(0, 5).map((signal) => (
               <div key={signal.id} className={["rounded-md border px-3 py-2.5 transition-colors hover:border-zinc-500", signalClass(signal.severity)].join(" ")}>
                 <div className="flex items-start justify-between gap-2">
-                  <Link href={signal.href} className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full border border-current/15 bg-white/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                        {signalEntityLabel(signal.entityKind)}
-                      </span>
-                      <div className="truncate text-sm font-bold">{signal.title}</div>
-                    </div>
-                    <div className="mt-0.5 line-clamp-2 text-xs opacity-80">{signal.reason}</div>
-                  </Link>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {signal.canSnooze && (signal.projectId || signal.orderId) ? (
-                      <button
-                        type="button"
-                        onClick={() => void snoozeSignal(signal)}
-                        disabled={snoozingSignalId === signal.id}
-                        className="rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-bold transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
-                        title="Отложить на 7 дней"
-                      >
-                        {snoozingSignalId === signal.id ? "..." : "7д"}
-                      </button>
-                    ) : null}
-                    <span className="rounded-full border border-current/20 bg-white/60 px-2 py-0.5 text-[10px] font-bold">
-                      {signal.severity === "critical" ? "важно" : signal.severity === "warning" ? "сигнал" : "инфо"}
-                    </span>
-                  </div>
+                  <Link href={signal.href} className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="text-[10px] font-black uppercase tracking-wide">{signalEntityLabel(signal.entityKind)}</span><div className="truncate text-sm font-bold">{signal.title}</div></div><div className="mt-0.5 line-clamp-2 text-xs opacity-80">{signal.reason}</div></Link>
+                  {signal.canSnooze && (signal.projectId || signal.orderId) ? <button type="button" onClick={() => void snoozeSignal(signal)} disabled={snoozingSignalId === signal.id} className="shrink-0 border border-current/20 bg-white/70 px-2 py-1 text-[10px] font-bold hover:bg-white disabled:opacity-60" title="Отложить на 7 дней">{snoozingSignalId === signal.id ? "…" : "+7д"}</button> : null}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className={DASH_CARD}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-black tracking-tight text-zinc-950">Ближайшие дни</div>
-          <Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link>
-        </div>
-        <div className="grid grid-cols-1 gap-2 xl:grid-cols-5">
+      <section className="ops-timeline">
+        <div className="ops-timeline__header"><h2>Горизонт на пять дней</h2><Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link></div>
+        <div className="ops-days">
           {(data?.upcomingDays ?? []).map((day) => (
-            <div key={day.date} className="min-h-[9rem] rounded-md border border-zinc-300 bg-zinc-50 p-2">
-              <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
-                <div className="text-sm font-bold text-zinc-950">{day.label}</div>
-                <div className="flex items-center gap-1.5">
-                  <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-bold text-zinc-600">
-                    {day.events.length}
-                  </span>
-                  <div className="text-[11px] text-zinc-500">{fmtDateRu(day.date)}</div>
-                </div>
-              </div>
-              <div className="max-h-[30rem] space-y-1.5 overflow-y-auto pr-1">
-                {day.events.length === 0 ? (
-                  <div className="px-1 py-2 text-xs font-medium text-zinc-500">Нет событий</div>
-                ) : (
-                  day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)
-                )}
-              </div>
+            <div key={day.date} className="ops-day">
+              <div className="ops-day__head"><strong>{day.label}</strong><span className="ops-day__meta">{day.events.length} · {fmtDateRu(day.date)}</span></div>
+              <div className="ops-day__body">{day.events.length === 0 ? <span className="text-xs text-zinc-500">Без событий</span> : day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)}</div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -1202,92 +1098,43 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         ) : null}
       </div>
 
-      <div className={`${DASH_CARD} xl:col-span-4`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-zinc-900">Реквизит</div>
-            <InventoryAuditBadge />
-          </div>
-          {data?.equipment.endedPositions.length ? (
-            <Link
-              href="/inventory/warehouse-items"
-              className={LINK_SUBTLE}
-            >
-              Открыть склад
-            </Link>
-          ) : null}
+      <div className="warehouse-board xl:col-span-4">
+        <div className="warehouse-board__header">
+          <div><h2>Склад</h2><div className="mt-1"><InventoryAuditBadge /></div></div>
+          <Link href="/inventory/warehouse-items" className={LINK_SUBTLE}>Открыть склад</Link>
         </div>
 
-        {loading && !data ? <ListSkeleton className="mt-3" rows={5} /> : null}
+        {loading && !data ? <ListSkeleton className="m-4" rows={5} /> : null}
         {!loading && !error && data ? (
-          <div className="mt-3 space-y-4">
-            <div className="grid grid-cols-2 overflow-hidden border border-zinc-300 bg-zinc-200 items-stretch">
-              <div className="flex min-h-[6.1rem] flex-col border-b border-r border-zinc-300 bg-amber-50 px-3 py-2">
-                <div className="text-[11px] font-semibold text-amber-900">Ремонт</div>
-                <div className="mt-1 text-lg font-bold tabular-nums text-amber-900">{data.equipment.inRepairQty}</div>
-                <EquipmentCardArrowLink href="/inventory/repair?condition=NEEDS_REPAIR" label="Открыть базу «Требует ремонта»" />
+          <>
+            <div className="warehouse-board__body">
+              <div className="warehouse-issues">
+                <Link href="/inventory/repair?condition=NEEDS_REPAIR" className="warehouse-row"><span>Требует ремонта</span><strong>{data.equipment.inRepairQty}</strong><i>→</i></Link>
+                <Link href="/inventory/repair?condition=BROKEN" className="warehouse-row"><span>Сломано</span><strong>{data.equipment.brokenQty}</strong><i>→</i></Link>
+                <Link href="/inventory/losses" className="warehouse-row"><span>Потеряно</span><strong>{data.equipment.lostQty}</strong><i>→</i></Link>
               </div>
-              <div className="flex min-h-[6.1rem] flex-col border-b border-zinc-300 bg-red-50 px-3 py-2">
-                <div className="text-[11px] font-semibold text-red-900">Сломано</div>
-                <div className="mt-1 text-lg font-bold tabular-nums text-red-900">{data.equipment.brokenQty}</div>
-                <EquipmentCardArrowLink href="/inventory/repair?condition=BROKEN" label="Открыть базу «Сломано»" />
-              </div>
-              <div className="flex min-h-[6.1rem] flex-col border-r border-zinc-300 bg-white px-3 py-2">
-                <div className="text-[11px] font-semibold text-zinc-800">Потеряно</div>
-                <div className="mt-1 text-lg font-bold tabular-nums text-zinc-900">{data.equipment.lostQty}</div>
-                <EquipmentCardArrowLink href="/inventory/losses" label="Открыть базу утерянного" />
-              </div>
-              <div className="flex min-h-[6.1rem] flex-col bg-violet-50 px-3 py-2">
-                <div className="text-[11px] font-semibold text-violet-900">В наличии позиций</div>
-                <div className="mt-1 text-lg font-bold tabular-nums text-violet-900">{data.equipment.positionsInStockCount}</div>
-                <EquipmentCardArrowLink href="/inventory/positions" label="Открыть позиции каталога" />
-              </div>
-              <div className="col-span-2 flex min-h-[6.8rem] flex-col border-t border-zinc-300 bg-sky-50 px-3 py-2">
-                <div className="text-[11px] font-semibold text-sky-900">В аренде сейчас</div>
-                <div className="mt-1 text-lg font-bold tabular-nums text-sky-900">
-                  {data.equipment.rentedUnitsTotal} шт. · {data.equipment.rentedPositionsCount} поз.
+              <div className="warehouse-capacity">
+                <Link href="/inventory/in-rent" className="warehouse-capacity__primary">
+                  <span>Сейчас в аренде</span>
+                  <strong>{data.equipment.rentedUnitsTotal} шт. · {data.equipment.rentedPositionsCount} поз.</strong>
+                  <small>Освобождение: {data.equipment.nearestReleaseDate ? fmtDateRu(data.equipment.nearestReleaseDate) : "—"} →</small>
+                </Link>
+                <div className="warehouse-capacity__stats">
+                  <Link href="/inventory/positions" className="warehouse-capacity__stat"><span>В наличии</span><strong>{data.equipment.positionsInStockCount}</strong></Link>
+                  <Link href="/inventory/warehouse-items" className="warehouse-capacity__stat"><span>Закончились</span><strong>{data.equipment.endedPositions.length}</strong></Link>
                 </div>
-                <div className="mt-1 text-xs text-sky-800">
-                  Ближайшее освобождение:{" "}
-                  <span className="font-semibold">
-                    {data.equipment.nearestReleaseDate ? fmtDateRu(data.equipment.nearestReleaseDate) : "—"}
-                  </span>
-                </div>
-                <EquipmentCardArrowLink href="/inventory/in-rent" label="Открыть раздел «В аренде»" />
               </div>
             </div>
 
             {data.equipment.endedPositions.length > 0 ? (
-              <div className="border border-red-300 bg-red-50 px-3 py-3">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="text-sm font-semibold text-red-900">Закончившиеся позиции</div>
-                  {data.equipment.endedPositions.length > 8 ? (
-                    <div className="text-xs text-red-800">+{data.equipment.endedPositions.length - 8}</div>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  {data.equipment.endedPositions.slice(0, 8).map((p) => (
-                    <div
-                      key={p.id}
-                       className="flex items-center justify-between gap-2 border-t border-red-200 px-2.5 py-2 first:border-t-0"
-                    >
-                      <div className="min-w-0 text-sm font-medium text-red-900 truncate">{p.name}</div>
-                      <Link
-                        href={`/inventory/warehouse-items/${p.id}`}
-                        className="shrink-0 text-sm font-medium text-red-800 hover:text-red-900"
-                      >
-                        исправить
-                      </Link>
-                    </div>
-                  ))}
+              <div className="border-t border-red-200 bg-red-50 px-4 py-3">
+                <div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-black uppercase tracking-wide text-red-900">Нужно пополнить</span><span className="text-xs text-red-700">{data.equipment.endedPositions.length}</span></div>
+                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  {data.equipment.endedPositions.slice(0, 6).map((position) => <Link key={position.id} href={`/inventory/warehouse-items/${position.id}`} className="truncate py-1 text-xs font-semibold text-red-900 hover:underline">{position.name} →</Link>)}
                 </div>
               </div>
-            ) : (
-              <div className="text-sm text-zinc-600">
-                Пока всё есть в наличии (складские позиции не закончились).
-              </div>
-            )}
-          </div>
+            ) : null}
+          </>
         ) : null}
       </div>
       </div>

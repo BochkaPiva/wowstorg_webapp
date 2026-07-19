@@ -166,12 +166,16 @@
   border: 1px solid var(--wow-line);
   border-radius: 10px;
   background: #fff;
-  transition: border-color 170ms var(--wow-ease), background-color 170ms var(--wow-ease);
+  transition: border-color 170ms var(--wow-ease), background-color 170ms var(--wow-ease), transform 170ms var(--wow-ease);
 }
 
 .queue-order:hover,
 .queue-order[data-expanded] {
   border-color: #aaa9a4;
+}
+
+.queue-order:hover {
+  transform: translateY(-1px);
 }
 
 .queue-order[data-child] {
@@ -180,7 +184,7 @@
 
 .queue-order__summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-columns: minmax(0, 1fr) 326px;
   min-height: 72px;
   align-items: stretch;
 }
@@ -205,9 +209,10 @@
 }
 
 .queue-order__chevron {
-  display: inline-block;
+  display: block;
+  width: 14px;
+  height: 14px;
   color: currentColor;
-  font-size: 0.95rem;
   transition: transform 180ms var(--wow-ease);
 }
 
@@ -306,11 +311,20 @@
 }
 
 .queue-order__actions {
-  display: flex;
-  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 148px 76px 88px;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px 10px 4px;
+  padding: 10px 12px 10px 2px;
+}
+
+.queue-order__actionSlot {
+  display: flex;
+  min-width: 0;
+}
+
+.queue-order__actionSlot .queue-button {
+  width: 100%;
 }
 
 .queue-order__progress {
@@ -340,7 +354,7 @@
   justify-content: center;
   padding: 7px 11px;
   border: 1px solid var(--wow-line);
-  border-radius: 7px;
+  border-radius: 6px;
   font-size: 0.74rem;
   font-weight: 680;
   text-decoration: none;
@@ -369,7 +383,8 @@
 
 .queue-button--disclosure {
   gap: 6px;
-  min-width: 84px;
+  width: 88px;
+  min-width: 88px;
   border-color: transparent;
   background: transparent;
   color: var(--wow-muted);
@@ -666,7 +681,7 @@
 }
 
 @media (max-width: 1180px) {
-  .queue-order__summary { grid-template-columns: minmax(0, 1fr) 230px; }
+  .queue-order__summary { grid-template-columns: minmax(0, 1fr) 326px; }
   .queue-order__toggle {
     grid-template-columns: minmax(140px, 1fr) minmax(100px, 0.55fr) 96px minmax(150px, 0.8fr) 86px;
   }
@@ -701,5 +716,6 @@
   .queue-order,
   .queue-order__chevron,
   .queue-order__reveal { transition-duration: 0.01ms; }
+  .queue-order:hover { transform: none; }
   .queue-skeleton span { animation: none; }
 }

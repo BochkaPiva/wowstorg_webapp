@@ -203,7 +203,9 @@ function ProjectsContent() {
   const [listError, setListError] = React.useState<string | null>(null);
   const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [completeConfirmId, setCompleteConfirmId] = React.useState<string | null>(null);
+  const [archiveProject, setArchiveProject] = React.useState<ProjectCard | null>(null);
+  const [archiveStatus, setArchiveStatus] = React.useState<"COMPLETED" | "CANCELLED">("COMPLETED");
+  const [archiveNote, setArchiveNote] = React.useState("");
   const [projectActionBusyId, setProjectActionBusyId] = React.useState<string | null>(null);
   const [projectActionError, setProjectActionError] = React.useState<string | null>(null);
   const [createBusy, setCreateBusy] = React.useState(false);
@@ -340,21 +342,42 @@ function ProjectsContent() {
     }
   }
 
-  async function completeProject(project: ProjectCard) {
+  function openArchiveModal(project: ProjectCard) {
+    setProjectActionError(null);
+    setArchiveProject(project);
+    setArchiveStatus(project.status === "CANCELLED" ? "CANCELLED" : "COMPLETED");
+    setArchiveNote(project.archiveNote ?? "");
+  }
+
+  function closeArchiveModal() {
+    if (projectActionBusyId) return;
+    setArchiveProject(null);
+    setArchiveNote("");
+    setProjectActionError(null);
+  }
+
+  async function archiveSelectedProject() {
+    if (!archiveProject) return;
+    const project = archiveProject;
     setProjectActionBusyId(project.id);
     setProjectActionError(null);
     try {
       const response = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "COMPLETED" }),
+        body: JSON.stringify({
+          status: archiveStatus,
+          archive: true,
+          archiveNote: archiveNote.trim() || null,
+        }),
       });
       const data = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
       if (!response.ok) throw new Error(data?.error?.message ?? `Ошибка ${response.status}`);
-      setCompleteConfirmId(null);
-      loadProjects();
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setArchiveProject(null);
+      setArchiveNote("");
     } catch (error) {
-      setProjectActionError(error instanceof Error ? error.message : "Не удалось завершить проект");
+      setProjectActionError(error instanceof Error ? error.message : "Не удалось закрыть проект");
     } finally {
       setProjectActionBusyId(null);
     }
@@ -494,194 +517,73 @@ function ProjectsContent() {
           ) : !listError && projects.length === 0 ? (
             <div className="text-sm text-zinc-600">Пока нет проектов.</div>
           ) : !listError ? (
-            <ul className="grid gap-3">
+            <ul className="grid gap-2.5">
               {projects.map((p) => {
                 const archiveHeader = tab === "archive" ? projectArchiveHeader(p.status) : null;
                 const isCancelledArchive = Boolean(archiveHeader?.muted);
+                const eventDate = projectDateLine(p);
                 return (
                   <li
                     key={p.id}
                     className={[
-                      "overflow-hidden rounded-lg border bg-white transition-colors duration-150",
-                      isCancelledArchive ? "border-zinc-200 opacity-80 hover:opacity-100" : "border-zinc-300 hover:border-zinc-950",
+                      "group overflow-hidden rounded-xl border bg-white transition-[border-color,transform] duration-150 motion-reduce:transition-none",
+                      isCancelledArchive
+                        ? "border-zinc-200 opacity-80 hover:opacity-100"
+                        : "border-zinc-300 hover:-translate-y-px hover:border-zinc-950 motion-reduce:hover:translate-y-0",
                     ].join(" ")}
                   >
-                    <Link
-                      href={`/projects/${p.id}`}
-                      className={[
-                        "group block p-0 transition-colors duration-150",
-                        isCancelledArchive
-                          ? "bg-zinc-50"
-                          : "bg-white",
-                      ].join(" ")}
-                    >
                     {archiveHeader ? (
-                      <div className={["flex items-center gap-3 px-5 py-4", archiveHeader.className].join(" ")}>
-                        <div
-                          className={[
-                            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-xl font-black",
-                            archiveHeader.iconClassName,
-                          ].join(" ")}
-                        >
-                          {archiveHeader.icon}
-                        </div>
-                        <div>
-                          <div className="text-sm font-black">{archiveHeader.title}</div>
-                          <div className="mt-0.5 text-xs font-semibold opacity-85">{archiveHeader.subtitle}</div>
-                        </div>
+                      <div className={["flex items-center gap-2 border-b px-4 py-2 text-xs font-bold", archiveHeader.className].join(" ")}>
+                        <span className={["inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px]", archiveHeader.iconClassName].join(" ")}>{archiveHeader.icon}</span>
+                        <span>{archiveHeader.title}</span>
+                        <span className="font-medium opacity-75">· {archiveHeader.subtitle}</span>
                       </div>
                     ) : null}
-                    <div className="p-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2
-                            className={[
-                              "min-w-0 text-xl font-black leading-tight",
-                              isCancelledArchive ? "text-zinc-500 group-hover:text-zinc-700" : "text-zinc-950 group-hover:text-violet-800",
-                            ].join(" ")}
-                          >
-                            {p.title}
-                          </h2>
-                          <span className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-bold text-zinc-600">
-                            {p.customer.name}
-                          </span>
-                          {projectDateLine(p) ? (
-                            <span className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-800">
-                              {projectDateLine(p)}
-                              {p.eventDateConfirmed ? "" : " · черновик"}
-                            </span>
-                          ) : null}
+                    <Link href={`/projects/${p.id}`} className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.72fr)]">
+                      <div className={isCancelledArchive ? "bg-zinc-50 p-4" : "p-4"}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                              <span>{PROJECT_STATUS_LABEL[p.status]}</span>
+                              <span aria-hidden="true">/</span>
+                              <span>{PROJECT_BALL_LABEL[p.ball]}</span>
+                            </div>
+                            <h2 className={["mt-1 truncate text-lg font-black leading-tight transition-colors duration-150", isCancelledArchive ? "text-zinc-500" : "text-zinc-950 group-hover:text-violet-800"].join(" ")}>
+                              {p.title}
+                            </h2>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-500">{fmtDate(p.updatedAt)}</span>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span
-                            className={[
-                              "rounded-full border px-2.5 py-1 font-bold",
-                              isCancelledArchive
-                                ? "border-zinc-300 bg-zinc-100/80 text-zinc-500"
-                                : "border-zinc-200 bg-white/75 text-zinc-700",
-                            ].join(" ")}
-                          >
-                            {PROJECT_STATUS_LABEL[p.status]}
-                          </span>
-                          {isCancelledArchive ? (
-                            <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
-                              Не учитывается
-                            </span>
-                          ) : null}
-                          <span className="rounded-full border border-amber-200 bg-amber-50/85 px-2.5 py-1 font-bold text-amber-900">
-                            {PROJECT_BALL_LABEL[p.ball]}
-                          </span>
-                          <span className="rounded-full border border-violet-200 bg-violet-50/85 px-2.5 py-1 font-bold text-violet-800">
-                            {p._count.orders} заявок
-                          </span>
-                          <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 font-bold text-zinc-600">
-                            {p.owner.displayName}
-                          </span>
+                        <dl className="mt-4 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Заказчик</dt><dd className="truncate font-bold text-zinc-900">{p.customer.name}</dd></div>
+                          <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Ответственный</dt><dd className="truncate font-bold text-zinc-900">{p.owner.displayName}</dd></div>
+                          <div><dt className="text-[11px] text-zinc-500">Событие</dt><dd className="font-bold tabular-nums text-zinc-900">{eventDate ?? "Не назначено"}{eventDate && !p.eventDateConfirmed ? " · черновик" : ""}</dd></div>
+                          <div><dt className="text-[11px] text-zinc-500">Заявки</dt><dd className="font-bold tabular-nums text-zinc-900">{p._count.orders}</dd></div>
+                        </dl>
+                        {tab === "archive" && p.archiveNote?.trim() ? <p className="mt-3 border-t border-zinc-200 pt-3 text-sm text-zinc-600 whitespace-pre-wrap">{p.archiveNote.trim()}</p> : null}
+                      </div>
+
+                      <div className="grid grid-cols-3 border-t border-zinc-200 bg-zinc-50 lg:border-l lg:border-t-0">
+                        <div className="flex min-w-0 flex-col justify-center px-4 py-4">
+                          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Выручка</span>
+                          <strong className={["mt-1 truncate text-base tabular-nums", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>{formatMoney(p.finance.revenueTotal)}</strong>
+                        </div>
+                        <div className="flex min-w-0 flex-col justify-center border-l border-zinc-200 px-4 py-4">
+                          <span className={["text-[10px] font-black uppercase tracking-[0.14em]", p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700"].join(" ")}>Прибыль</span>
+                          <strong className={["mt-1 truncate text-base tabular-nums", isCancelledArchive ? "text-zinc-500" : p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950"].join(" ")}>{formatMoney(p.finance.marginAfterTax)}</strong>
+                        </div>
+                        <div className="flex min-w-0 flex-col justify-center border-l border-zinc-200 px-4 py-4">
+                          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Маржа</span>
+                          <strong className={["mt-1 text-base tabular-nums", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>{Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%</strong>
                         </div>
                       </div>
-                      <div className="shrink-0 border-l border-zinc-200 pl-3 text-xs font-bold tabular-nums text-zinc-500">
-                        {fmtDate(p.updatedAt)}
-                      </div>
-                    </div>
-                    {tab === "archive" && p.archiveNote?.trim() ? (
-                      <p className="mt-3 rounded-2xl border border-zinc-100 bg-white/70 px-3 py-2 text-sm text-zinc-700 whitespace-pre-wrap">
-                        {p.archiveNote.trim()}
-                      </p>
-                    ) : null}
-                    <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
-                      <div
-                        className={[
-                          "border-0 bg-white px-4 py-3",
-                          isCancelledArchive
-                            ? "text-zinc-500"
-                            : "",
-                        ].join(" ")}
-                      >
-                        <div
-                          className={[
-                            "text-[10px] font-black uppercase tracking-[0.16em]",
-                            isCancelledArchive ? "text-zinc-400" : "text-violet-600",
-                          ].join(" ")}
-                        >
-                          Выручка
-                        </div>
-                        <div
-                          className={[
-                            "mt-1 text-lg font-black",
-                            isCancelledArchive ? "text-zinc-500" : "text-violet-950",
-                          ].join(" ")}
-                        >
-                          {formatMoney(p.finance.revenueTotal)}
-                        </div>
-                      </div>
-                      <div
-                        className={[
-                          "border-0 bg-white px-4 py-3",
-                          isCancelledArchive
-                            ? "text-zinc-500"
-                            : p.finance.marginAfterTax < 0
-                            ? ""
-                            : "",
-                        ].join(" ")}
-                      >
-                        <div
-                          className={[
-                            "text-[10px] font-black uppercase tracking-[0.16em]",
-                            isCancelledArchive ? "text-zinc-400" : p.finance.marginAfterTax < 0 ? "text-red-700" : "text-emerald-700",
-                          ].join(" ")}
-                        >
-                          Прибыль
-                        </div>
-                        <div
-                          className={[
-                            "mt-1 text-lg font-black",
-                            isCancelledArchive ? "text-zinc-500" : p.finance.marginAfterTax < 0 ? "text-red-950" : "text-emerald-950",
-                          ].join(" ")}
-                        >
-                          {formatMoney(p.finance.marginAfterTax)}
-                        </div>
-                      </div>
-                      <div className="bg-white px-4 py-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Маржа</div>
-                        <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                          {Math.round(p.finance.marginAfterTaxPct).toLocaleString("ru-RU")}%
-                        </div>
-                      </div>
-                    </div>
-                    </div>
                     </Link>
-                    {tab === "active" && p.status !== "COMPLETED" && p.status !== "CANCELLED" ? (
-                      <div className="flex min-h-12 items-center justify-end gap-2 border-t border-zinc-300 bg-zinc-50 px-4 py-2.5">
-                        {completeConfirmId === p.id ? (
-                          <>
-                            <span className="mr-auto text-xs font-medium text-zinc-600">Завершить проект и перенести его в архив?</span>
-                            <button
-                              type="button"
-                              disabled={projectActionBusyId === p.id}
-                              onClick={() => void completeProject(p)}
-                              className="border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
-                            >
-                              {projectActionBusyId === p.id ? "Завершаем…" : "Да, завершить"}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={projectActionBusyId === p.id}
-                              onClick={() => setCompleteConfirmId(null)}
-                              className="border border-zinc-300 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 transition-colors hover:border-zinc-500 disabled:opacity-50"
-                            >
-                              Отмена
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setCompleteConfirmId(p.id)}
-                            className="rounded border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-700 transition-colors hover:border-zinc-950 hover:text-zinc-950"
-                          >
-                            Завершить проект
-                          </button>
-                        )}
+                    {tab === "active" ? (
+                      <div className="flex min-h-11 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 py-2">
+                        <Link href={`/projects/${p.id}`} className="text-xs font-bold text-violet-800 transition-colors hover:text-violet-950">Открыть карточку →</Link>
+                        <button type="button" onClick={() => openArchiveModal(p)} className="inline-flex h-8 items-center border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-700 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white">
+                          Завершить / отменить
+                        </button>
                       </div>
                     ) : null}
                   </li>
@@ -689,6 +591,49 @@ function ProjectsContent() {
               })}
             </ul>
           ) : null}
+
+          {archiveProject && typeof document !== "undefined"
+            ? createPortal(
+                <div className="fixed inset-0 z-[1000] flex min-h-dvh items-center justify-center bg-zinc-950/55 px-4 py-6">
+                  <div role="dialog" aria-modal="true" aria-labelledby="archive-project-title" className="w-full max-w-xl overflow-hidden rounded-xl border border-zinc-300 bg-white shadow-2xl">
+                    <div className="flex items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-700">Закрытие проекта</div>
+                        <h2 id="archive-project-title" className="mt-1 truncate text-2xl font-black text-zinc-950">{archiveProject.title}</h2>
+                        <p className="mt-1 text-sm text-zinc-600">Выберите итог. Проект попадёт в архив только после проверки связанных заявок.</p>
+                      </div>
+                      <button type="button" onClick={closeArchiveModal} className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-zinc-300 text-xl text-zinc-500 transition-colors hover:border-zinc-950 hover:text-zinc-950" aria-label="Закрыть">×</button>
+                    </div>
+
+                    <div className="p-5">
+                      <div className="grid grid-cols-2 gap-px overflow-hidden border border-zinc-300 bg-zinc-300" role="radiogroup" aria-label="Результат проекта">
+                        <button type="button" role="radio" aria-checked={archiveStatus === "COMPLETED"} onClick={() => setArchiveStatus("COMPLETED")} className={["min-h-24 bg-white p-4 text-left transition-colors", archiveStatus === "COMPLETED" ? "bg-yellow-400 text-zinc-950" : "hover:bg-zinc-50"].join(" ")}>
+                          <span className="block text-sm font-black">Завершён</span>
+                          <span className="mt-1 block text-xs opacity-75">Работа выполнена, результат передан клиенту.</span>
+                        </button>
+                        <button type="button" role="radio" aria-checked={archiveStatus === "CANCELLED"} onClick={() => setArchiveStatus("CANCELLED")} className={["min-h-24 bg-white p-4 text-left transition-colors", archiveStatus === "CANCELLED" ? "bg-zinc-950 text-white" : "hover:bg-zinc-50"].join(" ")}>
+                          <span className="block text-sm font-black">Отменён</span>
+                          <span className="mt-1 block text-xs opacity-75">Проект остановлен и не учитывается как выполненный.</span>
+                        </button>
+                      </div>
+
+                      <label className="mt-4 block text-xs font-bold text-zinc-700" htmlFor="archive-note">Комментарий к архиву <span className="font-normal text-zinc-400">(необязательно)</span></label>
+                      <textarea id="archive-note" value={archiveNote} onChange={(event) => setArchiveNote(event.target.value)} rows={3} maxLength={2000} className="mt-2 w-full resize-y border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition-colors focus:border-violet-700 focus:ring-2 focus:ring-violet-100" placeholder="Например: результат передан, документы закрыты" />
+
+                      {projectActionError ? <div className="mt-3 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">{projectActionError}</div> : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 bg-zinc-50 px-5 py-3">
+                      <button type="button" onClick={closeArchiveModal} disabled={Boolean(projectActionBusyId)} className="h-10 border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-700 hover:border-zinc-950 disabled:opacity-50">Отмена</button>
+                      <button type="button" onClick={() => void archiveSelectedProject()} disabled={Boolean(projectActionBusyId)} className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50">
+                        {projectActionBusyId ? "Проверяем…" : archiveStatus === "COMPLETED" ? "Завершить и в архив" : "Отменить и в архив"}
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body,
+              )
+            : null}
 
           {createModalOpen && typeof document !== "undefined"
             ? createPortal(

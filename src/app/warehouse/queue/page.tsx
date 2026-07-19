@@ -329,11 +329,13 @@ function WarehouseQueueContent() {
           </button>
 
           <div className="queue-order__actions">
-            {action ? (
-              <button type="button" className="queue-button queue-button--primary" onClick={() => setActionConfirmId(confirming ? null : order.id)}>
-                {action.label}
-              </button>
-            ) : null}
+            <span className="queue-order__actionSlot">
+              {action ? (
+                <button type="button" className="queue-button queue-button--primary" onClick={() => setActionConfirmId(confirming ? null : order.id)}>
+                  {action.label}
+                </button>
+              ) : null}
+            </span>
             <Link href={`/orders/${order.id}?from=warehouse-queue`} className="queue-button queue-button--quiet">Открыть</Link>
             <button
               type="button"
@@ -347,8 +349,10 @@ function WarehouseQueueContent() {
               aria-controls={`queue-preview-${order.id}`}
               aria-label={expanded ? "Свернуть предпросмотр" : "Развернуть предпросмотр"}
             >
-              <span>{expanded ? "Свернуть" : "Быстро"}</span>
-              <span className="queue-order__chevron" aria-hidden="true">⌄</span>
+              <span>{expanded ? "Свернуть" : "Сводка"}</span>
+              <svg className="queue-order__chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
           </div>
         </div>

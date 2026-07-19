@@ -2220,7 +2220,7 @@ a.mk-cartPill:hover,
 
 .mk-cardInner {
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 0;
   background: #30205f;
@@ -2568,17 +2568,29 @@ a.mk-cartPill:hover,
 
 .mk-catalogNav .mk-searchWrap {
   width: 100%;
+  min-height: 52px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mk-catalogNav .mk-searchWrap:focus-within {
+  box-shadow: none;
 }
 
 .mk-catalogNav .mk-search {
+  box-sizing: border-box;
+  height: 52px;
   min-height: 52px;
   border: 0;
   border-bottom: 1px solid #a9a8a2;
   border-radius: 0;
-  padding: 0 38px 14px 0;
+  padding: 14px 38px 14px 12px;
   background: transparent;
   box-shadow: none;
   font-size: 1rem;
+  line-height: 22px;
 }
 
 .mk-catalogNav .mk-search:focus {

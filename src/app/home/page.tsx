@@ -885,10 +885,6 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         <div className="ops-metric"><span>Сегодня</span><strong>{data?.summary.todayCount ?? 0}</strong></div>
         <div className="ops-metric"><span>Просрочено</span><strong>{data?.summary.overdueCount ?? 0}</strong></div>
         <div className="ops-metric"><span>Требуют внимания</span><strong>{data?.summary.signalCount ?? 0}</strong></div>
-        <div className="ops-next">
-          <div className="min-w-0"><span>Ближайшая заявка</span><strong>{data?.summary.nearestOrderTitle ?? "Нет активных"}</strong></div>
-          <i className="ops-next__mark" aria-hidden="true" />
-        </div>
         {error ? <div className="col-span-full border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
       </section>
 

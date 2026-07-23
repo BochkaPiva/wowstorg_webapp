@@ -1134,7 +1134,7 @@ export default function ProjectDetailPage() {
           ) : null}
 
           <section className="overflow-hidden rounded-lg border border-zinc-300 border-t-4 border-t-yellow-400 bg-white">
-            <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_230px]">
               <div className="min-w-0">
                 <div className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-800">Проект</div>
                 <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1179,12 +1179,12 @@ export default function ProjectDetailPage() {
                         {project.title}
                       </button>
                     )}
-                    <div className="mt-5 flex flex-wrap items-center gap-2">
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-sm font-black shadow-[0_12px_28px_rgba(24,24,27,0.08)] ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`inline-flex items-center rounded-md border px-3 py-2 text-xs font-black ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         {PROJECT_STATUS_LABEL[project.status]}
                       </button>
@@ -1192,7 +1192,7 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-2xl border px-4 py-3 text-sm font-black shadow-[0_12px_28px_rgba(24,24,27,0.08)] ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`inline-flex items-center rounded-md border px-3 py-2 text-xs font-black ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         Мяч: {PROJECT_BALL_LABEL[project.ball]}
                       </button>
@@ -1216,7 +1216,7 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mt-5 grid overflow-hidden rounded-md border border-zinc-200 sm:grid-cols-2 xl:grid-cols-4 [&>*]:rounded-none [&>*]:border-0 [&>*]:border-r [&>*]:border-zinc-200 [&>*]:bg-white">
                   <div className={heroStatCard}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Заказчик</div>
                     <div className="mt-1 text-sm font-semibold text-zinc-950">{project.customer.name}</div>
@@ -1303,10 +1303,11 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3">
-                <div className="rounded-md border border-zinc-300 bg-zinc-50 p-3">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Действия</div>
-                  <div className="mt-3 flex flex-col gap-2">
+              <div className="flex flex-col gap-3 border-t border-zinc-200 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Быстрые действия</div>
+                  <p className="mt-1 text-xs leading-5 text-zinc-500">Основные действия с проектом — в одном месте.</p>
+                  <div className="mt-4 flex flex-col gap-2">
                     <Link
                       href={buildProjectCatalogHref({
                         projectId: id,
@@ -1327,7 +1328,7 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
-                        className={`${secondaryBtn} w-full justify-center py-3`}
+                        className={`${secondaryBtn} w-full justify-center py-3 text-xs`}
                         title={
                           canArchiveProject
                             ? undefined
@@ -1927,7 +1928,7 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <section className="rounded-[1.35rem] border border-zinc-200 bg-[linear-gradient(180deg,rgba(24,24,27,0.035),rgba(255,255,255,0.96))] p-3 shadow-sm sm:p-4">
+          <section className={softShell}>
             <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
                 <div className={glassSectionTitle}>Рабочая зона</div>
@@ -1935,7 +1936,7 @@ export default function ProjectDetailPage() {
                   Выбери, с чем сейчас работаешь: смета, тайминг, файлы или история изменений. Это вкладки одного проекта, поэтому можно переключаться и не терять контекст.
                 </HelpLegend>
               </div>
-              <div className="grid w-full grid-cols-2 gap-2 rounded-2xl border border-zinc-200 bg-white/75 p-1.5 shadow-inner sm:flex sm:w-auto sm:flex-wrap">
+              <div className="grid w-full grid-cols-2 gap-1 border border-zinc-300 bg-zinc-50 p-1 sm:flex sm:w-auto sm:flex-wrap">
                 <button type="button" onClick={() => setActiveWorkTab("estimate")} className={workTabBtn(activeWorkTab === "estimate")}>
                   Смета
                 </button>

@@ -627,7 +627,7 @@ function sortSectionsBySortOrder<T extends { sortOrder: number }>(sections: T[])
   return [...sections].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-function nextSectionSortOrderAtTop(
+function nextSectionSortOrderAtBottom(
   localSections: LocalDraftSection[],
   persistedSections: EstSection[] | null | undefined,
 ): number {
@@ -635,7 +635,7 @@ function nextSectionSortOrderAtTop(
     ...localSections.map((section) => section.sortOrder),
     ...(persistedSections ?? []).map((section) => section.sortOrder),
   ];
-  return (allSortOrders.length > 0 ? Math.min(...allSortOrders) : 0) - 1;
+  return (allSortOrders.length > 0 ? Math.max(...allSortOrders) : 0) + 10;
 }
 
 function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
@@ -1143,15 +1143,15 @@ export function ProjectEstimatePanel({
     e.preventDefault();
     if (!newSectionTitle.trim() || readOnly) return;
     mutateLocalSections((prev) => [
+      ...prev,
       {
         id: makeTempId("section"),
-        sortOrder: nextSectionSortOrderAtTop(prev, data?.current?.sections),
+        sortOrder: nextSectionSortOrderAtBottom(prev, data?.current?.sections),
         title: newSectionTitle.trim(),
         kind: "CONTRACTOR",
         linkedOrderId: null,
         lines: [],
       },
-      ...prev,
     ]);
     setNewSectionTitle("");
   }
@@ -1385,6 +1385,83 @@ export function ProjectEstimatePanel({
         };
       }),
     );
+  }
+
+  async function moveSection(sectionId: string, direction: -1 | 1) {
+    if (readOnly || busy) return;
+    const ordered = sortSectionsBySortOrder(renderedSections);
+    const currentIndex = ordered.findIndex((section) => section.id === sectionId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+
+    const currentSection = ordered[currentIndex];
+    const targetSection = ordered[targetIndex];
+    const currentOrder = currentSection.sortOrder;
+    const targetOrder = targetSection.sortOrder;
+    const changedOrders = new Map<string, number>();
+
+    if (currentOrder !== targetOrder && currentOrder >= 0 && targetOrder >= 0) {
+      changedOrders.set(currentSection.id, targetOrder);
+      changedOrders.set(targetSection.id, currentOrder);
+    } else {
+      const swapped = [...ordered];
+      [swapped[currentIndex], swapped[targetIndex]] = [swapped[targetIndex], swapped[currentIndex]];
+      swapped.forEach((section, index) => changedOrders.set(section.id, (index + 1) * 10));
+    }
+
+    const persistedChanges = ordered
+      .filter((section) => changedOrders.has(section.id) && !section.id.startsWith("draft-"))
+      .map((section) => ({ id: section.id, sortOrder: changedOrders.get(section.id)! }));
+
+    setBusy(true);
+    try {
+      const responses = await Promise.all(
+        persistedChanges.map(({ id, sortOrder }) =>
+          fetch(`/api/projects/${projectId}/estimate/sections/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sortOrder }),
+          }),
+        ),
+      );
+      const failedResponse = responses.find((response) => !response.ok);
+      if (failedResponse) {
+        const payload = await failedResponse.json().catch(() => null);
+        window.alert(payload?.error?.message ?? "Не удалось изменить порядок разделов");
+        return;
+      }
+
+      setData((prev) => {
+        if (!prev?.current) return prev;
+        return {
+          ...prev,
+          current: {
+            ...prev.current,
+            sections: prev.current.sections.map((section) => {
+              const sortOrder = changedOrders.get(section.id);
+              return sortOrder == null ? section : { ...section, sortOrder };
+            }),
+          },
+        };
+      });
+
+      const localChanged = localSectionsDraft.some((section) => changedOrders.has(section.id));
+      if (localChanged) {
+        mutateLocalSections((prev) =>
+          sortSectionsBySortOrder(
+            prev.map((section) => {
+              const sortOrder = changedOrders.get(section.id);
+              return sortOrder == null ? section : { ...section, sortOrder };
+            }),
+          ),
+        );
+      }
+      refreshActivity();
+    } catch {
+      window.alert("Не удалось изменить порядок разделов");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function addLineInternalExpense(sectionId: string, lineId: string) {
@@ -1641,7 +1718,7 @@ export function ProjectEstimatePanel({
     const requisites = data.current.sections.filter(
       (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
     );
-    return [...sortSectionsBySortOrder(requisites), ...sortSectionsBySortOrder(localSectionsDraft)];
+    return sortSectionsBySortOrder([...requisites, ...localSectionsDraft]);
   }, [data?.current, localSectionsDraft]);
 
   const dirtyLocalLineIds = React.useMemo(() => {
@@ -1857,7 +1934,7 @@ export function ProjectEstimatePanel({
                   <div className="relative" ref={downloadWrapRef}>
                     <button
                       type="button"
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/80 bg-white/85 text-violet-800 shadow-[0_14px_35px_rgba(24,24,27,0.10)] transition hover:-translate-y-0.5 hover:bg-white"
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
                       aria-label="Скачать смету"
                       onClick={() => {
                         setDownloadOpen((v) => !v);
@@ -1866,6 +1943,7 @@ export function ProjectEstimatePanel({
                       }}
                     >
                       <DownloadIcon />
+                      <span>Скачать</span>
                     </button>
                     {downloadOpen ? (
                       <div className={menuPanel}>
@@ -1890,7 +1968,7 @@ export function ProjectEstimatePanel({
                 <button
                   type="button"
                   disabled={busy}
-                  className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/80 bg-zinc-950 text-white shadow-[0_14px_35px_rgba(24,24,27,0.18)] transition hover:-translate-y-0.5 disabled:opacity-50"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
                   aria-label="Действия со сметой"
                   onClick={() => {
                     setActionsOpen((v) => !v);
@@ -1899,6 +1977,7 @@ export function ProjectEstimatePanel({
                   }}
                 >
                   <MoreIcon />
+                  <span>Действия</span>
                 </button>
                 {actionsOpen ? (
                   <div className={menuPanel}>
@@ -2011,9 +2090,7 @@ export function ProjectEstimatePanel({
             <p className="text-sm text-zinc-600">Выберите смету.</p>
           ) : (
             <>
-              {!readOnly ? (
-                <div className="space-y-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/65 p-3">
-                  {importOpen ? (
+              {!readOnly && importOpen ? (
                     <div
                       className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm"
                       onMouseDown={() => {
@@ -2099,27 +2176,28 @@ export function ProjectEstimatePanel({
                       </div>
                       </div>
                     </div>
-                  ) : null}
-                  <form
-                    onSubmit={addSection}
-                    className="grid gap-3 rounded-md border border-zinc-300 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-                  >
-                    <input
-                      value={newSectionTitle}
-                      onChange={(e) => setNewSectionTitle(e.target.value)}
-                      placeholder="Новый раздел: подрядчики, услуги, доп. соглашение..."
-                      className={`min-w-[12rem] flex-1 ${inputField} min-h-12 rounded-2xl border-white/80 bg-white/90 shadow-sm`}
-                      maxLength={200}
-                    />
-                    <button type="submit" disabled={busy} className={`${btnPrimary} min-h-12 rounded-2xl px-5`}>
-                      Добавить раздел
-                    </button>
-                  </form>
-                </div>
               ) : null}
 
-              <div className="space-y-4">
-                {renderedSections.map((sec) =>
+              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-black text-zinc-950">Разделы сметы</div>
+                  <EstimateHelpLegend title="Порядок разделов">
+                    Открывай только нужные разделы. Стрелки справа меняют порядок; новый раздел добавляется в конец сметы.
+                  </EstimateHelpLegend>
+                </div>
+                <div className="text-xs font-semibold tabular-nums text-zinc-500">
+                  {renderedSections.length}{" "}
+                  {renderedSections.length % 10 === 1 && renderedSections.length % 100 !== 11
+                    ? "раздел"
+                    : [2, 3, 4].includes(renderedSections.length % 10) &&
+                        ![12, 13, 14].includes(renderedSections.length % 100)
+                      ? "раздела"
+                      : "разделов"}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {renderedSections.map((sec, sectionIndex) =>
                   isRequisiteSectionWithOrder(sec) ? (
                     <RequisiteSectionEditor
                       key={sec.id}
@@ -2131,6 +2209,9 @@ export function ProjectEstimatePanel({
                       busy={busy}
                       onPatchSection={patchSection}
                       onDeleteSection={deleteServerSection}
+                      canMoveUp={sectionIndex > 0}
+                      canMoveDown={sectionIndex < renderedSections.length - 1}
+                      onMove={(direction) => void moveSection(sec.id, direction)}
                       onDone={() => {
                         load(selectedVersion);
                         refreshActivity();
@@ -2145,6 +2226,10 @@ export function ProjectEstimatePanel({
                       busy={busy}
                       onPatchSection={patchSection}
                       onDeleteSection={deleteSection}
+                      canMoveUp={sectionIndex > 0}
+                      canMoveDown={sectionIndex < renderedSections.length - 1}
+                      onMove={(direction) => void moveSection(sec.id, direction)}
+                      defaultOpen={sectionIndex === 0}
                     >
                       {isDraftRequisiteSection(sec) ? (
                         <DraftRequisiteEditor
@@ -2194,8 +2279,36 @@ export function ProjectEstimatePanel({
                 )}
               </div>
 
-              <div className="rounded-md border border-zinc-300 bg-white p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              {!readOnly ? (
+                <form
+                  onSubmit={addSection}
+                  className="mt-3 grid gap-2 border border-dashed border-zinc-300 bg-zinc-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <label htmlFor="project-estimate-new-section" className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                      Новый раздел
+                    </label>
+                    <input
+                      id="project-estimate-new-section"
+                      value={newSectionTitle}
+                      onChange={(e) => setNewSectionTitle(e.target.value)}
+                      placeholder="Например: транспортные расходы"
+                      className={`mt-1 min-h-11 w-full ${inputField}`}
+                      maxLength={200}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={busy || !newSectionTitle.trim()}
+                    className={`${btnPrimary} min-h-11 self-end px-5`}
+                  >
+                    Добавить вниз
+                  </button>
+                </form>
+              ) : null}
+
+              <div className="border border-zinc-300 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3">
                   <div>
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Выбранная смета</div>
                     <div className="mt-1 text-sm font-semibold text-zinc-600">
@@ -2212,8 +2325,8 @@ export function ProjectEstimatePanel({
                     </span>
                   )}
                 </div>
-                <div className="grid gap-3 xl:grid-cols-[1.15fr_0.95fr_1fr]">
-                <div className="rounded-2xl border border-violet-200 bg-violet-50/80 p-3">
+                <div className="grid border-t border-zinc-200 xl:grid-cols-[1.15fr_0.95fr_1fr] xl:divide-x xl:divide-zinc-200">
+                <div className="bg-violet-50/45 p-4">
                   <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
@@ -2250,7 +2363,7 @@ export function ProjectEstimatePanel({
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50/90 p-3">
+                <div className="border-t border-zinc-200 bg-zinc-50/70 p-4 xl:border-t-0">
                   <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
@@ -2289,7 +2402,7 @@ export function ProjectEstimatePanel({
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+                <div className="border-t border-zinc-200 bg-emerald-50/55 p-4 xl:border-t-0">
                   <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Маржа</div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                     <div>
@@ -2308,7 +2421,7 @@ export function ProjectEstimatePanel({
               </div>
 
               {data.versions.length > 1 ? (
-                <div className="rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.88),rgba(255,255,255,0.96),rgba(250,245,255,0.45))] p-4 shadow-[0_16px_45px_rgba(6,78,59,0.08)]">
+                <div className="border border-emerald-200 bg-emerald-50/45 p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-800">Итоги проекта</div>
@@ -2321,19 +2434,19 @@ export function ProjectEstimatePanel({
                     </span>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-violet-100 bg-white/80 p-3">
+                    <div className="border border-violet-100 bg-white p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-700">Клиент</div>
                       <div className="mt-2 text-xl font-black tabular-nums text-violet-950">{money(projectTotals.revenueTotal)} ₽</div>
                     </div>
-                    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
+                    <div className="border border-zinc-200 bg-white p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">Расходы</div>
                       <div className="mt-2 text-xl font-black tabular-nums text-zinc-950">{money(projectTotals.totalExpensesWithTax)} ₽</div>
                     </div>
-                    <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3">
+                    <div className="border border-emerald-200 bg-white p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Прибыль</div>
                       <div className="mt-2 text-xl font-black tabular-nums text-emerald-950">{money(projectTotals.marginAfterTax)} ₽</div>
                     </div>
-                    <div className="rounded-2xl border border-emerald-200 bg-white/80 p-3">
+                    <div className="border border-emerald-200 bg-white p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Рентабельность</div>
                       <div className="mt-2 text-xl font-black tabular-nums text-emerald-950">
                         {Number.isFinite(projectTotals.marginAfterTaxPct) ? `${projectTotals.marginAfterTaxPct.toFixed(2)}%` : "—"}
@@ -2346,8 +2459,11 @@ export function ProjectEstimatePanel({
               {!readOnly && data?.current ? (
                 <div
                   ref={saveBarRef}
-                  className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(237,233,254,0.55),rgba(255,255,255,0.98),rgba(196,181,253,0.12))] p-4"
+                  className="flex flex-wrap items-center justify-between gap-3 border border-zinc-300 bg-zinc-50 p-3"
                 >
+                  <div className="text-xs text-zinc-500">
+                    {estimateDraftDirty ? "Есть несохранённые изменения" : "Все изменения сохранены"}
+                  </div>
                   <button
                     type="button"
                     disabled={busy || !estimateDraftDirty}
@@ -2360,7 +2476,7 @@ export function ProjectEstimatePanel({
                     type="button"
                     disabled={busy || !estimateDraftDirty}
                     onClick={() => void saveEstimateDraft()}
-                    className="min-h-12 rounded-xl border border-violet-500 bg-[linear-gradient(135deg,#7c3aed,#6d28d9)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(124,58,237,0.28)] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 rounded-md border border-zinc-950 bg-zinc-950 px-5 py-2.5 text-sm font-extrabold text-white hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy ? "Сохраняю смету…" : "Сохранить смету"}
                   </button>
@@ -2397,7 +2513,10 @@ function EstimateSectionBlock({
   children,
   summaryTitleAddon,
   summaryTrailing,
-  defaultOpen = true,
+  defaultOpen = false,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMove,
 }: {
   sec: EstSection | LocalDraftSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
@@ -2411,14 +2530,19 @@ function EstimateSectionBlock({
   /** Если задано — подменяет стандартную колонку «Открыть заявку» справа в summary. */
   summaryTrailing?: React.ReactNode;
   defaultOpen?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMove?: (direction: -1 | 1) => void;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
+  const [isOpen, setIsOpen] = React.useState(defaultOpen);
 
   React.useEffect(() => {
     setTitleDraft(sec.title);
     setEditingTitle(false);
-  }, [sec.id, sec.title]);
+    setIsOpen(defaultOpen);
+  }, [defaultOpen, sec.id, sec.title]);
 
   function saveTitle() {
     const t = titleDraft.trim();
@@ -2435,7 +2559,7 @@ function EstimateSectionBlock({
 
   return (
     <details
-      className={`group rounded-2xl border p-3 shadow-sm sm:p-4 ${
+      className={`group overflow-hidden border bg-white ${
         sec.kind === "REQUISITE"
           ? sectionTone.requisite
           : sec.kind === "DRAFT_REQUISITE"
@@ -2444,10 +2568,11 @@ function EstimateSectionBlock({
               ? sectionTone.contractor
               : sectionTone.local
       }`}
-      open={defaultOpen ? true : undefined}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer list-none">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <summary className="cursor-pointer list-none px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -2488,9 +2613,7 @@ function EstimateSectionBlock({
                 </EstimateHelpLegend>
               ) : null}
             </div>
-            <div
-              className={`mt-2 text-lg font-semibold text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}
-            >
+            <div className={`mt-1.5 text-base font-black text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}>
               {summaryTitleAddon}
               <span className="min-w-0">
                 {sec.kind === "REQUISITE"
@@ -2500,7 +2623,7 @@ function EstimateSectionBlock({
                     : sec.title}
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               {sec.kind === "REQUISITE" ? (
                 <>
                   {orderMeta?.eventName?.trim() ? (
@@ -2518,31 +2641,64 @@ function EstimateSectionBlock({
                   ) : null}
                 </>
               ) : sec.kind === "DRAFT_REQUISITE" ? (
-                <span className="rounded-full border border-fuchsia-100 bg-white/75 px-2 py-1">
+                <span>
                   {sec.lines.length} поз. · demo без резерва
                 </span>
               ) : sec.kind === "CONTRACTOR" ? (
-                <span className="rounded-full border border-zinc-200 bg-white/75 px-2 py-1">
+                <span>
                   {sec.lines.length} строк · подрядчики и услуги
                 </span>
               ) : (
-                <span className="rounded-full border border-indigo-100 bg-white/75 px-2 py-1">
+                <span>
                   {sec.lines.length} строк · ручной раздел
                 </span>
               )}
             </div>
           </div>
           <div className="flex flex-wrap items-start justify-end gap-2 self-start">
-            <div className="flex w-full flex-wrap justify-end gap-2 group-open:hidden sm:w-auto">
-              <div className="min-w-[8.5rem] rounded-2xl border border-violet-200 bg-violet-50/80 px-3 py-2 text-right shadow-sm">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Услуги</div>
-                <div className="mt-0.5 text-sm font-black tabular-nums text-violet-950">{formatMoneyRub(sectionClientSubtotal)} ₽</div>
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <div className="text-right">
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-400">Клиенту</div>
+                <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionClientSubtotal)} ₽</div>
               </div>
-              <div className="min-w-[8.5rem] rounded-2xl border border-zinc-200 bg-zinc-50/90 px-3 py-2 text-right shadow-sm">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Себестоимость</div>
-                <div className="mt-0.5 text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
+              <div className="h-8 w-px bg-zinc-200" aria-hidden />
+              <div className="text-right">
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-400">Расходы</div>
+                <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
               </div>
             </div>
+            {!readOnly && onMove ? (
+              <div className="flex overflow-hidden rounded-md border border-zinc-200 bg-white" aria-label="Порядок раздела">
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onMove(-1);
+                  }}
+                  disabled={busy || !canMoveUp}
+                  title="Переместить раздел выше"
+                  aria-label="Переместить раздел выше"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center border-l border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onMove(1);
+                  }}
+                  disabled={busy || !canMoveDown}
+                  title="Переместить раздел ниже"
+                  aria-label="Переместить раздел ниже"
+                >
+                  ↓
+                </button>
+              </div>
+            ) : null}
             {!readOnly && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !editingTitle ? (
               <>
                 <button
@@ -2563,15 +2719,17 @@ function EstimateSectionBlock({
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-red-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-400 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     void onDeleteSection(sec.id);
                   }}
                   disabled={busy}
+                  title="Удалить раздел"
+                  aria-label="Удалить раздел"
                 >
-                  Удалить раздел
+                  ×
                 </button>
               </>
             ) : null}
@@ -2586,13 +2744,13 @@ function EstimateSectionBlock({
                 Открыть заявку
               </Link>
             ) : null}
-            <svg viewBox="0 0 20 20" className="mt-0.5 h-4 w-4 text-zinc-400" aria-hidden>
+            <svg viewBox="0 0 20 20" className={`mt-0.5 h-4 w-4 text-zinc-400 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-hidden>
               <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.1 1.02l-4.25 4.5a.75.75 0 01-1.1 0l-4.25-4.5a.75.75 0 01.02-1.06z" fill="currentColor" />
             </svg>
           </div>
         </div>
       </summary>
-      <div className="mt-3 space-y-3">
+      <div className="space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
         {!readOnly ? (
           (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && editingTitle ? (
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
@@ -2753,15 +2911,15 @@ function LineEditor({
 
     return (
       <div
-        className={`relative rounded-2xl border p-3 text-xs shadow-sm transition ${
+        className={`relative border p-3 text-xs transition-colors ${
           isDirty
-            ? "border-orange-300 bg-[linear-gradient(135deg,rgba(255,247,237,0.9),rgba(255,255,255,1))]"
+            ? "border-orange-300 bg-orange-50/35"
             : "border-zinc-200 bg-white"
         }`}
       >
         <div className="mb-3 flex items-start justify-between gap-3 pr-9">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-violet-200 bg-violet-50 px-2 text-[11px] font-bold text-violet-800">
+            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded border border-zinc-300 bg-zinc-50 px-2 text-[11px] font-black text-zinc-800">
               {line.lineNumber}
             </span>
             <div className="min-w-0">
@@ -2797,7 +2955,7 @@ function LineEditor({
           </button>
         ) : null}
 
-        <div className="rounded-2xl border border-violet-100 bg-violet-50/35 p-3">
+        <div className="border-t border-zinc-200 pt-3">
           <div className={contractorClientGrid}>
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Позиция
@@ -2843,7 +3001,7 @@ function LineEditor({
                 inputMode="decimal"
               />
             </label>
-            <div className="rounded-xl border border-violet-200 bg-white/80 px-3 py-2">
+            <div className="border-l-2 border-violet-500 bg-violet-50/50 px-3 py-2">
               <div className="text-[10px] font-bold uppercase tracking-wide text-violet-700">Сумма</div>
               <div className="mt-1 text-sm font-extrabold tabular-nums text-violet-950">
                 {clientSum}
@@ -2853,13 +3011,15 @@ function LineEditor({
           </div>
         </div>
 
-        <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-zinc-600">Внутреннее</div>
-            <div className="text-[11px] font-semibold tabular-nums text-zinc-600">
-              Всего: {formatMoneyRub(lineInternalTotal(line))} ₽
-            </div>
-          </div>
+        <details className="group/internal mt-2 overflow-hidden border border-zinc-200 bg-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs [&::-webkit-details-marker]:hidden">
+            <span className="font-bold text-zinc-700">Внутренние расходы и оплата</span>
+            <span className="flex items-center gap-2">
+              <span className="font-black tabular-nums text-zinc-950">{formatMoneyRub(lineInternalTotal(line))} ₽</span>
+              <span className="text-zinc-400 transition-transform group-open/internal:rotate-180">⌄</span>
+            </span>
+          </summary>
+          <div className="border-t border-zinc-200 bg-zinc-50/70 p-3">
           <div className="grid gap-2 xl:grid-cols-[6rem_9rem_13rem_minmax(0,1fr)_minmax(0,1fr)]">
             <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
               Внутр. ₽
@@ -3085,7 +3245,8 @@ function LineEditor({
           >
             + Внутр. трата
           </button>
-        </div>
+          </div>
+        </details>
       </div>
     );
   }
@@ -3292,6 +3453,9 @@ function RequisiteSectionEditor({
   busy,
   onPatchSection,
   onDeleteSection,
+  canMoveUp,
+  canMoveDown,
+  onMove,
   onDone,
 }: {
   sec: EstSection;
@@ -3302,6 +3466,9 @@ function RequisiteSectionEditor({
   busy: boolean;
   onPatchSection: (id: string, patch: { title?: string }) => void | Promise<void>;
   onDeleteSection: (id: string) => void | Promise<void>;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMove: (direction: -1 | 1) => void;
   onDone: () => void;
 }) {
   const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
@@ -3850,6 +4017,9 @@ function RequisiteSectionEditor({
       summaryTitleAddon={summaryTitleAddon}
       summaryTrailing={summaryTrailing}
       defaultOpen={false}
+      canMoveUp={canMoveUp}
+      canMoveDown={canMoveDown}
+      onMove={onMove}
     >
       {loading ? (
         <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>

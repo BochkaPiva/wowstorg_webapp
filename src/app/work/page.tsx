@@ -6,6 +6,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { Stepper, type Step } from "@/components/modern-ui/stepper";
 
 import "./work.css";
 
@@ -190,6 +191,40 @@ const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
 };
 
 const PROJECT_STATUS_OPTIONS = Object.keys(PROJECT_STATUS_LABEL) as ProjectStatus[];
+
+const PROJECT_FLOW_STEPS: Step[] = [
+  { id: 1, title: "Запрос" },
+  { id: 2, title: "Смета" },
+  { id: 3, title: "Согласование" },
+  { id: 4, title: "Подготовка" },
+  { id: 5, title: "В работе" },
+  { id: 6, title: "Закрытие" },
+  { id: 7, title: "Готово" },
+];
+
+const ESTIMATE_FLOW_STEPS: Step[] = [
+  { id: 1, title: "Запрос" },
+  { id: 2, title: "Расчёт" },
+  { id: 3, title: "Отправка" },
+  { id: 4, title: "Проект" },
+];
+
+function projectFlowStep(phase: Phase) {
+  if (phase === "NEW") return 1;
+  if (phase === "ESTIMATING" || phase === "WAITING_CLIENT") return 2;
+  if (phase === "APPROVED") return 3;
+  if (phase === "PREPARING") return 4;
+  if (phase === "IN_PROGRESS") return 5;
+  if (phase === "CLOSING") return 6;
+  if (phase === "DONE") return 7;
+  return 1;
+}
+
+function projectFlowTone(item: WorkItem): "violet" | "amber" | "slate" {
+  if (item.phase === "WAITING_CLIENT") return "amber";
+  if (item.phase === "DONE" || item.phase === "CANCELLED") return "slate";
+  return "violet";
+}
 
 function money(value: number) {
   return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
@@ -660,8 +695,7 @@ export default function WorkQueuePage() {
                 const preview = previews[item.id] ?? null;
                 return (
                   <article key={item.key} className="work-card" data-phase={item.phase} data-expanded={isExpanded || undefined}>
-                    <div className="work-card__rail" aria-hidden="true" />
-                    <button type="button" className="work-card__summary" onClick={() => toggle(item)} aria-expanded={isExpanded}>
+                    <div className="work-card__summary">
                       <span className="work-customerMark">
                         {item.customer?.logoUrl ? (
                           // The authenticated logo endpoint must receive the current session cookie.
@@ -675,40 +709,103 @@ export default function WorkQueuePage() {
                         <small>{item.owner.displayName} · обновлено {dateRu(item.updatedAt.slice(0, 10))}</small>
                       </span>
                       <span className="work-card__state">
-                        <b>{PHASE_LABEL[item.phase]}</b>
+                        <b data-ball={item.ball}>{PHASE_LABEL[item.phase]}</b>
                         <small>{period(item)}{!item.dateConfirmed && item.startDate ? " · ориентировочно" : ""}</small>
                       </span>
                       <span className="work-card__numbers">
                         <strong>{item.totalAmount > 0 ? money(item.totalAmount) : "—"}</strong>
                         <small>{item.ordersCount} заявок · {item.tasksCount} задач</small>
                       </span>
-                      <span className="work-card__chevron" aria-hidden="true">⌄</span>
-                    </button>
-                    <div className="work-card__actions">
-                      {item.orders.length === 1 && item.kind === "STANDALONE_ORDER" && quickAction(item.orders[0]) ? (
+                      <span className="work-card__actions">
+                        {item.orders.length === 1 && item.kind === "STANDALONE_ORDER" && quickAction(item.orders[0]) ? (
+                          <button
+                            type="button"
+                            className="work-action work-action--accent"
+                            disabled={busy === item.orders[0].id}
+                            onClick={() => setConfirmOrder(item.orders[0])}
+                          >
+                            {quickAction(item.orders[0])?.label}
+                          </button>
+                        ) : null}
+                        {item.kind !== "STANDALONE_ORDER" ? (
+                          <button
+                            type="button"
+                            className="work-action"
+                            onClick={() => {
+                              setProjectAction(item);
+                              setProjectStatus(item.status as ProjectStatus);
+                              setProjectArchiveNote("");
+                            }}
+                          >
+                            Сменить статус
+                          </button>
+                        ) : null}
+                        <Link className="work-action work-action--dark" href={href}>Открыть</Link>
                         <button
                           type="button"
-                          className="work-action work-action--accent"
-                          disabled={busy === item.orders[0].id}
-                          onClick={() => setConfirmOrder(item.orders[0])}
+                          className="work-card__expand"
+                          onClick={() => toggle(item)}
+                          aria-expanded={isExpanded}
                         >
-                          {quickAction(item.orders[0])?.label}
+                          <span>{isExpanded ? "Свернуть" : "Сводка"}</span>
+                          <i aria-hidden="true">⌄</i>
                         </button>
-                      ) : null}
-                      {item.kind !== "STANDALONE_ORDER" ? (
-                        <button
-                          type="button"
-                          className="work-action"
-                          onClick={() => {
-                            setProjectAction(item);
-                            setProjectStatus(item.status as ProjectStatus);
-                            setProjectArchiveNote("");
-                          }}
-                        >
-                          Статус
-                        </button>
-                      ) : null}
-                      <Link className="work-action" href={href}>Открыть</Link>
+                      </span>
+                    </div>
+
+                    <div className="work-card__progress">
+                      {item.orders.length ? (
+                        item.orders.map((order, orderIndex) => (
+                          <section key={order.id} className="work-progressRow">
+                            <header className="work-progressRow__head">
+                              <span>
+                                <b>{item.kind === "STANDALONE_ORDER" ? "Прогресс заявки" : `Заявка ${orderIndex + 1}`}</b>
+                                <strong>{order.title}</strong>
+                              </span>
+                              <span className="work-progressRow__meta">
+                                <span>Готовность {dateRu(order.readyByDate)}</span>
+                                <span>{money(order.totalAmount)}</span>
+                                {quickAction(order) && item.kind !== "STANDALONE_ORDER" ? (
+                                  <button type="button" disabled={busy === order.id} onClick={() => setConfirmOrder(order)}>
+                                    {quickAction(order)?.label}
+                                  </button>
+                                ) : null}
+                                {item.kind !== "STANDALONE_ORDER" ? (
+                                  <Link href={`/orders/${order.id}?from=work`}>Открыть заявку</Link>
+                                ) : null}
+                              </span>
+                            </header>
+                            <OrderStatusStepper
+                              status={order.status}
+                              source={order.source}
+                              showSummary={false}
+                              compactWindow={8}
+                              className="work-progressRow__stepper"
+                            />
+                          </section>
+                        ))
+                      ) : (
+                        <section className="work-progressRow work-progressRow--project">
+                          <header className="work-progressRow__head">
+                            <span>
+                              <b>{item.kind === "ESTIMATE_ONLY" ? "Путь расчёта" : "Прогресс проекта"}</b>
+                              <strong>{PHASE_LABEL[item.phase]}</strong>
+                            </span>
+                            <small>
+                              {item.kind === "ESTIMATE_ONLY"
+                                ? "Смету можно превратить в проект после согласования"
+                                : "Заявка на реквизит ещё не привязана"}
+                            </small>
+                          </header>
+                          <Stepper
+                            steps={item.kind === "ESTIMATE_ONLY" ? ESTIMATE_FLOW_STEPS : PROJECT_FLOW_STEPS}
+                            activeStep={item.kind === "ESTIMATE_ONLY" ? 2 : projectFlowStep(item.phase)}
+                            tone={projectFlowTone(item)}
+                            windowSize={7}
+                            className="work-progressRow__stepper"
+                          />
+                        </section>
+                      )}
                     </div>
 
                     <div className="work-card__reveal" aria-hidden={!isExpanded}>
@@ -777,32 +874,12 @@ export default function WorkQueuePage() {
                           ) : null
                         ) : null}
 
-                        {item.orders.length ? (
-                          <div className="work-orders">
-                            <div className="work-subhead"><h3>Заявки проекта</h3><span>{item.orders.length}</span></div>
-                            {item.orders.map((order) => (
-                              <div key={order.id} className="work-order">
-                                <div className="work-order__head">
-                                  <div><strong>{order.title}</strong><span>{dateRu(order.readyByDate)} готовность · {money(order.totalAmount)}</span></div>
-                                  <div>
-                                    {quickAction(order) ? (
-                                      <button type="button" disabled={busy === order.id} onClick={() => setConfirmOrder(order)}>
-                                        {quickAction(order)?.label}
-                                      </button>
-                                    ) : null}
-                                    <Link href={`/orders/${order.id}?from=work`}>Открыть</Link>
-                                  </div>
-                                </div>
-                                <OrderStatusStepper status={order.status} source={order.source} showSummary={false} compactWindow={8} />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
+                        {!item.orders.length ? (
                           <div className="work-emptyState">
                             <strong>{item.kind === "ESTIMATE_ONLY" ? "Смета без лишних полей" : "Заявок пока нет"}</strong>
                             <span>{item.estimate ? `Создана версия сметы №${item.estimate.versionNumber}` : "Откройте карточку, чтобы начать расчёт."}</span>
                           </div>
-                        )}
+                        ) : null}
 
                         <div className="work-revealActions">
                           {item.kind === "ESTIMATE_ONLY" ? (

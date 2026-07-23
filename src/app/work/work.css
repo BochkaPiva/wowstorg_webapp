@@ -13,6 +13,7 @@
 .work-notice,
 .work-error {
   border: 1px solid var(--work-border);
+  border-radius: var(--wow-radius-lg, 16px);
   background: #fff;
 }
 
@@ -256,53 +257,41 @@
 .work-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   overflow: hidden;
-  transition: border-color 160ms ease, transform 160ms ease;
+  border-color: #c9c9c3;
+  box-shadow: 0 4px 16px rgba(10, 10, 10, 0.045);
+  transition: border-color 180ms var(--wow-ease, ease), box-shadow 180ms var(--wow-ease, ease), transform 180ms var(--wow-ease, ease);
 }
 
 .work-card:hover {
-  border-color: #aaa9a4;
+  border-color: #9d9d97;
+  box-shadow: 0 10px 26px rgba(10, 10, 10, 0.07);
   transform: translateY(-1px);
 }
 
-.work-card__rail {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 5px;
-  background: #c8c8c4;
-}
-
-.work-card[data-phase="NEW"] .work-card__rail,
-.work-card[data-phase="ESTIMATING"] .work-card__rail,
-.work-card[data-phase="PREPARING"] .work-card__rail,
-.work-card[data-phase="CLOSING"] .work-card__rail { background: var(--wow-yellow, #ffd21f); }
-.work-card[data-phase="WAITING_CLIENT"] .work-card__rail { background: var(--wow-purple, #5e20bb); }
-.work-card[data-phase="IN_PROGRESS"] .work-card__rail { background: #2787d8; }
-.work-card[data-phase="DONE"] .work-card__rail { background: #0aa876; }
 .work-card[data-phase="PAUSED"],
 .work-card[data-phase="CANCELLED"] { opacity: .78; }
 
 .work-card__summary {
   display: grid;
-  grid-template-columns: 56px minmax(220px, 1.5fr) minmax(170px, .8fr) minmax(140px, .55fr) 18px;
-  gap: 16px;
+  grid-template-columns: 58px minmax(220px, 1.5fr) minmax(170px, .8fr) minmax(135px, .55fr) minmax(265px, auto);
+  gap: 18px;
   align-items: center;
-  min-height: 106px;
-  border: 0;
-  padding: 18px 12px 18px 24px;
-  background: transparent;
+  min-height: 112px;
+  padding: 18px 20px;
+  background: #fff;
   text-align: left;
 }
 
 .work-customerMark {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--work-border);
-  background: #f4f4f0;
+  border-radius: 13px;
+  background: #f1f1ed;
   color: #2b1957;
 }
 
@@ -344,14 +333,30 @@
 }
 
 .work-card__overline {
+  color: var(--wow-purple, #5e20bb);
   font-weight: 800;
   letter-spacing: .06em;
   text-transform: uppercase;
 }
 
 .work-card__state b {
+  width: fit-content;
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: #f1f1ed;
   color: #151515;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.work-card__state b[data-ball="CLIENT"] {
+  background: #fff2b8;
+  color: #684900;
+}
+
+.work-card__state b[data-ball="WOWSTORG"] {
+  background: var(--wow-purple-soft, #eee7ff);
+  color: var(--wow-purple-dark, #30205f);
 }
 
 .work-card__numbers {
@@ -362,29 +367,22 @@
   font-size: 17px;
 }
 
-.work-card__chevron {
-  font-size: 20px;
-  transition: transform 180ms ease;
-}
-
-.work-card[data-expanded] .work-card__chevron {
-  transform: rotate(180deg);
-}
-
 .work-card__actions {
   display: flex;
+  min-width: 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  border-left: 1px solid var(--work-border);
-  padding: 16px;
 }
 
 .work-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 38px;
+  border-radius: 9px;
   padding: 0 15px;
-  font-size: 13px;
+  font-size: 12px;
   text-decoration: none;
 }
 
@@ -398,8 +396,145 @@
   color: #fff;
 }
 
+.work-card__expand {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0 4px 0 8px;
+  background: transparent;
+  color: #565652;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.work-card__expand:hover {
+  color: #0a0a0a;
+}
+
+.work-card__expand i {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--work-border);
+  border-radius: 8px;
+  background: #f7f7f4;
+  font-size: 16px;
+  font-style: normal;
+  transition: transform 180ms var(--wow-ease, ease), background-color 180ms var(--wow-ease, ease);
+}
+
+.work-card[data-expanded] .work-card__expand i {
+  transform: rotate(180deg);
+}
+
+.work-card__progress {
+  display: grid;
+  border-top: 1px solid var(--work-border);
+  background: #f8f8f5;
+}
+
+.work-progressRow {
+  min-width: 0;
+  padding: 13px 20px 15px;
+}
+
+.work-progressRow + .work-progressRow {
+  border-top: 1px solid var(--work-border);
+}
+
+.work-progressRow__head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+
+.work-progressRow__head > span:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.work-progressRow__head b {
+  flex: 0 0 auto;
+  color: var(--wow-purple, #5e20bb);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.work-progressRow__head strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-progressRow__head small {
+  color: var(--work-muted);
+  font-size: 11px;
+}
+
+.work-progressRow__meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  color: var(--work-muted);
+  font-size: 11px;
+}
+
+.work-progressRow__meta > span + span {
+  color: #171716;
+  font-weight: 750;
+}
+
+.work-progressRow__meta button,
+.work-progressRow__meta a {
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: var(--wow-purple, #5e20bb);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.work-progressRow__meta button:hover,
+.work-progressRow__meta a:hover {
+  color: #0a0a0a;
+}
+
+.work-progressRow__stepper.order-progress,
+.work-progressRow__stepper {
+  gap: 0;
+}
+
+.work-progressRow__stepper.order-progress > .order-progress__stepper,
+.work-progressRow__stepper.order-progress__stepper,
+.work-progressRow__stepper {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.work-progressRow__stepper > div {
+  min-width: 560px;
+}
+
+.work-progressRow--project {
+  background: color-mix(in srgb, var(--wow-purple-soft, #eee7ff) 26%, #f8f8f5);
+}
+
 .work-card__reveal {
-  grid-column: 1 / -1;
   max-height: 0;
   overflow: hidden;
   border-top: 0 solid var(--work-border);
@@ -416,8 +551,8 @@
 .work-card__revealInner {
   display: grid;
   gap: 18px;
-  padding: 22px 24px 24px;
-  background: #fafaf7;
+  padding: 18px 20px 20px;
+  background: #fff;
 }
 
 .work-brief {
@@ -724,10 +859,13 @@
 
 @media (max-width: 1100px) {
   .work-filters { grid-template-columns: 1fr 1fr; }
-  .work-card { grid-template-columns: 1fr; }
+  .work-card__summary {
+    grid-template-columns: 54px minmax(220px, 1.4fr) minmax(170px, .8fr) minmax(135px, .55fr);
+  }
   .work-card__actions {
+    grid-column: 2 / -1;
     border-top: 1px solid var(--work-border);
-    border-left: 0;
+    padding-top: 12px;
     justify-content: flex-end;
   }
 }
@@ -736,13 +874,30 @@
   .work-hero { align-items: stretch; flex-direction: column; padding: 22px; }
   .work-hero .work-primary { width: 100%; }
   .work-card__summary {
-    grid-template-columns: 48px minmax(0, 1fr) 18px;
-    padding-left: 18px;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
   }
   .work-customerMark { width: 44px; height: 44px; }
   .work-card__state,
   .work-card__numbers { grid-column: 2; text-align: left; }
-  .work-card__chevron { grid-column: 3; grid-row: 1 / 4; }
+  .work-card__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-top: 12px;
+  }
+  .work-progressRow { padding-inline: 16px; }
+  .work-progressRow__head,
+  .work-progressRow__head > span:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .work-progressRow__meta {
+    width: 100%;
+    flex-wrap: wrap;
+  }
   .work-brief { grid-template-columns: 1fr; }
   .work-brief section { border-right: 0; border-bottom: 1px solid var(--work-border); }
   .work-brief section:last-child { border-bottom: 0; }
@@ -758,7 +913,7 @@
   .work-primary,
   .work-card,
   .work-card__reveal,
-  .work-card__chevron { transition: none; }
+  .work-card__expand i { transition: none; }
   .work-skeleton span,
   .work-previewSkeleton span { animation: none; }
 }

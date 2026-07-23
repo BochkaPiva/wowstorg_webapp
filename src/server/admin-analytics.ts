@@ -707,7 +707,12 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
 async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyticsData> {
   const now = new Date();
   const projects = await prisma.project.findMany({
-    where: projectEventPeriodWhere(scope),
+    where: {
+      AND: [
+        projectEventPeriodWhere(scope),
+        { mode: "FULL", customerId: { not: null } },
+      ],
+    },
     orderBy: [{ eventStartDate: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
@@ -957,7 +962,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     return daysSince(lastStatusLog?.createdAt ?? project.createdAt, now);
   }
 
-  const rows: ProjectAnalyticsRow[] = projects.map((project) => {
+  const rows: ProjectAnalyticsRow[] = projects.flatMap((project) => {
+    if (!project.customerId || !project.customer) return [];
     const includedVersions = project.estimateVersions.filter((version) => version.includeInProjectTotals);
     const financials =
       includedVersions.length > 0
@@ -995,7 +1001,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     if (hasPrimaryEstimate && hasLinkedOrder && project.eventDateConfirmed) healthScore += 10;
     healthScore = Math.min(100, Math.max(0, healthScore));
 
-    return {
+    return [{
       projectId: project.id,
       title: project.title,
       customerId: project.customerId,
@@ -1016,7 +1022,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       healthScore,
       risks,
       financials,
-    };
+    }];
   });
 
   const total = rows.length;

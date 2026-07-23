@@ -12,9 +12,47 @@ import type {
 } from "@/server/admin-analytics";
 
 type Scope = { from: string; to: string };
-type Tab = "overview" | "bonuses" | "requisites" | "projects" | "customers";
+type Tab = "overview" | "bonuses" | "reconciliation" | "requisites" | "projects" | "customers";
 type PeriodPreset = "month" | "previousMonth" | "quarter" | "30days" | "year";
 type AnalyticsPayload = AdminAnalyticsData;
+
+type ReconciliationRow = {
+  id?: string;
+  rowNumber: number;
+  projectName: string;
+  revenue: number;
+  expenses: number;
+  profit: number;
+  marginPercent: number;
+  bonusPool: number;
+  matchStatus: "MATCHED" | "UNMATCHED" | "CONFLICT" | "IGNORED";
+  matchedEntityType: "PROJECT" | "ORDER" | null;
+  matchedEntityId: string | null;
+  matchNote: string | null;
+};
+
+type ReconciliationBatch = {
+  id: string;
+  title: string;
+  sourceFileName: string;
+  sheetName: string;
+  periodStart: string;
+  periodEnd: string;
+  createdAt: string;
+  _count: { rows: number };
+};
+
+type ReconciliationSelected = ReconciliationBatch & {
+  rows: ReconciliationRow[];
+  summary: {
+    external: { revenue: number; expenses: number; profit: number; bonusPool: number };
+    site: { revenue: number; expenses: number; profit: number; bonusPool: number };
+    delta: { revenue: number; expenses: number; profit: number; bonusPool: number };
+    matched: number;
+    conflicts: number;
+    unmatched: number;
+  };
+};
 
 const TAB_META: Array<{
   id: Tab;
@@ -36,6 +74,13 @@ const TAB_META: Array<{
     shortLabel: "Бонусы",
     description: "Отдельный расчёт бонусного пула без привязки к периоду других отчётов.",
     basis: "Факт: закрытые заявки без проекта и завершённые проекты за выбранный период.",
+  },
+  {
+    id: "reconciliation",
+    label: "Сверка",
+    shortLabel: "Сверка",
+    description: "Excel против факта сайта: расхождения, потерянные строки и ошибочные ссылки.",
+    basis: "Импорт хранится отдельно и никогда не перезаписывает проекты или заявки.",
   },
   {
     id: "requisites",
@@ -106,6 +151,7 @@ function initialScopes(): Record<Tab, Scope> {
   return {
     overview: annual,
     bonuses: presetScope("month"),
+    reconciliation: presetScope("month"),
     requisites: annual,
     projects: annual,
     customers: annual,
@@ -538,6 +584,34 @@ export default function AdminAnalyticsPage() {
   const activeMeta = TAB_META.find((item) => item.id === activeTab) ?? TAB_META[0];
 
   React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("wowstorg.analytics.scopes.v2");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<Record<Tab, Scope>>;
+      setScopes((current) => {
+        const next = { ...current };
+        for (const tab of TAB_META) {
+          const saved = parsed[tab.id];
+          if (
+            saved
+            && /^\d{4}-\d{2}-\d{2}$/.test(saved.from)
+            && /^\d{4}-\d{2}-\d{2}$/.test(saved.to)
+          ) {
+            next[tab.id] = saved;
+          }
+        }
+        return next;
+      });
+    } catch {
+      // Локальная настройка периода не должна блокировать аналитику.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    window.localStorage.setItem("wowstorg.analytics.scopes.v2", JSON.stringify(scopes));
+  }, [scopes]);
+
+  React.useEffect(() => {
     if (forbidden || scopeError || cache[cacheKey]) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ from: scope.from, to: scope.to });
@@ -601,7 +675,7 @@ export default function AdminAnalyticsPage() {
 
           <nav
             aria-label="Разделы аналитики"
-            className="grid border border-zinc-300 bg-white md:grid-cols-5"
+            className="grid border border-zinc-300 bg-white md:grid-cols-3 xl:grid-cols-6"
           >
             {TAB_META.map((tab, index) => (
               <button
@@ -646,6 +720,7 @@ export default function AdminAnalyticsPage() {
             <>
               {activeTab === "overview" ? <OverviewTab data={data} scope={scope} /> : null}
               {activeTab === "bonuses" ? <BonusesTab data={data} /> : null}
+              {activeTab === "reconciliation" ? <ReconciliationTab scope={scope} /> : null}
               {activeTab === "requisites" ? <RequisitesTab data={data} scope={scope} /> : null}
               {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
               {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
@@ -909,6 +984,283 @@ function BonusesTab({ data }: { data: AnalyticsPayload }) {
       >
         <FinanceTrend points={data.overview.timeline} />
       </Panel>
+    </div>
+  );
+}
+
+function ReconciliationTab({ scope }: { scope: Scope }) {
+  const [batches, setBatches] = React.useState<ReconciliationBatch[]>([]);
+  const [selected, setSelected] = React.useState<ReconciliationSelected | null>(null);
+  const [selectedId, setSelectedId] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const [title, setTitle] = React.useState("Сверка");
+  const [preview, setPreview] = React.useState<{
+    fileName: string;
+    sheetName: string;
+    rows: ReconciliationRow[];
+    totals: { revenue: number; expenses: number; profit: number; bonusPool: number };
+    matched: number;
+    conflicts: number;
+    unmatched: number;
+  } | null>(null);
+  const [busy, setBusy] = React.useState<"load" | "preview" | "commit" | null>("load");
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async (id?: string) => {
+    setBusy("load");
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (id) params.set("id", id);
+      const response = await fetch(`/api/admin/analytics/reconciliation?${params}`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        batches?: ReconciliationBatch[];
+        selected?: ReconciliationSelected | null;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error?.message ?? "Не удалось загрузить сверки");
+      }
+      setBatches(payload.batches ?? []);
+      setSelected(payload.selected ?? null);
+      if (payload.selected) setSelectedId(payload.selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Ошибка загрузки сверок");
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function submit(mode: "preview" | "commit") {
+    if (!file) return;
+    setBusy(mode);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("title", title.trim() || file.name.replace(/\.[^.]+$/, ""));
+      form.set("from", scope.from);
+      form.set("to", scope.to);
+      form.set("mode", mode);
+      const response = await fetch("/api/admin/analytics/reconciliation", {
+        method: "POST",
+        body: form,
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        preview?: NonNullable<typeof preview>;
+        batchId?: string;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error?.message ?? "Не удалось обработать Excel");
+      }
+      if (payload.preview) setPreview(payload.preview);
+      if (mode === "commit" && payload.batchId) {
+        setPreview(null);
+        await load(payload.batchId);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Ошибка обработки Excel");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const report = selected ?? null;
+  const rows = preview?.rows ?? report?.rows ?? [];
+
+  return (
+    <div className="space-y-5">
+      <section className="grid border border-zinc-300 bg-white xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="p-5 sm:p-6">
+          <h2 className="text-2xl font-black tracking-tight text-zinc-950">Импорт внешней таблицы</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+            Сначала система показывает предварительное сопоставление. Сохранение создаёт отдельный
+            снимок сверки и не изменяет суммы, статусы или сметы на сайте.
+          </p>
+          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(220px,0.7fr)_minmax(260px,1fr)]">
+            <label className="grid gap-1 text-xs font-bold text-zinc-600">
+              Название сверки
+              <input
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className="h-11 border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-950 outline-none focus:border-violet-600"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-bold text-zinc-600">
+              Excel-файл
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(event) => {
+                  const next = event.target.files?.[0] ?? null;
+                  setFile(next);
+                  setPreview(null);
+                  if (next && title === "Сверка") setTitle(next.name.replace(/\.[^.]+$/, ""));
+                }}
+                className="h-11 border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700 file:mr-3 file:border-0 file:bg-zinc-950 file:px-3 file:py-1 file:font-bold file:text-white"
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!file || busy != null}
+              onClick={() => void submit("preview")}
+              className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-bold text-white disabled:opacity-40"
+            >
+              {busy === "preview" ? "Проверяем…" : "Предварительная сверка"}
+            </button>
+            {preview ? (
+              <button
+                type="button"
+                disabled={busy != null}
+                onClick={() => void submit("commit")}
+                className="h-10 border border-amber-400 bg-amber-400 px-4 text-sm font-black text-zinc-950 disabled:opacity-40"
+              >
+                {busy === "commit" ? "Сохраняем…" : "Сохранить снимок"}
+              </button>
+            ) : null}
+          </div>
+          {error ? <div className="mt-4 border border-rose-300 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</div> : null}
+        </div>
+        <aside className="border-t border-zinc-300 bg-zinc-50 p-5 xl:border-l xl:border-t-0">
+          <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-zinc-500">
+            Сохранённые сверки
+            <select
+              value={selectedId}
+              onChange={(event) => {
+                setSelectedId(event.target.value);
+                if (event.target.value) void load(event.target.value);
+                else setSelected(null);
+              }}
+              className="h-11 border border-zinc-300 bg-white px-3 text-sm font-bold normal-case tracking-normal text-zinc-950"
+            >
+              <option value="">Выберите снимок</option>
+              {batches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {batch.title} · {formatDate(batch.periodStart)}—{formatDate(batch.periodEnd)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-4 text-xs leading-5 text-zinc-500">
+            Период текущего импорта: {formatDate(scope.from)} — {formatDate(scope.to)}.
+          </p>
+        </aside>
+      </section>
+
+      {preview || report ? (
+        <>
+          <MetricStrip
+            items={[
+              {
+                label: "Строк",
+                value: formatInt(rows.length),
+                note: preview ? preview.fileName : report?.sourceFileName ?? "",
+              },
+              {
+                label: "Сопоставлено",
+                value: formatInt(preview?.matched ?? report?.summary.matched ?? 0),
+                note: "точная ссылка или уникальное название",
+                accent: "green",
+              },
+              {
+                label: "Конфликты",
+                value: formatInt(preview?.conflicts ?? report?.summary.conflicts ?? 0),
+                note: "ссылка и название расходятся",
+                accent: (preview?.conflicts ?? report?.summary.conflicts ?? 0) > 0 ? "red" : undefined,
+              },
+              {
+                label: "Не найдено",
+                value: formatInt(preview?.unmatched ?? report?.summary.unmatched ?? 0),
+                note: "нужно связать вручную",
+              },
+            ]}
+          />
+
+          {report ? (
+            <section className="grid border border-zinc-300 bg-white lg:grid-cols-4">
+              {(["revenue", "expenses", "profit", "bonusPool"] as const).map((key) => {
+                const label = {
+                  revenue: "Выручка",
+                  expenses: "Расходы",
+                  profit: "Прибыль",
+                  bonusPool: "Бонусный пул",
+                }[key];
+                return (
+                  <div key={key} className="border-b border-zinc-200 p-5 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0">
+                    <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-500">{label}</div>
+                    <div className="mt-3 grid gap-1 text-sm">
+                      <span>Таблица <b className="float-right tabular-nums">{formatMoney(report.summary.external[key])}</b></span>
+                      <span>Сайт <b className="float-right tabular-nums">{formatMoney(report.summary.site[key])}</b></span>
+                      <span className="mt-2 border-t border-zinc-200 pt-2 font-bold">
+                        Разница
+                        <b className={["float-right tabular-nums", Math.abs(report.summary.delta[key]) > 1 ? "text-rose-700" : "text-emerald-700"].join(" ")}>
+                          {formatMoney(report.summary.delta[key])}
+                        </b>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          ) : null}
+
+          <section className="overflow-hidden border border-zinc-300 bg-white">
+            <header className="border-b border-zinc-300 px-5 py-4">
+              <h2 className="text-lg font-black text-zinc-950">Построчная диагностика</h2>
+              <p className="mt-1 text-xs text-zinc-500">Красным отмечены строки, где ссылка ведёт не на тот проект или id отсутствует.</p>
+            </header>
+            <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full border-collapse text-sm">
+                <thead className="bg-zinc-100 text-left text-[11px] uppercase tracking-[0.08em] text-zinc-500">
+                  <tr>
+                    <th className="px-4 py-3">Строка</th>
+                    <th className="px-4 py-3">Проект</th>
+                    <th className="px-4 py-3 text-right">Выручка</th>
+                    <th className="px-4 py-3 text-right">Расходы</th>
+                    <th className="px-4 py-3 text-right">Прибыль</th>
+                    <th className="px-4 py-3">Сопоставление</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={`${row.id ?? "preview"}:${row.rowNumber}`} className="border-t border-zinc-200 align-top">
+                      <td className="px-4 py-3 text-zinc-500">{row.rowNumber}</td>
+                      <td className="px-4 py-3 font-bold text-zinc-950">{row.projectName}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(row.revenue)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatMoney(row.expenses)}</td>
+                      <td className="px-4 py-3 text-right font-bold tabular-nums">{formatMoney(row.profit)}</td>
+                      <td className="px-4 py-3">
+                        <span className={[
+                          "inline-flex border px-2 py-1 text-[11px] font-black",
+                          row.matchStatus === "MATCHED"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                            : row.matchStatus === "CONFLICT"
+                              ? "border-rose-300 bg-rose-50 text-rose-800"
+                              : "border-amber-300 bg-amber-50 text-amber-900",
+                        ].join(" ")}>
+                          {row.matchStatus === "MATCHED" ? "Совпало" : row.matchStatus === "CONFLICT" ? "Конфликт" : "Не найдено"}
+                        </span>
+                        <span className="mt-1 block max-w-sm text-xs leading-5 text-zinc-500">{row.matchNote}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      ) : (
+        <EmptyState>Загрузите таблицу или выберите сохранённый снимок сверки.</EmptyState>
+      )}
     </div>
   );
 }

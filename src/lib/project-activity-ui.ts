@@ -5,6 +5,7 @@ import { PROJECT_BALL_LABEL, PROJECT_STATUS_LABEL } from "@/lib/project-ui-label
 export const PROJECT_ACTIVITY_KIND_LABEL: Record<ProjectActivityKind, string> = {
   PROJECT_CREATED: "Проект создан",
   PROJECT_UPDATED: "Правки карточки",
+  PROJECT_CONVERTED: "Расчёт преобразован в проект",
   PROJECT_ARCHIVED: "Отправлен в архив",
   ORDER_LINKED: "Создана заявка реквизита",
   ORDER_CANCELLED: "Заявка реквизита отменена",

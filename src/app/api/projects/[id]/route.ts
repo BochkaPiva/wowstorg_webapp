@@ -56,6 +56,8 @@ export async function GET(
     select: {
       id: true,
       title: true,
+      mode: true,
+      leadCustomerName: true,
       status: true,
       ball: true,
       archivedAt: true,
@@ -68,7 +70,7 @@ export async function GET(
       internalSummary: true,
       createdAt: true,
       updatedAt: true,
-      customer: { select: { id: true, name: true } },
+      customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
       owner: { select: { id: true, displayName: true } },
       _count: { select: { orders: true } },
       draftOrders: {
@@ -142,6 +144,15 @@ export async function GET(
   return jsonOk({
     project: {
       ...project,
+      customer: project.customer
+        ? {
+            id: project.customer.id,
+            name: project.customer.name,
+            logoUrl: project.customer.logoKey
+              ? `/api/customers/${project.customer.id}/logo?v=${project.customer.logoUpdatedAt?.getTime() ?? 0}`
+              : null,
+          }
+        : null,
       eventStartDate: toDateOnly(project.eventStartDate),
       eventEndDate: toDateOnly(project.eventEndDate),
       draftOrder:

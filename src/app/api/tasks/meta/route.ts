@@ -26,7 +26,7 @@ export async function GET() {
       where: { archivedAt: null, status: { notIn: ["COMPLETED", "CANCELLED"] } },
       orderBy: { updatedAt: "desc" },
       take: 200,
-      select: { id: true, title: true, customer: { select: { name: true } } },
+      select: { id: true, title: true, leadCustomerName: true, customer: { select: { name: true } } },
     }),
     prisma.order.findMany({
       where: { status: { in: [...ACTIVE_ORDER_STATUSES] } },
@@ -46,7 +46,7 @@ export async function GET() {
     projects: projects.map((project) => ({
       id: project.id,
       title: project.title,
-      customerName: project.customer.name,
+      customerName: project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан",
     })),
     orders: orders.map((order) => ({
       id: order.id,
@@ -55,4 +55,3 @@ export async function GET() {
     })),
   });
 }
-

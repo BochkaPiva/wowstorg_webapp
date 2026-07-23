@@ -39,8 +39,18 @@ export async function PATCH(
   const updated = await prisma.customer.update({
     where: { id },
     data,
-    select: { id: true, name: true, isActive: true, notes: true },
+    select: { id: true, name: true, isActive: true, notes: true, logoKey: true, logoUpdatedAt: true },
   });
 
-  return jsonOk({ customer: updated });
+  return jsonOk({
+    customer: {
+      id: updated.id,
+      name: updated.name,
+      isActive: updated.isActive,
+      notes: updated.notes,
+      logoUrl: updated.logoKey
+        ? `/api/customers/${updated.id}/logo?v=${updated.logoUpdatedAt?.getTime() ?? 0}`
+        : null,
+    },
+  });
 }

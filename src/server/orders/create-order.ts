@@ -225,6 +225,7 @@ export async function createOrderInTransaction(
       select: { id: true, customerId: true },
     });
     if (!project) throw new CreateOrderError("PROJECT_NOT_FOUND");
+    if (!project.customerId) throw new CreateOrderError("PROJECT_CUSTOMER_REQUIRED");
     if (hasCustomerName) throw new CreateOrderError("PROJECT_CUSTOMER_CONFLICT");
     if (hasCustomerId && input.customerId!.trim() !== project.customerId) {
       throw new CreateOrderError("PROJECT_CUSTOMER_MISMATCH");

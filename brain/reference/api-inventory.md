@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-07-06T10:00:50.544Z  
-> **Файлов route.ts:** 115  
+> **Сгенерировано:** 2026-07-23T17:10:24.360Z  
+> **Файлов route.ts:** 120  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -10,6 +10,7 @@
 |------|-------------------|------|
 | GET | `/api/admin/analytics/export` | `src/app/api/admin/analytics/export/route.ts` |
 | GET | `/api/admin/analytics/profitability` | `src/app/api/admin/analytics/profitability/route.ts` |
+| GET, POST | `/api/admin/analytics/reconciliation` | `src/app/api/admin/analytics/reconciliation/route.ts` |
 | GET | `/api/admin/analytics` | `src/app/api/admin/analytics/route.ts` |
 | GET, POST | `/api/admin/inventory-audit/cron` | `src/app/api/admin/inventory-audit/cron/route.ts` |
 | POST | `/api/admin/inventory-audit/run` | `src/app/api/admin/inventory-audit/run/route.ts` |
@@ -30,6 +31,7 @@
 | GET | `/api/catalog/items` | `src/app/api/catalog/items/route.ts` |
 | GET | `/api/catalog/kits` | `src/app/api/catalog/kits/route.ts` |
 | GET | `/api/catalog/related` | `src/app/api/catalog/related/route.ts` |
+| GET, POST, DELETE | `/api/customers/[id]/logo` | `src/app/api/customers/[id]/logo/route.ts` |
 | PATCH | `/api/customers/[id]` | `src/app/api/customers/[id]/route.ts` |
 | GET, POST | `/api/customers` | `src/app/api/customers/route.ts` |
 | GET | `/api/dashboard/greenwich` | `src/app/api/dashboard/greenwich/route.ts` |
@@ -75,6 +77,7 @@
 | POST | `/api/projects/[id]/contacts/[contactId]/entries` | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
 | GET, POST, PATCH | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
+| POST | `/api/projects/[id]/convert` | `src/app/api/projects/[id]/convert/route.ts` |
 | POST | `/api/projects/[id]/draft-order/materialize` | `src/app/api/projects/[id]/draft-order/materialize/route.ts` |
 | GET, PATCH, DELETE | `/api/projects/[id]/draft-order` | `src/app/api/projects/[id]/draft-order/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
@@ -123,3 +126,5 @@
 | POST | `/api/warehouse/repair-items/[id]/restore` | `src/app/api/warehouse/repair-items/[id]/restore/route.ts` |
 | POST | `/api/warehouse/repair-items/[id]/write-off` | `src/app/api/warehouse/repair-items/[id]/write-off/route.ts` |
 | GET | `/api/warehouse/repair-items` | `src/app/api/warehouse/repair-items/route.ts` |
+| GET | `/api/work-queue/projects/[id]/preview` | `src/app/api/work-queue/projects/[id]/preview/route.ts` |
+| GET | `/api/work-queue` | `src/app/api/work-queue/route.ts` |

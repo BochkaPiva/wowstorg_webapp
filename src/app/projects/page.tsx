@@ -18,6 +18,8 @@ import type { ProjectBall, ProjectStatus } from "@prisma/client";
 type ProjectCard = {
   id: string;
   title: string;
+  mode: "FULL" | "ESTIMATE_ONLY";
+  leadCustomerName: string | null;
   status: ProjectStatus;
   ball: ProjectBall;
   archivedAt: string | null;
@@ -27,7 +29,7 @@ type ProjectCard = {
   eventDateConfirmed: boolean;
   updatedAt: string;
   createdAt: string;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string; logoUrl?: string | null } | null;
   owner: { id: string; displayName: string };
   _count: { orders: number };
   finance: {
@@ -555,7 +557,7 @@ function ProjectsContent() {
                           <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-500">{fmtDate(p.updatedAt)}</span>
                         </div>
                         <dl className="mt-4 grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                          <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Заказчик</dt><dd className="truncate font-bold text-zinc-900">{p.customer.name}</dd></div>
+                          <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Заказчик</dt><dd className="truncate font-bold text-zinc-900">{p.customer?.name ?? p.leadCustomerName ?? "Не указан"}</dd></div>
                           <div className="min-w-0"><dt className="text-[11px] text-zinc-500">Ответственный</dt><dd className="truncate font-bold text-zinc-900">{p.owner.displayName}</dd></div>
                           <div><dt className="text-[11px] text-zinc-500">Событие</dt><dd className="font-bold tabular-nums text-zinc-900">{eventDate ?? "Не назначено"}{eventDate && !p.eventDateConfirmed ? " · черновик" : ""}</dd></div>
                           <div><dt className="text-[11px] text-zinc-500">Заявки</dt><dd className="font-bold tabular-nums text-zinc-900">{p._count.orders}</dd></div>

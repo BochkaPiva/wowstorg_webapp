@@ -50,7 +50,7 @@ export async function GET(
   const dateOnly = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);
   const baseName = buildProjectDocumentBaseName({
     eventTitle: project.title,
-    customerName: project.customer.name,
+    customerName: project.customer?.name ?? "Заказчик не указан",
     eventDateConfirmed: project.eventDateConfirmed,
     eventStartDate: dateOnly(project.eventStartDate),
     eventEndDate: dateOnly(project.eventEndDate),

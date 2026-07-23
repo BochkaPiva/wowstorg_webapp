@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const LOCAL_PHOTOS_DIR = join(process.cwd(), "data", "item-photos");
+const LOCAL_CUSTOMER_LOGOS_DIR = join(process.cwd(), "data", "customer-logos");
 const LOCAL_ESTIMATES_DIR = join(process.cwd(), "data", "estimates");
 const LOCAL_PROJECT_FILES_DIR = join(process.cwd(), "data", "project-files");
 
@@ -138,6 +139,51 @@ export async function deleteItemPhoto(key: string) {
   }
   try {
     unlinkSync(join(LOCAL_PHOTOS_DIR, key));
+  } catch {
+    // best-effort cleanup
+  }
+}
+
+export async function putCustomerLogo(key: string, body: Buffer, contentType: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { photosBucket } = supabaseConfig();
+    await supabaseUpload({ bucket: photosBucket, key, body, contentType, upsert: false });
+    return;
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  mkdirSync(LOCAL_CUSTOMER_LOGOS_DIR, { recursive: true });
+  writeFileSync(join(LOCAL_CUSTOMER_LOGOS_DIR, safeKey), body);
+}
+
+export async function getCustomerLogo(key: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { photosBucket } = supabaseConfig();
+    return supabaseDownload({ bucket: photosBucket, key });
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  try {
+    return readFileSync(join(LOCAL_CUSTOMER_LOGOS_DIR, safeKey));
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteCustomerLogo(key: string) {
+  assertStorageConfiguredForProduction();
+  if (isSupabaseStorageEnabled()) {
+    const { photosBucket } = supabaseConfig();
+    try {
+      await supabaseDelete({ bucket: photosBucket, key });
+    } catch {
+      // best-effort cleanup
+    }
+    return;
+  }
+  const safeKey = key.replace(/[/\\]/g, "_");
+  try {
+    unlinkSync(join(LOCAL_CUSTOMER_LOGOS_DIR, safeKey));
   } catch {
     // best-effort cleanup
   }

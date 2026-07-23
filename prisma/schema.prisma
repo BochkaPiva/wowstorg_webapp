@@ -127,6 +127,18 @@ enum ProjectStatus {
   CANCELLED
 }
 
+enum ProjectMode {
+  FULL
+  ESTIMATE_ONLY
+}
+
+enum FinancialReconciliationMatchStatus {
+  MATCHED
+  UNMATCHED
+  CONFLICT
+  IGNORED
+}
+
 enum ProjectBall {
   CLIENT
   WOWSTORG
@@ -145,6 +157,7 @@ enum ProjectContactCategory {
 enum ProjectActivityKind {
   PROJECT_CREATED
   PROJECT_UPDATED
+  PROJECT_CONVERTED
   PROJECT_ARCHIVED
   ORDER_LINKED
   ORDER_CANCELLED
@@ -269,10 +282,13 @@ model ReminderSent {
 }
 
 model Customer {
-  id       String  @id @default(cuid())
-  name     String
-  isActive Boolean @default(true)
-  notes    String?
+  id            String    @id @default(cuid())
+  name          String
+  isActive      Boolean   @default(true)
+  notes         String?
+  logoKey       String?   @unique
+  logoMimeType  String?
+  logoUpdatedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -285,10 +301,13 @@ model Customer {
 
 /// Проект мероприятия (WOWSTORG): заявки реквизита, смета, контакты — в следующих фазах.
 model Project {
-  id         String   @id @default(cuid())
-  title      String
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  id               String      @id @default(cuid())
+  title            String
+  mode             ProjectMode @default(FULL)
+  customerId       String?
+  customer         Customer?   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Предварительное название заказчика для быстрого расчёта без записи Customer.
+  leadCustomerName String?
 
   ownerUserId String
   owner       User   @relation("project_owner", fields: [ownerUserId], references: [id], onDelete: Restrict)
@@ -326,7 +345,56 @@ model Project {
   @@index([ownerUserId])
   @@index([archivedAt])
   @@index([status])
+  @@index([mode])
   @@index([updatedAt])
+}
+
+/// Импортированный внешний финансовый срез. Не изменяет факты проектов и заявок.
+model FinancialReconciliationBatch {
+  id             String   @id @default(cuid())
+  title          String
+  sourceFileName String
+  sheetName      String
+  periodStart    DateTime
+  periodEnd      DateTime
+  importedById   String
+  createdAt      DateTime @default(now())
+
+  rows FinancialReconciliationRow[]
+
+  @@index([periodStart, periodEnd])
+  @@index([createdAt])
+}
+
+/// Строка внешней таблицы и результат безопасного сопоставления с сущностью сайта.
+model FinancialReconciliationRow {
+  id        String                       @id @default(cuid())
+  batchId   String
+  batch     FinancialReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowNumber Int
+
+  externalNumber String?
+  projectName    String
+  revenue        Decimal @db.Decimal(14, 2)
+  expenses       Decimal @db.Decimal(14, 2)
+  profit         Decimal @db.Decimal(14, 2)
+  marginPercent  Decimal @db.Decimal(10, 4)
+  bonusPool      Decimal @db.Decimal(14, 2)
+  bonusFirst     Decimal @db.Decimal(14, 2)
+  bonusSecond    Decimal @db.Decimal(14, 2)
+  sourceLink     String?
+
+  matchStatus      FinancialReconciliationMatchStatus @default(UNMATCHED)
+  matchedEntityType String?
+  matchedEntityId   String?
+  matchNote         String?
+  originalData      Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([batchId, rowNumber])
+  @@index([batchId, matchStatus])
+  @@index([matchedEntityType, matchedEntityId])
 }
 
 model WorkTaskBoard {

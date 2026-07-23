@@ -1,4 +1,4 @@
-import { Prisma, ProjectActivityKind } from "@prisma/client";
+import { ProjectActivityKind } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
@@ -39,6 +39,7 @@ export async function listLinkableProjectOrders(projectId: string): Promise<Link
     select: { customerId: true },
   });
   if (!project) return null;
+  if (!project.customerId) return [];
 
   const orders = await prisma.order.findMany({
     where: {
@@ -93,6 +94,12 @@ export async function linkOrdersToProject(args: {
       select: { id: true, customerId: true, title: true },
     });
     if (!project) throw new LinkProjectOrdersError("PROJECT_NOT_FOUND", "Проект не найден");
+    if (!project.customerId) {
+      throw new LinkProjectOrdersError(
+        "PROJECT_CUSTOMER_REQUIRED",
+        "Сначала преобразуйте расчёт в проект и укажите заказчика",
+      );
+    }
 
     const orders = await tx.order.findMany({
       where: { id: { in: uniqueOrderIds } },

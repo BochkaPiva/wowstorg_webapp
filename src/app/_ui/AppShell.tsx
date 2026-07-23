@@ -18,9 +18,10 @@ const commonItems: NavItem[] = [
 ];
 
 const warehouseItems: NavItem[] = [
-  { href: "/projects", label: "Проекты" },
+  { href: "/work", label: "Рабочая очередь" },
+  { href: "/projects", label: "Все проекты" },
+  { href: "/warehouse/queue", label: "Все заявки" },
   { href: "/tasks", label: "Задачи" },
-  { href: "/warehouse/queue", label: "Очередь заявок" },
 ];
 
 const inventoryItems: NavItem[] = [
@@ -91,6 +92,7 @@ function Navigation({ isWowstorg, onNavigate }: { isWowstorg: boolean; onNavigat
 function sectionBackHref(path: string, role: string): string {
   if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
   if (path.startsWith("/projects/")) return "/projects";
+  if (path.startsWith("/work/")) return "/work";
   if (path.startsWith("/warehouse/")) return "/home";
   if (path.startsWith("/admin/")) return "/admin";
   if (path === "/inventory/items") return "/home";

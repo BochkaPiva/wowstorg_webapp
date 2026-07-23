@@ -60,6 +60,7 @@ export async function POST(
   } catch (error) {
     if (error instanceof LinkProjectOrdersError) {
       if (error.code === "PROJECT_NOT_FOUND") return jsonError(404, error.message);
+      if (error.code === "PROJECT_CUSTOMER_REQUIRED") return jsonError(400, error.message);
       return jsonError(400, error.message, error.details);
     }
     throw error;

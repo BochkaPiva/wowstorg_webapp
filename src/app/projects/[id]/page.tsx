@@ -71,6 +71,8 @@ type DraftOrderLinePreview = {
 type ProjectDetail = {
   id: string;
   title: string;
+  mode: "FULL" | "ESTIMATE_ONLY";
+  leadCustomerName: string | null;
   status: ProjectStatus;
   ball: ProjectBall;
   archivedAt: string | null;
@@ -83,7 +85,7 @@ type ProjectDetail = {
   internalSummary: string | null;
   createdAt: string;
   updatedAt: string;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string; logoUrl?: string | null } | null;
   owner: { id: string; displayName: string };
   _count: { orders: number };
   draftOrder?: {
@@ -1219,7 +1221,7 @@ export default function ProjectDetailPage() {
                 <div className="mt-5 grid overflow-hidden rounded-md border border-zinc-200 sm:grid-cols-2 xl:grid-cols-4 [&>*]:rounded-none [&>*]:border-0 [&>*]:border-r [&>*]:border-zinc-200 [&>*]:bg-white">
                   <div className={heroStatCard}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Заказчик</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.customer.name}</div>
+                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.customer?.name ?? project.leadCustomerName ?? "Не указан"}</div>
                   </div>
                   <div className={heroStatCard}>
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ответственный</div>
@@ -2013,7 +2015,7 @@ export default function ProjectDetailPage() {
                   <div>
                     <div className="text-xl font-extrabold tracking-tight text-zinc-950">Привязать существующие заявки</div>
                     <p className="mt-1 text-sm text-zinc-600">
-                      Показаны активные заявки заказчика «{project?.customer.name ?? "—"}», которые ещё не привязаны к
+                      Показаны активные заявки заказчика «{project?.customer?.name ?? project?.leadCustomerName ?? "—"}», которые ещё не привязаны к
                       проекту. После привязки блок реквизита добавится в{" "}
                       {activeEstimateVersionNumber != null ? `смету v${activeEstimateVersionNumber}` : "смету проекта"}.
                     </p>

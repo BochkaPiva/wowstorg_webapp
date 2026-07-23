@@ -14,13 +14,25 @@ export async function GET(req: Request) {
   const customers = await prisma.customer.findMany({
     where: all ? undefined : { isActive: true },
     orderBy: [{ name: "asc" }],
-    select: { id: true, name: true, isActive: true, notes: true },
+    select: { id: true, name: true, isActive: true, notes: true, logoKey: true, logoUpdatedAt: true },
     take: 1000,
   });
 
   return jsonOk({
     customers: customers.map((c) =>
-      all ? { id: c.id, name: c.name, isActive: c.isActive, notes: c.notes } : { id: c.id, name: c.name },
+      all
+        ? {
+            id: c.id,
+            name: c.name,
+            isActive: c.isActive,
+            notes: c.notes,
+            logoUrl: c.logoKey ? `/api/customers/${c.id}/logo?v=${c.logoUpdatedAt?.getTime() ?? 0}` : null,
+          }
+        : {
+            id: c.id,
+            name: c.name,
+            logoUrl: c.logoKey ? `/api/customers/${c.id}/logo?v=${c.logoUpdatedAt?.getTime() ?? 0}` : null,
+          },
     ),
   });
 }
@@ -48,9 +60,17 @@ export async function POST(req: Request) {
 
   const customer = await prisma.customer.create({
     data: { name: parsed.data.name, notes: parsed.data.notes },
-    select: { id: true, name: true },
+    select: { id: true, name: true, logoKey: true, logoUpdatedAt: true },
   });
 
-  return jsonOk({ customer });
+  return jsonOk({
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      logoUrl: customer.logoKey
+        ? `/api/customers/${customer.id}/logo?v=${customer.logoUpdatedAt?.getTime() ?? 0}`
+        : null,
+    },
+  });
 }
 

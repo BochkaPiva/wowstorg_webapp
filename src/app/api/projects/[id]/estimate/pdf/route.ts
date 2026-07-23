@@ -46,7 +46,7 @@ export async function GET(
 
   const xlsxBytes = await buildProjectEstimateXlsx({
     projectTitle: model.projectTitle,
-    customerName: projectMeta?.customer.name ?? null,
+    customerName: projectMeta?.customer?.name ?? null,
     eventStartDate: projectMeta?.eventStartDate ?? null,
     eventEndDate: projectMeta?.eventEndDate ?? null,
     eventDateConfirmed: projectMeta?.eventDateConfirmed ?? false,
@@ -61,7 +61,7 @@ export async function GET(
   const dateOnly = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);
   const baseName = buildProjectDocumentBaseName({
     eventTitle: projectMeta?.title ?? model.projectTitle,
-    customerName: projectMeta?.customer.name ?? null,
+    customerName: projectMeta?.customer?.name ?? null,
     eventDateConfirmed: projectMeta?.eventDateConfirmed ?? false,
     eventStartDate: dateOnly(projectMeta?.eventStartDate),
     eventEndDate: dateOnly(projectMeta?.eventEndDate),

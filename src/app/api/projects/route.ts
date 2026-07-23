@@ -1,4 +1,4 @@
-import { Prisma, ProjectActivityKind, ProjectBall, ProjectStatus } from "@prisma/client";
+import { Prisma, ProjectActivityKind, ProjectBall, ProjectMode, ProjectStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -24,6 +24,7 @@ const CreateSchema = z
     title: z.string().trim().min(1).max(300),
     customerId: z.string().trim().min(1).optional(),
     customerName: z.string().trim().min(2).max(200).optional(),
+    mode: z.nativeEnum(ProjectMode).optional(),
     status: z.nativeEnum(ProjectStatus).optional(),
     ball: z.nativeEnum(ProjectBall).optional(),
   })
@@ -119,6 +120,7 @@ export async function GET(req: Request) {
           OR: [
             { title: { contains: q, mode: "insensitive" } },
             { customer: { name: { contains: q, mode: "insensitive" } } },
+            { leadCustomerName: { contains: q, mode: "insensitive" } },
             { id: { contains: q, mode: "insensitive" } },
             { owner: { displayName: { contains: q, mode: "insensitive" } } },
           ],
@@ -149,6 +151,8 @@ export async function GET(req: Request) {
     select: {
       id: true,
       title: true,
+      mode: true,
+      leadCustomerName: true,
       status: true,
       ball: true,
       archivedAt: true,
@@ -158,7 +162,9 @@ export async function GET(req: Request) {
       eventDateConfirmed: true,
       updatedAt: true,
       createdAt: true,
-      customer: { select: { id: true, name: true } },
+      customer: {
+        select: { id: true, name: true, logoKey: true, logoUpdatedAt: true },
+      },
       owner: { select: { id: true, displayName: true } },
       _count: { select: { orders: true } },
       draftOrders: {
@@ -380,6 +386,7 @@ export async function GET(req: Request) {
     return {
       id: project.id,
       title: project.title,
+      mode: project.mode,
       status: project.status,
       ball: project.ball,
       archivedAt: project.archivedAt?.toISOString() ?? null,
@@ -389,7 +396,16 @@ export async function GET(req: Request) {
       eventDateConfirmed: project.eventDateConfirmed,
       updatedAt: project.updatedAt.toISOString(),
       createdAt: project.createdAt.toISOString(),
-      customer: project.customer,
+      customer: project.customer
+        ? {
+            id: project.customer.id,
+            name: project.customer.name,
+            logoUrl: project.customer.logoKey
+              ? `/api/customers/${project.customer.id}/logo?v=${project.customer.logoUpdatedAt?.getTime() ?? 0}`
+              : null,
+          }
+        : null,
+      leadCustomerName: project.leadCustomerName,
       owner: project.owner,
       _count: project._count,
       finance: {
@@ -419,15 +435,16 @@ export async function POST(req: Request) {
     return jsonError(400, "Invalid input", parsed.error.flatten());
   }
 
-  if (!parsed.data.customerId && !parsed.data.customerName) {
+  const projectMode = parsed.data.mode ?? ProjectMode.FULL;
+  if (projectMode === ProjectMode.FULL && !parsed.data.customerId && !parsed.data.customerName) {
     return jsonError(400, "Укажите заказчика");
   }
 
   try {
     const project = await prisma.$transaction(async (tx) => {
-      let customerId = parsed.data.customerId?.trim() || "";
+      let customerId: string | null = parsed.data.customerId?.trim() || null;
 
-      if (!customerId) {
+      if (!customerId && projectMode === ProjectMode.FULL) {
         const name = parsed.data.customerName!.trim();
         const existing = await tx.customer.findFirst({
           where: { name: { equals: name, mode: "insensitive" } },
@@ -442,7 +459,7 @@ export async function POST(req: Request) {
           });
           customerId = created.id;
         }
-      } else {
+      } else if (customerId) {
         const customer = await tx.customer.findUnique({
           where: { id: customerId },
           select: { id: true },
@@ -456,6 +473,11 @@ export async function POST(req: Request) {
         data: {
           title: parsed.data.title,
           customerId,
+          mode: projectMode,
+          leadCustomerName:
+            projectMode === ProjectMode.ESTIMATE_ONLY
+              ? parsed.data.customerName?.trim() || null
+              : null,
           ownerUserId: auth.user.id,
           status: parsed.data.status ?? ProjectStatus.LEAD,
           ball: parsed.data.ball ?? ProjectBall.CLIENT,
@@ -463,6 +485,8 @@ export async function POST(req: Request) {
         select: {
           id: true,
           title: true,
+          mode: true,
+          leadCustomerName: true,
           status: true,
           ball: true,
           archivedAt: true,
@@ -477,7 +501,7 @@ export async function POST(req: Request) {
         projectId: p.id,
         actorUserId: auth.user.id,
         kind: ProjectActivityKind.PROJECT_CREATED,
-        payload: { title: p.title },
+        payload: { title: p.title, mode: p.mode },
       });
       return p;
     });

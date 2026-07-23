@@ -207,6 +207,9 @@ export async function POST(req: Request) {
       if (e.code === "PROJECT_NOT_FOUND") {
         return jsonError(400, "Проект не найден или в архиве");
       }
+      if (e.code === "PROJECT_CUSTOMER_REQUIRED") {
+        return jsonError(400, "Сначала преобразуйте расчёт в проект и укажите заказчика");
+      }
       if (e.code === "PROJECT_CUSTOMER_CONFLICT") {
         return jsonError(400, "С проектом нельзя создавать нового заказчика по имени — используйте заказчика проекта");
       }

@@ -1,253 +1,81 @@
-﻿"use client";
+"use client";
 
-import React from "react";
 import Link from "next/link";
+import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { DashboardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import type {
+  AdminAnalyticsData,
+  ProjectAnalyticsRow,
+} from "@/server/admin-analytics";
 
 type Scope = { from: string; to: string };
-type Tab = "overview" | "requisites" | "customers" | "projects";
+type Tab = "overview" | "bonuses" | "requisites" | "projects" | "customers";
+type PeriodPreset = "month" | "previousMonth" | "quarter" | "30days" | "year";
+type AnalyticsPayload = AdminAnalyticsData;
 
-type ProjectRow = {
-  projectId: string;
-  title: string;
-  customerName: string;
-  status: string;
-  archived: boolean;
-  eventStartDate: string | null;
-  eventEndDate: string | null;
-  eventDateConfirmed: boolean;
-  ordersCount: number;
-  estimateVersionsCount: number;
-  hasPrimaryEstimate: boolean;
-  hasLinkedOrder: boolean;
-  daysSinceActivity: number;
-  currentStatusAgeDays: number;
-  healthScore: number;
-  risks: string[];
-  financials: {
-    clientSubtotal: number;
-    internalSubtotal: number;
-    commission: number;
-    revenueTotal: number;
-    tax: number;
-    grossMargin: number;
-    marginAfterTax: number;
-    marginAfterTaxPct: number;
-  };
+const TAB_META: Array<{
+  id: Tab;
+  label: string;
+  shortLabel: string;
+  description: string;
+  basis: string;
+}> = [
+  {
+    id: "overview",
+    label: "Сводка бизнеса",
+    shortLabel: "Сводка",
+    description: "Факт, прогноз, структура результата и точки управленческого внимания.",
+    basis: "Заявки — по дате завершения. Проекты — по датам мероприятия.",
+  },
+  {
+    id: "bonuses",
+    label: "Бонусы",
+    shortLabel: "Бонусы",
+    description: "Отдельный расчёт бонусного пула без привязки к периоду других отчётов.",
+    basis: "Факт: закрытые заявки без проекта и завершённые проекты за выбранный период.",
+  },
+  {
+    id: "requisites",
+    label: "Реквизит и услуги",
+    shortLabel: "Реквизит",
+    description: "Доходность проката, услуги, спрос и окупаемость складских позиций.",
+    basis: "Период определяется по дате завершения заявки.",
+  },
+  {
+    id: "projects",
+    label: "Проекты",
+    shortLabel: "Проекты",
+    description: "Воронка, финансовый прогноз, зрелость процессов и проектные риски.",
+    basis: "В период попадают проекты, чьи даты мероприятия пересекают интервал.",
+  },
+  {
+    id: "customers",
+    label: "Клиенты",
+    shortLabel: "Клиенты",
+    description: "Повторные продажи, ценность клиентской базы и качество портфеля.",
+    basis: "Проекты — по мероприятию, отдельные заявки — по дате завершения.",
+  },
+];
+
+const STATUS_LABELS: Record<string, string> = {
+  NEW: "Новая",
+  ESTIMATE_SENT: "Смета отправлена",
+  CHANGES: "Правки",
+  APPROVED: "Согласована",
+  ASSEMBLY: "Сборка",
+  ISSUED: "Выдана",
+  ACCEPTANCE: "Приёмка",
+  CLOSED: "Закрыта",
+  LEAD: "Лид",
+  IN_PROGRESS: "В работе",
+  COMPLETED: "Завершён",
+  CANCELLED: "Отменён",
 };
 
-type CustomerRow = {
-  customerId: string;
-  customerName: string;
-  projectsCount: number;
-  activeProjects: number;
-  completedProjects: number;
-  cancelledProjects: number;
-  forecastRevenue: number;
-  forecastMarginAfterTax: number;
-  averageProjectRevenue: number;
-  averageMarginAfterTaxPercent: number;
-  closedOrdersFactRevenue: number;
-  ltvMixed: number;
-  repeat: boolean;
-  completionRatePercent: number;
-  cancelRatePercent: number;
-};
-
-type AnalyticsPayload = {
-  period: {
-    from: string | null;
-    to: string | null;
-    dateBasis: {
-      requisites: string;
-      projects: string;
-      customers: string;
-    };
-  };
-  overview: {
-    kpi: {
-      factRevenue: number;
-      factItemsRevenue: number;
-      factServicesRevenue: number;
-      factGrossProfit: number;
-      ordersClosed: number;
-      averageOrderRevenue: number;
-      projectForecastRevenue: number;
-      projectForecastMarginAfterTax: number;
-      activeProjects: number;
-      completedProjects: number;
-      cancelledProjects: number;
-      staleProjects: number;
-      lowMarginProjects: number;
-      repeatCustomers: number;
-    };
-    finance: {
-      fact: {
-        standaloneOrdersRevenue: number;
-        standaloneOrdersProfit: number;
-        completedProjectsRevenue: number;
-        completedProjectsProfit: number;
-        revenueTotal: number;
-        profitTotal: number;
-      };
-      forecast: {
-        standaloneOrdersRevenue: number;
-        standaloneOrdersProfit: number;
-        standaloneOrdersTotal: number;
-        activeProjectsRevenue: number;
-        activeProjectsProfit: number;
-        revenueTotal: number;
-        profitTotal: number;
-      };
-      bonuses: {
-        ratePercent: number;
-        recipients: number;
-        factPool: number;
-        factPerPerson: number;
-        forecastPool: number;
-        forecastPerPerson: number;
-      };
-      ownership: {
-        linkedOrdersExcluded: number;
-        linkedClosedOrdersExcluded: number;
-      };
-    };
-    attention: Array<{
-      type: string;
-      severity: "warning" | "critical";
-      projectId: string;
-      projectTitle: string;
-      message: string;
-    }>;
-    topProjects: ProjectRow[];
-    topCustomers: CustomerRow[];
-    topItems: Array<{ itemId: string; itemName: string; revenue: number }>;
-  };
-  requisites: {
-    kpi: {
-      ordersTotal: number;
-      ordersClosed: number;
-      totalRevenue: number;
-      itemsRevenue: number;
-      servicesRevenue: number;
-      profitEstimate: number;
-      averageOrderRevenue: number;
-      averageRentalDays: number;
-      linkedOrdersExcluded: number;
-      linkedClosedOrdersExcluded: number;
-    };
-    breakdowns: {
-      byStatus: Array<{ status: string; count: number }>;
-      bySource: Array<{ source: string; count: number; revenue: number }>;
-      revenueByMonth: Array<{ month: string; revenue: number; orders: number }>;
-    };
-    tops: {
-      topByIssued: Array<{ itemId: string; itemName: string; issuedQty: number }>;
-      topByRevenue: Array<{ itemId: string; itemName: string; revenue: number }>;
-      topCustomers: Array<{ customerId: string; customerName: string; total: number }>;
-    };
-    services: {
-      deliveryRevenue: number;
-      montageRevenue: number;
-      demontageRevenue: number;
-      deliveryOrders: number;
-      montageOrders: number;
-      demontageOrders: number;
-    };
-    profitability: {
-      summary: {
-        trackedItems: number;
-        itemsWithRevenue: number;
-        totalRevenue: number;
-        totalPurchaseCost: number;
-        totalGrossProfit: number;
-        totalPaybackRatio: number | null;
-        totalRoiPercent: number | null;
-      };
-      rows: Array<{
-        itemId: string;
-        itemName: string;
-        totalQty: number;
-        unitPurchasePrice: number;
-        purchaseCost: number;
-        revenue: number;
-        grossProfit: number;
-        paybackRatio: number | null;
-        roiPercent: number | null;
-      }>;
-    };
-  };
-  projects: {
-    kpi: {
-      projectsTotal: number;
-      activeProjects: number;
-      completedProjects: number;
-      cancelledProjects: number;
-      archivedProjects: number;
-      withPrimaryEstimate: number;
-      withoutPrimaryEstimate: number;
-      withLinkedOrder: number;
-      withoutLinkedOrder: number;
-      confirmedDates: number;
-      completionRatePercent: number;
-      cancelRatePercent: number;
-      forecastRevenueTotal: number;
-      forecastMarginAfterTax: number;
-      actualRevenueTotal: number;
-      actualMarginAfterTax: number;
-      averageForecastRevenue: number;
-      averageMarginAfterTaxPercent: number;
-      averageOrdersPerProject: number;
-      averageEstimateVersions: number;
-      stale7Days: number;
-      stale14Days: number;
-      lowMarginProjects: number;
-    };
-    funnel: {
-      created: number;
-      withPrimaryEstimate: number;
-      withConfirmedDates: number;
-      withLinkedOrder: number;
-      completed: number;
-    };
-    byStatus: Array<{ status: string; count: number }>;
-    statusAging: Array<{ status: string; projects: number; averageCurrentAgeDays: number; maxCurrentAgeDays: number }>;
-    topByRevenue: ProjectRow[];
-    topByMargin: ProjectRow[];
-    lowMargin: ProjectRow[];
-    risks: ProjectRow[];
-    rows: ProjectRow[];
-  };
-  customers: {
-    kpi: {
-      customersTotal: number;
-      repeatCustomers: number;
-      newCustomers: number;
-      forecastRevenueTotal: number;
-      forecastMarginAfterTax: number;
-      closedOrdersFactRevenue: number;
-      averageProjectRevenue: number;
-      averageProjectMarginPercent: number;
-    };
-    rows: CustomerRow[];
-  };
-  methodology: Array<{ section: string; rule: string }>;
-};
-
-function defaultScope(): Scope {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, "0");
-  const day = `${now.getDate()}`.padStart(2, "0");
-  return { from: `${year}-01-01`, to: `${year}-${month}-${day}` };
-}
-
-type PeriodPreset = "month" | "30days" | "year";
-
-function dateOnlyLocal(date: Date): string {
+function dateOnlyLocal(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
@@ -257,361 +85,948 @@ function dateOnlyLocal(date: Date): string {
 function presetScope(preset: PeriodPreset): Scope {
   const now = new Date();
   const from = new Date(now);
+  const to = new Date(now);
+
   if (preset === "month") from.setDate(1);
-  if (preset === "30days") from.setDate(now.getDate() - 29);
-  if (preset === "year") {
-    from.setMonth(0);
-    from.setDate(1);
+  if (preset === "previousMonth") {
+    from.setMonth(now.getMonth() - 1, 1);
+    to.setDate(0);
   }
-  return { from: dateOnlyLocal(from), to: dateOnlyLocal(now) };
+  if (preset === "quarter") {
+    from.setMonth(Math.floor(now.getMonth() / 3) * 3, 1);
+  }
+  if (preset === "30days") from.setDate(now.getDate() - 29);
+  if (preset === "year") from.setMonth(0, 1);
+
+  return { from: dateOnlyLocal(from), to: dateOnlyLocal(to) };
 }
 
-function formatInt(n: number) {
-  return n.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+function initialScopes(): Record<Tab, Scope> {
+  const annual = presetScope("year");
+  return {
+    overview: annual,
+    bonuses: presetScope("month"),
+    requisites: annual,
+    projects: annual,
+    customers: annual,
+  };
 }
 
-function formatMoney(n: number) {
-  return `${formatInt(n)} ₽`;
+function formatInt(value: number) {
+  return value.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
 }
 
-function formatPercent(n: number | null) {
-  return n == null ? "—" : `${n.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}%`;
+function formatMoney(value: number) {
+  return `${formatInt(value)} ₽`;
 }
 
-function formatRatio(n: number | null) {
-  return n == null ? "—" : `${n.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}x`;
+function formatPercent(value: number | null) {
+  return value == null ? "—" : `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
 }
 
-function kpiTone(tone: "violet" | "emerald" | "amber" | "rose" | "slate") {
-  const map = {
-    violet: "border-violet-200 bg-violet-50 text-violet-950",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-950",
-    amber: "border-amber-200 bg-amber-50 text-amber-950",
-    rose: "border-rose-200 bg-rose-50 text-rose-950",
-    slate: "border-zinc-200 bg-white text-zinc-950",
-  } satisfies Record<string, string>;
-  return map[tone];
+function formatRatio(value: number | null) {
+  return value == null ? "—" : `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}×`;
 }
 
-function KpiCard(props: { label: string; value: string | number; note?: string; tone?: "violet" | "emerald" | "amber" | "rose" | "slate" }) {
-  return (
-    <div className={`rounded-lg border p-4 ${kpiTone(props.tone ?? "slate")}`}>
-      <div className="text-xs font-black uppercase tracking-[0.14em] opacity-65">{props.label}</div>
-      <div className="mt-2 text-2xl font-black tabular-nums">{props.value}</div>
-      {props.note ? <div className="mt-1 text-xs font-semibold opacity-65">{props.note}</div> : null}
-    </div>
-  );
+function marginPercent(revenue: number, profit: number) {
+  return revenue > 0 ? (profit / revenue) * 100 : 0;
 }
 
-function SectionCard(props: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 p-4">
-        <h2 className="text-lg font-black text-zinc-950">{props.title}</h2>
-        {props.action}
-      </div>
-      <div className="p-4">{props.children}</div>
-    </section>
-  );
+function formatMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat("ru-RU", { month: "short", year: "2-digit" })
+    .format(new Date(year, month - 1, 1))
+    .replace(".", "");
 }
 
-function ExportButton(props: { section: "global" | "requisites" | "projects" | "customers"; scope: Scope; children: React.ReactNode; primary?: boolean }) {
+function formatDate(value: string | null) {
+  if (!value) return "Дата не задана";
+  return new Intl.DateTimeFormat("ru-RU").format(new Date(`${value.slice(0, 10)}T00:00:00`));
+}
+
+function statusLabel(status: string) {
+  return STATUS_LABELS[status] ?? status;
+}
+
+function ExportButton(props: {
+  section: "global" | "requisites" | "projects" | "customers";
+  scope: Scope;
+  children: React.ReactNode;
+  primary?: boolean;
+}) {
   const onClick = React.useCallback(() => {
-    const params = new URLSearchParams();
-    params.set("section", props.section);
-    if (props.scope.from) params.set("from", props.scope.from);
-    if (props.scope.to) params.set("to", props.scope.to);
+    const params = new URLSearchParams({ section: props.section });
+    params.set("from", props.scope.from);
+    params.set("to", props.scope.to);
     window.location.href = `/api/admin/analytics/export?${params.toString()}`;
-  }, [props.section, props.scope]);
+  }, [props.scope, props.section]);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={
+      className={[
+        "h-10 border px-4 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600",
         props.primary
-          ? "rounded-lg border border-zinc-950 bg-zinc-950 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-zinc-800"
-          : "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-500"
-      }
+          ? "border-zinc-950 bg-zinc-950 text-white hover:bg-zinc-800"
+          : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-600",
+      ].join(" ")}
     >
       {props.children}
     </button>
   );
 }
 
-export default function AdminAnalyticsPage() {
-  const initialScope = React.useMemo(() => defaultScope(), []);
-  const { state } = useAuth();
-  const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
-  const [scope, setScope] = React.useState<Scope>(initialScope);
-  const [data, setData] = React.useState<AnalyticsPayload | null>(null);
-  const [activeTab, setActiveTab] = React.useState<Tab>("overview");
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const scopeError = scope.from && scope.to && scope.from > scope.to ? "Начальная дата не может быть позже конечной." : null;
-
-  React.useEffect(() => {
-    if (forbidden || scopeError) return;
-    const params = new URLSearchParams();
-    if (scope.from) params.set("from", scope.from);
-    if (scope.to) params.set("to", scope.to);
-    setLoading(true);
-    fetch(`/api/admin/analytics?${params.toString()}`, { cache: "no-store" })
-      .then(async (r) => {
-        const payload = (await r.json().catch(() => null)) as AnalyticsPayload | null;
-        if (!r.ok || !payload) throw new Error("Не удалось загрузить аналитику");
-        setData(payload);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
-  }, [forbidden, scope, scopeError]);
-
-  const tabs: Array<{ id: Tab; label: string }> = [
-    { id: "overview", label: "Обзор" },
-    { id: "requisites", label: "Реквизит" },
-    { id: "customers", label: "Заказчики" },
-    { id: "projects", label: "Проекты" },
-  ];
+function PeriodControl(props: {
+  tab: Tab;
+  scope: Scope;
+  onChange: (scope: Scope) => void;
+}) {
+  const meta = TAB_META.find((item) => item.id === props.tab) ?? TAB_META[0];
+  const error =
+    props.scope.from && props.scope.to && props.scope.from > props.scope.to
+      ? "Начальная дата не может быть позже конечной."
+      : null;
 
   return (
-    <AppShell title="Админка · Аналитика">
-      {forbidden ? (
-        <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
-      ) : (
-        <div className="space-y-6">
-          <Link href="/admin" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
-            ← Админка
-          </Link>
-
-          <div className="rounded-xl border border-zinc-200 bg-white p-5">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="text-sm font-bold text-zinc-950">Период отчёта</div>
-                <div className="mt-1 text-xs text-zinc-500">Один интервал для всех вкладок и выгрузки.</div>
-                <div className="mt-3 flex flex-wrap gap-1" aria-label="Быстрый выбор периода">
-                  {([
-                    ["month", "Этот месяц"],
-                    ["30days", "30 дней"],
-                    ["year", "Этот год"],
-                  ] as Array<[PeriodPreset, string]>).map(([preset, label]) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setScope(presetScope(preset))}
-                      className="border border-zinc-300 bg-zinc-50 px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition-colors hover:border-zinc-500 hover:bg-white"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex flex-col gap-1 text-sm text-zinc-700">
-                  С даты
-                  <input
-                    type="date"
-                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 font-semibold outline-none focus:border-violet-500"
-                    value={scope.from}
-                    onChange={(e) => setScope((s) => ({ ...s, from: e.target.value }))}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-zinc-700">
-                  По дату
-                  <input
-                    type="date"
-                    className="h-11 rounded-lg border border-zinc-300 bg-white px-3 font-semibold outline-none focus:border-violet-500"
-                    value={scope.to}
-                    onChange={(e) => setScope((s) => ({ ...s, to: e.target.value }))}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setScope(initialScope)}
-                  className="h-11 rounded-lg border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-500"
-                >
-                  Сбросить
-                </button>
-                <ExportButton section="global" scope={scope} primary>
-                  Скачать весь отчет
-                </ExportButton>
-              </div>
-            </div>
-            {scopeError ? <p className="mt-3 text-sm font-medium text-red-700">{scopeError}</p> : null}
+    <section className="border border-zinc-300 bg-white">
+      <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+        <div className="max-w-3xl">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">
+            Период раздела
           </div>
-
-          {loading ? (
-            <DashboardSkeleton />
-          ) : error ? (
-            <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</p>
-          ) : data ? (
-            <>
-              <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-white p-1">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={[
-                      "rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
-                      activeTab === tab.id
-                        ? "bg-zinc-950 text-white"
-                        : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
-                    ].join(" ")}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {activeTab === "overview" ? <OverviewTab data={data} /> : null}
-              {activeTab === "requisites" ? <RequisitesTab data={data} scope={scope} /> : null}
-              {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
-              {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
-
-              <details className="group rounded-xl border border-zinc-200 bg-white">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-bold text-zinc-900">
-                  <span>Как считаются показатели</span>
-                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-600 transition group-open:rotate-180">
-                    ↓
-                  </span>
-                </summary>
-                <div className="grid gap-3 border-t border-zinc-100 p-4 md:grid-cols-2">
-                  {data.methodology.map((row) => (
-                    <div key={row.section} className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm">
-                      <div className="font-semibold text-zinc-900">{row.section}</div>
-                      <div className="mt-1 text-zinc-600">{row.rule}</div>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            </>
-          ) : null}
+          <h2 className="mt-1 text-xl font-black text-zinc-950">{meta.label}</h2>
+          <p className="mt-1 text-sm leading-6 text-zinc-600">{meta.basis}</p>
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Быстрый выбор периода">
+            {([
+              ["month", "Этот месяц"],
+              ["previousMonth", "Прошлый месяц"],
+              ["quarter", "Квартал"],
+              ["30days", "30 дней"],
+              ["year", "Этот год"],
+            ] as Array<[PeriodPreset, string]>).map(([preset, label]) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => props.onChange(presetScope(preset))}
+                className="border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-700 transition-colors hover:border-zinc-950 hover:bg-white hover:text-zinc-950"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
-    </AppShell>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-500">
+            С даты
+            <input
+              type="date"
+              value={props.scope.from}
+              onChange={(event) => props.onChange({ ...props.scope, from: event.target.value })}
+              className="mt-1 block h-11 w-full min-w-44 border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-950 outline-none focus:border-violet-600"
+            />
+          </label>
+          <label className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-500">
+            По дату
+            <input
+              type="date"
+              value={props.scope.to}
+              onChange={(event) => props.onChange({ ...props.scope, to: event.target.value })}
+              className="mt-1 block h-11 w-full min-w-44 border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-950 outline-none focus:border-violet-600"
+            />
+          </label>
+        </div>
+      </div>
+      {error ? (
+        <p className="border-t border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700">
+          {error}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
-function OverviewTab({ data }: { data: AnalyticsPayload }) {
-  const k = data.overview.kpi;
-  const finance = data.overview.finance;
-  const riskCount = k.staleProjects + k.lowMarginProjects;
+function MetricStrip(props: {
+  items: Array<{
+    label: string;
+    value: string | number;
+    note?: string;
+    accent?: "neutral" | "violet" | "green" | "yellow" | "red";
+  }>;
+}) {
+  const accents = {
+    neutral: "text-zinc-950",
+    violet: "text-violet-700",
+    green: "text-emerald-700",
+    yellow: "text-amber-700",
+    red: "text-rose-700",
+  };
+
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr_0.9fr]">
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Факт</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.fact.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Закрытые заявки без проекта + завершённые проекты</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Самостоятельные заявки" value={formatMoney(finance.fact.standaloneOrdersProfit)} note={formatMoney(finance.fact.standaloneOrdersRevenue)} />
-            <KpiCard label="Завершенные проекты" value={formatMoney(finance.fact.completedProjectsProfit)} note={formatMoney(finance.fact.completedProjectsRevenue)} />
+    <div className="grid border border-zinc-300 bg-white sm:grid-cols-2 xl:grid-cols-4">
+      {props.items.map((item) => (
+        <div
+          key={item.label}
+          className="min-h-32 border-b border-zinc-200 p-5 last:border-b-0 sm:[&:nth-child(odd)]:border-r xl:border-b-0 xl:border-r xl:last:border-r-0"
+        >
+          <div className="text-xs font-black uppercase tracking-[0.13em] text-zinc-500">
+            {item.label}
           </div>
-        </section>
+          <div
+            className={`mt-3 text-3xl font-black tabular-nums ${accents[item.accent ?? "neutral"]}`}
+          >
+            {item.value}
+          </div>
+          {item.note ? <p className="mt-2 text-xs leading-5 text-zinc-500">{item.note}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
-        <section className="rounded-xl border border-violet-200 bg-violet-50 p-5 text-violet-950">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Прогноз</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.forecast.profitTotal)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">Активные заявки без проекта + незавершённые проекты</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Заявки без проекта" value={formatMoney(finance.forecast.standaloneOrdersProfit)} note={`${finance.forecast.standaloneOrdersTotal} шт. · ${formatMoney(finance.forecast.standaloneOrdersRevenue)}`} />
-            <KpiCard label="Активные проекты" value={formatMoney(finance.forecast.activeProjectsProfit)} note={`${k.activeProjects} шт. · ${formatMoney(finance.forecast.activeProjectsRevenue)}`} />
-          </div>
-        </section>
+function Panel(props: {
+  title: string;
+  eyebrow?: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`border border-zinc-300 bg-white ${props.className ?? ""}`}>
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4">
+        <div>
+          {props.eyebrow ? (
+            <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">
+              {props.eyebrow}
+            </div>
+          ) : null}
+          <h2 className="mt-0.5 text-lg font-black text-zinc-950">{props.title}</h2>
+          {props.description ? (
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-zinc-500">{props.description}</p>
+          ) : null}
+        </div>
+        {props.action}
+      </header>
+      <div className="p-5">{props.children}</div>
+    </section>
+  );
+}
 
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
-          <div className="text-sm font-bold uppercase tracking-wide opacity-70">Бонусы {finance.bonuses.ratePercent}%</div>
-          <div className="mt-2 text-4xl font-black tabular-nums">{formatMoney(finance.bonuses.factPool)}</div>
-          <div className="mt-1 text-sm font-medium opacity-80">{finance.bonuses.ratePercent}% от фактической прибыли · {finance.bonuses.recipients} получателей</div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <KpiCard label="Факт на человека" value={formatMoney(finance.bonuses.factPerPerson)} />
-            <KpiCard label="Прогноз на человека" value={formatMoney(finance.bonuses.forecastPerPerson)} note={formatMoney(finance.bonuses.forecastPool)} />
-          </div>
-        </section>
+function FinanceTrend(props: {
+  points: Array<{ month: string; revenue: number; profit: number }>;
+  emptyText?: string;
+}) {
+  const points = props.points.slice(-12);
+  if (points.length === 0) {
+    return <EmptyState>{props.emptyText ?? "За выбранный период нет данных для графика."}</EmptyState>;
+  }
+
+  const width = 760;
+  const height = 250;
+  const padding = { left: 18, right: 18, top: 18, bottom: 46 };
+  const values = points.flatMap((point) => [point.revenue, point.profit, 0]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = Math.max(1, max - min);
+  const chartHeight = height - padding.top - padding.bottom;
+  const chartWidth = width - padding.left - padding.right;
+  const step = chartWidth / points.length;
+  const y = (value: number) => padding.top + ((max - value) / span) * chartHeight;
+  const zeroY = y(0);
+  const profitPoints = points
+    .map((point, index) => `${padding.left + step * index + step / 2},${y(point.profit)}`)
+    .join(" ");
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-zinc-600">
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 bg-zinc-950" aria-hidden="true" />
+          Выручка
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="h-0.5 w-5 bg-violet-600" aria-hidden="true" />
+          Прибыль
+        </span>
       </div>
-
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Закрытые заявки" value={k.ordersClosed} note="Только без проекта" />
-        <KpiCard label="Заявки в проектах" value={finance.ownership.linkedClosedOrdersExcluded} note="Исключены из факта заявок" tone={finance.ownership.linkedClosedOrdersExcluded > 0 ? "violet" : "slate"} />
-        <KpiCard label="Проекты с рисками" value={riskCount} tone={riskCount > 0 ? "amber" : "slate"} />
-        <KpiCard label="Повторные заказчики" value={k.repeatCustomers} />
-      </div>
-      <SectionCard title="Что требует внимания">
-        {data.overview.attention.length === 0 ? (
-          <p className="text-sm text-zinc-500">Критичных сигналов за период нет.</p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {data.overview.attention.map((item) => (
-              <div
-                key={`${item.projectId}-${item.message}`}
-                className={`rounded-2xl border p-3 text-sm shadow-sm ${
-                  item.severity === "critical" ? "border-rose-200/70 bg-rose-50/80" : "border-amber-200/70 bg-amber-50/80"
-                }`}
-              >
-                <div className="font-semibold text-zinc-900">{item.projectTitle}</div>
-                <div className="mt-1 text-zinc-700">{item.message}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <MiniTable
-          title="Топ проектов"
-          headers={["Проект", "Прогноз"]}
-          rows={data.overview.topProjects.map((p) => [p.title, formatMoney(p.financials.revenueTotal)])}
-        />
-        <MiniTable
-          title="Топ заказчиков"
-          headers={["Заказчик", "LTV mixed"]}
-          rows={data.overview.topCustomers.map((c) => [c.customerName, formatMoney(c.ltvMixed)])}
-        />
-        <MiniTable
-          title="Топ реквизита"
-          headers={["Позиция", "Выручка"]}
-          rows={data.overview.topItems.map((i) => [i.itemName, formatMoney(i.revenue)])}
-        />
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label="График выручки и прибыли по месяцам"
+          className="min-w-[680px]"
+        >
+          <line
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={zeroY}
+            y2={zeroY}
+            stroke="#d4d4d8"
+          />
+          {points.map((point, index) => {
+            const barWidth = Math.max(12, step * 0.5);
+            const barX = padding.left + step * index + (step - barWidth) / 2;
+            const barY = Math.min(y(point.revenue), zeroY);
+            const barHeight = Math.max(2, Math.abs(zeroY - y(point.revenue)));
+            return (
+              <g key={point.month}>
+                <rect
+                  x={barX}
+                  y={barY}
+                  width={barWidth}
+                  height={barHeight}
+                  fill="#18181b"
+                  opacity="0.92"
+                >
+                  <title>
+                    {formatMonth(point.month)}: выручка {formatMoney(point.revenue)}
+                  </title>
+                </rect>
+                <text
+                  x={padding.left + step * index + step / 2}
+                  y={height - 18}
+                  textAnchor="middle"
+                  fill="#71717a"
+                  fontSize="12"
+                  fontWeight="700"
+                >
+                  {formatMonth(point.month)}
+                </text>
+              </g>
+            );
+          })}
+          <polyline
+            points={profitPoints}
+            fill="none"
+            stroke="#6d28d9"
+            strokeWidth="4"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          {points.map((point, index) => (
+            <circle
+              key={`profit-${point.month}`}
+              cx={padding.left + step * index + step / 2}
+              cy={y(point.profit)}
+              r="5"
+              fill="#6d28d9"
+              stroke="white"
+              strokeWidth="2"
+            >
+              <title>
+                {formatMonth(point.month)}: прибыль {formatMoney(point.profit)}
+              </title>
+            </circle>
+          ))}
+        </svg>
       </div>
     </div>
   );
 }
 
-function RequisitesTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
-  const r = data.requisites;
+function DistributionBars(props: {
+  rows: Array<{ label: string; value: number; meta?: string }>;
+  valueFormatter?: (value: number) => string;
+  color?: "violet" | "yellow" | "black";
+}) {
+  const max = Math.max(1, ...props.rows.map((row) => row.value));
+  const colors = {
+    violet: "bg-violet-600",
+    yellow: "bg-amber-400",
+    black: "bg-zinc-950",
+  };
+
+  if (props.rows.length === 0) return <EmptyState>Нет данных за выбранный период.</EmptyState>;
+
+  return (
+    <div className="space-y-4">
+      {props.rows.map((row) => (
+        <div key={row.label}>
+          <div className="mb-1.5 flex items-baseline justify-between gap-4 text-sm">
+            <span className="font-semibold text-zinc-800">{row.label}</span>
+            <span className="shrink-0 font-black tabular-nums text-zinc-950">
+              {props.valueFormatter ? props.valueFormatter(row.value) : formatInt(row.value)}
+            </span>
+          </div>
+          <div className="h-1.5 bg-zinc-100">
+            <div
+              className={`h-full ${colors[props.color ?? "violet"]}`}
+              style={{ width: `${Math.max(2, (row.value / max) * 100)}%` }}
+            />
+          </div>
+          {row.meta ? <p className="mt-1 text-xs text-zinc-500">{row.meta}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DataTable(props: {
+  headers: string[];
+  rows: React.ReactNode[][];
+  emptyText?: string;
+  minWidth?: number;
+}) {
+  if (props.rows.length === 0) return <EmptyState>{props.emptyText ?? "Нет данных."}</EmptyState>;
+
+  return (
+    <div className="overflow-auto border border-zinc-200">
+      <table
+        className="w-full text-sm"
+        style={{ minWidth: `${props.minWidth ?? 760}px` }}
+      >
+        <thead className="sticky top-0 bg-zinc-100">
+          <tr>
+            {props.headers.map((header, index) => (
+              <th
+                key={header}
+                className={`border-b border-zinc-300 px-4 py-3 text-xs font-black uppercase tracking-[0.1em] text-zinc-500 ${
+                  index === 0 ? "text-left" : "text-right"
+                }`}
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row, rowIndex) => (
+            <tr key={rowIndex} className="border-b border-zinc-200 last:border-b-0 hover:bg-zinc-50">
+              {row.map((cell, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  className={`px-4 py-3 align-top ${
+                    cellIndex === 0
+                      ? "text-left font-semibold text-zinc-950"
+                      : "text-right font-bold tabular-nums text-zinc-700"
+                  }`}
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border border-dashed border-zinc-300 bg-zinc-50 px-5 py-8 text-center text-sm text-zinc-500">
+      {children}
+    </div>
+  );
+}
+
+export default function AdminAnalyticsPage() {
+  const { state } = useAuth();
+  const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
+  const [activeTab, setActiveTab] = React.useState<Tab>("overview");
+  const [scopes, setScopes] = React.useState<Record<Tab, Scope>>(initialScopes);
+  const [cache, setCache] = React.useState<Record<string, AnalyticsPayload>>({});
+  const [loadingKey, setLoadingKey] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const scope = scopes[activeTab];
+  const scopeError = scope.from > scope.to;
+  const cacheKey = `${activeTab}:${scope.from}:${scope.to}`;
+  const data = cache[cacheKey] ?? null;
+  const activeMeta = TAB_META.find((item) => item.id === activeTab) ?? TAB_META[0];
+
+  React.useEffect(() => {
+    if (forbidden || scopeError || cache[cacheKey]) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ from: scope.from, to: scope.to });
+    setLoadingKey(cacheKey);
+    setError(null);
+
+    fetch(`/api/admin/analytics?${params.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as AnalyticsPayload | null;
+        if (!response.ok || !payload) throw new Error("Не удалось загрузить аналитику.");
+        setCache((current) => ({ ...current, [cacheKey]: payload }));
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(reason instanceof Error ? reason.message : "Ошибка загрузки аналитики.");
+      })
+      .finally(() => setLoadingKey((current) => (current === cacheKey ? null : current)));
+
+    return () => controller.abort();
+  }, [cache, cacheKey, forbidden, scope.from, scope.to, scopeError]);
+
+  const updateScope = React.useCallback(
+    (next: Scope) => setScopes((current) => ({ ...current, [activeTab]: next })),
+    [activeTab],
+  );
+
+  return (
+    <AppShell title="Админка · Аналитика">
+      {forbidden ? (
+        <div className="text-sm text-zinc-600">Раздел доступен только команде Wowstorg.</div>
+      ) : (
+        <main className="space-y-5 pb-10">
+          <Link
+            href="/admin"
+            className="inline-flex text-sm font-bold text-zinc-600 hover:text-zinc-950"
+          >
+            ← Администрирование
+          </Link>
+
+          <header className="border-t-[6px] border-amber-400 bg-zinc-950 px-6 py-7 text-white">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.5fr)] lg:items-end">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                  Управленческий центр
+                </div>
+                <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">Аналитика</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+                  Не один универсальный отчёт, а отдельные рабочие пространства для финансов,
+                  бонусов, реквизита, проектов и клиентской базы.
+                </p>
+              </div>
+              <p className="border-l border-zinc-700 pl-4 text-sm leading-6 text-zinc-400">
+                Каждый раздел запоминает собственный период. Смена периода бонусов больше не
+                затрагивает проектную или складскую аналитику.
+              </p>
+            </div>
+          </header>
+
+          <nav
+            aria-label="Разделы аналитики"
+            className="grid border border-zinc-300 bg-white md:grid-cols-5"
+          >
+            {TAB_META.map((tab, index) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={[
+                  "min-h-20 border-b border-zinc-200 px-4 py-3 text-left transition-colors last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0",
+                  activeTab === tab.id
+                    ? "bg-amber-400 text-zinc-950"
+                    : "bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950",
+                ].join(" ")}
+                aria-current={activeTab === tab.id ? "page" : undefined}
+              >
+                <span className="block text-[10px] font-black tracking-[0.16em] opacity-60">
+                  0{index + 1}
+                </span>
+                <span className="mt-1 block text-sm font-black">{tab.shortLabel}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <PeriodControl tab={activeTab} scope={scope} onChange={updateScope} />
+            <aside className="border border-zinc-300 bg-zinc-100 p-5">
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">
+                Что здесь смотреть
+              </div>
+              <p className="mt-2 text-sm font-bold leading-6 text-zinc-900">
+                {activeMeta.description}
+              </p>
+            </aside>
+          </div>
+
+          {scopeError ? null : loadingKey === cacheKey && !data ? (
+            <DashboardSkeleton />
+          ) : error && !data ? (
+            <div className="border border-rose-300 bg-rose-50 p-5 text-sm font-semibold text-rose-800">
+              {error}
+            </div>
+          ) : data ? (
+            <>
+              {activeTab === "overview" ? <OverviewTab data={data} scope={scope} /> : null}
+              {activeTab === "bonuses" ? <BonusesTab data={data} /> : null}
+              {activeTab === "requisites" ? <RequisitesTab data={data} scope={scope} /> : null}
+              {activeTab === "projects" ? <ProjectsTab data={data} scope={scope} /> : null}
+              {activeTab === "customers" ? <CustomersTab data={data} scope={scope} /> : null}
+              <Methodology rows={data.methodology} />
+            </>
+          ) : null}
+        </main>
+      )}
+    </AppShell>
+  );
+}
+
+function OverviewTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
+  const finance = data.overview.finance;
+  const kpi = data.overview.kpi;
+  const factMargin = marginPercent(finance.fact.revenueTotal, finance.fact.profitTotal);
+  const forecastMargin = marginPercent(finance.forecast.revenueTotal, finance.forecast.profitTotal);
+
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">
-        <ExportButton section="requisites" scope={scope}>
-          Скачать реквизит
-        </ExportButton>
+      <MetricStrip
+        items={[
+          {
+            label: "Фактическая выручка",
+            value: formatMoney(finance.fact.revenueTotal),
+            note: "Только завершённые операции",
+          },
+          {
+            label: "Фактическая прибыль",
+            value: formatMoney(finance.fact.profitTotal),
+            note: `Маржа ${formatPercent(factMargin)}`,
+            accent: finance.fact.profitTotal >= 0 ? "green" : "red",
+          },
+          {
+            label: "Прогноз выручки",
+            value: formatMoney(finance.forecast.revenueTotal),
+            note: "Активные заявки и проекты",
+            accent: "violet",
+          },
+          {
+            label: "Прогноз прибыли",
+            value: formatMoney(finance.forecast.profitTotal),
+            note: `Маржа ${formatPercent(forecastMargin)}`,
+            accent: finance.forecast.profitTotal >= 0 ? "violet" : "red",
+          },
+        ]}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.65fr)]">
+        <Panel
+          eyebrow="Динамика"
+          title="Финансовый результат"
+          description="Выручка и прибыль по закрытым самостоятельным заявкам и завершённым проектам."
+          action={
+            <ExportButton section="global" scope={scope} primary>
+              Скачать отчёт
+            </ExportButton>
+          }
+        >
+          <FinanceTrend points={data.overview.timeline} />
+        </Panel>
+
+        <Panel
+          eyebrow="Структура"
+          title="Из чего складывается результат"
+          description="Проектная и складская экономика не смешиваются повторно."
+        >
+          <DistributionBars
+            color="black"
+            valueFormatter={formatMoney}
+            rows={[
+              {
+                label: "Заявки без проекта",
+                value: finance.fact.standaloneOrdersRevenue,
+                meta: `Прибыль ${formatMoney(finance.fact.standaloneOrdersProfit)}`,
+              },
+              {
+                label: "Завершённые проекты",
+                value: finance.fact.completedProjectsRevenue,
+                meta: `Прибыль ${formatMoney(finance.fact.completedProjectsProfit)}`,
+              },
+            ]}
+          />
+          <div className="mt-6 border-t border-zinc-200 pt-4 text-xs leading-5 text-zinc-500">
+            {finance.ownership.linkedClosedOrdersExcluded > 0
+              ? `${finance.ownership.linkedClosedOrdersExcluded} закрытых заявок внутри проектов исключены из складского факта, чтобы не задвоить выручку.`
+              : "Связанные заявки не дублируют выручку проектов."}
+          </div>
+        </Panel>
       </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Заявки по дате завершения" value={r.kpi.ordersTotal} note="Order.endDate внутри периода" />
-        <KpiCard label="Закрытые заявки" value={r.kpi.ordersClosed} tone="emerald" />
-        <KpiCard label="Выручка реквизита" value={formatMoney(r.kpi.itemsRevenue)} tone="violet" />
-        <KpiCard label="Выручка услуг" value={formatMoney(r.kpi.servicesRevenue)} />
+
+      <MetricStrip
+        items={[
+          { label: "Закрытые заявки", value: kpi.ordersClosed, note: "Без привязки к проектам" },
+          { label: "Активные проекты", value: kpi.activeProjects, accent: "violet" },
+          {
+            label: "Проекты с рисками",
+            value: kpi.staleProjects + kpi.lowMarginProjects,
+            note: "Простой или низкая маржа",
+            accent: kpi.staleProjects + kpi.lowMarginProjects > 0 ? "yellow" : "green",
+          },
+          { label: "Повторные клиенты", value: kpi.repeatCustomers },
+        ]}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <Panel
+          eyebrow="Контроль"
+          title="Требует внимания"
+          description="Только сигналы, по которым можно принять действие."
+        >
+          {data.overview.attention.length === 0 ? (
+            <EmptyState>Критичных сигналов за период нет.</EmptyState>
+          ) : (
+            <div className="divide-y divide-zinc-200 border-y border-zinc-200">
+              {data.overview.attention.map((item) => (
+                <Link
+                  key={`${item.projectId}-${item.type}`}
+                  href={`/projects/${item.projectId}`}
+                  className="grid gap-2 py-4 hover:bg-zinc-50 sm:grid-cols-[110px_minmax(0,1fr)_auto] sm:items-center sm:px-3"
+                >
+                  <span
+                    className={`w-fit border px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${
+                      item.severity === "critical"
+                        ? "border-rose-300 bg-rose-50 text-rose-700"
+                        : "border-amber-300 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    {item.severity === "critical" ? "Критично" : "Проверить"}
+                  </span>
+                  <span>
+                    <span className="block font-bold text-zinc-950">{item.projectTitle}</span>
+                    <span className="mt-0.5 block text-sm text-zinc-500">{item.message}</span>
+                  </span>
+                  <span className="text-lg text-zinc-400">→</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel eyebrow="Лидеры" title="Топ за период">
+          <div className="space-y-6">
+            <RankedList
+              title="Проекты"
+              rows={data.overview.topProjects.map((item) => ({
+                label: item.title,
+                value: formatMoney(item.financials.revenueTotal),
+              }))}
+            />
+            <RankedList
+              title="Клиенты"
+              rows={data.overview.topCustomers.map((item) => ({
+                label: item.customerName,
+                value: formatMoney(item.ltvMixed),
+              }))}
+            />
+            <RankedList
+              title="Реквизит"
+              rows={data.overview.topItems.map((item) => ({
+                label: item.itemName,
+                value: formatMoney(item.revenue),
+              }))}
+            />
+          </div>
+        </Panel>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <MiniTable title="Топ по выдачам" headers={["Позиция", "Шт"]} rows={r.tops.topByIssued.map((i) => [i.itemName, formatInt(i.issuedQty)])} />
-        <MiniTable title="Топ по выручке" headers={["Позиция", "Выручка"]} rows={r.tops.topByRevenue.map((i) => [i.itemName, formatMoney(i.revenue)])} />
-        <MiniTable title="Услуги" headers={["Услуга", "Выручка"]} rows={[
-          ["Доставка", formatMoney(r.services.deliveryRevenue)],
-          ["Монтаж", formatMoney(r.services.montageRevenue)],
-          ["Демонтаж", formatMoney(r.services.demontageRevenue)],
-        ]} />
+    </div>
+  );
+}
+
+function BonusesTab({ data }: { data: AnalyticsPayload }) {
+  const finance = data.overview.finance;
+  const bonus = finance.bonuses;
+
+  return (
+    <div className="space-y-5">
+      <section className="grid border border-zinc-950 bg-zinc-950 text-white lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
+        <div className="p-6 sm:p-8">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+            Бонусный пул · факт
+          </div>
+          <div className="mt-4 text-5xl font-black tabular-nums sm:text-6xl">
+            {formatMoney(bonus.factPool)}
+          </div>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-300">
+            {bonus.ratePercent}% от фактической прибыли за собственный период бонусов. В расчёт
+            входят только закрытые самостоятельные заявки и завершённые проекты.
+          </p>
+        </div>
+        <div className="grid border-t border-zinc-700 lg:border-l lg:border-t-0">
+          <div className="border-b border-zinc-700 p-6">
+            <div className="text-xs font-black uppercase tracking-[0.13em] text-zinc-400">
+              На одного получателя
+            </div>
+            <div className="mt-2 text-3xl font-black tabular-nums">
+              {formatMoney(bonus.factPerPerson)}
+            </div>
+            <div className="mt-1 text-sm text-zinc-400">{bonus.recipients} получателя</div>
+          </div>
+          <div className="p-6">
+            <div className="text-xs font-black uppercase tracking-[0.13em] text-zinc-400">
+              База расчёта
+            </div>
+            <div className="mt-2 text-3xl font-black tabular-nums">
+              {formatMoney(finance.fact.profitTotal)}
+            </div>
+            <div className="mt-1 text-sm text-zinc-400">Фактическая прибыль</div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Panel
+          eyebrow="Формула"
+          title="Как получилась сумма"
+          description="Расчёт разложен до источников, без скрытого смешения периодов."
+        >
+          <div className="space-y-3 text-sm">
+            <FormulaRow label="Прибыль заявок без проекта" value={finance.fact.standaloneOrdersProfit} />
+            <FormulaRow label="Прибыль завершённых проектов" value={finance.fact.completedProjectsProfit} />
+            <FormulaRow label="Итого база" value={finance.fact.profitTotal} strong />
+            <FormulaRow label={`Бонусный пул · ${bonus.ratePercent}%`} value={bonus.factPool} strong accent />
+            <FormulaRow
+              label={`На человека · ÷ ${bonus.recipients}`}
+              value={bonus.factPerPerson}
+              strong
+            />
+          </div>
+        </Panel>
+
+        <Panel
+          eyebrow="Не начислено"
+          title="Потенциальный бонус"
+          description="Прогноз вынесен отдельно и не смешивается с суммой к начислению."
+        >
+          <div className="text-4xl font-black tabular-nums text-violet-700">
+            {formatMoney(bonus.forecastPool)}
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">
+            {formatMoney(bonus.forecastPerPerson)} на человека, если активные заявки и проекты
+            завершатся с текущей экономикой.
+          </p>
+          <div className="mt-6 space-y-3 border-t border-zinc-200 pt-5">
+            <FormulaRow
+              label="Прогноз прибыли заявок"
+              value={finance.forecast.standaloneOrdersProfit}
+            />
+            <FormulaRow
+              label="Прогноз прибыли проектов"
+              value={finance.forecast.activeProjectsProfit}
+            />
+          </div>
+        </Panel>
       </div>
-      <SectionCard title="Рентабельность реквизита">
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
-          <KpiCard label="Позиции с закупом" value={r.profitability.summary.trackedItems} />
-          <KpiCard label="Позиции с выручкой" value={r.profitability.summary.itemsWithRevenue} />
-          <KpiCard label="Валовая прибыль" value={formatMoney(r.profitability.summary.totalGrossProfit)} tone={r.profitability.summary.totalGrossProfit >= 0 ? "emerald" : "rose"} />
-          <KpiCard label="ROI" value={formatPercent(r.profitability.summary.totalRoiPercent)} />
+
+      <Panel
+        eyebrow="Динамика"
+        title="База бонусов по месяцам"
+        description="Линия прибыли показывает, из какой фактической базы формируется бонус."
+      >
+        <FinanceTrend points={data.overview.timeline} />
+      </Panel>
+    </div>
+  );
+}
+
+function RequisitesTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
+  const requisites = data.requisites;
+  const factMargin = marginPercent(requisites.kpi.totalRevenue, requisites.kpi.profitEstimate);
+  const serviceRows = [
+    {
+      label: "Доставка",
+      value: requisites.services.deliveryRevenue,
+      meta: `${requisites.services.deliveryOrders} заявок`,
+    },
+    {
+      label: "Монтаж",
+      value: requisites.services.montageRevenue,
+      meta: `${requisites.services.montageOrders} заявок`,
+    },
+    {
+      label: "Демонтаж",
+      value: requisites.services.demontageRevenue,
+      meta: `${requisites.services.demontageOrders} заявок`,
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <MetricStrip
+        items={[
+          {
+            label: "Выручка · факт",
+            value: formatMoney(requisites.kpi.totalRevenue),
+            note: `${requisites.kpi.ordersClosed} закрытых заявок`,
+          },
+          {
+            label: "Прибыль · факт",
+            value: formatMoney(requisites.kpi.profitEstimate),
+            note: `Маржа ${formatPercent(factMargin)}`,
+            accent: requisites.kpi.profitEstimate >= 0 ? "green" : "red",
+          },
+          {
+            label: "Выручка · прогноз",
+            value: formatMoney(requisites.forecast.totalRevenue),
+            note: `${requisites.forecast.ordersTotal} активных заявок`,
+            accent: "violet",
+          },
+          {
+            label: "Средний чек",
+            value: formatMoney(requisites.kpi.averageOrderRevenue),
+            note: `Средняя аренда ${requisites.kpi.averageRentalDays.toLocaleString("ru-RU")} дн.`,
+          },
+        ]}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.55fr)]">
+        <Panel
+          eyebrow="Динамика"
+          title="Доходность проката"
+          action={
+            <ExportButton section="requisites" scope={scope}>
+              Скачать реквизит
+            </ExportButton>
+          }
+        >
+          <FinanceTrend points={requisites.breakdowns.revenueByMonth} />
+        </Panel>
+        <Panel eyebrow="Услуги" title="Дополнительная выручка">
+          <DistributionBars rows={serviceRows} valueFormatter={formatMoney} color="yellow" />
+        </Panel>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Panel title="Спрос по позициям">
+          <RankedList
+            rows={requisites.tops.topByIssued.slice(0, 8).map((item) => ({
+              label: item.itemName,
+              value: `${formatInt(item.issuedQty)} шт.`,
+            }))}
+          />
+        </Panel>
+        <Panel title="Выручка по позициям">
+          <RankedList
+            rows={requisites.tops.topByRevenue.slice(0, 8).map((item) => ({
+              label: item.itemName,
+              value: formatMoney(item.revenue),
+            }))}
+          />
+        </Panel>
+        <Panel title="Источники заявок">
+          <DistributionBars
+            rows={requisites.breakdowns.bySource.map((item) => ({
+              label: item.source,
+              value: item.revenue,
+              meta: `${item.count} заявок`,
+            }))}
+            valueFormatter={formatMoney}
+          />
+        </Panel>
+      </div>
+
+      <Panel
+        eyebrow="Инвестиции"
+        title="Окупаемость реквизита"
+        description="Закупочная стоимость сравнивается с фактической выручкой позиции."
+      >
+        <div className="mb-5 grid border border-zinc-200 sm:grid-cols-2 lg:grid-cols-4">
+          <CompactMetric label="Позиций с закупом" value={requisites.profitability.summary.trackedItems} />
+          <CompactMetric label="С выручкой" value={requisites.profitability.summary.itemsWithRevenue} />
+          <CompactMetric
+            label="Валовая прибыль"
+            value={formatMoney(requisites.profitability.summary.totalGrossProfit)}
+          />
+          <CompactMetric label="ROI" value={formatPercent(requisites.profitability.summary.totalRoiPercent)} />
         </div>
         <DataTable
-          headers={["Позиция", "Кол-во", "Закуп", "Выручка", "Прибыль", "Окупаемость", "ROI"]}
-          rows={r.profitability.rows.map((row) => [
+          minWidth={940}
+          headers={["Позиция", "Кол-во", "Закуп", "Выручка", "Валовая прибыль", "Окупаемость", "ROI"]}
+          rows={requisites.profitability.rows.map((row) => [
             row.itemName,
             formatInt(row.totalQty),
             formatMoney(row.purchaseCost),
@@ -621,30 +1036,188 @@ function RequisitesTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }
             formatPercent(row.roiPercent),
           ])}
         />
-      </SectionCard>
+      </Panel>
+    </div>
+  );
+}
+
+function ProjectsTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
+  const projects = data.projects;
+  const financialRows = projects.rows.filter((row) => row.status !== "CANCELLED");
+
+  return (
+    <div className="space-y-5">
+      <MetricStrip
+        items={[
+          { label: "Активные проекты", value: projects.kpi.activeProjects, accent: "violet" },
+          {
+            label: "Прогноз выручки",
+            value: formatMoney(projects.kpi.forecastRevenueTotal),
+          },
+          {
+            label: "Прогноз прибыли",
+            value: formatMoney(projects.kpi.forecastMarginAfterTax),
+            note: `Маржа ${formatPercent(projects.kpi.averageMarginAfterTaxPercent)}`,
+            accent: projects.kpi.forecastMarginAfterTax >= 0 ? "green" : "red",
+          },
+          {
+            label: "Завершено / отменено",
+            value: `${projects.kpi.completedProjects} / ${projects.kpi.cancelledProjects}`,
+            note: `Конверсия ${formatPercent(projects.kpi.completionRatePercent)}`,
+          },
+        ]}
+      />
+
+      <Panel
+        eyebrow="Процесс"
+        title="Воронка готовности проекта"
+        description="Показывает, на каком обязательном шаге теряются проекты."
+        action={
+          <ExportButton section="projects" scope={scope}>
+            Скачать проекты
+          </ExportButton>
+        }
+      >
+        <Funnel
+          stages={[
+            { label: "Созданы", value: projects.funnel.created },
+            { label: "Есть смета", value: projects.funnel.withPrimaryEstimate },
+            { label: "Дата подтверждена", value: projects.funnel.withConfirmedDates },
+            { label: "Заявка связана", value: projects.funnel.withLinkedOrder },
+            { label: "Завершены", value: projects.funnel.completed },
+          ]}
+        />
+      </Panel>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+        <Panel
+          eyebrow="Риски"
+          title="Проекты, требующие решения"
+          description="Сначала критичные и давно не обновлявшиеся проекты."
+        >
+          {projects.risks.length === 0 ? (
+            <EmptyState>Проектных рисков за период нет.</EmptyState>
+          ) : (
+            <div className="divide-y divide-zinc-200 border-y border-zinc-200">
+              {projects.risks.slice(0, 12).map((project) => (
+                <ProjectSignal key={project.projectId} project={project} />
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Возраст текущих статусов">
+          <DistributionBars
+            color="yellow"
+            rows={projects.statusAging.map((item) => ({
+              label: statusLabel(item.status),
+              value: item.averageCurrentAgeDays,
+              meta: `${item.projects} проектов · максимум ${item.maxCurrentAgeDays} дн.`,
+            }))}
+            valueFormatter={(value) => `${formatInt(value)} дн.`}
+          />
+        </Panel>
+      </div>
+
+      <Panel
+        eyebrow="Экономика"
+        title="Финансы проектов"
+        description="Отменённые проекты не входят в прогноз, но остаются в метриках процесса."
+      >
+        <DataTable
+          minWidth={1120}
+          headers={["Проект", "Клиент", "Статус", "Дата", "Выручка", "Внутренние", "Налог", "Прибыль", "Маржа", "Здоровье"]}
+          rows={financialRows.map((row) => [
+            <Link key={row.projectId} href={`/projects/${row.projectId}`} className="hover:text-violet-700">
+              {row.title}
+            </Link>,
+            row.customerName,
+            statusLabel(row.status),
+            formatDate(row.eventStartDate),
+            formatMoney(row.financials.revenueTotal),
+            formatMoney(row.financials.internalExpensesTotal),
+            formatMoney(row.financials.tax),
+            formatMoney(row.financials.marginAfterTax),
+            formatPercent(row.financials.marginAfterTaxPct),
+            formatInt(row.healthScore),
+          ])}
+        />
+      </Panel>
     </div>
   );
 }
 
 function CustomersTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
-  const c = data.customers;
+  const customers = data.customers;
+  const repeatShare =
+    customers.kpi.customersTotal > 0
+      ? (customers.kpi.repeatCustomers / customers.kpi.customersTotal) * 100
+      : 0;
+
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">
-        <ExportButton section="customers" scope={scope}>
-          Скачать заказчиков
-        </ExportButton>
+      <MetricStrip
+        items={[
+          { label: "Клиентов в периоде", value: customers.kpi.customersTotal },
+          {
+            label: "Повторные клиенты",
+            value: customers.kpi.repeatCustomers,
+            note: `${formatPercent(repeatShare)} базы`,
+            accent: "violet",
+          },
+          {
+            label: "Прогноз выручки",
+            value: formatMoney(customers.kpi.forecastRevenueTotal),
+          },
+          {
+            label: "Факт отдельных заявок",
+            value: formatMoney(customers.kpi.closedOrdersFactRevenue),
+            accent: "green",
+          },
+        ]}
+      />
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Panel
+          eyebrow="Состав базы"
+          title="Новые и повторные"
+          action={
+            <ExportButton section="customers" scope={scope}>
+              Скачать клиентов
+            </ExportButton>
+          }
+        >
+          <DistributionBars
+            color="violet"
+            rows={[
+              { label: "Повторные", value: customers.kpi.repeatCustomers },
+              { label: "Новые", value: customers.kpi.newCustomers },
+            ]}
+          />
+        </Panel>
+        <Panel eyebrow="Качество портфеля" title="Средние показатели">
+          <div className="grid border border-zinc-200 sm:grid-cols-2">
+            <CompactMetric
+              label="Средний проект"
+              value={formatMoney(customers.kpi.averageProjectRevenue)}
+            />
+            <CompactMetric
+              label="Средняя маржа"
+              value={formatPercent(customers.kpi.averageProjectMarginPercent)}
+            />
+          </div>
+        </Panel>
       </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Заказчиков" value={c.kpi.customersTotal} />
-        <KpiCard label="Повторных" value={c.kpi.repeatCustomers} tone="violet" />
-        <KpiCard label="Прогноз выручки" value={formatMoney(c.kpi.forecastRevenueTotal)} tone="emerald" />
-        <KpiCard label="Факт заявок" value={formatMoney(c.kpi.closedOrdersFactRevenue)} />
-      </div>
-      <SectionCard title="Заказчики">
+
+      <Panel
+        eyebrow="Клиентская база"
+        title="Ценность и повторные продажи"
+        description="LTV mixed объединяет прогноз проектов и факт самостоятельных закрытых заявок."
+      >
         <DataTable
-          headers={["Заказчик", "Проекты", "Активные", "Заверш.", "Отмен.", "Прогноз", "Маржа", "Факт заявок", "LTV mixed", "Маржа %"]}
-          rows={c.rows.map((row) => [
+          minWidth={1120}
+          headers={["Клиент", "Проекты", "Активные", "Завершены", "Отменены", "Прогноз", "Прибыль", "Факт заявок", "LTV mixed", "Маржа"]}
+          rows={customers.rows.map((row) => [
             row.customerName,
             formatInt(row.projectsCount),
             formatInt(row.activeProjects),
@@ -657,127 +1230,139 @@ function CustomersTab({ data, scope }: { data: AnalyticsPayload; scope: Scope })
             formatPercent(row.averageMarginAfterTaxPercent),
           ])}
         />
-      </SectionCard>
+      </Panel>
     </div>
   );
 }
 
-function ProjectsTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) {
-  const p = data.projects;
-  const financialRows = p.rows.filter((row) => row.status !== "CANCELLED");
+function RankedList(props: {
+  title?: string;
+  rows: Array<{ label: string; value: string }>;
+}) {
   return (
-    <div className="space-y-5">
-      <div className="flex justify-end">
-        <ExportButton section="projects" scope={scope}>
-          Скачать проекты
-        </ExportButton>
-      </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Проектов" value={p.kpi.projectsTotal} />
-        <KpiCard label="Активные" value={p.kpi.activeProjects} tone="violet" />
-        <KpiCard label="Прогноз выручки" value={formatMoney(p.kpi.forecastRevenueTotal)} tone="emerald" />
-        <KpiCard label="Маржа после налога" value={formatMoney(p.kpi.forecastMarginAfterTax)} tone={p.kpi.forecastMarginAfterTax >= 0 ? "emerald" : "rose"} />
-      </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard label="Без сметы" value={p.kpi.withoutPrimaryEstimate} tone={p.kpi.withoutPrimaryEstimate > 0 ? "amber" : "slate"} />
-        <KpiCard label="Без заявки" value={p.kpi.withoutLinkedOrder} tone={p.kpi.withoutLinkedOrder > 0 ? "amber" : "slate"} />
-        <KpiCard label="Без активности 14+ дней" value={p.kpi.stale14Days} tone={p.kpi.stale14Days > 0 ? "rose" : "slate"} />
-        <KpiCard label="Средняя маржа" value={formatPercent(p.kpi.averageMarginAfterTaxPercent)} />
-      </div>
-
-      <SectionCard title="Воронка проектов">
-        <div className="grid gap-3 md:grid-cols-5">
-          <KpiCard label="Созданы" value={p.funnel.created} />
-          <KpiCard label="Есть смета" value={p.funnel.withPrimaryEstimate} />
-          <KpiCard label="Дата подтверждена" value={p.funnel.withConfirmedDates} />
-          <KpiCard label="Есть заявка" value={p.funnel.withLinkedOrder} />
-          <KpiCard label="Завершены" value={p.funnel.completed} tone="emerald" />
-        </div>
-      </SectionCard>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <MiniTable title="Возраст статусов" headers={["Статус", "Средн. дней"]} rows={p.statusAging.map((s) => [s.status, formatInt(s.averageCurrentAgeDays)])} />
-        <MiniTable title="Проекты с рисками" headers={["Проект", "Сигнал"]} rows={p.risks.slice(0, 12).map((r) => [r.title, r.risks.slice(0, 2).join(", ")])} />
-      </div>
-
-      <SectionCard title="Финансы проектов">
-        <p className="mb-3 text-xs text-zinc-500">
-          Отмененные проекты не входят в финансовый прогноз и эту таблицу. Они остаются в метриках отмен и воронке.
-        </p>
-        <DataTable
-          headers={["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Налог", "Маржа", "Маржа %", "Здоровье"]}
-          rows={financialRows.map((row) => [
-            row.title,
-            row.customerName,
-            row.status,
-            formatMoney(row.financials.revenueTotal),
-            formatMoney(row.financials.internalSubtotal),
-            formatMoney(row.financials.tax),
-            formatMoney(row.financials.marginAfterTax),
-            formatPercent(row.financials.marginAfterTaxPct),
-            formatInt(row.healthScore),
-          ])}
-        />
-      </SectionCard>
-    </div>
-  );
-}
-
-function MiniTable(props: { title: string; headers: string[]; rows: string[][] }) {
-  return (
-    <div className="overflow-hidden rounded-[1.5rem] border border-white/70 bg-white/70 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
-      <div className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(245,243,255,0.58))] p-3 text-sm font-black text-zinc-950">{props.title}</div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-white/70">
-            {props.headers.map((h, i) => (
-              <th key={h} className={["p-3 text-xs font-black uppercase tracking-[0.12em] text-zinc-500", i === 0 ? "text-left" : "text-right"].join(" ")}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.slice(0, 10).map((row, idx) => (
-            <tr key={`${row[0]}-${idx}`} className="border-b border-white/60 last:border-0">
-              {row.map((cell, i) => (
-                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left font-semibold" : "text-right font-bold tabular-nums"} text-zinc-800`}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
+    <div>
+      {props.title ? (
+        <h3 className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-zinc-500">
+          {props.title}
+        </h3>
+      ) : null}
+      {props.rows.length === 0 ? (
+        <p className="text-sm text-zinc-500">Нет данных.</p>
+      ) : (
+        <ol className="divide-y divide-zinc-200 border-y border-zinc-200">
+          {props.rows.slice(0, 8).map((row, index) => (
+            <li key={`${row.label}-${index}`} className="grid grid-cols-[26px_minmax(0,1fr)_auto] gap-2 py-2.5 text-sm">
+              <span className="font-black tabular-nums text-zinc-400">
+                {`${index + 1}`.padStart(2, "0")}
+              </span>
+              <span className="truncate font-semibold text-zinc-800">{row.label}</span>
+              <span className="font-black tabular-nums text-zinc-950">{row.value}</span>
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ol>
+      )}
     </div>
   );
 }
 
-function DataTable(props: { headers: string[]; rows: string[][] }) {
+function FormulaRow(props: {
+  label: string;
+  value: number;
+  strong?: boolean;
+  accent?: boolean;
+}) {
   return (
-    <div className="overflow-auto rounded-[1.5rem] border border-white/70 bg-white/70 shadow-[0_18px_48px_rgba(76,29,149,0.08)] backdrop-blur">
-      <table className="w-full min-w-[900px] text-sm">
-        <thead>
-          <tr className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.84),rgba(245,243,255,0.58))]">
-            {props.headers.map((h, i) => (
-              <th key={h} className={["p-3 text-xs font-black uppercase tracking-[0.12em] text-zinc-500", i === 0 ? "text-left" : "text-right"].join(" ")}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row, idx) => (
-            <tr key={`${row[0]}-${idx}`} className="border-b border-white/60 last:border-0">
-              {row.map((cell, i) => (
-                <td key={`${cell}-${i}`} className={`p-3 ${i === 0 ? "text-left font-semibold text-zinc-900" : "text-right font-bold tabular-nums text-zinc-700"}`}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div
+      className={`flex items-baseline justify-between gap-4 border-b border-zinc-200 py-3 last:border-b-0 ${
+        props.strong ? "font-black" : ""
+      }`}
+    >
+      <span className={props.accent ? "text-violet-700" : "text-zinc-600"}>{props.label}</span>
+      <span className={`shrink-0 tabular-nums ${props.accent ? "text-violet-700" : "text-zinc-950"}`}>
+        {formatMoney(props.value)}
+      </span>
     </div>
+  );
+}
+
+function CompactMetric(props: { label: string; value: string | number }) {
+  return (
+    <div className="border-b border-zinc-200 p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-500">{props.label}</div>
+      <div className="mt-2 text-xl font-black tabular-nums text-zinc-950">{props.value}</div>
+    </div>
+  );
+}
+
+function Funnel(props: { stages: Array<{ label: string; value: number }> }) {
+  const base = Math.max(1, props.stages[0]?.value ?? 1);
+  return (
+    <div className="grid gap-3 md:grid-cols-5">
+      {props.stages.map((stage, index) => {
+        const share = (stage.value / base) * 100;
+        return (
+          <div key={stage.label} className="relative border border-zinc-300 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-[10px] font-black tracking-[0.14em] text-zinc-400">
+                0{index + 1}
+              </span>
+              <span className="text-xs font-bold text-zinc-500">{formatPercent(share)}</span>
+            </div>
+            <div className="mt-4 text-3xl font-black tabular-nums text-zinc-950">{stage.value}</div>
+            <div className="mt-1 text-sm font-bold text-zinc-700">{stage.label}</div>
+            <div className="mt-4 h-1 bg-zinc-100">
+              <div className="h-full bg-violet-600" style={{ width: `${Math.max(2, share)}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProjectSignal({ project }: { project: ProjectAnalyticsRow }) {
+  return (
+    <Link
+      href={`/projects/${project.projectId}`}
+      className="grid gap-2 py-4 hover:bg-zinc-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:px-3"
+    >
+      <span>
+        <span className="block font-bold text-zinc-950">{project.title}</span>
+        <span className="mt-1 block text-sm text-zinc-500">{project.risks.slice(0, 3).join(" · ")}</span>
+      </span>
+      <span className="flex items-center gap-3">
+        <span
+          className={`border px-2 py-1 text-xs font-black tabular-nums ${
+            project.healthScore < 45
+              ? "border-rose-300 bg-rose-50 text-rose-700"
+              : "border-amber-300 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {project.healthScore}/100
+        </span>
+        <span className="text-lg text-zinc-400">→</span>
+      </span>
+    </Link>
+  );
+}
+
+function Methodology({ rows }: { rows: AnalyticsPayload["methodology"] }) {
+  return (
+    <details className="group border border-zinc-300 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-black text-zinc-900">
+        <span>Методика и границы расчёта</span>
+        <span className="text-lg text-zinc-400 transition-transform group-open:rotate-45">+</span>
+      </summary>
+      <div className="grid border-t border-zinc-200 md:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.section} className="border-b border-zinc-200 p-5 last:border-b-0 md:border-r md:[&:nth-child(even)]:border-r-0">
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-violet-700">
+              {row.section}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">{row.rule}</p>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

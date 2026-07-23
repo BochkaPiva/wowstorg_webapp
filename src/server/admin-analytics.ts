@@ -53,7 +53,7 @@ export type RequisiteAnalyticsData = {
   breakdowns: {
     byStatus: Array<{ status: string; count: number }>;
     bySource: Array<{ source: string; count: number; revenue: number }>;
-    revenueByMonth: Array<{ month: string; revenue: number; orders: number }>;
+    revenueByMonth: Array<{ month: string; revenue: number; profit: number; orders: number }>;
   };
   tops: {
     topByIssued: Array<{ itemId: string; itemName: string; issuedQty: number }>;
@@ -263,6 +263,13 @@ export type OverviewAnalyticsData = {
   topProjects: ProjectAnalyticsRow[];
   topCustomers: CustomerAnalyticsData["rows"];
   topItems: RequisiteAnalyticsData["tops"]["topByRevenue"];
+  timeline: Array<{
+    month: string;
+    revenue: number;
+    profit: number;
+    orders: number;
+    projects: number;
+  }>;
 };
 
 export type AdminAnalyticsData = {
@@ -455,7 +462,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   const itemIssued = new Map<string, number>();
   const itemRevenue = new Map<string, { name: string; revenue: number }>();
   const customerTotal = new Map<string, { name: string; total: number }>();
-  const revenueByMonth = new Map<string, { revenue: number; orders: number }>();
+  const revenueByMonth = new Map<string, { revenue: number; profit: number; orders: number }>();
   const revenueByItemForProfitability = new Map<string, number>();
 
   let totalItemsRevenue = 0;
@@ -541,6 +548,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     const mk = monthKey(order.endDate);
     revenueByMonth.set(mk, {
       revenue: (revenueByMonth.get(mk)?.revenue ?? 0) + orderRevenue,
+      profit: (revenueByMonth.get(mk)?.profit ?? 0) + profitEstimate.profitEstimate,
       orders: (revenueByMonth.get(mk)?.orders ?? 0) + 1,
     });
   }
@@ -657,7 +665,12 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         .map(([source, v]) => ({ source, count: v.count, revenue: Math.round(v.revenue) }))
         .sort((a, b) => b.revenue - a.revenue),
       revenueByMonth: [...revenueByMonth.entries()]
-        .map(([month, v]) => ({ month, revenue: Math.round(v.revenue), orders: v.orders }))
+        .map(([month, v]) => ({
+          month,
+          revenue: Math.round(v.revenue),
+          profit: Math.round(v.profit),
+          orders: v.orders,
+        }))
         .sort((a, b) => a.month.localeCompare(b.month)),
     },
     tops: {
@@ -1225,6 +1238,33 @@ function getOverviewAnalytics(
   const forecastProfitTotal = standaloneForecastOrdersProfit + projects.kpi.forecastMarginAfterTax;
   const factPool = Math.round(factProfitTotal * bonusRate);
   const forecastPool = Math.round(forecastProfitTotal * bonusRate);
+  const timeline = new Map<
+    string,
+    { revenue: number; profit: number; orders: number; projects: number }
+  >();
+
+  for (const point of requisites.breakdowns.revenueByMonth) {
+    timeline.set(point.month, {
+      revenue: point.revenue,
+      profit: point.profit,
+      orders: point.orders,
+      projects: 0,
+    });
+  }
+
+  for (const project of projects.rows) {
+    if (project.status !== ProjectStatus.COMPLETED) continue;
+    const anchor = project.eventEndDate ?? project.eventStartDate;
+    if (!anchor) continue;
+    const month = anchor.slice(0, 7);
+    const current = timeline.get(month) ?? { revenue: 0, profit: 0, orders: 0, projects: 0 };
+    timeline.set(month, {
+      revenue: current.revenue + project.financials.revenueTotal,
+      profit: current.profit + project.financials.marginAfterTax,
+      orders: current.orders,
+      projects: current.projects + 1,
+    });
+  }
 
   return {
     kpi: {
@@ -1278,6 +1318,15 @@ function getOverviewAnalytics(
     topProjects: projects.topByRevenue.slice(0, 5),
     topCustomers: customers.rows.slice(0, 5),
     topItems: requisites.tops.topByRevenue.slice(0, 5),
+    timeline: [...timeline.entries()]
+      .map(([month, point]) => ({
+        month,
+        revenue: Math.round(point.revenue),
+        profit: Math.round(point.profit),
+        orders: point.orders,
+        projects: point.projects,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month)),
   };
 }
 

@@ -259,13 +259,13 @@
   display: grid;
   overflow: hidden;
   border-color: #c9c9c3;
-  box-shadow: 0 4px 16px rgba(10, 10, 10, 0.045);
+  box-shadow: 0 2px 6px rgba(10, 10, 10, 0.055);
   transition: border-color 180ms var(--wow-ease, ease), box-shadow 180ms var(--wow-ease, ease), transform 180ms var(--wow-ease, ease);
 }
 
 .work-card:hover {
   border-color: #9d9d97;
-  box-shadow: 0 10px 26px rgba(10, 10, 10, 0.07);
+  box-shadow: 0 4px 8px rgba(10, 10, 10, 0.075);
   transform: translateY(-1px);
 }
 
@@ -274,35 +274,37 @@
 
 .work-card__summary {
   display: grid;
-  grid-template-columns: 58px minmax(220px, 1.5fr) minmax(170px, .8fr) minmax(135px, .55fr) minmax(265px, auto);
+  grid-template-columns: 112px minmax(220px, 1.5fr) minmax(170px, .8fr) minmax(135px, .55fr) minmax(265px, auto);
   gap: 18px;
   align-items: center;
   min-height: 112px;
-  padding: 18px 20px;
+  padding: 0 20px 0 0;
   background: #fff;
   text-align: left;
 }
 
 .work-customerMark {
   display: grid;
-  width: 54px;
-  height: 54px;
+  width: 112px;
+  height: 112px;
+  align-self: stretch;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--work-border);
-  border-radius: 13px;
-  background: #f1f1ed;
+  border: 0;
+  background: color-mix(in srgb, var(--wow-purple-soft, #eee7ff) 68%, #f1f1ed);
   color: #2b1957;
 }
 
 .work-customerMark img {
   width: 100%;
   height: 100%;
+  padding: 13px;
   object-fit: contain;
 }
 
 .work-customerMark b {
-  font-size: 17px;
+  font-size: 25px;
+  font-weight: 850;
   letter-spacing: -.03em;
 }
 
@@ -437,6 +439,14 @@
   background: #f8f8f5;
 }
 
+.work-card__progress[data-substeps] {
+  position: relative;
+  gap: 10px;
+  border-top: 0;
+  padding: 2px 20px 18px 112px;
+  background: #fff;
+}
+
 .work-progressRow {
   min-width: 0;
   padding: 13px 20px 15px;
@@ -444,6 +454,35 @@
 
 .work-progressRow + .work-progressRow {
   border-top: 1px solid var(--work-border);
+}
+
+.work-progressRow[data-substep] {
+  position: relative;
+  border: 1px solid #d8d1e5;
+  border-radius: 12px;
+  padding: 12px 16px 14px;
+  background: #faf9fd;
+}
+
+.work-progressRow[data-substep] + .work-progressRow[data-substep] {
+  border-top: 1px solid #d8d1e5;
+}
+
+.work-progressRow[data-substep]::before {
+  position: absolute;
+  top: -20px;
+  left: 22px;
+  width: 1px;
+  height: 19px;
+  background: #b9a8d7;
+  content: "";
+}
+
+.work-progressRow[data-substep] .work-progressRow__head b::before {
+  margin-right: 6px;
+  content: "↳";
+  font-size: 13px;
+  letter-spacing: 0;
 }
 
 .work-progressRow__head {
@@ -528,10 +567,6 @@
 
 .work-progressRow__stepper > div {
   min-width: 560px;
-}
-
-.work-progressRow--project {
-  background: color-mix(in srgb, var(--wow-purple-soft, #eee7ff) 26%, #f8f8f5);
 }
 
 .work-card__reveal {
@@ -860,7 +895,7 @@
 @media (max-width: 1100px) {
   .work-filters { grid-template-columns: 1fr 1fr; }
   .work-card__summary {
-    grid-template-columns: 54px minmax(220px, 1.4fr) minmax(170px, .8fr) minmax(135px, .55fr);
+    grid-template-columns: 112px minmax(220px, 1.4fr) minmax(170px, .8fr) minmax(135px, .55fr);
   }
   .work-card__actions {
     grid-column: 2 / -1;
@@ -874,11 +909,17 @@
   .work-hero { align-items: stretch; flex-direction: column; padding: 22px; }
   .work-hero .work-primary { width: 100%; }
   .work-card__summary {
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr);
     gap: 12px;
-    padding: 16px;
+    padding: 0 16px 16px 0;
   }
-  .work-customerMark { width: 44px; height: 44px; }
+  .work-customerMark {
+    width: 76px;
+    height: 76px;
+    align-self: start;
+  }
+  .work-customerMark img { padding: 9px; }
+  .work-customerMark b { font-size: 20px; }
   .work-card__state,
   .work-card__numbers { grid-column: 2; text-align: left; }
   .work-card__actions {
@@ -887,7 +928,11 @@
     overflow-x: auto;
     padding-top: 12px;
   }
+  .work-card__progress[data-substeps] {
+    padding: 2px 12px 14px 76px;
+  }
   .work-progressRow { padding-inline: 16px; }
+  .work-progressRow[data-substep] { padding-inline: 12px; }
   .work-progressRow__head,
   .work-progressRow__head > span:first-child {
     align-items: flex-start;

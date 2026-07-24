@@ -25,11 +25,12 @@ const ACTIVE_ORDERS = [
 
 const QuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
-  view: z.enum(["attention", "month", "all", "undated", "estimates", "warehouse"]).default("attention"),
+  view: z.enum(["attention", "month", "all", "undated", "estimates", "warehouse", "archive"]).default("attention"),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   phase: z.string().trim().max(80).optional(),
   kind: z.enum(["all", "project", "order", "estimate"]).default("all"),
+  includeCancelled: z.enum(["true", "false"]).default("false"),
 });
 
 type WorkPhase =
@@ -223,6 +224,7 @@ export async function GET(req: Request) {
     to: url.searchParams.get("to") ?? undefined,
     phase: url.searchParams.get("phase") ?? undefined,
     kind: url.searchParams.get("kind") ?? undefined,
+    includeCancelled: url.searchParams.get("includeCancelled") ?? undefined,
   });
   if (!parsed.success) return jsonError(400, "Некорректные параметры", parsed.error.flatten());
 
@@ -255,6 +257,16 @@ export async function GET(req: Request) {
   const projectDateWhere: Prisma.ProjectWhereInput | undefined =
     query.view === "undated" || query.view === "estimates"
       ? undefined
+      : query.view === "archive"
+        ? {
+            OR: [
+              {
+                eventStartDate: { lte: to },
+                OR: [{ eventEndDate: null }, { eventEndDate: { gte: from } }],
+              },
+              { eventStartDate: null, archivedAt: { gte: from, lte: to } },
+            ],
+          }
       : query.view === "attention"
         ? {
             OR: [
@@ -275,8 +287,18 @@ export async function GET(req: Request) {
     ? []
     : await prisma.project.findMany({
         where: {
-          archivedAt: null,
-          status: { notIn: [...TERMINAL_PROJECTS] },
+          ...(query.view === "archive"
+            ? {
+                status: {
+                  in: query.includeCancelled === "true"
+                    ? [...TERMINAL_PROJECTS]
+                    : [ProjectStatus.COMPLETED],
+                },
+              }
+            : {
+                archivedAt: null,
+                status: { notIn: [...TERMINAL_PROJECTS] },
+              }),
           ...(query.kind === "estimate" || query.view === "estimates" ? { mode: ProjectMode.ESTIMATE_ONLY } : {}),
           ...(query.view === "undated" ? { eventStartDate: null, eventEndDate: null } : {}),
           AND: [
@@ -298,12 +320,21 @@ export async function GET(req: Request) {
           eventDateConfirmed: true,
           openBlockers: true,
           internalSummary: true,
+          archivedAt: true,
           createdAt: true,
           updatedAt: true,
           customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
           owner: { select: { id: true, displayName: true } },
           orders: {
-            where: { status: { in: [...ACTIVE_ORDERS] } },
+            where: {
+              status: {
+                in: query.view === "archive"
+                  ? query.includeCancelled === "true"
+                    ? [OrderStatus.CLOSED, OrderStatus.CANCELLED]
+                    : [OrderStatus.CLOSED]
+                  : [...ACTIVE_ORDERS],
+              },
+            },
             orderBy: [{ readyByDate: "asc" }, { createdAt: "asc" }],
             take: 20,
             select: orderSelect,
@@ -320,7 +351,7 @@ export async function GET(req: Request) {
   const standaloneOrderDateWhere: Prisma.OrderWhereInput | undefined =
     query.view === "attention"
       ? { readyByDate: { lte: nextSevenDays } }
-      : query.view === "all" || query.view === "warehouse" || query.view === "month"
+      : query.view === "all" || query.view === "warehouse" || query.view === "month" || query.view === "archive"
         ? { startDate: { lte: to }, endDate: { gte: from } }
         : undefined;
 
@@ -333,7 +364,13 @@ export async function GET(req: Request) {
       : await prisma.order.findMany({
           where: {
             projectId: null,
-            status: { in: [...ACTIVE_ORDERS] },
+            status: {
+              in: query.view === "archive"
+                ? query.includeCancelled === "true"
+                  ? [OrderStatus.CLOSED, OrderStatus.CANCELLED]
+                  : [OrderStatus.CLOSED]
+                : [...ACTIVE_ORDERS],
+            },
             AND: [
               ...(searchOrder ? [searchOrder] : []),
               ...(standaloneOrderDateWhere ? [standaloneOrderDateWhere] : []),
@@ -374,6 +411,7 @@ export async function GET(req: Request) {
       ordersCount: project._count.orders,
       tasksCount: project._count.tasks,
       totalAmount: childOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+      groupDate: dateOnly(project.eventStartDate ?? project.archivedAt ?? project.updatedAt),
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),
     };
@@ -402,6 +440,7 @@ export async function GET(req: Request) {
       ordersCount: 1,
       tasksCount: 0,
       totalAmount: serialized.totalAmount,
+      groupDate: serialized.startDate,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };

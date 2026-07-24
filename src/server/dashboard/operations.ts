@@ -5,7 +5,6 @@ import { prisma } from "@/server/db";
 
 const OMSK_TZ = "Asia/Omsk";
 const PROJECT_SIGNAL_BLOCK_KEY = "dashboard-attention";
-const ORDER_STALE_BLOCK_KEY = "dashboard-order-stale";
 
 const ACTIVE_ORDER_STATUSES = [
   "SUBMITTED",
@@ -16,8 +15,6 @@ const ACTIVE_ORDER_STATUSES = [
   "ISSUED",
   "RETURN_DECLARED",
 ] as const satisfies readonly OrderStatus[];
-
-const ORDER_STALE_WAREHOUSE_STATUSES = ["PICKING", "ISSUED", "RETURN_DECLARED"] as const satisfies readonly OrderStatus[];
 
 const UPCOMING_TIMELINE_DAYS = 5;
 const UPCOMING_TIMELINE_START_OFFSET = 1;
@@ -68,7 +65,7 @@ export type DashboardSignal = {
     | "TASK_DUE_SOON"
     | "PROJECT_EVENT_SOON_WITHOUT_ESTIMATE"
     | "PROJECT_BLOCKED"
-    | "ORDER_STALE";
+    | "ORDER_ESTIMATE_REQUIRED";
   severity: SignalSeverity;
   title: string;
   reason: string;
@@ -150,63 +147,6 @@ function eventRank(event: DashboardEvent): number {
     normal: 4,
   };
   return urgencyRank[event.urgency] ?? 9;
-}
-
-async function getOrderStaleMutedIds(orderIds: string[], now: Date): Promise<Set<string>> {
-  if (orderIds.length === 0) return new Set();
-
-  try {
-    const rows = await prisma.orderNotificationCooldown.findMany({
-      where: {
-        orderId: { in: orderIds },
-        blockKey: ORDER_STALE_BLOCK_KEY,
-        muteUntil: { gt: now },
-      },
-      select: { orderId: true },
-    });
-    return new Set(rows.map((row) => row.orderId));
-  } catch (error) {
-    console.error("[dashboard] OrderNotificationCooldown unavailable, stale mutes ignored", error);
-    return new Set();
-  }
-}
-
-function evaluateOrderStaleSignal(input: {
-  status: OrderStatus;
-  updatedAt: Date;
-  readyByDate: Date;
-  startDate: Date;
-  today: string;
-  now: Date;
-}): { show: boolean; severity: SignalSeverity; staleDays: number; nearestDelta: number } {
-  const nearestDelta = Math.min(
-    daysBetween(input.today, dateOnly(input.readyByDate)!),
-    daysBetween(input.today, dateOnly(input.startDate)!),
-  );
-  const staleDays = Math.max(0, Math.floor((input.now.getTime() - input.updatedAt.getTime()) / 86_400_000));
-
-  if (nearestDelta < 0) {
-    return { show: false, severity: "warning", staleDays, nearestDelta };
-  }
-
-  if (ORDER_STALE_WAREHOUSE_STATUSES.includes(input.status as (typeof ORDER_STALE_WAREHOUSE_STATUSES)[number])) {
-    if (nearestDelta > 3 || staleDays < 2) {
-      return { show: false, severity: "warning", staleDays, nearestDelta };
-    }
-  } else if (input.status === "APPROVED_BY_GREENWICH") {
-    if (nearestDelta > 2 || staleDays < 3) {
-      return { show: false, severity: "warning", staleDays, nearestDelta };
-    }
-  } else {
-    return { show: false, severity: "warning", staleDays, nearestDelta };
-  }
-
-  return {
-    show: true,
-    severity: nearestDelta <= 1 ? "critical" : "warning",
-    staleDays,
-    nearestDelta,
-  };
 }
 
 function taskToDashboardTask(task: {
@@ -319,11 +259,6 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
     }),
   ]);
 
-  const mutedOrderIds = await getOrderStaleMutedIds(
-    orders.map((order) => order.id),
-    now,
-  );
-
   const events: DashboardEvent[] = [];
   const signals: DashboardSignal[] = [];
 
@@ -426,30 +361,24 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       });
     }
 
-    const staleSignal = evaluateOrderStaleSignal({
-      status: order.status,
-      updatedAt: order.updatedAt,
-      readyByDate: order.readyByDate,
-      startDate: order.startDate,
-      today,
-      now,
-    });
-    if (staleSignal.show) {
-      const hasMute = mutedOrderIds.has(order.id);
-      if (!hasMute || staleSignal.severity === "critical") {
-        signals.push({
-          id: `order-stale:${order.id}`,
-          type: "ORDER_STALE",
-          severity: staleSignal.severity,
-          title: orderTitle,
-          reason: `Заявка без обновлений ${staleSignal.staleDays} дн.`,
-          href: `/orders/${order.id}?from=dashboard`,
-          orderId: order.id,
-          entityKind: "order",
-          canSnooze: staleSignal.severity !== "critical",
-        });
-      }
+    if (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") {
+      const waitingDays = Math.max(0, Math.floor((now.getTime() - order.updatedAt.getTime()) / 86_400_000));
+      const changesRequested = order.status === "CHANGES_REQUESTED";
+      signals.push({
+        id: `order-estimate-required:${order.id}`,
+        type: "ORDER_ESTIMATE_REQUIRED",
+        severity: waitingDays >= 2 ? "critical" : "warning",
+        title: orderTitle,
+        reason: changesRequested
+          ? "Клиент запросил изменения — обновите расчёт, цены допуслуг и отправьте смету."
+          : "Greenwich ждёт расчёт — проверьте цены допуслуг и отправьте смету.",
+        href: `/orders/${order.id}?from=dashboard`,
+        orderId: order.id,
+        entityKind: "order",
+        canSnooze: false,
+      });
     }
+
   }
 
   for (const project of projects) {

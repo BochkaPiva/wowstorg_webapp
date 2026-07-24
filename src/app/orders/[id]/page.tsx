@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
@@ -1549,7 +1550,7 @@ export default function OrderDetailsPage() {
   const isOrderGreenwichUser = order && user && order.greenwichUserId === user.id;
 
   if (loading) {
-    const body = <div className="text-sm text-zinc-600">Загрузка…</div>;
+    const body = <OrderDetailSkeleton embed={embed} />;
     return embed ? (
       <div className="p-4">{body}</div>
     ) : (

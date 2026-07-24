@@ -64,6 +64,93 @@ export function DashboardSkeleton() {
   );
 }
 
+export function WorkQueueSkeleton() {
+  return (
+    <LoadingRegion className="ui-workQueueSkeleton" label="Загрузка рабочей очереди">
+      <Skeleton className="ui-workQueueSkeleton__group" />
+      {Array.from({ length: 4 }, (_, index) => (
+        <div className="ui-workQueueSkeleton__card" key={index}>
+          <Skeleton className="ui-workQueueSkeleton__logo" />
+          <div className="ui-workQueueSkeleton__identity">
+            <Skeleton className="ui-workQueueSkeleton__eyebrow" />
+            <Skeleton className="ui-workQueueSkeleton__title" />
+            <Skeleton className="ui-workQueueSkeleton__meta" />
+          </div>
+          <div className="ui-workQueueSkeleton__status">
+            <Skeleton />
+            <Skeleton />
+          </div>
+          <div className="ui-workQueueSkeleton__amount">
+            <Skeleton />
+            <Skeleton />
+          </div>
+          <Skeleton className="ui-workQueueSkeleton__action" />
+        </div>
+      ))}
+    </LoadingRegion>
+  );
+}
+
+export function ProjectDetailSkeleton() {
+  return (
+    <LoadingRegion className="ui-detailSkeleton" label="Загрузка проекта">
+      <section className="ui-detailSkeleton__hero">
+        <div>
+          <Skeleton className="ui-detailSkeleton__eyebrow" />
+          <Skeleton className="ui-detailSkeleton__title" />
+          <div className="ui-detailSkeleton__chips">
+            <Skeleton /><Skeleton /><Skeleton />
+          </div>
+          <div className="ui-detailSkeleton__facts">
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index}><Skeleton /><Skeleton /></div>
+            ))}
+          </div>
+        </div>
+        <div className="ui-detailSkeleton__actions"><Skeleton /><Skeleton /></div>
+      </section>
+      <section className="ui-detailSkeleton__panel">
+        <Skeleton className="ui-detailSkeleton__heading" />
+        <div className="ui-detailSkeleton__board">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} />)}
+        </div>
+      </section>
+      <section className="ui-detailSkeleton__panel">
+        <Skeleton className="ui-detailSkeleton__heading" />
+        <ListSkeleton rows={3} />
+      </section>
+    </LoadingRegion>
+  );
+}
+
+export function OrderDetailSkeleton({ embed = false }: { embed?: boolean }) {
+  return (
+    <LoadingRegion
+      className={["ui-orderSkeleton", embed ? "ui-orderSkeleton--embed" : ""].join(" ")}
+      label="Загрузка заявки"
+    >
+      <section className="ui-orderSkeleton__status">
+        <Skeleton className="ui-orderSkeleton__badge" />
+        <div className="ui-orderSkeleton__steps">
+          {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} />)}
+        </div>
+      </section>
+      <section className="ui-orderSkeleton__summary">
+        <div>
+          <Skeleton className="ui-orderSkeleton__title" />
+          <Skeleton className="ui-orderSkeleton__line" />
+          <Skeleton className="ui-orderSkeleton__line ui-orderSkeleton__line--short" />
+        </div>
+        <Skeleton className="ui-orderSkeleton__button" />
+      </section>
+      <div className="ui-orderSkeleton__columns">
+        <section><Skeleton className="ui-orderSkeleton__heading" /><ListSkeleton rows={4} /></section>
+        <section><Skeleton className="ui-orderSkeleton__heading" /><ListSkeleton rows={3} /></section>
+      </div>
+    </LoadingRegion>
+  );
+}
+
 export function AppWorkspaceSkeleton() {
   return (
     <LoadingRegion className="ui-appSkeleton" label="Загрузка рабочего пространства">

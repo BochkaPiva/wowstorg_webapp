@@ -12,6 +12,7 @@ import { DayPicker, type DateRange } from "react-day-picker";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, orderStatusLabelRu, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
+import { ProjectDetailSkeleton } from "@/app/_ui/Skeleton";
 import {
   CONTACT_PATCH_FIELD_LABEL,
   PROJECT_ACTIVITY_KIND_LABEL,
@@ -1106,7 +1107,7 @@ export default function ProjectDetailPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : initialLoading ? (
-        <div className="text-sm text-zinc-600">Загрузка…</div>
+        <ProjectDetailSkeleton />
       ) : !project ? (
         <div className="text-sm text-zinc-600">Проект не найден.</div>
       ) : (

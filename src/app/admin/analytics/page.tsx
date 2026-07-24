@@ -2,6 +2,16 @@
 
 import Link from "next/link";
 import React from "react";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { DashboardSkeleton } from "@/app/_ui/Skeleton";
@@ -164,6 +174,13 @@ function formatInt(value: number) {
 
 function formatMoney(value: number) {
   return `${formatInt(value)} ₽`;
+}
+
+function formatCompactMoney(value: number) {
+  return `${new Intl.NumberFormat("ru-RU", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value)} ₽`;
 }
 
 function formatPercent(value: number | null) {
@@ -370,104 +387,99 @@ function FinanceTrend(props: {
     return <EmptyState>{props.emptyText ?? "За выбранный период нет данных для графика."}</EmptyState>;
   }
 
-  const width = 760;
-  const height = 250;
-  const padding = { left: 18, right: 18, top: 18, bottom: 46 };
-  const values = points.flatMap((point) => [point.revenue, point.profit, 0]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = Math.max(1, max - min);
-  const chartHeight = height - padding.top - padding.bottom;
-  const chartWidth = width - padding.left - padding.right;
-  const step = chartWidth / points.length;
-  const y = (value: number) => padding.top + ((max - value) / span) * chartHeight;
-  const zeroY = y(0);
-  const profitPoints = points
-    .map((point, index) => `${padding.left + step * index + step / 2},${y(point.profit)}`)
-    .join(" ");
+  const chartData = points.map((point) => ({
+    ...point,
+    label: formatMonth(point.month),
+  }));
+  const latest = chartData.at(-1);
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-zinc-600">
-        <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 bg-zinc-950" aria-hidden="true" />
-          Выручка
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="h-0.5 w-5 bg-violet-600" aria-hidden="true" />
-          Прибыль
-        </span>
+    <div className="min-w-0">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4 text-xs font-bold text-zinc-600">
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm bg-zinc-950" aria-hidden="true" />
+            Выручка
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-0.5 w-5 bg-violet-600" aria-hidden="true" />
+            Прибыль
+          </span>
+        </div>
+        {latest ? (
+          <div className="flex gap-5 text-right text-xs text-zinc-500">
+            <span>
+              <small className="block uppercase tracking-[0.1em]">Последний месяц</small>
+              <strong className="mt-1 block text-sm text-zinc-950">{formatMoney(latest.revenue)}</strong>
+            </span>
+            <span>
+              <small className="block uppercase tracking-[0.1em]">Прибыль</small>
+              <strong className="mt-1 block text-sm text-violet-700">{formatMoney(latest.profit)}</strong>
+            </span>
+          </div>
+        ) : null}
       </div>
-      <div className="overflow-x-auto">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          role="img"
-          aria-label="График выручки и прибыли по месяцам"
-          className="min-w-[680px]"
-        >
-          <line
-            x1={padding.left}
-            x2={width - padding.right}
-            y1={zeroY}
-            y2={zeroY}
-            stroke="#d4d4d8"
-          />
-          {points.map((point, index) => {
-            const barWidth = Math.max(12, step * 0.5);
-            const barX = padding.left + step * index + (step - barWidth) / 2;
-            const barY = Math.min(y(point.revenue), zeroY);
-            const barHeight = Math.max(2, Math.abs(zeroY - y(point.revenue)));
-            return (
-              <g key={point.month}>
-                <rect
-                  x={barX}
-                  y={barY}
-                  width={barWidth}
-                  height={barHeight}
-                  fill="#18181b"
-                  opacity="0.92"
-                >
-                  <title>
-                    {formatMonth(point.month)}: выручка {formatMoney(point.revenue)}
-                  </title>
-                </rect>
-                <text
-                  x={padding.left + step * index + step / 2}
-                  y={height - 18}
-                  textAnchor="middle"
-                  fill="#71717a"
-                  fontSize="12"
-                  fontWeight="700"
-                >
-                  {formatMonth(point.month)}
-                </text>
-              </g>
-            );
-          })}
-          <polyline
-            points={profitPoints}
-            fill="none"
-            stroke="#6d28d9"
-            strokeWidth="4"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          {points.map((point, index) => (
-            <circle
-              key={`profit-${point.month}`}
-              cx={padding.left + step * index + step / 2}
-              cy={y(point.profit)}
-              r="5"
-              fill="#6d28d9"
-              stroke="white"
-              strokeWidth="2"
-            >
-              <title>
-                {formatMonth(point.month)}: прибыль {formatMoney(point.profit)}
-              </title>
-            </circle>
-          ))}
-        </svg>
+      <div className="h-[320px] min-w-0" role="img" aria-label="График выручки и прибыли по месяцам">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 12, right: 10, bottom: 4, left: 0 }}>
+            <CartesianGrid vertical={false} stroke="#e4e4e0" strokeDasharray="3 5" />
+            <XAxis
+              dataKey="label"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "#71717a", fontSize: 12, fontWeight: 700 }}
+              dy={10}
+            />
+            <YAxis
+              yAxisId="revenue"
+              axisLine={false}
+              tickLine={false}
+              width={72}
+              tick={{ fill: "#71717a", fontSize: 11 }}
+              tickFormatter={formatCompactMoney}
+            />
+            <YAxis
+              yAxisId="profit"
+              orientation="right"
+              axisLine={false}
+              tickLine={false}
+              width={72}
+              tick={{ fill: "#6d28d9", fontSize: 11 }}
+              tickFormatter={formatCompactMoney}
+            />
+            <Tooltip
+              cursor={{ fill: "#f4f4f0" }}
+              formatter={(value, name) => [formatMoney(Number(value)), name]}
+              labelStyle={{ color: "#18181b", fontWeight: 800, marginBottom: 8 }}
+              contentStyle={{
+                border: "1px solid #d4d4d0",
+                borderRadius: 10,
+                boxShadow: "0 8px 18px rgb(0 0 0 / 0.1)",
+                fontSize: 12,
+              }}
+            />
+            <Bar
+              yAxisId="revenue"
+              dataKey="revenue"
+              name="Выручка"
+              fill="#18181b"
+              barSize={36}
+              radius={[5, 5, 0, 0]}
+              isAnimationActive={false}
+            />
+            <Line
+              yAxisId="profit"
+              type="monotone"
+              dataKey="profit"
+              name="Прибыль"
+              stroke="#6d28d9"
+              strokeWidth={3}
+              dot={{ r: 4, fill: "#6d28d9", stroke: "#fff", strokeWidth: 2 }}
+              activeDot={{ r: 6, fill: "#6d28d9", stroke: "#fff", strokeWidth: 3 }}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

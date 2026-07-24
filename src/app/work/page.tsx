@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
+import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
 import "./work.css";
@@ -77,6 +78,7 @@ type WorkItem = {
   ordersCount: number;
   tasksCount: number;
   totalAmount: number;
+  groupDate: string | null;
   updatedAt: string;
 };
 
@@ -141,6 +143,12 @@ type SavedView = {
 
 type SortMode = "priority" | "date" | "updated" | "amount";
 
+type CustomerOption = {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+};
+
 const VIEW_OPTIONS = [
   { value: "attention", label: "Нужно внимание" },
   { value: "month", label: "Текущий месяц" },
@@ -148,6 +156,7 @@ const VIEW_OPTIONS = [
   { value: "estimates", label: "Расчёты" },
   { value: "warehouse", label: "Склад" },
   { value: "all", label: "Период" },
+  { value: "archive", label: "Архив" },
 ] as const;
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -216,6 +225,14 @@ function initials(value: string) {
     .join("");
 }
 
+function lineQuantity(line: WorkOrder["lines"][number]) {
+  return line.issuedQty ?? line.approvedQty ?? line.requestedQty;
+}
+
+function orderSourceLabel(source: WorkOrder["source"]) {
+  return source === "WOWSTORG_EXTERNAL" ? "Внешняя заявка" : "Greenwich";
+}
+
 function quickAction(order: WorkOrder) {
   if (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") {
     return {
@@ -253,6 +270,122 @@ async function responseMessage(response: Response) {
   return data?.error?.message ?? `Ошибка ${response.status}`;
 }
 
+function CustomerCombobox({
+  id,
+  value,
+  onChange,
+  customers,
+  autoFocus,
+  required,
+  placeholder,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  customers: CustomerOption[];
+  autoFocus?: boolean;
+  required?: boolean;
+  placeholder: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(-1);
+  const listId = `${id}-options`;
+  const normalized = value.trim().toLocaleLowerCase("ru");
+  const options = customers
+    .filter((customer) => !normalized || customer.name.toLocaleLowerCase("ru").includes(normalized))
+    .slice(0, 8);
+  const exactMatch = customers.some(
+    (customer) => customer.name.localeCompare(value.trim(), "ru", { sensitivity: "accent" }) === 0,
+  );
+
+  React.useEffect(() => {
+    setActiveIndex(-1);
+  }, [value]);
+
+  function selectCustomer(customer: CustomerOption) {
+    onChange(customer.name);
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  return (
+    <div className="work-customerPicker">
+      <input
+        id={id}
+        autoFocus={autoFocus}
+        autoComplete="off"
+        required={required}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setOpen(true);
+            setActiveIndex((current) => Math.min(current + 1, options.length - 1));
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActiveIndex((current) => Math.max(current - 1, 0));
+          } else if (event.key === "Enter" && open && activeIndex >= 0 && options[activeIndex]) {
+            event.preventDefault();
+            selectCustomer(options[activeIndex]);
+          } else if (event.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder={placeholder}
+      />
+      {open ? (
+        <div id={listId} className="work-customerPicker__options" role="listbox">
+          {options.length ? (
+            options.map((customer, index) => (
+              <button
+                id={`${listId}-${index}`}
+                key={customer.id}
+                type="button"
+                role="option"
+                aria-selected={activeIndex === index}
+                className={activeIndex === index ? "is-active" : undefined}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => selectCustomer(customer)}
+              >
+                <span className="work-customerPicker__mark">
+                  {customer.logoUrl ? (
+                    // The authenticated logo endpoint must receive the current session cookie.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={customer.logoUrl} alt="" />
+                  ) : (
+                    initials(customer.name)
+                  )}
+                </span>
+                <span>
+                  <strong>{customer.name}</strong>
+                  <small>Выбрать существующего заказчика</small>
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="work-customerPicker__empty">Совпадений нет — будет создан новый заказчик.</div>
+          )}
+        </div>
+      ) : null}
+      {value.trim() && !exactMatch ? (
+        <small className="work-customerPicker__hint">Нового заказчика создадим с этим названием.</small>
+      ) : null}
+    </div>
+  );
+}
+
 export default function WorkQueuePage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
@@ -271,6 +404,7 @@ export default function WorkQueuePage() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
   });
   const [sort, setSort] = React.useState<SortMode>("priority");
+  const [showCancelled, setShowCancelled] = React.useState(false);
   const [savedViews, setSavedViews] = React.useState<SavedView[]>([]);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [previews, setPreviews] = React.useState<Record<string, ProjectPreview>>({});
@@ -278,6 +412,7 @@ export default function WorkQueuePage() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createTitle, setCreateTitle] = React.useState("");
   const [createCustomer, setCreateCustomer] = React.useState("");
+  const [customers, setCustomers] = React.useState<CustomerOption[]>([]);
   const [convertItem, setConvertItem] = React.useState<WorkItem | null>(null);
   const [convertCustomer, setConvertCustomer] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -302,6 +437,24 @@ export default function WorkQueuePage() {
     }
   }, []);
 
+  React.useEffect(() => {
+    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
+    const controller = new AbortController();
+
+    void fetch("/api/customers", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await responseMessage(response));
+        return response.json() as Promise<{ customers?: CustomerOption[] }>;
+      })
+      .then((data) => setCustomers(Array.isArray(data.customers) ? data.customers : []))
+      .catch((customerError) => {
+        if (customerError instanceof DOMException && customerError.name === "AbortError") return;
+        console.error("[work] customers lookup failed", customerError);
+      });
+
+    return () => controller.abort();
+  }, [state]);
+
   const load = React.useCallback(async () => {
     if (forbidden) return;
     setLoading(true);
@@ -309,10 +462,11 @@ export default function WorkQueuePage() {
     const params = new URLSearchParams({ view, kind });
     if (query) params.set("q", query);
     if (phase !== "all") params.set("phase", phase);
-    if (view === "all" || view === "month" || view === "warehouse") {
+    if (view === "all" || view === "month" || view === "warehouse" || view === "archive") {
       params.set("from", from);
       params.set("to", to);
     }
+    if (view === "archive" && showCancelled) params.set("includeCancelled", "true");
     try {
       const response = await fetch(`/api/work-queue?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error(await responseMessage(response));
@@ -322,7 +476,7 @@ export default function WorkQueuePage() {
     } finally {
       setLoading(false);
     }
-  }, [forbidden, from, kind, phase, query, to, view]);
+  }, [forbidden, from, kind, phase, query, showCancelled, to, view]);
 
   React.useEffect(() => {
     void load();
@@ -358,6 +512,14 @@ export default function WorkQueuePage() {
       return next;
     });
     if (!expanded.has(item.key)) void loadPreview(item);
+  }
+
+  function toggleFromCardBody(event: React.MouseEvent<HTMLElement>, item: WorkItem) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest("a, button, input, select, textarea, [role='button'], .work-card__revealInner")) return;
+    if (window.getSelection()?.toString()) return;
+    toggle(item);
   }
 
   function persistSavedViews(next: SavedView[]) {
@@ -513,11 +675,13 @@ export default function WorkQueuePage() {
       source.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     } else if (sort === "amount") {
       source.sort((a, b) => b.totalAmount - a.totalAmount);
+    } else if (view === "archive") {
+      source.sort((a, b) => (b.groupDate ?? "").localeCompare(a.groupDate ?? ""));
     }
 
     const groups = new Map<string, WorkItem[]>();
     for (const item of source) {
-      const key = item.startDate?.slice(0, 7) ?? "undated";
+      const key = (view === "archive" ? item.groupDate : item.startDate)?.slice(0, 7) ?? "undated";
       const rows = groups.get(key) ?? [];
       rows.push(item);
       groups.set(key, rows);
@@ -532,7 +696,7 @@ export default function WorkQueuePage() {
             ),
       items,
     }));
-  }, [payload, sort]);
+  }, [payload, sort, view]);
 
   return (
     <AppShell title="Рабочая очередь">
@@ -546,45 +710,60 @@ export default function WorkQueuePage() {
               <h2>Вся работа — в одной очереди</h2>
               <p>Проекты, самостоятельные заявки и предварительные расчёты без дублей.</p>
             </div>
-            <button type="button" className="work-primary" onClick={() => setCreateOpen(true)}>
+            <button type="button" className="work-primary work-primary--create" onClick={() => setCreateOpen(true)}>
+              <span aria-hidden="true">+</span>
               Составить смету
             </button>
           </header>
 
           <section className="work-controls" aria-label="Фильтры рабочей очереди">
-            <div className="work-presets">
-              {VIEW_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  data-active={view === option.value || undefined}
-                  onClick={() => setView(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <div className="work-savedViews">
-              <span>Мои виды</span>
-              {savedViews.length === 0 ? <small>Сохраните часто используемый набор фильтров</small> : null}
-              {savedViews.map((saved) => (
-                <span key={saved.id} className="work-savedView">
-                  <button type="button" onClick={() => applySavedView(saved)}>{saved.name}</button>
+            <div className="work-controls__toolbar">
+              <div className="work-presets" role="tablist" aria-label="Быстрые представления">
+                {VIEW_OPTIONS.map((option) => (
                   <button
+                    key={option.value}
                     type="button"
-                    aria-label={`Удалить вид ${saved.name}`}
-                    onClick={() => persistSavedViews(savedViews.filter((item) => item.id !== saved.id))}
+                    role="tab"
+                    aria-selected={view === option.value}
+                    data-active={view === option.value || undefined}
+                    onClick={() => setView(option.value)}
                   >
-                    ×
+                    {option.label}
                   </button>
-                </span>
-              ))}
+                ))}
+              </div>
               <button type="button" className="work-saveView" onClick={saveCurrentView}>
-                + Сохранить текущий вид
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M5.5 3.5h9v13L10 13.8l-4.5 2.7v-13Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                </svg>
+                Сохранить вид
               </button>
             </div>
+
+            {savedViews.length ? (
+              <div className="work-savedViews">
+                <span>Сохранённые виды</span>
+                {savedViews.map((saved) => (
+                  <span key={saved.id} className="work-savedView">
+                    <button type="button" onClick={() => applySavedView(saved)}>{saved.name}</button>
+                    <button
+                      type="button"
+                      aria-label={`Удалить вид ${saved.name}`}
+                      onClick={() => persistSavedViews(savedViews.filter((item) => item.id !== saved.id))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
             <div className="work-filters">
               <label className="work-search">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <circle cx="8.8" cy="8.8" r="5.3" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="m12.7 12.7 3.8 3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
                 <span>Поиск</span>
                 <input
                   value={queryInput}
@@ -613,19 +792,35 @@ export default function WorkQueuePage() {
               <label>
                 <span>Сортировка</span>
                 <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}>
-                  <option value="priority">Сначала требующие внимания</option>
+                  <option value="priority">{view === "archive" ? "Сначала новые" : "Сначала требующие внимания"}</option>
                   <option value="date">По дате события</option>
                   <option value="updated">По последнему изменению</option>
                   <option value="amount">По сумме</option>
                 </select>
               </label>
-              {(view === "all" || view === "month" || view === "warehouse") ? (
+              {(view === "all" || view === "month" || view === "warehouse" || view === "archive") ? (
                 <>
                   <label><span>С</span><input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
                   <label><span>По</span><input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
                 </>
               ) : null}
             </div>
+            {view === "archive" ? (
+              <div className="work-archiveOptions">
+                <div>
+                  <strong>Завершённые работы</strong>
+                  <span>Сгруппированы по месяцу проведения — удобно сверять с финансовой таблицей.</span>
+                </div>
+                <label className="work-check">
+                  <input
+                    type="checkbox"
+                    checked={showCancelled}
+                    onChange={(event) => setShowCancelled(event.target.checked)}
+                  />
+                  <span>Показывать отменённые</span>
+                </label>
+              </div>
+            ) : null}
             {payload ? (
               <div className="work-meta" aria-label="Состав очереди">
                 <span><strong>{payload.meta.total}</strong> всего</span>
@@ -640,9 +835,7 @@ export default function WorkQueuePage() {
           {error ? <div className="work-error" role="alert">{error}<button type="button" onClick={() => void load()}>Повторить</button></div> : null}
 
           {loading ? (
-            <div className="work-skeleton" aria-label="Загрузка очереди">
-              {Array.from({ length: 4 }, (_, index) => <span key={index} />)}
-            </div>
+            <WorkQueueSkeleton />
           ) : payload?.items.length ? (
             <div className="work-list">
               {groupedItems.map((group) => (
@@ -659,7 +852,13 @@ export default function WorkQueuePage() {
                   : `/projects/${item.id}`;
                 const preview = previews[item.id] ?? null;
                 return (
-                  <article key={item.key} className="work-card" data-phase={item.phase} data-expanded={isExpanded || undefined}>
+                  <article
+                    key={item.key}
+                    className="work-card"
+                    data-phase={item.phase}
+                    data-expanded={isExpanded || undefined}
+                    onClick={(event) => toggleFromCardBody(event, item)}
+                  >
                     <div className="work-card__summary">
                       <span className="work-customerMark">
                         {item.customer?.logoUrl ? (
@@ -692,7 +891,7 @@ export default function WorkQueuePage() {
                             {quickAction(item.orders[0])?.label}
                           </button>
                         ) : null}
-                        {item.kind !== "STANDALONE_ORDER" ? (
+                        {item.kind !== "STANDALONE_ORDER" && view !== "archive" ? (
                           <button
                             type="button"
                             className="work-action"
@@ -711,6 +910,7 @@ export default function WorkQueuePage() {
                           className="work-card__expand"
                           onClick={() => toggle(item)}
                           aria-expanded={isExpanded}
+                          aria-controls={`work-preview-${item.key.replace(":", "-")}`}
                         >
                           <span>{isExpanded ? "Свернуть" : "Сводка"}</span>
                           <i aria-hidden="true">⌄</i>
@@ -760,22 +960,92 @@ export default function WorkQueuePage() {
                       </div>
                     ) : null}
 
-                    <div className="work-card__reveal" aria-hidden={!isExpanded}>
+                    <div
+                      id={`work-preview-${item.key.replace(":", "-")}`}
+                      className="work-card__reveal"
+                      aria-hidden={!isExpanded}
+                    >
                       <div className="work-card__revealInner">
-                        <div className="work-brief">
-                          <section>
-                            <h3>Коротко</h3>
-                            <p>{item.summary || (item.kind === "ESTIMATE_ONLY" ? "Быстрый расчёт без обязательных дат и контактов." : "Внутреннее резюме пока не заполнено.")}</p>
-                          </section>
-                          <section data-warning={Boolean(item.blockers) || undefined}>
-                            <h3>Блокеры</h3>
-                            <p>{item.blockers || "Критичных блокеров нет."}</p>
-                          </section>
-                          <section>
-                            <h3>Следующий ориентир</h3>
-                            <p>{PHASE_LABEL[item.phase]} · {item.ball === "CLIENT" ? "мяч у клиента" : item.ball === "WOWSTORG" ? "мяч у Wowstorg" : "контроль команды"}</p>
-                          </section>
-                        </div>
+                        {item.kind === "STANDALONE_ORDER" && item.orders[0] ? (
+                          <div className="work-orderPreview">
+                            <section className="work-orderPreview__main">
+                              <header className="work-orderPreview__heading">
+                                <div>
+                                  <h3>Состав заявки</h3>
+                                  <p>
+                                    {item.orders[0].linesCount
+                                      ? `${item.orders[0].linesCount} позиций`
+                                      : "Позиции пока не добавлены"}
+                                  </p>
+                                </div>
+                                <span>ID {item.orders[0].id.slice(0, 8)}</span>
+                              </header>
+
+                              {item.orders[0].lines.length ? (
+                                <div className="work-orderLines">
+                                  {item.orders[0].lines.map((line) => (
+                                    <div key={line.id} className="work-orderLine">
+                                      <span>{line.name}</span>
+                                      <strong>× {lineQuantity(line)}</strong>
+                                    </div>
+                                  ))}
+                                  {item.orders[0].linesCount > item.orders[0].lines.length ? (
+                                    <div className="work-orderLines__more">
+                                      Ещё {item.orders[0].linesCount - item.orders[0].lines.length} — в полной карточке
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <p className="work-orderPreview__empty">
+                                  Откройте полную карточку, чтобы посмотреть или изменить состав.
+                                </p>
+                              )}
+                            </section>
+
+                            <aside className="work-orderPreview__aside">
+                              <dl className="work-orderFacts">
+                                <div>
+                                  <dt>Готовность</dt>
+                                  <dd>{dateRu(item.orders[0].readyByDate)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Период аренды</dt>
+                                  <dd>{period(item)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Ответственный</dt>
+                                  <dd>{item.owner.displayName}</dd>
+                                </div>
+                                <div>
+                                  <dt>Источник</dt>
+                                  <dd>{orderSourceLabel(item.orders[0].source)}</dd>
+                                </div>
+                              </dl>
+
+                              {item.orders[0].note ? (
+                                <div className="work-orderNote">
+                                  <strong>Комментарий склада</strong>
+                                  <span>{item.orders[0].note}</span>
+                                </div>
+                              ) : null}
+                            </aside>
+                          </div>
+                        ) : (
+                          <div className="work-brief">
+                            <section>
+                              <h3>Коротко</h3>
+                              <p>{item.summary || (item.kind === "ESTIMATE_ONLY" ? "Быстрый расчёт без обязательных дат и контактов." : "Внутреннее резюме пока не заполнено.")}</p>
+                            </section>
+                            <section data-warning={Boolean(item.blockers) || undefined}>
+                              <h3>Блокеры</h3>
+                              <p>{item.blockers || "Критичных блокеров нет."}</p>
+                            </section>
+                            <section>
+                              <h3>Следующий ориентир</h3>
+                              <p>{PHASE_LABEL[item.phase]} · {item.ball === "CLIENT" ? "мяч у клиента" : item.ball === "WOWSTORG" ? "мяч у Wowstorg" : "контроль команды"}</p>
+                            </section>
+                          </div>
+                        )}
 
                         {item.kind !== "STANDALONE_ORDER" ? (
                           previewBusy === item.id && !preview ? (
@@ -870,7 +1140,16 @@ export default function WorkQueuePage() {
                 <h2 id="estimate-modal-title">Составить смету</h2>
                 <p>Создайте расчёт сейчас. Заказчика, дату и контакты можно уточнить позже.</p>
                 <label><span>Название расчёта</span><input autoFocus required value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="Например, летний корпоратив" /></label>
-                <label><span>Заказчик, если известен</span><input value={createCustomer} onChange={(event) => setCreateCustomer(event.target.value)} placeholder="Можно оставить пустым" /></label>
+                <div className="work-modalField">
+                  <label htmlFor="create-estimate-customer">Заказчик, если известен</label>
+                  <CustomerCombobox
+                    id="create-estimate-customer"
+                    value={createCustomer}
+                    onChange={setCreateCustomer}
+                    customers={customers}
+                    placeholder="Начните вводить название"
+                  />
+                </div>
                 <div className="work-modal__actions">
                   <button type="button" onClick={() => setCreateOpen(false)}>Отмена</button>
                   <button type="submit" className="work-primary" disabled={busy === "create" || !createTitle.trim()}>{busy === "create" ? "Создаём…" : "Создать расчёт"}</button>
@@ -886,10 +1165,18 @@ export default function WorkQueuePage() {
                 <span className="work-eyebrow">Без потери сметы и истории</span>
                 <h2 id="convert-modal-title">Превратить в проект</h2>
                 <p>Укажите заказчика. Если такого названия ещё нет, заказчик будет создан автоматически.</p>
-                <label>
-                  <span>Заказчик</span>
-                  <input autoFocus required value={convertCustomer} onChange={(event) => setConvertCustomer(event.target.value)} placeholder="Название компании" />
-                </label>
+                <div className="work-modalField">
+                  <label htmlFor="convert-estimate-customer">Заказчик</label>
+                  <CustomerCombobox
+                    id="convert-estimate-customer"
+                    autoFocus
+                    required
+                    value={convertCustomer}
+                    onChange={setConvertCustomer}
+                    customers={customers}
+                    placeholder="Начните вводить название"
+                  />
+                </div>
                 <div className="work-modal__actions">
                   <button type="button" onClick={() => setConvertItem(null)}>Отмена</button>
                   <button type="submit" className="work-primary" disabled={busy === `convert:${convertItem.id}` || !convertCustomer.trim()}>

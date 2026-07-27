@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
 import { createPortal } from "react-dom";
 
@@ -147,7 +148,22 @@ type LocalDraftLine = {
   contractorRequisites: string | null;
   internalExpenses: LocalDraftLineInternalExpense[];
   orderLineId: null;
-  itemId: null;
+  itemId: string | null;
+};
+
+type EstimateCatalogItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  photo1Key: string | null;
+  total: number;
+  inRepair: number;
+  broken: number;
+  missing: number;
+  pricePerDay: number;
+  availability?: {
+    availableNow?: number;
+  };
 };
 
 type LocalDraftLineInternalExpense = {
@@ -423,7 +439,7 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
-const ESTIMATE_DRAFT_SCHEMA_VERSION = 5;
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 6;
 
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -594,7 +610,7 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
       id: section.id,
       sortOrder: section.sortOrder,
       title: section.title,
-      kind: "CONTRACTOR",
+      kind: section.kind,
       linkedOrderId: null,
       lines: section.lines.map((line) => ({
         id: line.id,
@@ -618,7 +634,7 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
         contractorRequisites: line.contractorRequisites ?? null,
         internalExpenses: cloneLineInternalExpenses(line),
         orderLineId: null,
-        itemId: null,
+        itemId: line.itemId,
       })),
     }));
 }
@@ -656,6 +672,7 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
         paymentStatus: line.paymentStatus?.trim() || null,
         contractorNote: line.contractorNote?.trim() || null,
         contractorRequisites: line.contractorRequisites?.trim() || null,
+        itemId: line.itemId ?? null,
         internalExpenses: normalizeInternalExpensesForCompare(line.internalExpenses ?? []),
         position: lineIndex,
         lineNumber: lineIndex + 1,
@@ -828,6 +845,7 @@ export function ProjectEstimatePanel({
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
+  const [standaloneCatalogOpen, setStandaloneCatalogOpen] = React.useState(false);
   const [selectedImportOrderIds, setSelectedImportOrderIds] = React.useState<string[]>([]);
   const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
@@ -1348,6 +1366,8 @@ export function ProjectEstimatePanel({
       paymentStatus: string | null;
       contractorNote: string | null;
       contractorRequisites: string | null;
+      itemId?: string | null;
+      lineType?: string;
       internalExpenses?: LocalDraftLineInternalExpense[];
     },
   ) {
@@ -1372,7 +1392,7 @@ export function ProjectEstimatePanel({
               lineNumber: index + 1,
               name: payload.name,
               description: payload.description,
-              lineType: "OTHER",
+              lineType: payload.lineType ?? "OTHER",
               costClient: costClientStr,
               costInternal: payload.costInternal == null ? null : String(payload.costInternal),
               unit: payload.unit?.trim() || null,
@@ -1384,12 +1404,70 @@ export function ProjectEstimatePanel({
               contractorRequisites: payload.contractorRequisites?.trim() || null,
               internalExpenses: cloneLineInternalExpenses({ internalExpenses: payload.internalExpenses ?? [] }),
               orderLineId: null,
-              itemId: null,
+              itemId: payload.itemId ?? null,
             },
           ],
         };
       }),
     );
+  }
+
+  function attachStandaloneCatalogItem(args: {
+    item: EstimateCatalogItem;
+    qty: number;
+    days: number;
+    note: string;
+  }) {
+    const pricePerDay = roundMoney(args.item.pricePerDay);
+    const unitPriceForPeriod = roundMoney(pricePerDay * args.days);
+    const periodText = `${args.days} ${args.days === 1 ? "день" : args.days < 5 ? "дня" : "дней"} × ${formatMoneyRub(pricePerDay)} ₽/сутки`;
+    const description = [args.note.trim(), periodText].filter(Boolean).join(" · ");
+
+    mutateLocalSections((prev) => {
+      const existingSection = prev.find(
+        (section) => section.title.trim().toLocaleLowerCase("ru-RU") === "реквизит из каталога",
+      );
+      const sectionId = existingSection?.id ?? makeTempId("section");
+      const target: LocalDraftSection =
+        existingSection ?? {
+          id: sectionId,
+          sortOrder: nextSectionSortOrderAtBottom(prev, data?.current?.sections),
+          title: "Реквизит из каталога",
+          kind: "CONTRACTOR",
+          linkedOrderId: null,
+          lines: [],
+        };
+      const lineIndex = target.lines.length;
+      const line: LocalDraftLine = {
+        id: makeTempId("line"),
+        position: lineIndex,
+        lineNumber: lineIndex + 1,
+        name: args.item.name,
+        description,
+        lineType: "RENTAL",
+        costClient: String(roundMoney(args.qty * unitPriceForPeriod)),
+        costInternal: null,
+        unit: "шт",
+        qty: String(args.qty),
+        unitPriceClient: String(unitPriceForPeriod),
+        paymentMethod: null,
+        paymentStatus: null,
+        contractorNote: null,
+        contractorRequisites: null,
+        internalExpenses: [],
+        orderLineId: null,
+        itemId: args.item.id,
+      };
+
+      if (existingSection) {
+        return prev.map((section) =>
+          section.id === existingSection.id
+            ? { ...section, lines: [...section.lines, line] }
+            : section,
+        );
+      }
+      return [...prev, { ...target, lines: [line] }];
+    });
   }
 
   async function moveSection(sectionId: string, direction: -1 | 1) {
@@ -1600,7 +1678,7 @@ export function ProjectEstimatePanel({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
             sortOrder: section.sortOrder,
-            kind: "CONTRACTOR" as const,
+            kind: section.kind,
             lines: section.lines
               .filter((line) => line.name.trim())
               .map((line, lineIndex) => ({
@@ -1625,6 +1703,7 @@ export function ProjectEstimatePanel({
               paymentStatus: line.paymentStatus?.trim() || null,
               contractorNote: line.contractorNote?.trim() || null,
               contractorRequisites: line.contractorRequisites?.trim() || null,
+              itemId: line.itemId,
               internalExpenses: line.internalExpenses
                 .filter(
                   (expense) =>
@@ -2196,16 +2275,35 @@ export function ProjectEstimatePanel({
                     Открывай только нужные разделы. Стрелки справа меняют порядок; новый раздел добавляется в конец сметы.
                   </EstimateHelpLegend>
                 </div>
-                <div className="text-xs font-semibold tabular-nums text-zinc-500">
-                  {renderedSections.length}{" "}
-                  {renderedSections.length % 10 === 1 && renderedSections.length % 100 !== 11
-                    ? "раздел"
-                    : [2, 3, 4].includes(renderedSections.length % 10) &&
-                        ![12, 13, 14].includes(renderedSections.length % 100)
-                      ? "раздела"
-                      : "разделов"}
+                <div className="flex flex-wrap items-center gap-2">
+                  {standalone && !readOnly ? (
+                    <button
+                      type="button"
+                      className={standaloneCatalogOpen ? btnPrimary : btnSecondary}
+                      onClick={() => setStandaloneCatalogOpen((value) => !value)}
+                      aria-expanded={standaloneCatalogOpen}
+                    >
+                      {standaloneCatalogOpen ? "Закрыть каталог" : "+ Реквизит из каталога"}
+                    </button>
+                  ) : null}
+                  <div className="text-xs font-semibold tabular-nums text-zinc-500">
+                    {renderedSections.length}{" "}
+                    {renderedSections.length % 10 === 1 && renderedSections.length % 100 !== 11
+                      ? "раздел"
+                      : [2, 3, 4].includes(renderedSections.length % 10) &&
+                          ![12, 13, 14].includes(renderedSections.length % 100)
+                        ? "раздела"
+                        : "разделов"}
+                  </div>
                 </div>
               </div>
+
+              {standalone && standaloneCatalogOpen && !readOnly ? (
+                <StandaloneEstimateCatalog
+                  onAttach={attachStandaloneCatalogItem}
+                  onClose={() => setStandaloneCatalogOpen(false)}
+                />
+              ) : null}
 
               <div className="space-y-3">
                 {renderedSections.map((sec, sectionIndex) =>
@@ -2258,7 +2356,7 @@ export function ProjectEstimatePanel({
                             <LineEditor
                               key={ln.id}
                               sectionId={sec.id}
-                              sectionKind="CONTRACTOR"
+                              sectionKind={sec.kind === "LOCAL" ? "LOCAL" : "CONTRACTOR"}
                               line={ln}
                               isDirty={dirtyLocalLineIds.has(ln.id)}
                               readOnly={readOnly}
@@ -2511,6 +2609,304 @@ export function ProjectEstimatePanel({
           )
         : null}
     </div>
+  );
+}
+
+function StandaloneEstimateCatalog({
+  onAttach,
+  onClose,
+}: {
+  onAttach: (args: {
+    item: EstimateCatalogItem;
+    qty: number;
+    days: number;
+    note: string;
+  }) => void;
+  onClose: () => void;
+}) {
+  const [items, setItems] = React.useState<EstimateCatalogItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [qty, setQty] = React.useState("1");
+  const [days, setDays] = React.useState("1");
+  const [note, setNote] = React.useState("");
+  const [addedMessage, setAddedMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetch("/api/catalog/items?all=true", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as {
+          items?: EstimateCatalogItem[];
+          error?: { message?: string };
+        } | null;
+        if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось загрузить каталог");
+        setItems(payload?.items ?? []);
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setError(reason instanceof Error ? reason.message : "Не удалось загрузить каталог");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const filteredItems = React.useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("ru-RU");
+    if (!query) return items;
+    return items.filter((item) =>
+      `${item.name} ${item.description ?? ""}`.toLocaleLowerCase("ru-RU").includes(query),
+    );
+  }, [items, search]);
+  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const available = selected
+    ? selected.availability?.availableNow ??
+      usableStockUnits({
+        total: selected.total,
+        inRepair: selected.inRepair,
+        broken: selected.broken,
+        missing: selected.missing,
+      })
+    : 0;
+
+  function resetSelection() {
+    setSelectedId(null);
+    setQty("1");
+    setDays("1");
+    setNote("");
+  }
+
+  function attach() {
+    if (!selected) return;
+    const normalizedQty = Math.max(1, Math.min(parseQtyCommitInt(qty, 1), Math.max(1, available)));
+    const normalizedDays = Math.max(1, parseQtyCommitInt(days, 1));
+    onAttach({
+      item: selected,
+      qty: normalizedQty,
+      days: normalizedDays,
+      note,
+    });
+    setAddedMessage(`${selected.name} добавлен в раздел «Реквизит из каталога»`);
+    resetSelection();
+  }
+
+  return (
+    <section className="overflow-hidden border border-violet-200 bg-white shadow-[0_16px_44px_rgba(76,29,149,0.08)]">
+      <div className="grid gap-4 border-b border-violet-100 bg-[linear-gradient(105deg,#faf8ff_0%,#fff_55%,#fff8dc_100%)] p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">
+            Демо-каталог
+          </div>
+          <h3 className="mt-1 text-xl font-black text-zinc-950">Добавить реквизит в расчёт</h3>
+          <p className="mt-1 max-w-2xl text-sm text-zinc-600">
+            Позиции попадут в смету без резерва склада. Количество, дни и итоговую цену можно изменить до сохранения.
+          </p>
+        </div>
+        <button type="button" className={`${btnSecondary} self-start`} onClick={onClose}>
+          Скрыть
+        </button>
+      </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)]">
+        <div className="border-b border-zinc-200 p-4 lg:border-b-0 lg:border-r">
+          <label className="block">
+            <span className="sr-only">Поиск по демо-каталогу</span>
+            <div className="relative">
+              <svg
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 fill-none stroke-zinc-400"
+                strokeWidth="2"
+                aria-hidden
+              >
+                <circle cx="11" cy="11" r="6" />
+                <path d="m16 16 4 4" />
+              </svg>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className={`min-h-12 w-full pl-11 ${inputField}`}
+                placeholder="Название позиции или описание"
+                autoFocus
+              />
+            </div>
+          </label>
+
+          <div className="mt-3 max-h-[420px] space-y-1 overflow-y-auto pr-1">
+            {loading ? (
+              Array.from({ length: 5 }, (_, index) => (
+                <div key={index} className="grid grid-cols-[56px_1fr_90px] items-center gap-3 border border-zinc-100 p-2">
+                  <div className="h-14 animate-pulse bg-zinc-100" />
+                  <div className="space-y-2">
+                    <div className="h-3 w-2/3 animate-pulse bg-zinc-100" />
+                    <div className="h-2.5 w-1/3 animate-pulse bg-zinc-100" />
+                  </div>
+                  <div className="h-8 animate-pulse bg-zinc-100" />
+                </div>
+              ))
+            ) : error ? (
+              <div className="border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">{error}</div>
+            ) : filteredItems.length === 0 ? (
+              <div className="border border-dashed border-zinc-300 px-3 py-8 text-center text-sm text-zinc-500">
+                По этому запросу позиций нет.
+              </div>
+            ) : (
+              filteredItems.map((item) => {
+                const stock =
+                  item.availability?.availableNow ??
+                  usableStockUnits({
+                    total: item.total,
+                    inRepair: item.inRepair,
+                    broken: item.broken,
+                    missing: item.missing,
+                  });
+                const active = item.id === selectedId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={[
+                      "grid w-full grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 border p-2 text-left transition-colors",
+                      active
+                        ? "border-violet-400 bg-violet-50"
+                        : "border-transparent hover:border-zinc-200 hover:bg-zinc-50",
+                    ].join(" ")}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setAddedMessage(null);
+                      setQty("1");
+                      setDays("1");
+                      setNote("");
+                    }}
+                  >
+                    <div className="h-14 w-14 overflow-hidden bg-zinc-100">
+                      {item.photo1Key ? (
+                        <Image
+                          src={`/api/inventory/positions/${item.id}/photo?w=112`}
+                          alt=""
+                          width={56}
+                          height={56}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-lg font-black text-zinc-400">
+                          {item.name.slice(0, 1).toLocaleUpperCase("ru-RU")}
+                        </div>
+                      )}
+                    </div>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-zinc-950">{item.name}</span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        {formatMoneyRub(item.pricePerDay)} ₽/сутки · годных: {stock}
+                      </span>
+                    </span>
+                    <span className="text-xs font-bold text-violet-700">{active ? "Выбрано" : "Выбрать"}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="p-4">
+          {selected ? (
+            <div className="space-y-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                  Выбранная позиция
+                </div>
+                <div className="mt-1 text-base font-black text-zinc-950">{selected.name}</div>
+                <div className="mt-1 text-sm text-zinc-600">
+                  {formatMoneyRub(selected.pricePerDay)} ₽ за единицу в сутки
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">
+                  Количество
+                  <input
+                    value={qty}
+                    onChange={(event) => setQty(digitsOnlyInput(event.target.value))}
+                    onBlur={() =>
+                      setQty(String(Math.max(1, Math.min(parseQtyCommitInt(qty, 1), Math.max(1, available)))))
+                    }
+                    className={`mt-1 w-full ${inputField} tabular-nums`}
+                    inputMode="numeric"
+                  />
+                </label>
+                <label className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">
+                  Дней
+                  <input
+                    value={days}
+                    onChange={(event) => setDays(digitsOnlyInput(event.target.value))}
+                    onBlur={() => setDays(String(Math.max(1, parseQtyCommitInt(days, 1))))}
+                    className={`mt-1 w-full ${inputField} tabular-nums`}
+                    inputMode="numeric"
+                  />
+                </label>
+              </div>
+              <label className="block text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">
+                Комментарий
+                <input
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  className={`mt-1 w-full ${inputField}`}
+                  placeholder="Опционально"
+                  maxLength={5000}
+                />
+              </label>
+              <div className="border-y border-zinc-200 py-3">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-zinc-500">В смету</span>
+                  <span className="font-black tabular-nums text-zinc-950">
+                    {formatMoneyRub(
+                      roundMoney(
+                        selected.pricePerDay *
+                          Math.max(1, parseQtyCommitInt(qty, 1)) *
+                          Math.max(1, parseQtyCommitInt(days, 1)),
+                      ),
+                    )}{" "}
+                    ₽
+                  </span>
+                </div>
+              </div>
+              {available <= 0 ? (
+                <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Сейчас нет годных единиц на складе. Позицию можно увидеть в каталоге, но прикрепить к смете нельзя.
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className={`${btnPrimary} min-h-11 w-full`}
+                disabled={available <= 0}
+                onClick={attach}
+              >
+                Добавить в смету
+              </button>
+            </div>
+          ) : (
+            <div className="flex min-h-64 flex-col justify-center border border-dashed border-zinc-300 p-6">
+              <div className="text-sm font-black text-zinc-950">Выберите позицию слева</div>
+              <p className="mt-1 text-sm text-zinc-500">
+                После выбора задайте количество и число дней. Цена за весь период рассчитается автоматически.
+              </p>
+              {addedMessage ? (
+                <div className="mt-4 border-l-2 border-emerald-500 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                  {addedMessage}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2934,7 +3330,14 @@ function LineEditor({
               {line.lineNumber}
             </span>
             <div className="min-w-0">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-violet-700">Клиенту</div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-violet-700">
+                <span>Клиенту</span>
+                {line.itemId ? (
+                  <span className="border-l border-violet-200 pl-2 text-[10px] text-zinc-500">
+                    из каталога
+                  </span>
+                ) : null}
+              </div>
               <div className="truncate text-sm font-semibold text-zinc-950">{line.name || "Новая позиция"}</div>
             </div>
           </div>

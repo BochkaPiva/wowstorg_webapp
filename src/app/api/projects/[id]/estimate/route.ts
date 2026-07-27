@@ -38,6 +38,7 @@ const DraftLineSchema = z
     paymentStatus: z.string().trim().max(120).nullable().optional(),
     contractorNote: z.string().trim().max(5000).nullable().optional(),
     contractorRequisites: z.string().trim().max(500).nullable().optional(),
+    itemId: z.string().trim().min(1).nullable().optional(),
     internalExpenses: z.array(DraftLineInternalExpenseSchema).max(100).optional(),
   })
   .strict();
@@ -119,6 +120,23 @@ export async function PATCH(
     clientChargeTaxEnabled,
   } =
     parsed.data;
+
+  const requestedItemIds = [
+    ...new Set(
+      localSections.flatMap((section) =>
+        section.lines.flatMap((line) => (line.itemId ? [line.itemId] : [])),
+      ),
+    ),
+  ];
+  if (requestedItemIds.length > 0) {
+    const existingItems = await prisma.item.findMany({
+      where: { id: { in: requestedItemIds } },
+      select: { id: true },
+    });
+    if (existingItems.length !== requestedItemIds.length) {
+      return jsonError(400, "Одна из позиций каталога больше не существует");
+    }
+  }
 
   const version = await prisma.projectEstimateVersion.findFirst({
     where: { projectId, versionNumber },
@@ -238,6 +256,7 @@ export async function PATCH(
               lineDraft.contractorRequisites === undefined
                 ? undefined
                 : lineDraft.contractorRequisites?.trim() || null,
+            itemId: lineDraft.itemId ?? null,
           };
 
           const savedLine =

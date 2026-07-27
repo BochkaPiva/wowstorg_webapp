@@ -31,6 +31,7 @@ const LineSchema = z.object({
   paymentStatus: z.string().trim().max(120).nullable().optional(),
   contractorNote: z.string().trim().max(5000).nullable().optional(),
   contractorRequisites: z.string().trim().max(500).nullable().optional(),
+  itemId: z.string().trim().min(1).nullable().optional(),
   internalExpenses: z.array(InternalExpenseSchema).max(100).optional(),
 }).strict();
 
@@ -76,6 +77,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
+
+  const requestedItemIds = [
+    ...new Set(
+      parsed.data.localSections.flatMap((section) =>
+        section.lines.flatMap((line) => (line.itemId ? [line.itemId] : [])),
+      ),
+    ),
+  ];
+  if (requestedItemIds.length > 0) {
+    const existingItems = await prisma.item.findMany({
+      where: { id: { in: requestedItemIds } },
+      select: { id: true },
+    });
+    if (existingItems.length !== requestedItemIds.length) {
+      return jsonError(400, "Одна из позиций каталога больше не существует");
+    }
+  }
 
   const version = await prisma.projectEstimateVersion.findFirst({
     where: {
@@ -135,6 +153,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
               paymentStatus: line.paymentStatus?.trim() || null,
               contractorNote: line.contractorNote?.trim() || null,
               contractorRequisites: line.contractorRequisites?.trim() || null,
+              itemId: line.itemId ?? null,
               internalExpenses: {
                 create: [...(line.internalExpenses ?? [])]
                   .sort((a, b) => a.sortOrder - b.sortOrder)

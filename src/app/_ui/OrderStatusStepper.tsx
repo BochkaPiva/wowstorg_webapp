@@ -72,12 +72,14 @@ export function OrderStatusStepper({
   compactWindow = 7,
   showSummary = true,
   className,
+  density = "regular",
 }: {
   status: OrderStatus;
   source?: OrderSource;
   compactWindow?: number;
   showSummary?: boolean;
   className?: string;
+  density?: "regular" | "compact";
 }) {
   const owner = turnOwner(status, source);
   const activeStep = status === "CANCELLED" ? 1 : FLOW.indexOf(status) + 1;
@@ -108,6 +110,7 @@ export function OrderStatusStepper({
           activeStep={activeStep}
           tone={tone}
           windowSize={compactWindow}
+          density={density}
           className="order-progress__stepper"
         />
       ) : null}

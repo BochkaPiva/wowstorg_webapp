@@ -39,12 +39,14 @@ export function Stepper({
   tone = "slate",
   className,
   windowSize = 7,
+  density = "regular",
 }: {
   steps: Step[];
   activeStep: number;
   tone?: Tone;
   className?: string;
   windowSize?: number;
+  density?: "regular" | "compact";
 }) {
   const { active, line } = toneClasses(tone);
   const total = Math.max(1, steps.length);
@@ -70,13 +72,28 @@ export function Stepper({
   });
 
   return (
-    <div className={["w-full overflow-x-auto pb-1", className ?? ""].join(" ")}>
-      <div className="flex min-w-[620px] items-start">
+    <div
+      className={["w-full overflow-x-auto pb-1", className ?? ""].join(" ")}
+      data-density={density}
+    >
+      <div className={["flex items-start", density === "compact" ? "min-w-[540px]" : "min-w-[620px]"].join(" ")}>
         {display.map((item, position) => {
           if (item.type === "ellipsis") {
             return (
-              <div key={item.key} className="flex min-w-8 flex-col items-center pt-3" aria-hidden="true">
-                <span className="text-sm font-bold tracking-[0.18em] text-zinc-400">•••</span>
+              <div
+                key={item.key}
+                className={[
+                  "flex flex-col items-center",
+                  density === "compact" ? "min-w-6 pt-2" : "min-w-8 pt-3",
+                ].join(" ")}
+                aria-hidden="true"
+              >
+                <span className={density === "compact"
+                  ? "text-xs font-bold tracking-[0.14em] text-zinc-400"
+                  : "text-sm font-bold tracking-[0.18em] text-zinc-400"}
+                >
+                  •••
+                </span>
               </div>
             );
           }
@@ -89,10 +106,16 @@ export function Stepper({
 
           return (
             <React.Fragment key={step.id}>
-              <div className="flex min-w-[62px] flex-col items-center gap-1.5">
+              <div
+                className={[
+                  "flex flex-col items-center",
+                  density === "compact" ? "min-w-[52px] gap-1" : "min-w-[62px] gap-1.5",
+                ].join(" ")}
+              >
                 <div
                   className={[
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold",
+                    "flex shrink-0 items-center justify-center rounded-full border font-bold",
+                    density === "compact" ? "h-5 w-5 text-[9px]" : "h-7 w-7 text-[11px]",
                     "transition-colors duration-150 motion-reduce:transition-none",
                     completed
                       ? "border-zinc-950 bg-zinc-950 text-white"
@@ -108,7 +131,8 @@ export function Stepper({
                 </div>
                 <span
                   className={[
-                    "max-w-[86px] text-center text-[10px] font-semibold leading-tight",
+                    "text-center font-semibold leading-tight",
+                    density === "compact" ? "max-w-[72px] text-[9px]" : "max-w-[86px] text-[10px]",
                     isActive || completed ? "text-zinc-950" : "text-zinc-500",
                   ].join(" ")}
                 >
@@ -117,7 +141,12 @@ export function Stepper({
               </div>
 
               {showConnector ? (
-                <div className="mt-[13px] min-w-5 flex-1 px-1">
+                <div
+                  className={[
+                    "min-w-5 flex-1 px-1",
+                    density === "compact" ? "mt-[9px]" : "mt-[13px]",
+                  ].join(" ")}
+                >
                   <div className="h-px overflow-hidden bg-zinc-200">
                     <div className={["h-full w-full", completed ? line : "bg-transparent"].join(" ")} />
                   </div>

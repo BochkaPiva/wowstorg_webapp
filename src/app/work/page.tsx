@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
-import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
+import {
+  OrderStatusStepper,
+  orderStatusLabelRu,
+  type OrderStatus,
+} from "@/app/_ui/OrderStatusStepper";
 import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
@@ -925,21 +929,40 @@ export default function WorkQueuePage() {
                     </div>
 
                     {item.orders.length ? (
-                      <div className="work-card__progress" data-substeps={item.kind !== "STANDALONE_ORDER" || undefined}>
+                      <div
+                        className="work-card__progress"
+                        data-substeps={item.kind === "PROJECT" || undefined}
+                        aria-label={item.kind === "PROJECT" ? "Связанные заявки проекта" : "Прогресс заявки"}
+                      >
+                        {item.kind === "PROJECT" ? (
+                          <header className="work-linkedOrders__header">
+                            <span className="work-linkedOrders__branch" aria-hidden="true">↳</span>
+                            <span>
+                              <strong>Заявки внутри проекта</strong>
+                              <small>
+                                {item.orders.length} {item.orders.length === 1 ? "заявка" : "заявки"} · складской прогресс
+                              </small>
+                            </span>
+                          </header>
+                        ) : null}
                         {item.orders.map((order, orderIndex) => (
                           <section
                             key={order.id}
                             className="work-progressRow"
-                            data-substep={item.kind !== "STANDALONE_ORDER" || undefined}
+                            data-substep={item.kind === "PROJECT" || undefined}
+                            data-order-status={order.status}
                           >
                             <header className="work-progressRow__head">
                               <span>
                                 <b>
                                   {item.kind === "STANDALONE_ORDER"
                                     ? "Прогресс заявки"
-                                    : `Заявка проекта · ${orderIndex + 1}`}
+                                    : `Заявка ${orderIndex + 1} из ${item.orders.length}`}
                                 </b>
                                 <strong>{order.title}</strong>
+                                {item.kind === "PROJECT" ? (
+                                  <em data-status={order.status}>{orderStatusLabelRu[order.status]}</em>
+                                ) : null}
                               </span>
                               <span className="work-progressRow__meta">
                                 <span>Готовность {dateRu(order.readyByDate)}</span>
@@ -959,6 +982,7 @@ export default function WorkQueuePage() {
                               source={order.source}
                               showSummary={false}
                               compactWindow={8}
+                              density={item.kind === "PROJECT" ? "compact" : "regular"}
                               className="work-progressRow__stepper"
                             />
                           </section>

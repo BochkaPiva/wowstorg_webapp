@@ -327,15 +327,6 @@ export async function GET(req: Request) {
           customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
           owner: { select: { id: true, displayName: true } },
           orders: {
-            where: {
-              status: {
-                in: query.view === "archive"
-                  ? query.includeCancelled === "true"
-                    ? [OrderStatus.CLOSED, OrderStatus.CANCELLED]
-                    : [OrderStatus.CLOSED]
-                  : [...ACTIVE_ORDERS],
-              },
-            },
             orderBy: [{ readyByDate: "asc" }, { createdAt: "asc" }],
             take: 20,
             select: orderSelect,

@@ -1,6 +1,6 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-07-27T04:44:36.239Z  
+> **Сгенерировано:** 2026-07-27T11:30:45.016Z  
 > **Файлов route.ts:** 126  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
@@ -106,7 +106,7 @@
 | GET | `/api/standalone-estimates/[id]/estimate/pdf` | `src/app/api/standalone-estimates/[id]/estimate/pdf/route.ts` |
 | GET, PATCH | `/api/standalone-estimates/[id]/estimate` | `src/app/api/standalone-estimates/[id]/estimate/route.ts` |
 | PATCH | `/api/standalone-estimates/[id]/estimate/sections/[sectionId]` | `src/app/api/standalone-estimates/[id]/estimate/sections/[sectionId]/route.ts` |
-| GET, PATCH | `/api/standalone-estimates/[id]` | `src/app/api/standalone-estimates/[id]/route.ts` |
+| GET, PATCH, DELETE | `/api/standalone-estimates/[id]` | `src/app/api/standalone-estimates/[id]/route.ts` |
 | POST | `/api/standalone-estimates` | `src/app/api/standalone-estimates/route.ts` |
 | POST | `/api/tasks/boards/[id]/columns` | `src/app/api/tasks/boards/[id]/columns/route.ts` |
 | GET, PATCH | `/api/tasks/boards/[id]` | `src/app/api/tasks/boards/[id]/route.ts` |

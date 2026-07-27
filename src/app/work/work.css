@@ -541,6 +541,22 @@
   color: #fff;
 }
 
+.work-action--danger-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: #9a3028;
+}
+
+.work-action--danger-quiet:hover {
+  background: #fff0ee;
+  color: #731e18;
+}
+
+.work-action--danger-quiet:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
 .work-card__expand {
   display: inline-flex;
   min-height: 38px;
@@ -1385,6 +1401,22 @@
 
 .work-modal__actions > button:not(.work-primary):hover {
   background: #e9e9e4;
+}
+
+.work-modal__actions > .work-danger,
+.work-modal__actions > .work-danger:hover {
+  border-color: #a62c24;
+  background: #a62c24;
+  color: #fff;
+}
+
+.work-modal__actions > .work-danger:hover {
+  background: #842019;
+}
+
+.work-modal__actions > .work-danger:disabled {
+  opacity: .55;
+  cursor: wait;
 }
 
 @keyframes work-shimmer {

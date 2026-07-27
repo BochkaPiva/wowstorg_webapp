@@ -421,6 +421,7 @@ export default function WorkQueuePage() {
   const [customers, setCustomers] = React.useState<CustomerOption[]>([]);
   const [convertItem, setConvertItem] = React.useState<WorkItem | null>(null);
   const [convertCustomer, setConvertCustomer] = React.useState("");
+  const [deleteEstimateItem, setDeleteEstimateItem] = React.useState<WorkItem | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [confirmOrder, setConfirmOrder] = React.useState<WorkOrder | null>(null);
   const [projectAction, setProjectAction] = React.useState<WorkItem | null>(null);
@@ -674,6 +675,32 @@ export default function WorkQueuePage() {
     }
   }
 
+  async function deleteEstimate() {
+    if (!deleteEstimateItem) return;
+    const item = deleteEstimateItem;
+    setBusy(`delete:${item.id}`);
+    setError(null);
+    try {
+      const response = await fetch(`/api/standalone-estimates/${item.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+
+      setDeleteEstimateItem(null);
+      setExpanded((current) => {
+        const next = new Set(current);
+        next.delete(item.key);
+        return next;
+      });
+      setNotice(`Смета «${item.title}» удалена.`);
+      await load();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить смету");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const confirmAction = confirmOrder ? quickAction(confirmOrder) : null;
   const groupedItems = React.useMemo(() => {
     const source = [...(payload?.items ?? [])];
@@ -912,6 +939,16 @@ export default function WorkQueuePage() {
                             }}
                           >
                             Сменить статус
+                          </button>
+                        ) : null}
+                        {item.kind === "STANDALONE_ESTIMATE" ? (
+                          <button
+                            type="button"
+                            className="work-action work-action--danger-quiet"
+                            disabled={busy === `delete:${item.id}`}
+                            onClick={() => setDeleteEstimateItem(item)}
+                          >
+                            {busy === `delete:${item.id}` ? "Удаляем…" : "Удалить"}
                           </button>
                         ) : null}
                         <Link className="work-action work-action--dark" href={href}>Открыть</Link>
@@ -1214,6 +1251,41 @@ export default function WorkQueuePage() {
                   </button>
                 </div>
               </form>
+            </div>
+          ) : null}
+
+          {deleteEstimateItem ? (
+            <div className="work-modal" role="dialog" aria-modal="true" aria-labelledby="delete-estimate-modal-title">
+              <button
+                type="button"
+                className="work-modal__backdrop"
+                aria-label="Закрыть"
+                disabled={busy === `delete:${deleteEstimateItem.id}`}
+                onClick={() => setDeleteEstimateItem(null)}
+              />
+              <div className="work-modal__panel work-modal__panel--compact">
+                <span className="work-eyebrow">Необратимое действие</span>
+                <h2 id="delete-estimate-modal-title">Удалить смету?</h2>
+                <strong className="work-modal__orderTitle">{deleteEstimateItem.title}</strong>
+                <p>Смета, её разделы и строки будут удалены. Это действие нельзя отменить.</p>
+                <div className="work-modal__actions">
+                  <button
+                    type="button"
+                    disabled={busy === `delete:${deleteEstimateItem.id}`}
+                    onClick={() => setDeleteEstimateItem(null)}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    className="work-danger"
+                    disabled={busy === `delete:${deleteEstimateItem.id}`}
+                    onClick={() => void deleteEstimate()}
+                  >
+                    {busy === `delete:${deleteEstimateItem.id}` ? "Удаляем…" : "Удалить смету"}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 

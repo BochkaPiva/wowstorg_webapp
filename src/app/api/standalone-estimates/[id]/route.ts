@@ -122,3 +122,38 @@ export async function PATCH(
 
   return jsonOk({ estimate });
 }
+
+export async function DELETE(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  const { id } = await ctx.params;
+  const existing = await prisma.standaloneEstimate.findUnique({
+    where: { id },
+    select: { convertedAt: true },
+  });
+  if (!existing) return jsonError(404, "Смета не найдена");
+  if (existing.convertedAt) {
+    return jsonError(409, "Преобразованную в проект смету удалить нельзя");
+  }
+
+  const deleted = await prisma.standaloneEstimate.deleteMany({
+    where: {
+      id,
+      convertedAt: null,
+    },
+  });
+  if (deleted.count === 0) {
+    const current = await prisma.standaloneEstimate.findUnique({
+      where: { id },
+      select: { convertedAt: true },
+    });
+    if (!current) return jsonError(404, "Смета уже удалена");
+    return jsonError(409, "Смета уже преобразована в проект");
+  }
+
+  return jsonOk({ ok: true });
+}

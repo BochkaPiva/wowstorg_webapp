@@ -227,6 +227,7 @@ model User {
   browserPushSubscriptions       BrowserPushSubscription[]
   inventoryAuditRuns             InventoryAuditRun[]
   projectsOwned                  Project[]                   @relation("project_owner")
+  standaloneEstimatesOwned       StandaloneEstimate[]        @relation("standalone_estimate_owner")
   projectActivityLogs            ProjectActivityLog[]
   projectCommunicationEntries    ProjectCommunicationEntry[]
   projectFilesUploaded           ProjectFile[]
@@ -293,8 +294,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders   Order[]
-  projects Project[]
+  orders              Order[]
+  projects            Project[]
+  standaloneEstimates StandaloneEstimate[]
 
   @@index([isActive, name])
 }
@@ -330,22 +332,51 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders                Order[]
-  activityLogs          ProjectActivityLog[]
-  contacts              ProjectContact[]
-  draftOrders           ProjectDraftOrder[]
-  notificationCooldowns ProjectNotificationCooldown[]
-  folders               ProjectFolder[]
-  projectFiles          ProjectFile[]
-  estimateVersions      ProjectEstimateVersion[]
-  scheduleDays          ProjectScheduleDay[]
-  tasks                 WorkTask[]
+  orders                   Order[]
+  activityLogs             ProjectActivityLog[]
+  contacts                 ProjectContact[]
+  draftOrders              ProjectDraftOrder[]
+  notificationCooldowns    ProjectNotificationCooldown[]
+  folders                  ProjectFolder[]
+  projectFiles             ProjectFile[]
+  estimateVersions         ProjectEstimateVersion[]
+  scheduleDays             ProjectScheduleDay[]
+  tasks                    WorkTask[]
+  sourceStandaloneEstimate StandaloneEstimate?           @relation("standalone_estimate_converted_project")
 
   @@index([customerId])
   @@index([ownerUserId])
   @@index([archivedAt])
   @@index([status])
   @@index([mode])
+  @@index([updatedAt])
+}
+
+/// Независимая смета: быстрый расчёт без проектной карточки, контактов, задач и дат.
+/// При согласовании переносится в полноценный Project без потери строк и итогов.
+model StandaloneEstimate {
+  id               String    @id @default(cuid())
+  title            String
+  customerId       String?
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Свободное название заказчика до выбора/создания Customer.
+  leadCustomerName String?
+
+  ownerUserId String
+  owner       User   @relation("standalone_estimate_owner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  convertedAt        DateTime?
+  convertedProjectId String?   @unique
+  convertedProject   Project?  @relation("standalone_estimate_converted_project", fields: [convertedProjectId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  estimateVersions ProjectEstimateVersion[]
+
+  @@index([customerId])
+  @@index([ownerUserId])
+  @@index([convertedAt])
   @@index([updatedAt])
 }
 
@@ -384,7 +415,7 @@ model FinancialReconciliationRow {
   bonusSecond    Decimal @db.Decimal(14, 2)
   sourceLink     String?
 
-  matchStatus      FinancialReconciliationMatchStatus @default(UNMATCHED)
+  matchStatus       FinancialReconciliationMatchStatus @default(UNMATCHED)
   matchedEntityType String?
   matchedEntityId   String?
   matchNote         String?
@@ -689,9 +720,12 @@ model ProjectFile {
 
 /// Смета проекта (исторически называлась версией); в UI это самостоятельный сметный документ.
 model ProjectEstimateVersion {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  standaloneEstimateId String?
+  standaloneEstimate   StandaloneEstimate? @relation(fields: [standaloneEstimateId], references: [id], onDelete: Cascade)
 
   versionNumber          Int
   title                  String?
@@ -715,10 +749,12 @@ model ProjectEstimateVersion {
   draftOrders ProjectDraftOrder[]
 
   @@unique([projectId, versionNumber])
+  @@unique([standaloneEstimateId, versionNumber])
   @@index([projectId])
   @@index([projectId, isPrimary])
   @@index([projectId, sortOrder])
   @@index([projectId, includeInProjectTotals])
+  @@index([standaloneEstimateId])
 }
 
 model ProjectEstimateSection {

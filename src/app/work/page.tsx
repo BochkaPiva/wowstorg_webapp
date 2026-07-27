@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -59,7 +60,7 @@ type WorkOrder = {
 type WorkItem = {
   key: string;
   id: string;
-  kind: "PROJECT" | "STANDALONE_ORDER" | "ESTIMATE_ONLY";
+  kind: "PROJECT" | "STANDALONE_ORDER" | "STANDALONE_ESTIMATE";
   title: string;
   phase: Phase;
   status: string;
@@ -175,7 +176,7 @@ const PHASE_LABEL: Record<Phase, string> = {
 const KIND_LABEL: Record<WorkItem["kind"], string> = {
   PROJECT: "Проект",
   STANDALONE_ORDER: "Заявка",
-  ESTIMATE_ONLY: "Расчёт",
+  STANDALONE_ESTIMATE: "Смета",
 };
 
 const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -387,6 +388,7 @@ function CustomerCombobox({
 }
 
 export default function WorkQueuePage() {
+  const router = useRouter();
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
   const [payload, setPayload] = React.useState<QueuePayload | null>(null);
@@ -483,7 +485,7 @@ export default function WorkQueuePage() {
   }, [load]);
 
   async function loadPreview(item: WorkItem) {
-    if (item.kind === "STANDALONE_ORDER" || previews[item.id]) return;
+    if (item.kind !== "PROJECT" || previews[item.id]) return;
     setPreviewBusy(item.id);
     try {
       const response = await fetch(`/api/work-queue/projects/${item.id}/preview`, {
@@ -599,25 +601,27 @@ export default function WorkQueuePage() {
   async function createEstimate(event: React.FormEvent) {
     event.preventDefault();
     if (!createTitle.trim()) return;
+    const matchedCustomer = customers.find(
+      (customer) => customer.name.localeCompare(createCustomer.trim(), "ru", { sensitivity: "accent" }) === 0,
+    );
     setBusy("create");
     setError(null);
     try {
-      const response = await fetch("/api/projects", {
+      const response = await fetch("/api/standalone-estimates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: createTitle.trim(),
-          customerName: createCustomer.trim() || undefined,
-          mode: "ESTIMATE_ONLY",
+          customerId: matchedCustomer?.id,
+          customerName: matchedCustomer ? undefined : createCustomer.trim() || undefined,
         }),
       });
       if (!response.ok) throw new Error(await responseMessage(response));
+      const payload = await response.json() as { estimate: { id: string } };
       setCreateTitle("");
       setCreateCustomer("");
       setCreateOpen(false);
-      setView("estimates");
-      setNotice("Расчёт создан. Смета и demo-реквизит сохранятся при преобразовании в проект.");
-      await load();
+      router.push(`/estimates/${payload.estimate.id}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Не удалось создать расчёт");
     } finally {
@@ -649,7 +653,7 @@ export default function WorkQueuePage() {
     setBusy(`convert:${convertItem.id}`);
     setError(null);
     try {
-      const response = await fetch(`/api/projects/${convertItem.id}/convert`, {
+      const response = await fetch(`/api/standalone-estimates/${convertItem.id}/convert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerName: convertCustomer.trim() }),
@@ -849,7 +853,9 @@ export default function WorkQueuePage() {
                 const customerName = item.customer?.name ?? item.customerFallback ?? "Заказчик не указан";
                 const href = item.kind === "STANDALONE_ORDER"
                   ? `/orders/${item.id}?from=work`
-                  : `/projects/${item.id}`;
+                  : item.kind === "STANDALONE_ESTIMATE"
+                    ? `/estimates/${item.id}`
+                    : `/projects/${item.id}`;
                 const preview = previews[item.id] ?? null;
                 return (
                   <article
@@ -891,7 +897,7 @@ export default function WorkQueuePage() {
                             {quickAction(item.orders[0])?.label}
                           </button>
                         ) : null}
-                        {item.kind !== "STANDALONE_ORDER" && view !== "archive" ? (
+                        {item.kind === "PROJECT" && view !== "archive" ? (
                           <button
                             type="button"
                             className="work-action"
@@ -1034,7 +1040,7 @@ export default function WorkQueuePage() {
                           <div className="work-brief">
                             <section>
                               <h3>Коротко</h3>
-                              <p>{item.summary || (item.kind === "ESTIMATE_ONLY" ? "Быстрый расчёт без обязательных дат и контактов." : "Внутреннее резюме пока не заполнено.")}</p>
+                              <p>{item.summary || (item.kind === "STANDALONE_ESTIMATE" ? "Независимая смета без обязательных дат и проектной карточки." : "Внутреннее резюме пока не заполнено.")}</p>
                             </section>
                             <section data-warning={Boolean(item.blockers) || undefined}>
                               <h3>Блокеры</h3>
@@ -1047,7 +1053,7 @@ export default function WorkQueuePage() {
                           </div>
                         )}
 
-                        {item.kind !== "STANDALONE_ORDER" ? (
+                        {item.kind === "PROJECT" ? (
                           previewBusy === item.id && !preview ? (
                             <div className="work-previewSkeleton" aria-label="Загрузка деталей проекта">
                               <span />
@@ -1098,13 +1104,13 @@ export default function WorkQueuePage() {
 
                         {!item.orders.length ? (
                           <div className="work-emptyState">
-                            <strong>{item.kind === "ESTIMATE_ONLY" ? "Смета без лишних полей" : "Заявок пока нет"}</strong>
+                            <strong>{item.kind === "STANDALONE_ESTIMATE" ? "Смета готова к заполнению" : "Заявок пока нет"}</strong>
                             <span>{item.estimate ? `Создана версия сметы №${item.estimate.versionNumber}` : "Откройте карточку, чтобы начать расчёт."}</span>
                           </div>
                         ) : null}
 
                         <div className="work-revealActions">
-                          {item.kind === "ESTIMATE_ONLY" ? (
+                          {item.kind === "STANDALONE_ESTIMATE" ? (
                             <button
                               type="button"
                               className="work-action work-action--accent"
@@ -1117,7 +1123,7 @@ export default function WorkQueuePage() {
                             </button>
                           ) : null}
                           <Link className="work-action work-action--dark" href={href}>
-                            {item.kind === "ESTIMATE_ONLY" ? "Открыть расчёт" : "Открыть полную карточку"}
+                            {item.kind === "STANDALONE_ESTIMATE" ? "Открыть смету" : "Открыть полную карточку"}
                           </Link>
                         </div>
                       </div>

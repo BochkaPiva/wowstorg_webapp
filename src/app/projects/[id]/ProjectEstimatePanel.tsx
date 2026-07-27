@@ -805,16 +805,21 @@ function maxQtyAllowedForRequisiteLine(
 export function ProjectEstimatePanel({
   projectId,
   readOnly,
+  apiBase,
+  standalone = false,
   selectedVersionNumber: selectedVersionNumberProp,
   onSelectedVersionNumberChange,
   onResolvedVersionChange,
 }: {
   projectId: string;
   readOnly: boolean;
+  apiBase?: string;
+  standalone?: boolean;
   selectedVersionNumber?: number | null;
   onSelectedVersionNumberChange?: (value: number | null) => void;
   onResolvedVersionChange?: (value: { id: string; versionNumber: number } | null) => void;
 }) {
+  const estimateApiBase = apiBase ?? `/api/projects/${projectId}`;
   const [data, setData] = React.useState<EstimatePayload | null>(null);
   /** null = основная смета с сервера; число = явный выбор */
   const [uncontrolledSelectedVersion, setUncontrolledSelectedVersion] = React.useState<number | null>(null);
@@ -855,7 +860,7 @@ export function ProjectEstimatePanel({
     (v: number | null) => {
       setLoading(true);
       const q = v != null ? `?version=${v}` : "";
-      fetch(`/api/projects/${projectId}/estimate${q}`, { cache: "no-store" })
+      fetch(`${estimateApiBase}/estimate${q}`, { cache: "no-store" })
         .then((r) => r.json())
         .then((j: EstimatePayload & { error?: { message?: string } }) => {
           if (j.error?.message) {
@@ -947,7 +952,7 @@ export function ProjectEstimatePanel({
         })
         .finally(() => setLoading(false));
     },
-    [projectId],
+    [estimateApiBase, projectId],
   );
 
   React.useEffect(() => {
@@ -1166,7 +1171,7 @@ export function ProjectEstimatePanel({
     if (!window.confirm("Убрать этот раздел из сметы? Сама заявка не будет удалена.")) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/sections/${id}`, { method: "DELETE" });
+      const res = await fetch(`${estimateApiBase}/estimate/sections/${id}`, { method: "DELETE" });
       const j = await res.json().catch(() => null);
       if (res.ok) {
         setSelectedImportOrderIds((prev) => prev.filter((orderId) => orderId !== id));
@@ -1417,7 +1422,7 @@ export function ProjectEstimatePanel({
     try {
       const responses = await Promise.all(
         persistedChanges.map(({ id, sortOrder }) =>
-          fetch(`/api/projects/${projectId}/estimate/sections/${id}`, {
+          fetch(`${estimateApiBase}/estimate/sections/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sortOrder }),
@@ -1582,7 +1587,7 @@ export function ProjectEstimatePanel({
     }
     setBusy(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/estimate`, {
+      const res = await fetch(`${estimateApiBase}/estimate`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1675,8 +1680,8 @@ export function ProjectEstimatePanel({
   const currentVersionMeta = data?.versions.find((v) => v.versionNumber === vn) ?? null;
   const exportBase =
     vn != null
-      ? `/api/projects/${projectId}/estimate/pdf?version=${encodeURIComponent(String(vn))}`
-      : `/api/projects/${projectId}/estimate/pdf`;
+      ? `${estimateApiBase}/estimate/pdf?version=${encodeURIComponent(String(vn))}`
+      : `${estimateApiBase}/estimate/pdf`;
   const exportHrefInternal = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=internal`;
   const exportHrefClient = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=client`;
   const availableImportOrders = React.useMemo(() => {
@@ -1856,12 +1861,18 @@ export function ProjectEstimatePanel({
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-700">Финансы</span>
+                  <span className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-700">
+                    {standalone ? "Независимый расчёт" : "Финансы"}
+                  </span>
                   <EstimateHelpLegend title="Как работать со сметами">
-                    Создавай отдельные сметы для основного договора и доп. соглашений. В общий итог проекта попадают только сметы с отметкой «В итогах проекта».
+                    {standalone
+                      ? "Составьте расчёт и выгрузите клиентскую или внутреннюю версию. После согласования его можно превратить в полноценный проект."
+                      : "Создавай отдельные сметы для основного договора и доп. соглашений. В общий итог проекта попадают только сметы с отметкой «В итогах проекта»."}
                   </EstimateHelpLegend>
                 </div>
-                <div className="mt-2 text-3xl font-black tracking-tight text-zinc-950">Сметы проекта</div>
+                <div className="mt-2 text-3xl font-black tracking-tight text-zinc-950">
+                  {standalone ? "Смета" : "Сметы проекта"}
+                </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
@@ -1914,7 +1925,7 @@ export function ProjectEstimatePanel({
                   ) : null}
                 </div>
 
-                {currentVersionMeta ? (
+                {currentVersionMeta && !standalone ? (
                   <>
                     <span
                       className="inline-flex items-center rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-xs font-extrabold text-violet-800 shadow-sm"
@@ -1963,7 +1974,7 @@ export function ProjectEstimatePanel({
                     ) : null}
                   </div>
                 ) : null}
-                {!readOnly ? (
+                {!readOnly && !standalone ? (
               <div className="relative flex items-start justify-start lg:justify-end" ref={actionsWrapRef}>
                 <button
                   type="button"
@@ -2090,7 +2101,7 @@ export function ProjectEstimatePanel({
             <p className="text-sm text-zinc-600">Выберите смету.</p>
           ) : (
             <>
-              {!readOnly && importOpen ? (
+              {!readOnly && !standalone && importOpen ? (
                     <div
                       className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm"
                       onMouseDown={() => {
@@ -2420,7 +2431,7 @@ export function ProjectEstimatePanel({
               </div>
               </div>
 
-              {data.versions.length > 1 ? (
+              {!standalone && data.versions.length > 1 ? (
                 <div className="border border-emerald-200 bg-emerald-50/45 p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>

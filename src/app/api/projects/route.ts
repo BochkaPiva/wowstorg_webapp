@@ -436,6 +436,9 @@ export async function POST(req: Request) {
   }
 
   const projectMode = parsed.data.mode ?? ProjectMode.FULL;
+  if (projectMode === ProjectMode.ESTIMATE_ONLY) {
+    return jsonError(409, "Быстрый расчёт теперь создаётся через независимую смету");
+  }
   if (projectMode === ProjectMode.FULL && !parsed.data.customerId && !parsed.data.customerName) {
     return jsonError(400, "Укажите заказчика");
   }
@@ -474,10 +477,7 @@ export async function POST(req: Request) {
           title: parsed.data.title,
           customerId,
           mode: projectMode,
-          leadCustomerName:
-            projectMode === ProjectMode.ESTIMATE_ONLY
-              ? parsed.data.customerName?.trim() || null
-              : null,
+          leadCustomerName: null,
           ownerUserId: auth.user.id,
           status: parsed.data.status ?? ProjectStatus.LEAD,
           ball: parsed.data.ball ?? ProjectBall.CLIENT,

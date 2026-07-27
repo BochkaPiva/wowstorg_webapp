@@ -11,6 +11,7 @@ import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
+import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
 
 const TERMINAL_PROJECTS = [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED] as const;
 const ACTIVE_ORDERS = [
@@ -283,7 +284,7 @@ export async function GET(req: Request) {
             OR: [{ eventEndDate: null }, { eventEndDate: { gte: from } }],
           };
 
-  const projects = query.kind === "order"
+  const projects = query.kind === "order" || query.kind === "estimate" || query.view === "estimates"
     ? []
     : await prisma.project.findMany({
         where: {
@@ -299,7 +300,7 @@ export async function GET(req: Request) {
                 archivedAt: null,
                 status: { notIn: [...TERMINAL_PROJECTS] },
               }),
-          ...(query.kind === "estimate" || query.view === "estimates" ? { mode: ProjectMode.ESTIMATE_ONLY } : {}),
+          mode: ProjectMode.FULL,
           ...(query.view === "undated" ? { eventStartDate: null, eventEndDate: null } : {}),
           AND: [
             ...(searchProject ? [searchProject] : []),
@@ -348,6 +349,60 @@ export async function GET(req: Request) {
         },
       });
 
+  const standaloneEstimates =
+    query.kind === "project"
+    || query.kind === "order"
+    || query.view === "month"
+    || query.view === "warehouse"
+    || query.view === "archive"
+      ? []
+      : await prisma.standaloneEstimate.findMany({
+          where: {
+            convertedAt: null,
+            ...(query.q
+              ? {
+                  OR: [
+                    { title: { contains: query.q, mode: "insensitive" } },
+                    { leadCustomerName: { contains: query.q, mode: "insensitive" } },
+                    { customer: { name: { contains: query.q, mode: "insensitive" } } },
+                    { owner: { displayName: { contains: query.q, mode: "insensitive" } } },
+                  ],
+                }
+              : {}),
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 250,
+          select: {
+            id: true,
+            title: true,
+            leadCustomerName: true,
+            createdAt: true,
+            updatedAt: true,
+            customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
+            owner: { select: { id: true, displayName: true } },
+            estimateVersions: {
+              orderBy: [{ isPrimary: "desc" }, { versionNumber: "desc" }],
+              take: 1,
+              select: {
+                id: true,
+                versionNumber: true,
+                title: true,
+                sections: {
+                  select: {
+                    lines: {
+                      select: {
+                        costClient: true,
+                        qty: true,
+                        unitPriceClient: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
   const standaloneOrderDateWhere: Prisma.OrderWhereInput | undefined =
     query.view === "attention"
       ? { readyByDate: { lte: nextSevenDays } }
@@ -387,7 +442,7 @@ export async function GET(req: Request) {
     return {
       key: `project:${project.id}`,
       id: project.id,
-      kind: project.mode === ProjectMode.ESTIMATE_ONLY ? "ESTIMATE_ONLY" as const : "PROJECT" as const,
+      kind: "PROJECT" as const,
       title: project.title,
       phase,
       status: project.status,
@@ -445,6 +500,53 @@ export async function GET(req: Request) {
       updatedAt: order.updatedAt.toISOString(),
     };
   });
+  const estimateItems = standaloneEstimates.map((estimate) => {
+    const version = estimate.estimateVersions[0] ?? null;
+    const totalAmount = version?.sections.reduce(
+      (sectionSum, section) => sectionSum + section.lines.reduce(
+        (lineSum, line) => lineSum + (
+          normalizedLocalLineCostClientNumber({
+            costClient: line.costClient?.toString() ?? null,
+            qty: line.qty == null ? null : Number(line.qty),
+            unitPriceClient: line.unitPriceClient == null ? null : Number(line.unitPriceClient),
+          }) ?? 0
+        ),
+        0,
+      ),
+      0,
+    ) ?? 0;
+    return {
+      key: `estimate:${estimate.id}`,
+      id: estimate.id,
+      kind: "STANDALONE_ESTIMATE" as const,
+      title: estimate.title,
+      phase: "ESTIMATING" as const,
+      status: "DRAFT",
+      ball: ProjectBall.WOWSTORG,
+      customer: customerView(estimate.customer),
+      customerFallback: estimate.leadCustomerName,
+      owner: estimate.owner,
+      startDate: null,
+      endDate: null,
+      dateConfirmed: false,
+      blockers: null,
+      summary: "Независимая смета без проектной карточки",
+      estimate: version
+        ? {
+            id: version.id,
+            versionNumber: version.versionNumber,
+            title: version.title,
+          }
+        : null,
+      orders: [],
+      ordersCount: 0,
+      tasksCount: 0,
+      totalAmount,
+      groupDate: null,
+      createdAt: estimate.createdAt.toISOString(),
+      updatedAt: estimate.updatedAt.toISOString(),
+    };
+  });
 
   const phaseFilter = query.phase?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
   const phaseSet = new Set(phaseFilter);
@@ -460,7 +562,7 @@ export async function GET(req: Request) {
     DONE: 8,
     CANCELLED: 9,
   };
-  const items = [...projectItems, ...orderItems]
+  const items = [...projectItems, ...orderItems, ...estimateItems]
     .filter((item) => phaseSet.size === 0 || phaseSet.has(item.phase))
     .sort((a, b) => {
       const phaseDiff = priority[a.phase] - priority[b.phase];
@@ -476,7 +578,7 @@ export async function GET(req: Request) {
       total: items.length,
       projects: projectItems.length,
       standaloneOrders: orderItems.length,
-      estimates: projectItems.filter((item) => item.kind === "ESTIMATE_ONLY").length,
+      estimates: estimateItems.length,
       undated: projectItems.filter((item) => item.startDate == null).length,
       from: dateOnly(from),
       to: dateOnly(to),

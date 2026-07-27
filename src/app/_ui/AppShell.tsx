@@ -92,6 +92,7 @@ function Navigation({ isWowstorg, onNavigate }: { isWowstorg: boolean; onNavigat
 function sectionBackHref(path: string, role: string): string {
   if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
   if (path.startsWith("/projects/")) return "/projects";
+  if (path.startsWith("/estimates/")) return "/work?view=estimates";
   if (path.startsWith("/work/")) return "/work";
   if (path.startsWith("/warehouse/")) return "/home";
   if (path.startsWith("/admin/")) return "/admin";

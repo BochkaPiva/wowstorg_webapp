@@ -24,9 +24,12 @@
 | `src/app/api/projects/[id]/draft-order/route.ts` | нет |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |
 | `src/app/api/projects/[id]/convert/route.ts` | **да** |
+| `src/app/api/standalone-estimates/route.ts` | нет |
+| `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
+| `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |
 | `src/app/api/warehouse/incidents/[id]/repair/route.ts` | нет |
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
 
-Итого **Serializable** на путях создания/редактирования реальных заявок, materialize demo-черновика проекта и преобразования режима `ESTIMATE_ONLY` в полноценный проект (см. ADR 002, ADR 006 и ADR 007).
+Итого **Serializable** на путях создания/редактирования реальных заявок, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).

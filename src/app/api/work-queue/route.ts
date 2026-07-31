@@ -10,8 +10,11 @@ import { z } from "zod";
 import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
-import { calcOrderPricing } from "@/server/orders/order-pricing";
 import { normalizedLocalLineCostClientNumber } from "@/lib/project-estimate-local-line";
+import {
+  resolveQueueOrderTotal,
+  resolveQueueProjectTotal,
+} from "@/server/work-queue/financials";
 
 const TERMINAL_PROJECTS = [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED] as const;
 const ACTIVE_ORDERS = [
@@ -139,6 +142,7 @@ const orderSelect = {
   rentalDiscountType: true,
   rentalDiscountPercent: true,
   rentalDiscountAmount: true,
+  estimateSentSnapshot: true,
   customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
   greenwichUser: { select: { id: true, displayName: true } },
   lines: {
@@ -157,21 +161,7 @@ const orderSelect = {
 type QueueOrder = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 
 function serializeOrder(order: QueueOrder) {
-  const pricing = calcOrderPricing({
-    startDate: order.startDate,
-    endDate: order.endDate,
-    rentalStartPartOfDay: order.rentalStartPartOfDay,
-    rentalEndPartOfDay: order.rentalEndPartOfDay,
-    payMultiplier: order.payMultiplier,
-    deliveryEnabled: order.deliveryEnabled,
-    deliveryPrice: order.deliveryPrice,
-    montageEnabled: order.montageEnabled,
-    montagePrice: order.montagePrice,
-    demontageEnabled: order.demontageEnabled,
-    demontagePrice: order.demontagePrice,
-    lines: order.lines,
-    discount: order,
-  });
+  const totalAmount = resolveQueueOrderTotal(order);
   return {
     id: order.id,
     status: order.status,
@@ -185,7 +175,7 @@ function serializeOrder(order: QueueOrder) {
     endDate: dateOnly(order.endDate),
     rentalStartPartOfDay: order.rentalStartPartOfDay,
     rentalEndPartOfDay: order.rentalEndPartOfDay,
-    totalAmount: pricing.grandTotal,
+    totalAmount,
     note: order.warehouseInternalNote,
     lines: order.lines.slice(0, 6).map((line) => ({
       id: line.id,
@@ -230,11 +220,8 @@ export async function GET(req: Request) {
   if (!parsed.success) return jsonError(400, "Некорректные параметры", parsed.error.flatten());
 
   const query = parsed.data;
-  const { today, from, to } = parseRange(query);
+  const { from, to } = parseRange(query);
   if (to < from) return jsonError(400, "Дата окончания не может быть раньше начала");
-  const nextSevenDays = new Date(today);
-  nextSevenDays.setUTCDate(nextSevenDays.getUTCDate() + 7);
-
   const searchProject: Prisma.ProjectWhereInput | undefined = query.q
     ? {
         OR: [
@@ -269,16 +256,7 @@ export async function GET(req: Request) {
             ],
           }
       : query.view === "attention"
-        ? {
-            OR: [
-              { eventStartDate: null },
-              {
-                eventStartDate: { lte: nextSevenDays },
-                OR: [{ eventEndDate: null }, { eventEndDate: { gte: today } }],
-              },
-              { updatedAt: { lte: new Date(Date.now() - 3 * 86_400_000) } },
-            ],
-          }
+        ? undefined
         : {
             eventStartDate: { lte: to },
             OR: [{ eventEndDate: null }, { eventEndDate: { gte: from } }],
@@ -332,9 +310,66 @@ export async function GET(req: Request) {
             select: orderSelect,
           },
           estimateVersions: {
-            orderBy: [{ isPrimary: "desc" }, { versionNumber: "desc" }],
-            take: 1,
-            select: { id: true, versionNumber: true, title: true },
+            orderBy: [{ sortOrder: "asc" }, { versionNumber: "asc" }],
+            select: {
+              id: true,
+              versionNumber: true,
+              title: true,
+              isPrimary: true,
+              includeInProjectTotals: true,
+              commissionEnabled: true,
+              clientTaxEnabled: true,
+              clientChargeTaxEnabled: true,
+              sections: {
+                select: {
+                  kind: true,
+                  linkedOrder: {
+                    select: {
+                      startDate: true,
+                      endDate: true,
+                      rentalStartPartOfDay: true,
+                      rentalEndPartOfDay: true,
+                      payMultiplier: true,
+                      deliveryEnabled: true,
+                      deliveryPrice: true,
+                      montageEnabled: true,
+                      montagePrice: true,
+                      demontageEnabled: true,
+                      demontagePrice: true,
+                      rentalDiscountType: true,
+                      rentalDiscountPercent: true,
+                      rentalDiscountAmount: true,
+                      lines: {
+                        select: {
+                          requestedQty: true,
+                          issuedQty: true,
+                          pricePerDaySnapshot: true,
+                        },
+                      },
+                    },
+                  },
+                  lines: {
+                    select: {
+                      costClient: true,
+                      qty: true,
+                      unitPriceClient: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          draftOrders: {
+            select: {
+              estimateVersionId: true,
+              lines: {
+                select: {
+                  qty: true,
+                  plannedDays: true,
+                  pricePerDaySnapshot: true,
+                },
+              },
+            },
           },
           _count: { select: { orders: true, tasks: true } },
         },
@@ -395,11 +430,9 @@ export async function GET(req: Request) {
         });
 
   const standaloneOrderDateWhere: Prisma.OrderWhereInput | undefined =
-    query.view === "attention"
-      ? { readyByDate: { lte: nextSevenDays } }
-      : query.view === "all" || query.view === "warehouse" || query.view === "month" || query.view === "archive"
-        ? { startDate: { lte: to }, endDate: { gte: from } }
-        : undefined;
+    query.view === "all" || query.view === "warehouse" || query.view === "month" || query.view === "archive"
+      ? { startDate: { lte: to }, endDate: { gte: from } }
+      : undefined;
 
   const orders =
     query.kind === "project"
@@ -430,6 +463,15 @@ export async function GET(req: Request) {
   const projectItems = projects.map((project) => {
     const phase = projectPhase(project.status, project.mode);
     const childOrders = project.orders.map(serializeOrder);
+    const totalAmount = resolveQueueProjectTotal({
+      estimateVersions: project.estimateVersions,
+      draftOrders: project.draftOrders,
+      linkedOrdersTotal: childOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+    });
+    const primaryEstimate =
+      project.estimateVersions.find((version) => version.isPrimary)
+      ?? project.estimateVersions.at(-1)
+      ?? null;
     return {
       key: `project:${project.id}`,
       id: project.id,
@@ -446,17 +488,17 @@ export async function GET(req: Request) {
       dateConfirmed: project.eventDateConfirmed,
       blockers: project.openBlockers,
       summary: project.internalSummary,
-      estimate: project.estimateVersions[0]
+      estimate: primaryEstimate
         ? {
-            id: project.estimateVersions[0].id,
-            versionNumber: project.estimateVersions[0].versionNumber,
-            title: project.estimateVersions[0].title,
+            id: primaryEstimate.id,
+            versionNumber: primaryEstimate.versionNumber,
+            title: primaryEstimate.title,
           }
         : null,
       orders: childOrders,
       ordersCount: project._count.orders,
       tasksCount: project._count.tasks,
-      totalAmount: childOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+      totalAmount,
       groupDate: dateOnly(project.eventStartDate ?? project.archivedAt ?? project.updatedAt),
       createdAt: project.createdAt.toISOString(),
       updatedAt: project.updatedAt.toISOString(),

@@ -155,7 +155,7 @@ type CustomerOption = {
 };
 
 const VIEW_OPTIONS = [
-  { value: "attention", label: "Нужно внимание" },
+  { value: "attention", label: "Вся активная работа" },
   { value: "month", label: "Текущий месяц" },
   { value: "undated", label: "Без даты" },
   { value: "estimates", label: "Расчёты" },
@@ -721,7 +721,32 @@ export default function WorkQueuePage() {
       rows.push(item);
       groups.set(key, rows);
     }
-    return [...groups.entries()].map(([key, items]) => ({
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const orderedGroups = [...groups.entries()].sort(([left], [right]) => {
+      if (view === "archive") {
+        if (left === "undated") return 1;
+        if (right === "undated") return -1;
+        return right.localeCompare(left);
+      }
+      if (view === "attention") {
+        const rank = (key: string) => {
+          if (key === currentMonthKey) return 0;
+          if (key === "undated") return 1;
+          if (key > currentMonthKey) return 2;
+          return 3;
+        };
+        const rankDiff = rank(left) - rank(right);
+        if (rankDiff !== 0) return rankDiff;
+        return rank(left) === 3
+          ? right.localeCompare(left)
+          : left.localeCompare(right);
+      }
+      if (left === "undated") return 1;
+      if (right === "undated") return -1;
+      return left.localeCompare(right);
+    });
+    return orderedGroups.map(([key, items]) => ({
       key,
       title:
         key === "undated"
@@ -827,7 +852,7 @@ export default function WorkQueuePage() {
               <label>
                 <span>Сортировка</span>
                 <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}>
-                  <option value="priority">{view === "archive" ? "Сначала новые" : "Сначала требующие внимания"}</option>
+                  <option value="priority">{view === "archive" ? "Сначала новые" : "По этапу и дате"}</option>
                   <option value="date">По дате события</option>
                   <option value="updated">По последнему изменению</option>
                   <option value="amount">По сумме</option>
@@ -914,7 +939,7 @@ export default function WorkQueuePage() {
                         <small>{period(item)}{!item.dateConfirmed && item.startDate ? " · ориентировочно" : ""}</small>
                       </span>
                       <span className="work-card__numbers">
-                        <strong>{item.totalAmount > 0 ? money(item.totalAmount) : "—"}</strong>
+                        <strong>{money(item.totalAmount)}</strong>
                         <small>{item.ordersCount} заявок · {item.tasksCount} задач</small>
                       </span>
                       <span className="work-card__actions">

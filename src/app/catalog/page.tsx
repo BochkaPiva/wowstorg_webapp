@@ -21,6 +21,7 @@ import "./catalog.css";
 import "../cart/cart.css";
 import { CatalogDateField } from "@/app/catalog/CatalogDateField";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
+import { CatalogMiniCart } from "@/app/catalog/CatalogMiniCart";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
 
@@ -168,6 +169,7 @@ export default function CatalogPage() {
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [kits, setKits] = React.useState<Kit[]>([]);
   const [kitItemsById, setKitItemsById] = React.useState<Record<string, CatalogItem>>({});
+  const [cartItemsById, setCartItemsById] = React.useState<Record<string, CatalogItem>>({});
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
@@ -188,8 +190,13 @@ export default function CatalogPage() {
     () => getDefaultCatalogDates().rentalEndPartOfDay,
   );
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
+  const [miniCartOpen, setMiniCartOpen] = React.useState(false);
   const [catalogDateHelpOpen, setCatalogDateHelpOpen] = React.useState(false);
   const projectDatesPrefilledRef = React.useRef<string | null>(null);
+  const cartItemIdsKey = React.useMemo(
+    () => Array.from(new Set(cart.map((line) => line.itemId))).sort().join(","),
+    [cart],
+  );
 
   const itemLookup = React.useMemo(() => {
     const map = new Map<string, CatalogItem>();
@@ -197,8 +204,11 @@ export default function CatalogPage() {
     for (const item of Object.values(kitItemsById)) {
       if (!map.has(item.id)) map.set(item.id, item);
     }
+    for (const item of Object.values(cartItemsById)) {
+      if (!map.has(item.id)) map.set(item.id, item);
+    }
     return map;
-  }, [items, kitItemsById]);
+  }, [cartItemsById, items, kitItemsById]);
   const itemLookupRef = React.useRef(itemLookup);
   itemLookupRef.current = itemLookup;
   const cartScopeRef = React.useRef(cartScope);
@@ -433,6 +443,39 @@ export default function CatalogPage() {
   React.useEffect(() => {
     setCart(loadCart(cartScope));
   }, [cartScope]);
+
+  React.useEffect(() => {
+    const ids = cartItemIdsKey ? cartItemIdsKey.split(",") : [];
+    if (ids.length === 0) {
+      setCartItemsById({});
+      return;
+    }
+
+    let cancelled = false;
+    async function loadCartItems() {
+      try {
+        const params = new URLSearchParams({ ids: ids.join(",") });
+        if (!isProjectDemoCatalog) {
+          params.set("startDate", startDate);
+          params.set("endDate", endDate);
+          params.set("rentalStartPartOfDay", rentalStartPartOfDay);
+          params.set("rentalEndPartOfDay", rentalEndPartOfDay);
+        }
+        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+        if (!cancelled) {
+          setCartItemsById(Object.fromEntries((data?.items ?? []).map((item) => [item.id, item])));
+        }
+      } catch (error) {
+        console.error("catalog cart items load failed", error);
+      }
+    }
+
+    void loadCartItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [cartItemIdsKey, endDate, isProjectDemoCatalog, rentalEndPartOfDay, rentalStartPartOfDay, startDate]);
 
   const floatingCartScrollRef = React.useRef(false);
   React.useEffect(() => {
@@ -669,7 +712,13 @@ export default function CatalogPage() {
       saveCart(cleaned, cartScopeRef.current);
       return cleaned;
     });
+    setMiniCartOpen(true);
   }
+
+  const clearCart = React.useCallback(() => {
+    setCart([]);
+    saveCart([], cartScopeRef.current);
+  }, []);
 
   const qtyByItemId = React.useMemo(() => {
     const m: Record<string, number> = {};
@@ -697,6 +746,7 @@ export default function CatalogPage() {
         saveCart(cleaned, cartScopeRef.current);
         return cleaned;
       });
+      setMiniCartOpen(true);
     },
     [],
   );
@@ -728,7 +778,10 @@ export default function CatalogPage() {
 
   const openDetail = React.useCallback((id: string) => setSelectedId(id), []);
   const handleCardAdd = React.useCallback(
-    (id: string, price: number) => addToCart(id, price),
+    (id: string, price: number) => {
+      addToCart(id, price);
+      setMiniCartOpen(true);
+    },
     [addToCart],
   );
   const handleCardDec = React.useCallback(
@@ -887,13 +940,18 @@ export default function CatalogPage() {
                 : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
           </div>
             </div>
-            <Link href={cartHref} className="mk-cartPill mk-headCart">
+            <button
+              type="button"
+              className="mk-cartPill mk-headCart"
+              onClick={() => setMiniCartOpen(true)}
+              aria-haspopup="dialog"
+            >
               <span>{isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}</span>
               <strong>{cartTotalQty}</strong>
               {cartTotalForPeriod > 0 ? (
                 <small>{Math.round(cartTotalForPeriod)} ₽{isProjectDemoCatalog ? " / день" : ""}</small>
               ) : null}
-            </Link>
+            </button>
           </div>
 
           <div className="mk-headOperations">
@@ -1197,10 +1255,12 @@ export default function CatalogPage() {
 
       {cartTotalQty > 0 && showFloatingCart && typeof document !== "undefined"
         ? createPortal(
-            <Link
-              href={cartHref}
+            <button
+              type="button"
               className="mk-floatingCart"
               aria-label={`Корзина: ${cartTotalQty} поз., ${Math.round(cartTotalForPeriod)} ₽ за период`}
+              aria-haspopup="dialog"
+              onClick={() => setMiniCartOpen(true)}
             >
               <span className="mk-floatingCartIcon" aria-hidden>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1212,10 +1272,23 @@ export default function CatalogPage() {
               <span className="mk-floatingCartSum">
                 {cartTotalQty} поз. · {Math.round(cartTotalForPeriod)} ₽{isProjectDemoCatalog ? " / день" : ""}
               </span>
-            </Link>,
+            </button>,
             document.body
           )
         : null}
+
+      <CatalogMiniCart
+        open={miniCartOpen}
+        lines={cart}
+        items={itemLookup}
+        checkoutHref={cartHref}
+        rentalDays={rentalDays}
+        total={cartTotalForPeriod}
+        demoMode={isProjectDemoCatalog}
+        onClose={() => setMiniCartOpen(false)}
+        onSetQty={setQty}
+        onClear={clearCart}
+      />
 
       {selectedItem ? (
         <ItemModal
@@ -1223,7 +1296,11 @@ export default function CatalogPage() {
           qtyInCart={qtyByItemId[selectedItem.id] ?? 0}
           availableForDates={selectedItem.availability.availableForDates}
           onClose={() => setSelectedId(null)}
-          onAdd={() => addToCart(selectedItem.id, Number(selectedItem.pricePerDay))}
+          onAdd={() => {
+            addToCart(selectedItem.id, Number(selectedItem.pricePerDay));
+            setSelectedId(null);
+            setMiniCartOpen(true);
+          }}
           onInc={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) + 1)}
           onDec={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) - 1)}
           onSetQty={(qty) => setQty(selectedItem.id, qty)}

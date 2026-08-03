@@ -801,3 +801,58 @@ select.co-input {
     border-radius: 12px;
   }
 }
+
+/* Final checkout composition overrides: quiet fields, progressive service disclosure. */
+.cart-flowPanel--checkout .co-head {
+  border-top: 0;
+  box-shadow: none;
+}
+
+.cart-checkoutMain .co-grid {
+  padding: 1.2rem 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cart-checkoutMain .co-input,
+.cart-checkoutMain .co-textarea,
+.cart-checkoutMain .co-combobox-dropdown {
+  border-radius: 8px;
+}
+
+.cart-checkoutMain .co-services.co-servicesDisclosure {
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cart-checkoutMain .co-servicesSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cart-checkoutMain .co-servicesSummary::-webkit-details-marker {
+  display: none;
+}
+
+.cart-checkoutMain .co-servicesBody {
+  padding: 0 1.1rem 1.1rem;
+  border-top: 1px solid var(--wow-line, #d4d4cf);
+}
+
+.cart-checkoutMain .co-serviceRow {
+  padding-top: 1rem;
+}
+
+@media (max-width: 767px) {
+  .cart-checkoutMain .co-services.co-servicesDisclosure {
+    border-radius: 8px;
+  }
+}

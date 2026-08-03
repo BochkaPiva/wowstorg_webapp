@@ -183,6 +183,7 @@ export default function CartPage() {
   const [demontageInternalCost, setDemontageInternalCost] = React.useState("");
   const [demontageInternalPaymentMethod, setDemontageInternalPaymentMethod] =
     React.useState<OrderServicePaymentMethod>("NON_CASH");
+  const [servicesOpen, setServicesOpen] = React.useState(false);
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -670,6 +671,7 @@ export default function CartPage() {
       : 0;
   const totalWithServices =
     totalForPeriod + deliveryPriceNum + montagePriceNum + demontagePriceNum;
+  const activeServicesCount = [deliveryEnabled, montageEnabled, demontageEnabled].filter(Boolean).length;
   const taxAmount = Math.round(totalWithServices * ORDER_TAX_RATE);
   const totalWithTax = Math.round(totalWithServices + taxAmount);
   const checkoutReadyByDate =
@@ -935,10 +937,22 @@ export default function CartPage() {
     <AppShell title="Корзина">
       <section className="cart-section">
         <div className="cart-head">
-          <h1 className="cart-title">Корзина</h1>
+          <div className="cart-eyebrow">Оформление в одном окне</div>
+          <h1 className="cart-title">Ваша подборка</h1>
           <p className="cart-subtitle">
-            Проверь состав, измени количество или перейди к оформлению заявки.
+            Проверьте реквизит, добавьте детали и отправьте заявку — без переходов между лишними страницами.
           </p>
+          <nav className="cart-flowSteps" aria-label="Этапы оформления">
+            <a href="#cart-composition" className="cart-flowStep is-complete">
+              <span>01</span><strong>Состав</strong><small>{lines.length > 0 ? `${lines.length} поз.` : "Выбор"}</small>
+            </a>
+            <a href="#checkout-details" className="cart-flowStep">
+              <span>02</span><strong>Детали</strong><small>Заказчик и услуги</small>
+            </a>
+            <span className={["cart-flowStep", canCheckout ? "is-ready" : ""].join(" ")}>
+              <span>03</span><strong>Отправка</strong><small>{canCheckout ? "Всё готово" : "После заполнения"}</small>
+            </span>
+          </nav>
         </div>
 
         {loading ? (
@@ -949,6 +963,14 @@ export default function CartPage() {
           </div>
         ) : (
           <>
+            <section id="cart-composition" className="cart-flowPanel" aria-labelledby="cart-composition-title">
+              <div className="cart-flowPanelHead">
+                <div>
+                  <span>Шаг 1</span>
+                  <h2 id="cart-composition-title">Состав подборки</h2>
+                </div>
+                <strong>{lines.length} поз.</strong>
+              </div>
             {startDate && endDate && rentalDays > 0 ? (
               <div style={{ marginBottom: "0.75rem" }}>
                 <p className="cart-periodInline">
@@ -1126,9 +1148,21 @@ export default function CartPage() {
             />
 
             {(isGreenwich || isWarehouse) ? (
-              <>
+              <a className="cart-continueBtn" href="#checkout-details">
+                Продолжить оформление <span aria-hidden="true">↓</span>
+              </a>
+            ) : null}
+            </section>
+
+            {(isGreenwich || isWarehouse) ? (
+              <section id="checkout-details" className="cart-flowPanel cart-flowPanel--checkout" aria-labelledby="checkout-details-title">
                 <div className="co-head" style={{ marginTop: "1.5rem" }}>
-                  <div className="co-title">Оформление заявки</div>
+                  <div className="cart-flowPanelHead cart-flowPanelHead--checkout">
+                    <div>
+                      <span>Шаг 2</span>
+                      <h2 id="checkout-details-title" className="co-title">Детали заявки</h2>
+                    </div>
+                  </div>
                   <div className="co-subtitle">
                     {isQuickSupplement
                       ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки, при необходимости можно добавить доп. услуги."
@@ -1141,6 +1175,9 @@ export default function CartPage() {
                           : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
                   </div>
                 </div>
+
+                <div className="cart-checkoutLayout">
+                  <div className="cart-checkoutMain">
 
                 {checkoutReadyByDate && startDate && endDate && !isProjectDemoCart ? (
                   <div className="co-dates">
@@ -1363,8 +1400,19 @@ export default function CartPage() {
                 ) : null}
 
                 {!isProjectDemoCart ? (
-                  <div className="co-services">
-                  <div className="co-servicesTitle">Доп. услуги</div>
+                  <details
+                    className="co-services co-servicesDisclosure"
+                    open={servicesOpen}
+                    onToggle={(event) => setServicesOpen(event.currentTarget.open)}
+                  >
+                  <summary className="co-servicesSummary">
+                    <span>
+                      <strong>Дополнительные услуги</strong>
+                      <small>Доставка, монтаж и демонтаж — только если нужны</small>
+                    </span>
+                    <span>{activeServicesCount > 0 ? `${activeServicesCount} выбрано` : "Добавить"}</span>
+                  </summary>
+                  <div className="co-servicesBody">
                   <div className="co-serviceRow">
                     <Toggle checked={deliveryEnabled} onChange={setDeliveryEnabled} label="Доставка" />
                     {deliveryEnabled ? (
@@ -1518,14 +1566,18 @@ export default function CartPage() {
                       </>
                     ) : null}
                   </div>
-                </div>
+                  </div>
+                </details>
                 ) : null}
 
               </div>
 
               {error ? <div className="co-error">{error}</div> : null}
 
+                  </div>
+
                 <div className="cart-footer" style={{ marginTop: "1.5rem" }}>
+                  <div className="cart-summaryEyebrow">Итог заявки</div>
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
                     {isWarehouse && (deliveryPriceNum > 0 || montagePriceNum > 0 || demontagePriceNum > 0) ? (
                       <>
@@ -1565,7 +1617,8 @@ export default function CartPage() {
                           : "Создать заявку"}
                   </button>
                 </div>
-              </>
+                </div>
+              </section>
             ) : (
               <div className="cart-footer" style={{ marginTop: "1rem" }}>
                 <div className="cart-total">

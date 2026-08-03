@@ -422,6 +422,104 @@ function addInternalFooterRow(
   return row;
 }
 
+type InternalSummaryMetric = {
+  label: string;
+  formula: string;
+  result: number;
+  numFmt?: string;
+  emphasis?: boolean;
+};
+
+type InternalSummaryPanel = {
+  title: string;
+  startCol: number;
+  valueCol: number;
+  endCol: number;
+  fill: string;
+  fontColor: string;
+  metrics: InternalSummaryMetric[];
+};
+
+function addInternalSummaryDashboard(
+  ws: ExcelJS.Worksheet,
+  colCount: number,
+  title: string,
+  panels: InternalSummaryPanel[],
+) {
+  ws.addRow([]);
+  const titleRow = ws.lastRow!.number + 1;
+  ws.addRow([]);
+  ws.mergeCells(titleRow, 1, titleRow, colCount);
+  ws.getCell(titleRow, 1).value = title;
+  ws.getRow(titleRow).height = 30;
+  styleRange(ws, titleRow, titleRow, 1, colCount, {
+    fill: COLORS.violetDark,
+    fontColor: COLORS.white,
+    bold: true,
+    size: 13,
+    borderColor: COLORS.violetDark,
+  });
+
+  const headerRow = titleRow + 1;
+  ws.addRow([]);
+  const maxMetrics = Math.max(...panels.map((panel) => panel.metrics.length));
+
+  for (const panel of panels) {
+    ws.mergeCells(headerRow, panel.startCol, headerRow, panel.endCol);
+    ws.getCell(headerRow, panel.startCol).value = panel.title;
+    ws.getRow(headerRow).height = 27;
+    styleRange(ws, headerRow, headerRow, panel.startCol, panel.endCol, {
+      fill: panel.fill,
+      fontColor: panel.fontColor,
+      bold: true,
+      size: 10,
+      borderColor: COLORS.borderStrong,
+    });
+
+    for (let index = 0; index < maxMetrics; index += 1) {
+      const row = headerRow + index + 1;
+      if (ws.rowCount < row) ws.addRow([]);
+      ws.getRow(row).height = 28;
+
+      const metric = panel.metrics[index];
+      const metricFill = metric?.emphasis ? COLORS.yellowSoft : panel.fill;
+      styleRange(ws, row, row, panel.startCol, panel.endCol, {
+        fill: metricFill,
+        fontColor: metric?.emphasis ? COLORS.ink : panel.fontColor,
+        bold: Boolean(metric?.emphasis),
+        size: metric?.emphasis ? 11 : 10,
+        borderColor: COLORS.border,
+      });
+      if (!metric) continue;
+
+      if (panel.valueCol - 1 > panel.startCol) {
+        ws.mergeCells(row, panel.startCol, row, panel.valueCol - 1);
+      }
+      if (panel.endCol > panel.valueCol) {
+        ws.mergeCells(row, panel.valueCol, row, panel.endCol);
+      }
+      ws.getCell(row, panel.startCol).value = metric.label;
+      ws.getCell(row, panel.startCol).alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        wrapText: true,
+      };
+      setXlsxFormula(ws, row, panel.valueCol, metric.formula, metric.result);
+      ws.getCell(row, panel.valueCol).alignment = {
+        vertical: "middle",
+        horizontal: "right",
+      };
+      ws.getCell(row, panel.valueCol).font = {
+        name: FONT,
+        size: metric.emphasis ? 12 : 10,
+        bold: true,
+        color: { argb: metric.emphasis ? COLORS.ink : panel.fontColor },
+      };
+      ws.getCell(row, panel.valueCol).numFmt = metric.numFmt ?? XLSX_MONEY_NUMFMT;
+    }
+  }
+}
+
 function addSummaryRow(
   ws: ExcelJS.Worksheet,
   colCount: number,
@@ -800,112 +898,133 @@ export async function buildProjectEstimateXlsx(args: {
       financeRates.clientChargeTaxRate,
     );
   } else {
-    ws.addRow([]);
-    const titleRow = ws.lastRow!.number + 1;
-    ws.addRow([]);
-    ws.mergeCells(titleRow, 1, titleRow, 8);
-    ws.getCell(titleRow, 1).value = "Итоги проекта";
-    for (let col = 1; col <= 8; col += 1) {
-      styleCell(ws.getCell(titleRow, col), {
-        fill: COLORS.violetDark,
-        fontColor: COLORS.white,
-        bold: true,
-        size: 12,
-        borderColor: COLORS.violetDark,
-      });
-    }
-
-    const internalRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Расход по смете",
-      projectInternalFormula,
-      roundMoney(internalSubtotal),
+    const commissionFormula = percentOfExpression(
+      financeRates.commissionRate,
+      projectClientFormula,
     );
-    const internalRef = xlsxCellRef(internalRow, 8);
-    const revenueParts = [projectClientFormula];
-    let taxableClientFormula = projectClientFormula;
-
-    if (financeRates.commissionRate > 0) {
-      const commissionRow = addInternalFooterRow(
-        ws,
-        colCount,
-        `Комиссия агентства ${roundMoney(financeRates.commissionRate * 100)}%`,
-        percentOfExpression(financeRates.commissionRate, projectClientFormula),
-        projectTotals.commission,
-      );
-      const commissionRef = xlsxCellRef(commissionRow, 8);
-      revenueParts.push(commissionRef);
-      taxableClientFormula = addFormulaExpressions([projectClientFormula, commissionRef]);
-    }
-
-    if (financeRates.clientChargeTaxRate > 0) {
-      const clientChargeTaxRow = addInternalFooterRow(
-        ws,
-        colCount,
-        `Налог клиенту ${roundMoney(financeRates.clientChargeTaxRate * 100)}%`,
-        percentOfExpression(financeRates.clientChargeTaxRate, taxableClientFormula),
-        projectTotals.clientChargeTax,
-      );
-      revenueParts.push(xlsxCellRef(clientChargeTaxRow, 8));
-    }
-
-    const expenseParts = [internalRef];
-    if (financeRates.taxRate > 0) {
-      const nonCashTaxRow = addInternalFooterRow(
-        ws,
-        colCount,
-        `Налог безнал ${roundMoney(financeRates.taxRate * 100)}%`,
-        percentOfExpression(financeRates.taxRate, taxableClientFormula),
-        projectTotals.tax,
-      );
-      expenseParts.push(xlsxCellRef(nonCashTaxRow, 8));
-    }
-
-    if (cashInternalCostTax > 0) {
-      const cashTaxParts = allInternalDataRanges
-        .map(({ firstRow, lastRow }) =>
-          cashInternalTaxFormula(lineCols.internal!, lineCols.payment!, firstRow, lastRow),
-        )
-        .join("+");
-      const cashTaxRow = addInternalFooterRow(
-        ws,
-        colCount,
-        "Налог нал 3.5%",
-        cashTaxParts || "0",
-        roundMoney(cashInternalCostTax),
-      );
-      expenseParts.push(xlsxCellRef(cashTaxRow, 8));
-    }
-
-    const totalExpensesFormula = addFormulaExpressions(expenseParts);
+    const taxableClientFormula = addFormulaExpressions([
+      projectClientFormula,
+      commissionFormula,
+    ]);
+    const clientChargeTaxFormula = percentOfExpression(
+      financeRates.clientChargeTaxRate,
+      taxableClientFormula,
+    );
+    const revenueTotalFormula = addFormulaExpressions([
+      projectClientFormula,
+      commissionFormula,
+      clientChargeTaxFormula,
+    ]);
+    const nonCashTaxFormula = percentOfExpression(
+      financeRates.taxRate,
+      taxableClientFormula,
+    );
+    const cashTaxParts = allInternalDataRanges
+      .map(({ firstRow, lastRow }) =>
+        cashInternalTaxFormula(lineCols.internal!, lineCols.payment!, firstRow, lastRow),
+      )
+      .join("+");
+    const cashTaxFormula = cashTaxParts || "0";
+    const totalExpensesFormula = addFormulaExpressions([
+      projectInternalFormula,
+      nonCashTaxFormula,
+      cashTaxFormula,
+    ]);
     const totalExpenses = roundMoney(
       projectTotals.internalSubtotal + projectTotals.cashInternalCostTax + projectTotals.tax,
     );
-    const totalExpensesRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Итого расходов",
+    const profitFormula = subtractFormulaExpressions(
+      revenueTotalFormula,
       totalExpensesFormula,
-      totalExpenses,
     );
-    const totalExpensesRef = xlsxCellRef(totalExpensesRow, 8);
-    const revenueTotalFormula = addFormulaExpressions(revenueParts);
-    const profitRow = addInternalFooterRow(
-      ws,
-      colCount,
-      "Заработок",
-      subtractFormulaExpressions(revenueTotalFormula, totalExpensesRef),
-      projectTotals.marginAfterTax,
-    );
-    addInternalFooterRow(
-      ws,
-      colCount,
-      "Рентабельность",
-      `IFERROR(${xlsxCellRef(profitRow, 8)}/${wrapFormulaExpr(revenueTotalFormula)},0)`,
-      projectTotals.marginAfterTaxPct / 100,
-      { numFmt: "0.00%" },
-    );
+
+    addInternalSummaryDashboard(ws, colCount, "Итоги проекта", [
+      {
+        title: "Клиент",
+        startCol: 1,
+        valueCol: 4,
+        endCol: 5,
+        fill: COLORS.violetSoft,
+        fontColor: COLORS.violetDark,
+        metrics: [
+          {
+            label: "Сумма по смете",
+            formula: projectClientFormula,
+            result: roundMoney(clientSubtotal),
+          },
+          {
+            label: `Комиссия агентства ${roundMoney(financeRates.commissionRate * 100)}%`,
+            formula: commissionFormula,
+            result: projectTotals.commission,
+          },
+          {
+            label: `Налог клиенту ${roundMoney(financeRates.clientChargeTaxRate * 100)}%`,
+            formula: clientChargeTaxFormula,
+            result: projectTotals.clientChargeTax,
+          },
+          {
+            label: "Сумма для клиента",
+            formula: revenueTotalFormula,
+            result: projectTotals.revenueTotal,
+            emphasis: true,
+          },
+        ],
+      },
+      {
+        title: "Расходы",
+        startCol: 6,
+        valueCol: 9,
+        endCol: 9,
+        fill: COLORS.slateSoft,
+        fontColor: COLORS.ink,
+        metrics: [
+          {
+            label: "Расход по смете",
+            formula: projectInternalFormula,
+            result: roundMoney(internalSubtotal),
+          },
+          {
+            label: `Налог безнал ${roundMoney(financeRates.taxRate * 100)}%`,
+            formula: nonCashTaxFormula,
+            result: projectTotals.tax,
+          },
+          {
+            label: "Налог нал 3.5%",
+            formula: cashTaxFormula,
+            result: roundMoney(cashInternalCostTax),
+          },
+          {
+            label: "Итого расходов",
+            formula: totalExpensesFormula,
+            result: totalExpenses,
+            emphasis: true,
+          },
+        ],
+      },
+      {
+        title: "Результат",
+        startCol: 10,
+        valueCol: 13,
+        endCol: 13,
+        fill: COLORS.greenSoft,
+        fontColor: "FF065F46",
+        metrics: [
+          {
+            label: "Заработок",
+            formula: profitFormula,
+            result: projectTotals.marginAfterTax,
+            emphasis: true,
+          },
+          {
+            label: "Рентабельность",
+            formula: `IFERROR(${wrapFormulaExpr(profitFormula)}/${wrapFormulaExpr(revenueTotalFormula)},0)`,
+            result: projectTotals.marginAfterTaxPct / 100,
+            numFmt: "0.00%",
+            emphasis: true,
+          },
+        ],
+      },
+    ]);
   }
 
   ws.eachRow((row) => {

@@ -95,6 +95,8 @@ const COLORS = {
   violetDark: "FF4C1D95",
   violetSoft: "FFF4F0FF",
   yellow: "FFFFE500",
+  yellowSoft: "FFFFF7D6",
+  greenSoft: "FFEFFDF5",
   slateSoft: "FFF8FAFC",
   white: "FFFFFFFF",
   border: "FFE5E7EB",
@@ -432,31 +434,98 @@ function addInternalDataSection(
   return { range: { firstRow, lastRow }, nextRowIndex: rowIndex };
 }
 
-function addInternalSummaryFormulaRow(
+type InternalSummaryMetric = {
+  label: string;
+  formula: string;
+  result: number;
+  numFmt?: string;
+  emphasis?: boolean;
+};
+
+type InternalSummaryPanel = {
+  title: string;
+  startCol: number;
+  valueCol: number;
+  endCol: number;
+  fill: string;
+  fontColor: string;
+  metrics: InternalSummaryMetric[];
+};
+
+function addInternalSummaryDashboard(
   ws: ExcelJS.Worksheet,
-  label: string,
-  formula: string,
-  result: number,
-  opts: { emphasis?: boolean; fill?: string; fontColor?: string; numFmt?: string } = {},
+  title: string,
+  panels: InternalSummaryPanel[],
 ) {
   ws.addRow([]);
-  const row = ws.lastRow!.number;
-  ws.mergeCells(row, INTERNAL_COLS - 2, row, INTERNAL_COLS - 1);
-  ws.getCell(row, INTERNAL_COLS - 2).value = label;
-  setXlsxFormula(ws, row, INTERNAL_COLS, formula, result);
-  ws.getRow(row).height = opts.emphasis ? 30 : 25;
-  for (let col = INTERNAL_COLS - 2; col <= INTERNAL_COLS; col += 1) {
-    styleCell(ws.getCell(row, col), {
-      fill: opts.fill ?? COLORS.violetSoft,
-      fontColor: opts.fontColor ?? COLORS.violetDark,
+  const titleRow = ws.lastRow!.number + 1;
+  ws.addRow([]);
+  ws.mergeCells(titleRow, 1, titleRow, INTERNAL_COLS);
+  ws.getCell(titleRow, 1).value = title;
+  ws.getRow(titleRow).height = 30;
+  styleRange(ws, titleRow, titleRow, 1, INTERNAL_COLS, {
+    fill: COLORS.violetDark,
+    fontColor: COLORS.white,
+    bold: true,
+    size: 13,
+    borderColor: COLORS.violetDark,
+  });
+
+  const headerRow = titleRow + 1;
+  ws.addRow([]);
+  const maxMetrics = Math.max(...panels.map((panel) => panel.metrics.length));
+
+  for (const panel of panels) {
+    ws.mergeCells(headerRow, panel.startCol, headerRow, panel.endCol);
+    ws.getCell(headerRow, panel.startCol).value = panel.title;
+    ws.getRow(headerRow).height = 27;
+    styleRange(ws, headerRow, headerRow, panel.startCol, panel.endCol, {
+      fill: panel.fill,
+      fontColor: panel.fontColor,
       bold: true,
-      size: opts.emphasis ? 12 : 10,
-      horizontal: col === INTERNAL_COLS ? "right" : "left",
+      size: 10,
       borderColor: COLORS.borderStrong,
     });
+
+    for (let index = 0; index < maxMetrics; index += 1) {
+      const row = headerRow + index + 1;
+      if (ws.rowCount < row) ws.addRow([]);
+      ws.getRow(row).height = 28;
+
+      const metric = panel.metrics[index];
+      const metricFill = metric?.emphasis ? COLORS.yellowSoft : panel.fill;
+      styleRange(ws, row, row, panel.startCol, panel.endCol, {
+        fill: metricFill,
+        fontColor: metric?.emphasis ? COLORS.ink : panel.fontColor,
+        bold: Boolean(metric?.emphasis),
+        size: metric?.emphasis ? 11 : 10,
+        borderColor: COLORS.border,
+      });
+      if (!metric) continue;
+
+      if (panel.valueCol - 1 > panel.startCol) {
+        ws.mergeCells(row, panel.startCol, row, panel.valueCol - 1);
+      }
+      ws.getCell(row, panel.startCol).value = metric.label;
+      ws.getCell(row, panel.startCol).alignment = {
+        vertical: "middle",
+        horizontal: "left",
+        wrapText: true,
+      };
+      setXlsxFormula(ws, row, panel.valueCol, metric.formula, metric.result);
+      ws.getCell(row, panel.valueCol).alignment = {
+        vertical: "middle",
+        horizontal: "right",
+      };
+      ws.getCell(row, panel.valueCol).font = {
+        name: FONT,
+        size: metric.emphasis ? 12 : 10,
+        bold: true,
+        color: { argb: metric.emphasis ? COLORS.ink : panel.fontColor },
+      };
+      ws.getCell(row, panel.valueCol).numFmt = metric.numFmt ?? XLSX_MONEY_NUMFMT;
+    }
   }
-  ws.getCell(row, INTERNAL_COLS).numFmt = opts.numFmt ?? XLSX_MONEY_NUMFMT;
-  return row;
 }
 
 export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer> {
@@ -843,78 +912,97 @@ export async function buildInternalEstimateXlsx(order: OrderForEstimate): Promis
     }
   }
 
-  ws.addRow([]);
-
   const clientBeforeTaxFormula = sumRangesFormula(INTERNAL_LINE_COLS.lineTotal, clientRanges);
-  const clientBeforeTaxRow = addInternalSummaryFormulaRow(
-    ws,
-    "Сумма клиента до налога",
-    clientBeforeTaxFormula,
-    pricing.grandTotalBeforeTax,
-  );
-  const clientBeforeTaxRef = xlsxCellRef(clientBeforeTaxRow, INTERNAL_COLS);
-  const clientTaxRow = addInternalSummaryFormulaRow(
-    ws,
-    `Налог клиента ${Math.round(pricing.taxRate * 100)}%`,
-    percentOfFormula(pricing.taxRate, clientBeforeTaxRef),
-    pricing.taxAmount,
-  );
-  const clientTotalRow = addInternalSummaryFormulaRow(
-    ws,
-    "Итого клиент",
-    addFormulaRefFormula(clientBeforeTaxRef, xlsxCellRef(clientTaxRow, INTERNAL_COLS)),
-    pricing.grandTotal,
-  );
-  const clientTotalRef = xlsxCellRef(clientTotalRow, INTERNAL_COLS);
+  const clientTaxFormula = percentOfFormula(pricing.taxRate, `(${clientBeforeTaxFormula})`);
+  const clientTotalFormula = `(${clientBeforeTaxFormula})+(${clientTaxFormula})`;
 
   const internalCostFormula = sumRangesFormula(INTERNAL_LINE_COLS.internal!, internalRanges);
-  const internalCostRow = addInternalSummaryFormulaRow(
-    ws,
-    "Расходы доп. услуг и скрытых трат",
-    internalCostFormula,
-    warehouse.internalCostTotal,
-  );
-  const internalCostRef = xlsxCellRef(internalCostRow, INTERNAL_COLS);
-  let totalExpenseFormula = addFormulaRefFormula(xlsxCellRef(clientTaxRow, INTERNAL_COLS), internalCostRef);
-  if (warehouse.cashInternalCostTax > 0) {
-    const cashTaxFormula = internalRanges
+  const cashTaxFormula =
+    internalRanges
       .map(({ firstRow, lastRow }) =>
         cashInternalTaxFormula(INTERNAL_LINE_COLS.internal!, INTERNAL_LINE_COLS.payment!, firstRow, lastRow),
       )
-      .join("+");
-    const cashTaxRow = addInternalSummaryFormulaRow(
-      ws,
-      `Налог нал ${formatPercentValue(warehouse.cashTaxRate * 100)}`,
-      cashTaxFormula || "0",
-      warehouse.cashInternalCostTax,
-    );
-    totalExpenseFormula = addFormulaRefFormula(totalExpenseFormula, xlsxCellRef(cashTaxRow, INTERNAL_COLS));
-  }
-  const totalExpensesRow = addInternalSummaryFormulaRow(
-    ws,
-    "Итого расходов",
-    totalExpenseFormula,
-    roundMoney(pricing.taxAmount + warehouse.internalCostWithCashTax),
-  );
-  const totalExpensesRef = xlsxCellRef(totalExpensesRow, INTERNAL_COLS);
-  const profitRow = addInternalSummaryFormulaRow(
-    ws,
-    "Заработок",
-    `${clientTotalRef}-${totalExpensesRef}`,
-    warehouse.profitEstimate,
+      .join("+") || "0";
+  const totalExpensesFormula = `(${clientTaxFormula})+(${internalCostFormula})+(${cashTaxFormula})`;
+  const profitFormula = `(${clientTotalFormula})-(${totalExpensesFormula})`;
+
+  addInternalSummaryDashboard(ws, "Итоги заявки", [
     {
-      emphasis: true,
+      title: "Клиент",
+      startCol: 1,
+      valueCol: 3,
+      endCol: 3,
       fill: COLORS.violetSoft,
       fontColor: COLORS.violetDark,
+      metrics: [
+        {
+          label: "Сумма до налога",
+          formula: clientBeforeTaxFormula,
+          result: pricing.grandTotalBeforeTax,
+        },
+        {
+          label: `Налог клиенту ${Math.round(pricing.taxRate * 100)}%`,
+          formula: clientTaxFormula,
+          result: pricing.taxAmount,
+        },
+        {
+          label: "Сумма для клиента",
+          formula: clientTotalFormula,
+          result: pricing.grandTotal,
+          emphasis: true,
+        },
+      ],
     },
-  );
-  addInternalSummaryFormulaRow(
-    ws,
-    "Рентабельность",
-    `IFERROR(${xlsxCellRef(profitRow, INTERNAL_COLS)}/${clientTotalRef},0)`,
-    warehouse.profitabilityPct / 100,
-    { numFmt: "0.00%" },
-  );
+    {
+      title: "Расходы",
+      startCol: 4,
+      valueCol: 7,
+      endCol: 7,
+      fill: COLORS.slateSoft,
+      fontColor: COLORS.ink,
+      metrics: [
+        {
+          label: "Внутренние расходы",
+          formula: internalCostFormula,
+          result: warehouse.internalCostTotal,
+        },
+        {
+          label: `Налог нал ${formatPercentValue(warehouse.cashTaxRate * 100)}`,
+          formula: cashTaxFormula,
+          result: warehouse.cashInternalCostTax,
+        },
+        {
+          label: "Итого расходов",
+          formula: totalExpensesFormula,
+          result: roundMoney(pricing.taxAmount + warehouse.internalCostWithCashTax),
+          emphasis: true,
+        },
+      ],
+    },
+    {
+      title: "Результат",
+      startCol: 8,
+      valueCol: 10,
+      endCol: 10,
+      fill: COLORS.greenSoft,
+      fontColor: "FF065F46",
+      metrics: [
+        {
+          label: "Заработок",
+          formula: profitFormula,
+          result: warehouse.profitEstimate,
+          emphasis: true,
+        },
+        {
+          label: "Рентабельность",
+          formula: `IFERROR((${profitFormula})/(${clientTotalFormula}),0)`,
+          result: warehouse.profitabilityPct / 100,
+          numFmt: "0.00%",
+          emphasis: true,
+        },
+      ],
+    },
+  ]);
 
   ws.eachRow((row) => {
     row.eachCell((cell) => {

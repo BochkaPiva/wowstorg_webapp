@@ -191,6 +191,12 @@ export default function CatalogPage() {
   );
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
   const [miniCartOpen, setMiniCartOpen] = React.useState(false);
+  const [cartFeedback, setCartFeedback] = React.useState<{
+    key: number;
+    label: string;
+    itemId?: string;
+  } | null>(null);
+  const cartFeedbackTimerRef = React.useRef<number | null>(null);
   const [catalogDateHelpOpen, setCatalogDateHelpOpen] = React.useState(false);
   const projectDatesPrefilledRef = React.useRef<string | null>(null);
   const cartItemIdsKey = React.useMemo(
@@ -215,6 +221,26 @@ export default function CatalogPage() {
   cartScopeRef.current = cartScope;
   const isProjectDemoCatalogRef = React.useRef(isProjectDemoCatalog);
   isProjectDemoCatalogRef.current = isProjectDemoCatalog;
+
+  const showAddedFeedback = React.useCallback((label: string, itemId?: string) => {
+    if (cartFeedbackTimerRef.current !== null) {
+      window.clearTimeout(cartFeedbackTimerRef.current);
+    }
+    setCartFeedback({ key: Date.now(), label, itemId });
+    cartFeedbackTimerRef.current = window.setTimeout(() => {
+      setCartFeedback(null);
+      cartFeedbackTimerRef.current = null;
+    }, 1900);
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      if (cartFeedbackTimerRef.current !== null) {
+        window.clearTimeout(cartFeedbackTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const datesRef = React.useRef({
     readyByDate,
@@ -712,7 +738,7 @@ export default function CatalogPage() {
       saveCart(cleaned, cartScopeRef.current);
       return cleaned;
     });
-    setMiniCartOpen(true);
+    showAddedFeedback(`Набор «${kit.name}» добавлен`);
   }
 
   const clearCart = React.useCallback(() => {
@@ -746,9 +772,10 @@ export default function CatalogPage() {
         saveCart(cleaned, cartScopeRef.current);
         return cleaned;
       });
-      setMiniCartOpen(true);
+      const item = itemLookupRef.current.get(itemId);
+      showAddedFeedback(item ? `${item.name} добавлен` : "Позиция добавлена", itemId);
     },
-    [],
+    [showAddedFeedback],
   );
 
   const cartRelatedInputs = React.useMemo(
@@ -780,9 +807,10 @@ export default function CatalogPage() {
   const handleCardAdd = React.useCallback(
     (id: string, price: number) => {
       addToCart(id, price);
-      setMiniCartOpen(true);
+      const item = itemLookupRef.current.get(id);
+      showAddedFeedback(item ? `${item.name} добавлен` : "Позиция добавлена", id);
     },
-    [addToCart],
+    [addToCart, showAddedFeedback],
   );
   const handleCardDec = React.useCallback(
     (id: string, currentQty: number) => setQty(id, currentQty - 1),
@@ -1277,6 +1305,34 @@ export default function CatalogPage() {
           )
         : null}
 
+      {cartFeedback && typeof document !== "undefined"
+        ? createPortal(
+            <button
+              key={cartFeedback.key}
+              type="button"
+              className="mk-cartFeedback"
+              onClick={() => {
+                setCartFeedback(null);
+                setMiniCartOpen(true);
+              }}
+              aria-label={`${cartFeedback.label}. Открыть корзину`}
+            >
+              {cartFeedback.itemId ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/inventory/positions/${cartFeedback.itemId}/photo?w=96`} alt="" />
+              ) : (
+                <span className="mk-cartFeedbackMark" aria-hidden="true">✓</span>
+              )}
+              <span>
+                <strong>{cartFeedback.label}</strong>
+                <small>Корзина не прерывает выбор · открыть</small>
+              </span>
+              <span className="mk-cartFeedbackCount" aria-hidden="true">{cartTotalQty}</span>
+            </button>,
+            document.body,
+          )
+        : null}
+
       <CatalogMiniCart
         open={miniCartOpen}
         lines={cart}
@@ -1299,7 +1355,7 @@ export default function CatalogPage() {
           onAdd={() => {
             addToCart(selectedItem.id, Number(selectedItem.pricePerDay));
             setSelectedId(null);
-            setMiniCartOpen(true);
+            showAddedFeedback(`${selectedItem.name} добавлен`, selectedItem.id);
           }}
           onInc={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) + 1)}
           onDec={() => setQty(selectedItem.id, (qtyByItemId[selectedItem.id] ?? 0) - 1)}

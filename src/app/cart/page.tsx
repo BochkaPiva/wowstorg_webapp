@@ -43,6 +43,14 @@ function formatDateRu(dateOnly: string) {
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
 }
 
+function formatMoneyRub(value: number): string {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function Toggle({
   checked,
   onChange,
@@ -1180,7 +1188,7 @@ export default function CartPage() {
                   <div className="cart-checkoutMain">
 
                 {checkoutReadyByDate && startDate && endDate && !isProjectDemoCart ? (
-                  <div className="co-dates">
+                  <div className="co-dates cart-dateContext">
                     <div className="co-datePill">
                       Готовность: <strong>{formatDateRu(checkoutReadyByDate)}</strong>
                     </div>
@@ -1236,7 +1244,7 @@ export default function CartPage() {
                 ) : null}
 
                 {!isQuickSupplement && isWarehouse && !isProjectCart ? (
-                  <div className="co-field" style={{ marginBottom: "1rem" }}>
+                  <div className="co-field cart-orderTypeField" style={{ marginBottom: "1rem" }}>
                     <div className="co-label">Тип заявки</div>
                     <div className="co-flipSwitchContainer">
                       <div className="co-flipSwitch" role="radiogroup" aria-label="Тип заявки">
@@ -1280,9 +1288,13 @@ export default function CartPage() {
                   </div>
                 ) : null}
 
-                <div className="co-grid">
+                <div className="cart-formSectionTitle">
+                  <span>Основное</span>
+                  <small>Контрагент и понятное название события</small>
+                </div>
+                <div className="co-grid cart-detailsGrid">
                   {!isQuickSupplement && isWarehouse && !isProjectCart && orderType === "greenwich" ? (
-                    <label className="co-field">
+                    <label className="co-field co-field--customer">
                       <div className="co-label">Сотрудник Grinvich *</div>
                       <select
                         value={greenwichUserId}
@@ -1303,7 +1315,7 @@ export default function CartPage() {
                   ) : null}
                   {!isQuickSupplement ? (
                     <>
-                      <div className="co-field">
+                      <div className="co-field co-field--customer">
                         <div className="co-label">Заказчик *</div>
                         <div className="co-combobox" ref={customerInputRef}>
                           <input
@@ -1375,7 +1387,7 @@ export default function CartPage() {
                         ) : null}
                       </div>
 
-                      <label className="co-field">
+                      <label className="co-field co-field--event">
                         <div className="co-label">Название мероприятия</div>
                         <input
                           value={eventName}
@@ -1388,7 +1400,7 @@ export default function CartPage() {
                   ) : null}
 
                 {!isQuickSupplement ? (
-                  <label className="co-field">
+                  <label className="co-field co-field--comment">
                     <div className="co-label">Комментарий</div>
                     <textarea
                       value={comment}
@@ -1401,7 +1413,7 @@ export default function CartPage() {
 
                 {!isProjectDemoCart ? (
                   <details
-                    className="co-services co-servicesDisclosure"
+                    className="co-services co-servicesDisclosure co-services--checkout"
                     open={servicesOpen}
                     onToggle={(event) => setServicesOpen(event.currentTarget.open)}
                   >
@@ -1581,18 +1593,18 @@ export default function CartPage() {
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
                     {isWarehouse && (deliveryPriceNum > 0 || montagePriceNum > 0 || demontagePriceNum > 0) ? (
                       <>
-                        Итого: <strong>{totalWithTax.toFixed(0)}</strong>{" "}
-                        <span className="cart-unit">р</span>
+                        <span className="cart-totalLabel">Итого</span>
+                        <strong className="cart-totalValue">{formatMoneyRub(totalWithTax)}</strong>
                         <span className="cart-total-detail">
-                          {" "}(до налога {totalWithServices.toFixed(0)} + налог {taxAmount} р)
+                          До налога {formatMoneyRub(totalWithServices)} · налог {formatMoneyRub(taxAmount)}
                         </span>
                       </>
                     ) : (
                       <>
-                        Итого за период: <strong>{totalWithTax.toFixed(0)}</strong>{" "}
-                        <span className="cart-unit">р</span>
+                        <span className="cart-totalLabel">Итого за период</span>
+                        <strong className="cart-totalValue">{formatMoneyRub(totalWithTax)}</strong>
                         <span className="cart-total-detail">
-                          {" "}(до налога {totalWithServices.toFixed(0)} + налог {taxAmount} р)
+                          До налога {formatMoneyRub(totalWithServices)} · налог {formatMoneyRub(taxAmount)}
                         </span>
                       </>
                     )}

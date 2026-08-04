@@ -233,6 +233,15 @@ export default function CatalogPage() {
     }, 1900);
   }, []);
 
+  const openMiniCart = React.useCallback(() => {
+    if (cartFeedbackTimerRef.current !== null) {
+      window.clearTimeout(cartFeedbackTimerRef.current);
+      cartFeedbackTimerRef.current = null;
+    }
+    setCartFeedback(null);
+    setMiniCartOpen(true);
+  }, []);
+
   React.useEffect(
     () => () => {
       if (cartFeedbackTimerRef.current !== null) {
@@ -971,7 +980,7 @@ export default function CatalogPage() {
             <button
               type="button"
               className="mk-cartPill mk-headCart"
-              onClick={() => setMiniCartOpen(true)}
+              onClick={openMiniCart}
               aria-haspopup="dialog"
             >
               <span>{isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}</span>
@@ -1288,7 +1297,7 @@ export default function CatalogPage() {
               className="mk-floatingCart"
               aria-label={`Корзина: ${cartTotalQty} поз., ${Math.round(cartTotalForPeriod)} ₽ за период`}
               aria-haspopup="dialog"
-              onClick={() => setMiniCartOpen(true)}
+              onClick={openMiniCart}
             >
               <span className="mk-floatingCartIcon" aria-hidden>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1311,10 +1320,7 @@ export default function CatalogPage() {
               key={cartFeedback.key}
               type="button"
               className="mk-cartFeedback"
-              onClick={() => {
-                setCartFeedback(null);
-                setMiniCartOpen(true);
-              }}
+              onClick={openMiniCart}
               aria-label={`${cartFeedback.label}. Открыть корзину`}
             >
               {cartFeedback.itemId ? (

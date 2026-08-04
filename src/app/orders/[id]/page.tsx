@@ -973,8 +973,10 @@ export default function OrderDetailsPage() {
             order.greenwichUserId === user.id &&
             ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status))),
     );
-  const canEditClosedOrderServiceCosts = Boolean(order && isWarehouse && order.status === "CLOSED" && !canEditOrder);
-  const isClosedServiceCostEdit = Boolean(isEditing && canEditClosedOrderServiceCosts);
+  const canEditOrderServicesOnly = Boolean(
+    order && isWarehouse && order.status !== "CANCELLED" && !canEditOrder,
+  );
+  const isServiceOnlyEdit = Boolean(isEditing && canEditOrderServicesOnly);
 
   const loadOrder = React.useCallback(async () => {
     if (!orderId) return;
@@ -1209,7 +1211,7 @@ export default function OrderDetailsPage() {
     setEditGreenwichDiscountRequestComment(order.greenwichDiscountRequestComment ?? "");
     setIsEditing(true);
     setActionError(null);
-    if (canEditClosedOrderServiceCosts) {
+    if (canEditOrderServicesOnly) {
       setCatalogItems([]);
       return;
     }
@@ -1259,26 +1261,47 @@ export default function OrderDetailsPage() {
       setActionError("Укажите название для каждой скрытой траты.");
       return;
     }
-    if (isClosedServiceCostEdit) {
+    if (isServiceOnlyEdit) {
+      const missingServicePrices = [
+        editDeliveryEnabled && !isEnabledServicePriceSpecified(editDeliveryPrice) ? "Доставка" : null,
+        editMontageEnabled && !isEnabledServicePriceSpecified(editMontagePrice) ? "Монтаж" : null,
+        editDemontageEnabled && !isEnabledServicePriceSpecified(editDemontagePrice) ? "Демонтаж" : null,
+      ].filter((label): label is string => Boolean(label));
+      if (missingServicePrices.length > 0) {
+        setActionError(`Укажите цену для включённых доп. услуг: ${missingServicePrices.join(", ")}.`);
+        return;
+      }
       const body = {
-        ...(order.deliveryEnabled
-          ? {
-              deliveryInternalCost: editDeliveryInternalCost === "" ? null : Number(editDeliveryInternalCost),
-              deliveryInternalPaymentMethod: editDeliveryInternalPaymentMethod,
-            }
-          : {}),
-        ...(order.montageEnabled
-          ? {
-              montageInternalCost: editMontageInternalCost === "" ? null : Number(editMontageInternalCost),
-              montageInternalPaymentMethod: editMontageInternalPaymentMethod,
-            }
-          : {}),
-        ...(order.demontageEnabled
-          ? {
-              demontageInternalCost: editDemontageInternalCost === "" ? null : Number(editDemontageInternalCost),
-              demontageInternalPaymentMethod: editDemontageInternalPaymentMethod,
-            }
-          : {}),
+        deliveryEnabled: editDeliveryEnabled,
+        deliveryComment: editDeliveryComment.trim() || null,
+        deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice) : 0,
+        deliveryInternalCost:
+          editDeliveryEnabled && editDeliveryInternalCost !== ""
+            ? Number(editDeliveryInternalCost)
+            : null,
+        deliveryInternalPaymentMethod: editDeliveryEnabled
+          ? editDeliveryInternalPaymentMethod
+          : "NON_CASH",
+        montageEnabled: editMontageEnabled,
+        montageComment: editMontageComment.trim() || null,
+        montagePrice: editMontageEnabled ? Number(editMontagePrice) : 0,
+        montageInternalCost:
+          editMontageEnabled && editMontageInternalCost !== ""
+            ? Number(editMontageInternalCost)
+            : null,
+        montageInternalPaymentMethod: editMontageEnabled
+          ? editMontageInternalPaymentMethod
+          : "NON_CASH",
+        demontageEnabled: editDemontageEnabled,
+        demontageComment: editDemontageComment.trim() || null,
+        demontagePrice: editDemontageEnabled ? Number(editDemontagePrice) : 0,
+        demontageInternalCost:
+          editDemontageEnabled && editDemontageInternalCost !== ""
+            ? Number(editDemontageInternalCost)
+            : null,
+        demontageInternalPaymentMethod: editDemontageEnabled
+          ? editDemontageInternalPaymentMethod
+          : "NON_CASH",
         hiddenExpenses: hiddenExpensePayload(),
       };
       setBusy(true);
@@ -1771,29 +1794,29 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
-        {(canEditOrder || canEditClosedOrderServiceCosts || isEditing || actionError) ? (
+        {(canEditOrder || canEditOrderServicesOnly || isEditing || actionError) ? (
           <div className="rounded-[1.5rem] border border-white/75 bg-white/78 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-black text-zinc-900">
-                  {isClosedServiceCostEdit || canEditClosedOrderServiceCosts
-                    ? "Внутренние затраты заявки"
+                  {isServiceOnlyEdit || canEditOrderServicesOnly
+                    ? "Дополнительные услуги и затраты"
                     : "Редактирование заявки"}
                 </div>
                 <div className="mt-0.5 text-xs text-zinc-500">
-                  {isClosedServiceCostEdit || canEditClosedOrderServiceCosts
-                    ? "Себестоимость доп. услуг и скрытые траты можно поправить без изменения клиентской сметы."
+                  {isServiceOnlyEdit || canEditOrderServicesOnly
+                    ? "Меняйте цену для клиента, внутреннюю себестоимость и состав услуг без изменения статуса и реквизита."
                     : "Изменения сохраняются после проверки заявки."}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(canEditOrder || canEditClosedOrderServiceCosts) && !isEditing ? (
+                {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? (
                   <button
                     type="button"
                     onClick={startEditing}
                     className={orderSecondaryButtonClass}
                   >
-                    {canEditClosedOrderServiceCosts ? "Редактировать затраты" : "Редактировать заявку"}
+                    {canEditOrderServicesOnly ? "Редактировать доп. услуги" : "Редактировать заявку"}
                   </button>
                 ) : null}
                 {isEditing ? (
@@ -1805,7 +1828,7 @@ export default function OrderDetailsPage() {
                       onClick={saveOrderEdit}
                       className={orderPrimaryButtonClass}
                     >
-                      {busy ? "…" : isClosedServiceCostEdit ? "Сохранить затраты" : isGreenwich ? "Запросить изменения" : "Сохранить"}
+                      {busy ? "…" : isServiceOnlyEdit ? "Сохранить доп. услуги" : isGreenwich ? "Запросить изменения" : "Сохранить"}
                     </button>
                     <button
                       type="button"
@@ -1859,9 +1882,9 @@ export default function OrderDetailsPage() {
 
         {isEditing ? (
           <>
-            {isClosedServiceCostEdit ? (
+            {isServiceOnlyEdit ? (
               <div className="rounded-[1.5rem] border border-emerald-200/80 bg-emerald-50/70 px-5 py-4 text-sm text-emerald-950">
-                Закрытая заявка: можно менять только внутреннюю себестоимость доп. услуг и способ оплаты. Клиентская смета и состав заявки останутся без изменений.
+                Статус, даты и реквизит останутся без изменений. Итог заявки и аналитика пересчитаются по новым ценам дополнительных услуг.
               </div>
             ) : (
             <>
@@ -2114,76 +2137,6 @@ export default function OrderDetailsPage() {
                 <span className="text-sm font-semibold text-zinc-700">Доп. услуги</span>
               </div>
               <div className="p-5 space-y-4">
-                {isClosedServiceCostEdit ? (
-                  <>
-                    {!editDeliveryEnabled &&
-                    !editMontageEnabled &&
-                    !editDemontageEnabled &&
-                    editHiddenExpenses.length === 0 ? (
-                      <div className="rounded-2xl border border-zinc-200 bg-white/75 px-4 py-3 text-sm text-zinc-600">
-                        В закрытой заявке нет включенных доп. услуг.
-                      </div>
-                    ) : null}
-                    {editDeliveryEnabled ? (
-                      <ServiceEditRow
-                        label="Доставка"
-                        enabled={editDeliveryEnabled}
-                        onEnabledChange={setEditDeliveryEnabled}
-                        comment={editDeliveryComment}
-                        onCommentChange={setEditDeliveryComment}
-                        showPrice={false}
-                        price={editDeliveryPrice}
-                        onPriceChange={setEditDeliveryPrice}
-                        showInternalPrice={isWarehouse}
-                        internalPrice={editDeliveryInternalCost}
-                        onInternalPriceChange={setEditDeliveryInternalCost}
-                        internalPaymentMethod={editDeliveryInternalPaymentMethod}
-                        onInternalPaymentMethodChange={setEditDeliveryInternalPaymentMethod}
-                        lockEnabled
-                        hideComment
-                      />
-                    ) : null}
-                    {editMontageEnabled ? (
-                      <ServiceEditRow
-                        label="Монтаж"
-                        enabled={editMontageEnabled}
-                        onEnabledChange={setEditMontageEnabled}
-                        comment={editMontageComment}
-                        onCommentChange={setEditMontageComment}
-                        showPrice={false}
-                        price={editMontagePrice}
-                        onPriceChange={setEditMontagePrice}
-                        showInternalPrice={isWarehouse}
-                        internalPrice={editMontageInternalCost}
-                        onInternalPriceChange={setEditMontageInternalCost}
-                        internalPaymentMethod={editMontageInternalPaymentMethod}
-                        onInternalPaymentMethodChange={setEditMontageInternalPaymentMethod}
-                        lockEnabled
-                        hideComment
-                      />
-                    ) : null}
-                    {editDemontageEnabled ? (
-                      <ServiceEditRow
-                        label="Демонтаж"
-                        enabled={editDemontageEnabled}
-                        onEnabledChange={setEditDemontageEnabled}
-                        comment={editDemontageComment}
-                        onCommentChange={setEditDemontageComment}
-                        showPrice={false}
-                        price={editDemontagePrice}
-                        onPriceChange={setEditDemontagePrice}
-                        showInternalPrice={isWarehouse}
-                        internalPrice={editDemontageInternalCost}
-                        onInternalPriceChange={setEditDemontageInternalCost}
-                        internalPaymentMethod={editDemontageInternalPaymentMethod}
-                        onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
-                        lockEnabled
-                        hideComment
-                      />
-                    ) : null}
-                  </>
-                ) : (
-                  <>
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -2229,8 +2182,6 @@ export default function OrderDetailsPage() {
                   internalPaymentMethod={editDemontageInternalPaymentMethod}
                   onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
-                  </>
-                )}
                 {isWarehouse ? (
                   <div className="rounded-[1.35rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.86),rgba(255,255,255,0.78))] p-4 shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2312,7 +2263,7 @@ export default function OrderDetailsPage() {
                 ) : null}
               </div>
             </div>
-            {!isClosedServiceCostEdit && editPricing ? (
+            {editPricing ? (
               <div className="rounded-[1.5rem] border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.82))] p-4 text-sm text-violet-950 shadow-[0_18px_45px_rgba(124,58,237,0.08)] backdrop-blur">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span>Сумма до налога</span>
@@ -2938,8 +2889,8 @@ export default function OrderDetailsPage() {
               >
                 {busy
                   ? "Сохраняю…"
-                  : isClosedServiceCostEdit
-                    ? "Сохранить затраты"
+                  : isServiceOnlyEdit
+                    ? "Сохранить доп. услуги"
                     : isGreenwich
                       ? "Запросить изменения"
                       : "Сохранить заявку"}

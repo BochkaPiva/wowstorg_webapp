@@ -57,8 +57,6 @@ export function CatalogMiniCart({
     if (!open) return;
 
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 30);
 
     function onKeyDown(event: KeyboardEvent) {
@@ -85,7 +83,6 @@ export function CatalogMiniCart({
     return () => {
       window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
       previousFocusRef.current?.focus();
     };
   }, [onClose, open]);
@@ -107,6 +104,8 @@ export function CatalogMiniCart({
         aria-label="Закрыть корзину"
         tabIndex={open ? 0 : -1}
         onClick={onClose}
+        onWheel={(event) => event.preventDefault()}
+        onTouchMove={(event) => event.preventDefault()}
       />
       <aside
         ref={panelRef}

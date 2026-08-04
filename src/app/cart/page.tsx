@@ -1164,7 +1164,7 @@ export default function CartPage() {
 
             {(isGreenwich || isWarehouse) ? (
               <section id="checkout-details" className="cart-flowPanel cart-flowPanel--checkout" aria-labelledby="checkout-details-title">
-                <div className="co-head" style={{ marginTop: "1.5rem" }}>
+                <div className="co-head">
                   <div className="cart-flowPanelHead cart-flowPanelHead--checkout">
                     <div>
                       <span>Шаг 2</span>
@@ -1289,8 +1289,8 @@ export default function CartPage() {
                 ) : null}
 
                 <div className="cart-formSectionTitle">
-                  <span>Основное</span>
-                  <small>Контрагент и понятное название события</small>
+                  <span>О заявке</span>
+                  <small>Заполни поля по порядку — без лишних переходов</small>
                 </div>
                 <div className="co-grid cart-detailsGrid">
                   {!isQuickSupplement && isWarehouse && !isProjectCart && orderType === "greenwich" ? (
@@ -1388,12 +1388,12 @@ export default function CartPage() {
                       </div>
 
                       <label className="co-field co-field--event">
-                        <div className="co-label">Название мероприятия</div>
+                        <div className="co-label">Название мероприятия или проекта</div>
                         <input
                           value={eventName}
                           onChange={(e) => setEventName(e.target.value)}
                           className="co-input"
-                          placeholder="Название мероприятия"
+                          placeholder="Например, летний корпоратив"
                         />
                       </label>
                     </>
@@ -1401,12 +1401,12 @@ export default function CartPage() {
 
                 {!isQuickSupplement ? (
                   <label className="co-field co-field--comment">
-                    <div className="co-label">Комментарий</div>
+                    <div className="co-label">Что ещё важно учесть?</div>
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
                       className="co-textarea"
-                      placeholder="Комментарий к заявке…"
+                      placeholder="Площадка, задача или важные детали — необязательно"
                     />
                   </label>
                 ) : null}

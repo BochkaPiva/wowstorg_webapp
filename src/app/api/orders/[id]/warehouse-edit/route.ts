@@ -7,6 +7,7 @@ import { scheduleAfterResponse } from "@/server/notifications/schedule-after-res
 import { calcOrderPricing, validateOrderDiscount } from "@/server/orders/order-pricing";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
+import { assertEnabledServicePricesPresent } from "@/server/orders/service-pricing";
 
 const LineSchema = z.object({
   id: z.string().optional(),
@@ -171,9 +172,10 @@ export async function PATCH(
         const isRegularEditableStatus = EDITABLE_STATUSES.includes(
           order.status as (typeof EDITABLE_STATUSES)[number],
         );
-        const hasClientFacingInput =
+        const hasNonServiceClientFacingInput =
           data.eventName !== undefined ||
-          data.comment !== undefined ||
+          data.comment !== undefined;
+        const hasClientServiceInput =
           data.deliveryEnabled !== undefined ||
           data.deliveryComment !== undefined ||
           data.deliveryPrice !== undefined ||
@@ -191,32 +193,96 @@ export async function PATCH(
           data.demontageInternalCost !== undefined ||
           data.demontageInternalPaymentMethod !== undefined;
         const hasHiddenExpenseInput = data.hiddenExpenses !== undefined;
-        const isInternalOnlyPatch =
+        const isServiceOnlyPatch =
           order.status !== "CANCELLED" &&
           data.lines === undefined &&
           !hasDiscountInput &&
-          !hasClientFacingInput &&
-          (hasInternalServiceInput || hasHiddenExpenseInput);
+          !hasNonServiceClientFacingInput &&
+          (hasClientServiceInput || hasInternalServiceInput || hasHiddenExpenseInput);
 
-        if (!isRegularEditableStatus && !isInternalOnlyPatch) {
+        if (!isRegularEditableStatus && !isServiceOnlyPatch) {
           throw new Error("BAD_STATUS");
         }
         if (hasDiscountInput && !isRegularEditableStatus) {
           throw new Error("DISCOUNT_STATUS");
         }
 
-        if (isInternalOnlyPatch) {
+        if (isServiceOnlyPatch) {
+          const nextDeliveryEnabled = data.deliveryEnabled ?? order.deliveryEnabled;
+          const nextMontageEnabled = data.montageEnabled ?? order.montageEnabled;
+          const nextDemontageEnabled = data.demontageEnabled ?? order.demontageEnabled;
+          const nextDeliveryPrice = data.deliveryPrice ?? order.deliveryPrice;
+          const nextMontagePrice = data.montagePrice ?? order.montagePrice;
+          const nextDemontagePrice = data.demontagePrice ?? order.demontagePrice;
+          const clientServicesChanged =
+            serviceValueForCompare({
+              enabled: order.deliveryEnabled,
+              comment: order.deliveryComment,
+              price: order.deliveryPrice,
+            }) !==
+              serviceValueForCompare({
+                enabled: nextDeliveryEnabled,
+                comment: data.deliveryComment !== undefined ? data.deliveryComment : order.deliveryComment,
+                price: nextDeliveryPrice,
+              }) ||
+            serviceValueForCompare({
+              enabled: order.montageEnabled,
+              comment: order.montageComment,
+              price: order.montagePrice,
+            }) !==
+              serviceValueForCompare({
+                enabled: nextMontageEnabled,
+                comment: data.montageComment !== undefined ? data.montageComment : order.montageComment,
+                price: nextMontagePrice,
+              }) ||
+            serviceValueForCompare({
+              enabled: order.demontageEnabled,
+              comment: order.demontageComment,
+              price: order.demontagePrice,
+            }) !==
+              serviceValueForCompare({
+                enabled: nextDemontageEnabled,
+                comment: data.demontageComment !== undefined ? data.demontageComment : order.demontageComment,
+                price: nextDemontagePrice,
+              });
+
+          if (clientServicesChanged) {
+            assertEnabledServicePricesPresent({
+              deliveryEnabled: nextDeliveryEnabled,
+              deliveryPrice: nextDeliveryPrice,
+              montageEnabled: nextMontageEnabled,
+              montagePrice: nextMontagePrice,
+              demontageEnabled: nextDemontageEnabled,
+              demontagePrice: nextDemontagePrice,
+            });
+          }
+
           await tx.order.update({
             where: { id },
             data: {
+              ...(data.deliveryEnabled !== undefined ? { deliveryEnabled: data.deliveryEnabled } : {}),
+              ...(data.deliveryComment !== undefined
+                ? { deliveryComment: data.deliveryComment?.trim() || null }
+                : {}),
+              ...(data.deliveryPrice !== undefined ? { deliveryPrice: data.deliveryPrice } : {}),
               ...(data.deliveryInternalCost !== undefined ? { deliveryInternalCost: data.deliveryInternalCost } : {}),
               ...(data.deliveryInternalPaymentMethod !== undefined
                 ? { deliveryInternalPaymentMethod: data.deliveryInternalPaymentMethod }
                 : {}),
+              ...(data.montageEnabled !== undefined ? { montageEnabled: data.montageEnabled } : {}),
+              ...(data.montageComment !== undefined
+                ? { montageComment: data.montageComment?.trim() || null }
+                : {}),
+              ...(data.montagePrice !== undefined ? { montagePrice: data.montagePrice } : {}),
               ...(data.montageInternalCost !== undefined ? { montageInternalCost: data.montageInternalCost } : {}),
               ...(data.montageInternalPaymentMethod !== undefined
                 ? { montageInternalPaymentMethod: data.montageInternalPaymentMethod }
                 : {}),
+              ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
+              ...(data.demontageComment !== undefined
+                ? { demontageComment: data.demontageComment?.trim() || null }
+                : {}),
+              ...(data.demontagePrice !== undefined ? { demontagePrice: data.demontagePrice } : {}),
               ...(data.demontageInternalCost !== undefined ? { demontageInternalCost: data.demontageInternalCost } : {}),
               ...(data.demontageInternalPaymentMethod !== undefined
                 ? { demontageInternalPaymentMethod: data.demontageInternalPaymentMethod }
@@ -229,6 +295,13 @@ export async function PATCH(
               orderId: id,
               actorUserId: auth.user.id,
               hiddenExpenses: data.hiddenExpenses,
+            });
+          }
+          if (clientServicesChanged && (order.estimateFileKey || order.source === "WOWSTORG_EXTERNAL")) {
+            const artifacts = await makeEstimateArtifactsForOrder(tx, id);
+            await tx.order.update({
+              where: { id },
+              data: { estimateFileKey: artifacts.estimateFileKey },
             });
           }
           return;

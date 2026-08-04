@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
+import { ItemModal } from "@/app/catalog/ItemModal";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { addDays, catalogDatesFromStorage, todayDateOnly } from "@/lib/catalogDates";
@@ -17,25 +18,16 @@ import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rent
 import "./cart.css";
 import "../catalog/catalog.css";
 import "../checkout/checkout.css";
-import { RentalPartOfDayToggle } from "@/app/catalog/RentalPartOfDayToggle";
 
 type CatalogItem = {
   id: string;
   name: string;
-  type: string;
+  description: string | null;
+  type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
   photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
-
-function ruRentalBillableDayCountRU(n: number): string {
-  const m100 = n % 100;
-  const m10 = n % 10;
-  if (m100 >= 11 && m100 <= 14) return `${n} дней аренды`;
-  if (m10 === 1) return `${n} день аренды`;
-  if (m10 >= 2 && m10 <= 4) return `${n} дня аренды`;
-  return `${n} дней аренды`;
-}
 
 function formatDateRu(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
@@ -159,6 +151,7 @@ export default function CartPage() {
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
   const [items, setItems] = React.useState<CatalogItem[]>([]);
+  const [selectedItemId, setSelectedItemId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [startDate, setStartDate] = React.useState<string | null>(null);
   const [endDate, setEndDate] = React.useState<string | null>(null);
@@ -979,46 +972,6 @@ export default function CartPage() {
                 </div>
                 <strong>{lines.length} поз.</strong>
               </div>
-            {startDate && endDate && rentalDays > 0 ? (
-              <div style={{ marginBottom: "0.75rem" }}>
-                <p className="cart-periodInline">
-                  <span>
-                    Период: <strong>{formatDateRu(startDate)}</strong> — <strong>{formatDateRu(endDate)}</strong>
-                    {" · "}
-                    {ruRentalBillableDayCountRU(rentalDays)}
-                  </span>
-                  {!isQuickSupplement && !isProjectDemoCart && startDate !== endDate ? (
-                    <span className="cart-periodToggles">
-                      <RentalPartOfDayToggle
-                        compact
-                        edge="start"
-                        id="cart-rental-start"
-                        value={rentalStartPartOfDay}
-                        onChange={setRentalStartPartOfDay}
-                      />
-                      <RentalPartOfDayToggle
-                        compact
-                        edge="end"
-                        id="cart-rental-end"
-                        value={rentalEndPartOfDay}
-                        onChange={setRentalEndPartOfDay}
-                      />
-                    </span>
-                  ) : !isQuickSupplement && !isProjectDemoCart ? (
-                    <span
-                      className="mk-partDay-chip"
-                      title="За один календарный день доступен только тариф с утра до вечера"
-                    >
-                      Целый день
-                    </span>
-                  ) : null}
-                </p>
-              </div>
-            ) : (
-              <p className="cart-muted" style={{ marginBottom: "0.75rem" }}>
-                Укажи даты в каталоге, чтобы посчитать итог за период.
-              </p>
-            )}
             <div className="cart-list-head">
               <button
                 type="button"
@@ -1042,7 +995,12 @@ export default function CartPage() {
                 const canInc = maxAvail > 0 && line.qty < maxAvail;
                 return (
                   <li key={item.id} className="cart-row">
-                    <div className="cart-row-main">
+                    <button
+                      type="button"
+                      className="cart-row-main cart-rowProduct"
+                      onClick={() => setSelectedItemId(item.id)}
+                      aria-label={`Открыть карточку: ${item.name}`}
+                    >
                       <div className="cart-thumbWrap" aria-hidden="true">
                         {item.photo1Key ? (
                           <img
@@ -1078,7 +1036,7 @@ export default function CartPage() {
                           )}
                         </span>
                       </div>
-                    </div>
+                    </button>
                     <div className="cart-row-actions">
                       <div className="cart-qty" aria-label="Количество">
                         <button
@@ -1603,7 +1561,8 @@ export default function CartPage() {
 
                   </div>
 
-                <div className="cart-footer" style={{ marginTop: "1.5rem" }}>
+                <aside className="cart-summaryRail" aria-label="Итог заявки">
+                <div className="cart-footer">
                   <div className="cart-summaryEyebrow">Итог заявки</div>
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
                     {isWarehouse && (deliveryPriceNum > 0 || montagePriceNum > 0 || demontagePriceNum > 0) ? (
@@ -1644,6 +1603,7 @@ export default function CartPage() {
                           : "Создать заявку"}
                   </button>
                 </div>
+                </aside>
                 </div>
               </section>
             ) : (
@@ -1670,7 +1630,25 @@ export default function CartPage() {
               </div>
             )}
           </>
-        )}
+          )}
+
+        {selectedItemId ? (() => {
+          const selectedItem = items.find((item) => item.id === selectedItemId);
+          const selectedLine = cart.find((line) => line.itemId === selectedItemId);
+          if (!selectedItem) return null;
+          return (
+            <ItemModal
+              item={selectedItem}
+              qtyInCart={selectedLine?.qty ?? 0}
+              availableForDates={selectedItem.availability.availableForDates}
+              onClose={() => setSelectedItemId(null)}
+              onAdd={() => setQty(selectedItem.id, 1)}
+              onInc={() => setQty(selectedItem.id, (selectedLine?.qty ?? 0) + 1)}
+              onDec={() => setQty(selectedItem.id, (selectedLine?.qty ?? 0) - 1)}
+              onSetQty={(qty) => setQty(selectedItem.id, qty)}
+            />
+          );
+        })() : null}
 
         {mounted &&
           typeof document !== "undefined" &&

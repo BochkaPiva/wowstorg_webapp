@@ -2676,3 +2676,118 @@ html {
   }
 }
 
+/* Checkout polish: complete date header, breathable services and catalog-consistent cart controls. */
+.cart-checkoutMain .cart-dateContext {
+  display: block;
+  width: 100%;
+}
+
+.cart-dateContextHead {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cart-checkoutMain .co-services--checkout .co-servicesBody {
+  padding-top: 1rem;
+}
+
+.cart-checkoutMain .co-services--checkout .co-serviceRow:first-child {
+  padding-top: 0;
+}
+
+.cart-rowProduct {
+  appearance: none;
+  flex: 1 1 28rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cart-rowProduct .cart-thumbWrap {
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.cart-rowProduct .cart-name {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color 160ms ease;
+}
+
+.cart-rowProduct:hover .cart-thumbWrap {
+  border-color: #0a0a0a;
+  transform: translateY(-1px);
+}
+
+.cart-rowProduct:hover .cart-name {
+  text-decoration-color: currentColor;
+}
+
+.cart-qty {
+  min-height: 42px;
+  gap: 0;
+  padding: 3px 6px;
+  border-color: #0a0a0a;
+  border-radius: 999px;
+  background: #0a0a0a;
+}
+
+.cart-qty button {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.cart-qty button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cart-qty button:disabled {
+  opacity: 0.4;
+}
+
+.cart-qty input {
+  width: 36px;
+  min-width: 36px;
+  color: #fff;
+}
+
+.cart-summaryRail {
+  align-self: stretch;
+  min-width: 0;
+  background: #f3f2ee;
+}
+
+.cart-flowPanel--checkout .cart-summaryRail .cart-footer {
+  position: sticky;
+  top: 88px;
+  min-height: 0;
+  margin: 0 !important;
+}
+
+@media (max-width: 980px) {
+  .cart-summaryRail {
+    border-top: 1px solid var(--wow-line, #d4d4cf);
+  }
+
+  .cart-flowPanel--checkout .cart-summaryRail .cart-footer {
+    position: static;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cart-rowProduct .cart-thumbWrap,
+  .cart-rowProduct .cart-name,
+  .cart-qty button {
+    transition: none;
+  }
+}
+

@@ -3392,6 +3392,288 @@ button.mk-floatingCart:focus-visible {
   }
 }
 
+/* Catalog header v3: one clear flow — context, dates, selection. */
+.mk-head {
+  border: 1px solid #d9d8d3;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mk-headIntro {
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+  min-height: 220px;
+  padding: clamp(30px, 4vw, 58px);
+  background: #0a0a0a;
+  color: #fff;
+}
+
+.mk-headCopy {
+  max-width: 840px;
+}
+
+.mk-headKicker {
+  margin-bottom: 18px;
+  color: var(--mk-yellow);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.mk-headIntro .mk-title {
+  max-width: 760px;
+  color: #fff;
+  font-size: clamp(2.5rem, 4.2vw, 4.6rem);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+.mk-headIntro .mk-subtitle {
+  max-width: 720px;
+  margin-top: 18px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: clamp(0.95rem, 1.25vw, 1.12rem);
+  line-height: 1.55;
+}
+
+.mk-headCart,
+button.mk-headCart {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 250px;
+  padding: 14px 15px;
+  border: 1px solid var(--mk-yellow);
+  border-radius: 8px;
+  background: var(--mk-yellow);
+  color: #0a0a0a;
+  text-align: left;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.mk-headCart:hover {
+  border-color: #fff;
+  background: #fff;
+  transform: translateY(-2px);
+}
+
+.mk-headCartIcon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(10, 10, 10, 0.18);
+  border-radius: 6px;
+}
+
+.mk-headCartIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.mk-headCartCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 800;
+}
+
+.mk-headCartCopy > span {
+  font-size: 1rem;
+}
+
+.mk-headCart .mk-headCartCopy small {
+  color: rgba(10, 10, 10, 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.mk-headCart strong {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: #fff;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-headCartArrow {
+  font-size: 1.25rem;
+  transition: transform 180ms ease;
+}
+
+.mk-headCart:hover .mk-headCartArrow {
+  transform: translateX(3px);
+}
+
+.mk-headOperations {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.36fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  border-top: 0;
+  border-bottom: 1px solid #dfded8;
+  background: #f4f4f1;
+}
+
+.mk-dateSectionIntro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  gap: 5px 16px;
+  padding: 28px clamp(20px, 2.6vw, 38px);
+  border-right: 1px solid #d8d7d1;
+}
+
+.mk-dateSectionIndex {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #0a0a0a;
+  color: var(--mk-yellow);
+  font-size: 0.72rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-dateSectionCopy h2 {
+  margin: 0;
+  font-size: clamp(1.15rem, 1.4vw, 1.45rem);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.mk-dateSectionCopy p {
+  max-width: 34rem;
+  margin: 7px 0 0;
+  color: var(--mk-muted);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.mk-dateSectionIntro .mk-catalogDateSummary {
+  grid-column: 2;
+  margin: 13px 0 0;
+  white-space: normal;
+}
+
+.mk-dateSectionIntro .mk-dateBillInline {
+  color: #343431;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.mk-dateControls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 28px clamp(20px, 2.8vw, 42px);
+  background: #fff;
+}
+
+.mk-headOperations .mk-datesRowGrouped {
+  gap: 18px;
+}
+
+.mk-headOperations .mk-datesRowGrouped--withReady {
+  grid-template-columns: minmax(390px, 1.6fr) minmax(210px, 0.8fr);
+}
+
+.mk-headOperations .mk-dateFieldLabel {
+  margin-bottom: 2px;
+  color: #4b4b47;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mk-headOperations .mk-rentalPeriod-trigger,
+.mk-headOperations .mk-dateWrap {
+  min-height: 62px;
+  border-color: #c8c7c1;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.mk-headOperations .mk-rentalPeriod-trigger:hover,
+.mk-headOperations .mk-dateWrap:hover {
+  border-color: #0a0a0a;
+}
+
+@media (max-width: 1080px) {
+  .mk-headOperations {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-dateSectionIntro {
+    border-right: 0;
+    border-bottom: 1px solid #d8d7d1;
+  }
+}
+
+@media (max-width: 900px) {
+  .mk-headIntro {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .mk-headCart,
+  button.mk-headCart {
+    width: min(100%, 340px);
+  }
+
+  .mk-headOperations .mk-datesRowGrouped--withReady {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .mk-headIntro {
+    padding: 28px 20px;
+  }
+
+  .mk-headIntro .mk-title {
+    font-size: clamp(2.2rem, 13vw, 3.4rem);
+  }
+
+  .mk-dateSectionIntro,
+  .mk-dateControls {
+    padding: 22px 18px;
+  }
+
+  .mk-dateControls {
+    align-items: stretch;
+  }
+
+  .mk-dateSectionIntro .mk-catalogDateSummary {
+    width: auto;
+    padding: 0;
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-headCart,
+  .mk-headCartArrow {
+    transition: none;
+  }
+}
+
 /* Cart interaction v2: compact on demand, never interrupts repeated selection. */
 .mk-headCart,
 button.mk-cartPill {
@@ -3613,6 +3895,40 @@ button.mk-cartPill small {
 @media (prefers-reduced-motion: reduce) {
   .mk-cartFeedback {
     animation: none;
+  }
+}
+
+/* Keep the redesigned header cart intact after the generic compact-cart rules. */
+.mk-headIntro .mk-headCart,
+.mk-headIntro button.mk-cartPill {
+  width: 100%;
+  min-width: 250px;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  white-space: normal;
+}
+
+.mk-headIntro .mk-headCart small,
+.mk-headIntro button.mk-cartPill small {
+  grid-column: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .mk-headIntro .mk-headCart,
+  .mk-headIntro button.mk-cartPill {
+    width: min(100%, 340px);
+  }
+}
+
+@media (max-width: 540px) {
+  .mk-headIntro .mk-headCart,
+  .mk-headIntro button.mk-cartPill {
+    grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  }
+
+  .mk-headIntro .mk-headCart small,
+  .mk-headIntro button.mk-cartPill small {
+    grid-column: auto;
   }
 }
 

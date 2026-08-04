@@ -960,22 +960,25 @@ export default function CatalogPage() {
         <div className="mk-head">
           <div className="mk-headIntro">
             <div className="mk-headCopy">
-          <div className="mk-title">
-            {isQuickSupplement
-              ? "Быстрая доп.-выдача"
-              : isProjectDemoCatalog
-                ? "Demo-каталог без дат"
-                : "Реквизит, который работает на ваши события"}
-          </div>
-          <div className="mk-subtitle">
-            {isQuickSupplement
-              ? "Добавь нужные позиции и оформи доп.-заявку. Даты и заказчик будут взяты из родительской заявки."
-              : isProjectDemoCatalog
-                ? "Собери позиции заранее без дат. Корзина сохранится в demo-черновик проекта и не создаст реальную складскую заявку."
-                : isProjectCatalog
-                ? "Выбирай позиции и даты — оформи заявку реквизита в корзине; заказчик подставится из проекта."
-                : "Ищи позиции, добавляй в корзину, указывай даты — склад подготовит смету и подтвердит доступность."}
-          </div>
+              <div className="mk-headKicker">
+                {isProjectDemoCatalog ? "Предварительный расчёт" : "Каталог оборудования"}
+              </div>
+              <div className="mk-title">
+                {isQuickSupplement
+                  ? "Дополнить текущую выдачу"
+                  : isProjectDemoCatalog
+                    ? "Соберите предварительную смету"
+                    : "Каталог реквизита"}
+              </div>
+              <div className="mk-subtitle">
+                {isQuickSupplement
+                  ? "Выберите дополнительные позиции — даты и заказчик уже привязаны к основной заявке."
+                  : isProjectDemoCatalog
+                    ? "Добавьте позиции без резерва склада. Подборка сохранится в черновике проекта."
+                    : isProjectCatalog
+                      ? "Подберите комплект и период аренды — заказчик будет взят из проекта."
+                      : "Подберите комплект и период аренды — склад проверит доступность и подготовит смету."}
+              </div>
             </div>
             <button
               type="button"
@@ -983,53 +986,77 @@ export default function CatalogPage() {
               onClick={openMiniCart}
               aria-haspopup="dialog"
             >
-              <span>{isProjectDemoCatalog ? "Demo-корзина" : "Корзина"}</span>
+              <span className="mk-headCartIcon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M6 7h12l-1 13H7L6 7Z" />
+                  <path d="M9 7V5a3 3 0 0 1 6 0v2" />
+                </svg>
+              </span>
+              <span className="mk-headCartCopy">
+                <span>{isProjectDemoCatalog ? "Черновик" : "Подборка"}</span>
+                <small>
+                  {cartTotalForPeriod > 0
+                    ? `${Math.round(cartTotalForPeriod).toLocaleString("ru-RU")} ₽${isProjectDemoCatalog ? " / день" : ""}`
+                    : "Пока пусто"}
+                </small>
+              </span>
               <strong>{cartTotalQty}</strong>
-              {cartTotalForPeriod > 0 ? (
-                <small>{Math.round(cartTotalForPeriod)} ₽{isProjectDemoCatalog ? " / день" : ""}</small>
-              ) : null}
+              <span className="mk-headCartArrow" aria-hidden="true">→</span>
             </button>
           </div>
 
           <div className="mk-headOperations">
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
-              <div className={["mk-datesRowGrouped", isGreenwich ? "mk-datesRowGrouped--withReady" : ""].filter(Boolean).join(" ")}>
-                <CatalogRentalPeriodPicker
-                  startDate={startDate}
-                  endDate={endDate}
-                  minDate={dateMin}
-                  rentalStartPartOfDay={rentalStartPartOfDay}
-                  rentalEndPartOfDay={rentalEndPartOfDay}
-                  onRangeChange={(s, e) => patchCatalogDates({ startDate: s, endDate: e })}
-                  onStartPartChange={(v) => patchCatalogDates({ rentalStartPartOfDay: v })}
-                  onEndPartChange={(v) => patchCatalogDates({ rentalEndPartOfDay: v })}
-                />
-                {isGreenwich ? (
-                  <div className="mk-dateColumn mk-dateColumn--ready">
-                    <CatalogDateField
-                      label="Готовность к дате"
-                      inputCaption="Дата"
-                      value={readyByDate}
-                      onChange={(v) => patchCatalogDates({ readyByDate: v })}
-                      min={dateMin}
-                      max={startDate}
-                    />
-                  </div>
-                ) : null}
+              <div className="mk-dateSectionIntro">
+                <span className="mk-dateSectionIndex" aria-hidden="true">01</span>
+                <div className="mk-dateSectionCopy">
+                  <h2>Когда нужен реквизит?</h2>
+                  <p>
+                    Период аренды влияет на стоимость
+                    {isGreenwich ? ", дата готовности — на срок подготовки склада." : "."}
+                  </p>
+                </div>
+                <div className="mk-catalogDateSummary">
+                  <span className="mk-dateBillInline">
+                    В расчёте <span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>{" "}
+                    {rentalDays === 1 ? "день" : rentalDays >= 2 && rentalDays <= 4 ? "дня" : "дней"}
+                  </span>
+                  <button
+                    type="button"
+                    className="mk-dateHelpBtn"
+                    aria-label="Подробнее — как считаются даты аренды"
+                    onClick={() => setCatalogDateHelpOpen(true)}
+                  >
+                    ?
+                  </button>
+                </div>
               </div>
-              <div className="mk-catalogDateSummary">
-                <span className="mk-dateBillInline">
-                  Учтено дней в сумме:&nbsp;<span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>
-                </span>
-                <button
-                  type="button"
-                  className="mk-dateHelpBtn"
-                  aria-label="Подробнее — как считаются даты аренды"
-                  onClick={() => setCatalogDateHelpOpen(true)}
-                >
-                  ?
-                </button>
+              <div className="mk-dateControls">
+                <div className={["mk-datesRowGrouped", isGreenwich ? "mk-datesRowGrouped--withReady" : ""].filter(Boolean).join(" ")}>
+                  <CatalogRentalPeriodPicker
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={dateMin}
+                    rentalStartPartOfDay={rentalStartPartOfDay}
+                    rentalEndPartOfDay={rentalEndPartOfDay}
+                    onRangeChange={(s, e) => patchCatalogDates({ startDate: s, endDate: e })}
+                    onStartPartChange={(v) => patchCatalogDates({ rentalStartPartOfDay: v })}
+                    onEndPartChange={(v) => patchCatalogDates({ rentalEndPartOfDay: v })}
+                  />
+                  {isGreenwich ? (
+                    <div className="mk-dateColumn mk-dateColumn--ready">
+                      <CatalogDateField
+                        label="Готовность к дате"
+                        inputCaption="Дата"
+                        value={readyByDate}
+                        onChange={(v) => patchCatalogDates({ readyByDate: v })}
+                        min={dateMin}
+                        max={startDate}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
               {catalogDateHelpOpen && typeof document !== "undefined"
                 ? createPortal(

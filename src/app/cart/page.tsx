@@ -1166,12 +1166,15 @@ export default function CartPage() {
               <section id="checkout-details" className="cart-flowPanel cart-flowPanel--checkout" aria-labelledby="checkout-details-title">
                 <div className="co-head">
                   <div className="cart-flowPanelHead cart-flowPanelHead--checkout">
-                    <div>
-                      <span>Шаг 2</span>
+                    <div className="cart-checkoutHeading">
+                      <div className="cart-checkoutKicker">
+                        <span>Оформление заявки</span>
+                        <span aria-label="Шаг 2 из 2">02 / 02</span>
+                      </div>
                       <h2 id="checkout-details-title" className="co-title">Детали заявки</h2>
                     </div>
                   </div>
-                  <div className="co-subtitle">
+                  <p className="co-subtitle">
                     {isQuickSupplement
                       ? "Быстрая доп.-выдача: используем даты и заказчика из родительской заявки, при необходимости можно добавить доп. услуги."
                       : isProjectDemoCart
@@ -1181,7 +1184,7 @@ export default function CartPage() {
                         : isWarehouse
                           ? "Даты выбраны в каталоге. Укажи, на кого заявка, заказчика и доп. услуги."
                           : "Даты выбраны в каталоге. Заполни заказчика и при необходимости доп. услуги."}
-                  </div>
+                  </p>
                 </div>
 
                 <div className="cart-checkoutLayout">
@@ -1189,25 +1192,37 @@ export default function CartPage() {
 
                 {checkoutReadyByDate && startDate && endDate && !isProjectDemoCart ? (
                   <div className="co-dates cart-dateContext">
-                    <div className="co-datePill">
-                      Готовность: <strong>{formatDateRu(checkoutReadyByDate)}</strong>
+                    <div className="cart-dateContextHead">
+                      <span>Даты заявки</span>
+                      <small>Выбраны в каталоге</small>
                     </div>
-                    <div className="co-datePill">
-                      Период: <strong>{formatDateRu(startDate)}</strong> —{" "}
-                      <strong>{formatDateRu(endDate)}</strong>
+                    <div className="cart-dateContextGrid">
+                      <div className="cart-dateCell">
+                        <span className="cart-dateCellLabel">Готовность</span>
+                        <strong>{formatDateRu(checkoutReadyByDate)}</strong>
+                      </div>
+                      <div className="cart-dateCell cart-dateCell--period">
+                        <span className="cart-dateCellLabel">Период аренды</span>
+                        <span className="cart-dateRange">
+                          <strong>{formatDateRu(startDate)}</strong>
+                          <span aria-hidden="true">→</span>
+                          <strong>{formatDateRu(endDate)}</strong>
+                        </span>
+                      </div>
+                      {!isQuickSupplement ? (
+                        <Link
+                          href={
+                            isProjectCart && projectId
+                              ? `/catalog?projectId=${encodeURIComponent(projectId)}`
+                              : "/catalog"
+                          }
+                          className="co-link cart-dateEdit"
+                        >
+                          <span>Изменить</span>
+                          <span aria-hidden="true">↗</span>
+                        </Link>
+                      ) : null}
                     </div>
-                    {!isQuickSupplement ? (
-                      <Link
-                        href={
-                          isProjectCart && projectId
-                            ? `/catalog?projectId=${encodeURIComponent(projectId)}`
-                            : "/catalog"
-                        }
-                        className="co-link"
-                      >
-                        Изменить даты →
-                      </Link>
-                    ) : null}
                   </div>
                 ) : null}
 

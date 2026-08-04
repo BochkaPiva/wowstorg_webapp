@@ -159,7 +159,6 @@ export function CartRelatedSuggestions({
   onAdd,
 }: Props) {
   const [groups, setGroups] = React.useState<CartRelatedSuggestionGroup[]>([]);
-  const [loading, setLoading] = React.useState(false);
   const [expanded, setExpanded] = React.useState(false);
   const [dismissed, setDismissed] = React.useState<Set<string>>(() => loadDismissedRelatedIds(cartScope));
 
@@ -219,20 +218,15 @@ export function CartRelatedSuggestions({
 
   const fetchKey = variant === "catalog" ? catalogRequestKey : requestKey;
 
-  const groupsRef = React.useRef(groups);
-  groupsRef.current = groups;
-
   React.useEffect(() => {
     if (disabled || !itemIdsKey) {
       setGroups([]);
-      setLoading(false);
       return;
     }
 
     let cancelled = false;
     const controller = new AbortController();
     async function load() {
-      if (groupsRef.current.length === 0) setLoading(true);
       try {
         const params = new URLSearchParams();
         params.set("itemIds", itemIdsKey);
@@ -254,8 +248,6 @@ export function CartRelatedSuggestions({
         }
       } catch (error) {
         if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) setGroups([]);
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
     void load();
@@ -317,13 +309,6 @@ export function CartRelatedSuggestions({
   }
 
   if (visibleCount === 0) {
-    if (loading) {
-      return (
-        <div className="cart-related">
-          <p className="cart-related-loading">Подбираем рекомендации…</p>
-        </div>
-      );
-    }
     return null;
   }
 
@@ -408,7 +393,10 @@ export function CartRelatedSuggestions({
 
     return (
       <div className="cart-related-section">
-        <h2 className="cart-related-title">{title}</h2>
+        <div className="cart-related-sectionHead">
+          <h3 className="cart-related-title">{title}</h3>
+          <span>{countSuggestions(sectionGroups)}</span>
+        </div>
         <ul className="cart-related-list">{rows}</ul>
       </div>
     );
@@ -416,11 +404,18 @@ export function CartRelatedSuggestions({
 
   return (
     <section className="cart-related" aria-label="Рекомендации к корзине">
-      {renderSection("Обычно нужно вместе", shownRequired, "REQUIRED")}
-      {renderSection("Может пригодиться", shownRecommended, "RECOMMENDED")}
+      <header className="cart-related-head">
+        <div>
+          <span className="cart-related-eyebrow">К вашей подборке</span>
+          <h2>Дополнить заказ</h2>
+        </div>
+        <p>Только связанный реквизит, который может пригодиться на площадке.</p>
+      </header>
+      {renderSection("Нужно для комплекта", shownRequired, "REQUIRED")}
+      {renderSection("Можно добавить", shownRecommended, "RECOMMENDED")}
       {!expanded && hiddenGroupCount > 0 ? (
         <button type="button" className="cart-related-more" onClick={() => setExpanded(true)}>
-          Ещё {hiddenGroupCount}…
+          Показать ещё {hiddenGroupCount}
         </button>
       ) : null}
     </section>

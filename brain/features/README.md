@@ -53,6 +53,7 @@
 | Брендовый редизайн внутреннего приложения | [`internal-brand-redesign.md`](./internal-brand-redesign.md) |
 | Единая рабочая очередь и быстрые расчёты | [`unified-work-queue.md`](./unified-work-queue.md) |
 | Финансовая сверка Excel ↔ WebApp | [`financial-reconciliation.md`](./financial-reconciliation.md) |
+| Рабочая карточка заявки и перенос дат | [`order-workspace.md`](./order-workspace.md) |
 
 ## Индекс существующих крупных тем (в docs)
 

@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-07-23 — обновлено для единой рабочей очереди.
+> **Дата сверки:** 2026-08-18 — добавлен безопасный перенос дат заявки.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -15,6 +15,7 @@
 | `src/app/api/orders/[id]/approve/route.ts` | нет |
 | `src/app/api/orders/[id]/cancel/route.ts` | нет (вторая транзакция внутри отложенной задачи) |
 | `src/app/api/orders/[id]/check-in/route.ts` | нет (две отдельные транзакции в файле) |
+| `src/app/api/orders/[id]/dates/route.ts` | **да** (проверка и повторная проверка при применении) |
 | `src/app/api/orders/[id]/greenwich-edit/route.ts` | **да** |
 | `src/app/api/orders/[id]/issue/route.ts` | нет |
 | `src/app/api/orders/[id]/quick-supplement/greenwich/route.ts` | **да** |
@@ -32,4 +33,4 @@
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
 
-Итого **Serializable** на путях создания/редактирования реальных заявок, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).
+Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).

@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
+import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
@@ -169,19 +170,19 @@ const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label
 ];
 
 const orderShellClass =
-  "overflow-hidden rounded-xl border border-zinc-200 bg-white";
+  "overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.055)]";
 const orderGlassCardClass =
-  "rounded-xl border border-zinc-200 bg-white";
+  "rounded-[18px] border border-zinc-200 bg-white shadow-[0_12px_34px_rgba(24,24,27,0.045)]";
 const orderSoftCardClass =
-  "rounded-lg border border-zinc-200 bg-zinc-50";
+  "rounded-xl border border-zinc-200 bg-zinc-50";
 const orderSectionHeaderClass =
   "border-b border-zinc-200 bg-zinc-50 px-5 py-4";
 const orderInputClass =
-  "rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-zinc-500 focus:border-violet-700 focus:ring-2 focus:ring-violet-100";
+  "rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-zinc-500 focus:border-violet-700 focus:ring-2 focus:ring-violet-100";
 const orderPrimaryButtonClass =
-  "rounded-lg border border-yellow-400 bg-yellow-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50";
+  "rounded-md border border-yellow-400 bg-yellow-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50";
 const orderSecondaryButtonClass =
-  "rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white disabled:opacity-50";
+  "rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white disabled:opacity-50";
 const orderDangerButtonClass =
   "rounded-lg border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition-colors duration-150 hover:bg-rose-50 disabled:opacity-50";
 const orderWarningButtonClass =
@@ -836,6 +837,7 @@ export default function OrderDetailsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [dateDialogOpen, setDateDialogOpen] = React.useState(false);
   const orderEditSaveRef = React.useRef<HTMLButtonElement | null>(null);
   const [showFloatingOrderSave, setShowFloatingOrderSave] = React.useState(false);
 
@@ -975,6 +977,15 @@ export default function OrderDetailsPage() {
     );
   const canEditOrderServicesOnly = Boolean(
     order && isWarehouse && order.status !== "CANCELLED" && !canEditOrder,
+  );
+  const canChangeOrderDates = Boolean(
+    order &&
+      ((isWarehouse &&
+        ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH", "PICKING"].includes(order.status)) ||
+        (isGreenwich &&
+          user &&
+          order.greenwichUserId === user.id &&
+          ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status))),
   );
   const isServiceOnlyEdit = Boolean(isEditing && canEditOrderServicesOnly);
 
@@ -1604,13 +1615,6 @@ export default function OrderDetailsPage() {
 
   const statusLabel = STATUS_LABEL[order.status] ?? order.status;
 
-  const statusHeaderClass =
-    order.status === "CANCELLED"
-      ? "bg-[#5b0b17]/10 text-[#5b0b17]"
-      : order.status === "CLOSED"
-        ? "bg-violet-50 text-violet-900"
-      : "bg-white";
-
   const inner = (
       <div className="order-detail space-y-5">
         {!embed ? (
@@ -1627,38 +1631,47 @@ export default function OrderDetailsPage() {
         <div
           className={[
             orderShellClass,
+            "border-t-[5px] border-t-yellow-400",
             order.status === "CANCELLED"
               ? "border-[#5b0b17]/20"
               : "border-zinc-200",
           ].join(" ")}
         >
-          <div className={["border-b border-zinc-200 px-4 py-4 sm:px-5", statusHeaderClass].join(" ")}>
-            <div>
-              <div>
-                <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+          <div className="grid gap-6 border-b border-zinc-200 bg-white px-5 py-6 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-700">Заявка</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300" aria-hidden="true" />
+                <span className={[
+                  "rounded-full px-2.5 py-1 text-xs font-bold",
+                  order.status === "CANCELLED"
+                    ? "bg-rose-50 text-rose-800"
+                    : order.status === "CLOSED"
+                      ? "bg-violet-50 text-violet-800"
+                      : "bg-yellow-100 text-amber-950",
+                ].join(" ")}>
+                  {statusLabel}
+                </span>
               </div>
-            </div>
-          </div>
-          <div className="p-4 sm:p-5">
-            <div className="space-y-4">
-              <div className="text-xl font-bold tracking-[-0.02em] text-zinc-950 sm:text-2xl">
-                {order.customer.name}
-                {order.greenwichUser
-                  ? ` · ${order.greenwichUser.displayName}${
-                      isWarehouse && order.greenwichUser.ratingScore != null
-                        ? ` · рейтинг ${order.greenwichUser.ratingScore}`
-                        : ""
-                    }`
-                  : ""}
+              <h1 className="mt-3 truncate text-3xl font-black tracking-[-0.045em] text-zinc-950 sm:text-4xl">
+                {order.eventName || order.customer.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-600">
+                <span className="font-semibold text-zinc-900">{order.customer.name}</span>
+                {order.greenwichUser ? <span>{order.greenwichUser.displayName}</span> : null}
+                {isWarehouse && order.greenwichUser?.ratingScore != null ? (
+                  <span>Рейтинг {order.greenwichUser.ratingScore}</span>
+                ) : null}
+                <span>Создана {fmtDate(order.createdAt)}</span>
               </div>
               {order.parentOrderId ? (
-                <p className="text-sm text-violet-700">
+                <p className="mt-3 text-sm font-semibold text-violet-700">
                   Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
                 </p>
               ) : null}
               {isWarehouse && order.project ? (
-                <p className="text-sm text-zinc-700">
-                  <span className="text-zinc-500">Проект: </span>
+                <p className="mt-3 text-sm text-zinc-700">
+                  <span className="text-zinc-500">В проекте: </span>
                   <Link
                     href={`/projects/${order.project.id}`}
                     className="font-semibold text-violet-700 hover:text-violet-900"
@@ -1667,30 +1680,60 @@ export default function OrderDetailsPage() {
                   </Link>
                 </p>
               ) : null}
-              {order.eventName ? (
-                <p className="text-sm text-zinc-600">Мероприятие: {order.eventName}</p>
-              ) : null}
-              <p className="hidden">
-                Готовность к: <strong>{fmtDate(order.readyByDate)}</strong> · Период:{" "}
-                <strong>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</strong> —{" "}
-                <strong>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</strong>
-              </p>
-              <p className="text-xs text-zinc-500">
-                Создал: {order.createdBy.displayName} · {fmtDate(order.createdAt)}
-              </p>
-              <div className="grid gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 md:grid-cols-3">
-                <div className="bg-zinc-50 p-3">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Готовность</div>
-                  <div className="mt-2 text-xl font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
-                </div>
-                <div className="bg-zinc-50 p-3 md:col-span-2">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Период</div>
-                  <div className="mt-2 text-xl font-black text-zinc-950">
-                    {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
-                    {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}
+            </div>
+
+            <div className="flex min-w-[270px] flex-col items-stretch gap-3 lg:items-end">
+              {orderPricing ? (
+                <div className="text-left lg:text-right">
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Итого по заявке</div>
+                  <div className="mt-1 whitespace-nowrap text-3xl font-black tracking-[-0.04em] text-zinc-950">
+                    {Math.round(orderPricing.grandTotal).toLocaleString("ru-RU")} ₽
                   </div>
                 </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                {canChangeOrderDates ? (
+                  <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass}>
+                    Изменить даты
+                  </button>
+                ) : null}
+                {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? (
+                  <button type="button" onClick={startEditing} className={orderPrimaryButtonClass}>
+                    {canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}
+                  </button>
+                ) : null}
+                {order.estimateFileKey ? (
+                  <a href={`/api/orders/${order.id}/estimate`} className={orderSecondaryButtonClass} download>
+                    Смета ↓
+                  </a>
+                ) : null}
               </div>
+            </div>
+          </div>
+
+          <div className="grid border-b border-zinc-200 bg-[#f7f6f2] sm:grid-cols-[0.8fr_2fr_auto]">
+            <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Готовность</div>
+              <div className="mt-1 font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
+            </div>
+            <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Период аренды</div>
+              <div className="mt-1 font-black text-zinc-950">
+                {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
+                {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}
+              </div>
+            </div>
+            <div className="px-5 py-4 sm:px-7">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Ответственный</div>
+              <div className="mt-1 whitespace-nowrap font-black text-zinc-950">{order.createdBy.displayName}</div>
+            </div>
+          </div>
+
+          <div className="border-b border-zinc-200 bg-white px-3 py-4 sm:px-6">
+            <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+          </div>
+
+          <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
                 <OrderFinancialSummary
                   pricing={{
@@ -1711,31 +1754,34 @@ export default function OrderDetailsPage() {
                   }
                 />
               ) : null}
-              {order.estimateFileKey || isWarehouse ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {order.estimateFileKey ? (
-                  <a
-                    href={`/api/orders/${order.id}/estimate`}
-                    className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
-                    download
-                  >
-                    📥 Клиентская смета
-                  </a>
-                  ) : null}
-                  {isWarehouse ? (
-                    <a
-                      href={`/api/orders/${order.id}/estimate/internal`}
-                      className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
-                      download
-                    >
-                      📥 Внутренняя смета
-                    </a>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
+            {isWarehouse ? (
+              <a
+                href={`/api/orders/${order.id}/estimate/internal`}
+                className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
+                download
+              >
+                Внутренняя смета ↓
+              </a>
+            ) : null}
           </div>
         </div>
+
+        <OrderDateChangeDialog
+          open={dateDialogOpen}
+          orderId={order.id}
+          initialValue={{
+            readyByDate: order.readyByDate.slice(0, 10),
+            startDate: order.startDate.slice(0, 10),
+            endDate: order.endDate.slice(0, 10),
+            rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+            rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
+          }}
+          onClose={() => setDateDialogOpen(false)}
+          onApplied={async () => {
+            await loadOrder();
+            notifyProjectParent();
+          }}
+        />
 
         {isWarehouse ? (
           <div className={orderGlassCardClass + " p-4"}>
@@ -1794,8 +1840,8 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
-        {(canEditOrder || canEditOrderServicesOnly || isEditing || actionError) ? (
-          <div className="rounded-[1.5rem] border border-white/75 bg-white/78 p-3 shadow-[0_14px_36px_rgba(24,24,27,0.06)] backdrop-blur">
+        {(isEditing || actionError) ? (
+          <div className="sticky top-[76px] z-20 rounded-xl border border-zinc-300 bg-white/95 p-3 shadow-[0_16px_44px_rgba(24,24,27,0.1)] backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-black text-zinc-900">
@@ -1810,15 +1856,6 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? (
-                  <button
-                    type="button"
-                    onClick={startEditing}
-                    className={orderSecondaryButtonClass}
-                  >
-                    {canEditOrderServicesOnly ? "Редактировать доп. услуги" : "Редактировать заявку"}
-                  </button>
-                ) : null}
                 {isEditing ? (
                   <>
                     <button
@@ -2287,36 +2324,42 @@ export default function OrderDetailsPage() {
         ) : (
           <>
             <div className={orderGlassCardClass + " overflow-hidden"}>
-              <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
-                Состав заявки
+              <div className={orderSectionHeaderClass + " flex flex-wrap items-center justify-between gap-2"}>
+                <div>
+                  <div className="text-base font-black text-zinc-950">Состав заявки</div>
+                  <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз. · количества и согласование склада</div>
+                </div>
+                {(canEditOrder || canEditOrderServicesOnly) ? (
+                  <button type="button" onClick={startEditing} className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}>
+                    Изменить состав
+                  </button>
+                ) : null}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/70 bg-white/55">
-                      <th className="text-left p-3 font-semibold text-zinc-700">Позиция</th>
-                      <th className="text-right p-3 font-semibold text-zinc-700">Запрос</th>
-                      <th className="text-right p-3 font-semibold text-zinc-700">Соглас.</th>
-                      <th className="text-right p-3 font-semibold text-zinc-700">Выдано</th>
-                      <th className="text-right p-3 font-semibold text-zinc-700">Цена/сут</th>
-                      <th className="text-left p-3 font-semibold text-zinc-700">Коммент. Grinvich</th>
-                      <th className="text-left p-3 font-semibold text-zinc-700">Коммент. склада</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.lines.map((line) => (
-                      <tr key={line.id} className="border-b border-white/70 hover:bg-white/60">
-                        <td className="p-3">
+              <div className="divide-y divide-zinc-200">
+                    {order.lines.map((line, index) => (
+                      <div key={line.id} className="grid gap-4 px-4 py-4 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(260px,1.35fr)_repeat(3,minmax(72px,0.35fr))_minmax(100px,0.55fr)] lg:items-center">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="hidden w-6 shrink-0 text-xs font-black tabular-nums text-zinc-300 sm:block">{String(index + 1).padStart(2, "0")}</span>
                           <ProductIdentity
                             itemId={line.item.id}
                             photo1Key={line.item.photo1Key}
                             name={line.item.name}
+                            size="md"
                           />
-                        </td>
-                        <td className="p-3 text-right text-zinc-600">{line.requestedQty}</td>
-                        <td className="p-3 text-right text-zinc-600">{line.approvedQty ?? "—"}</td>
-                        <td className="p-3 text-right text-zinc-600">{line.issuedQty ?? "—"}</td>
-                        <td className="p-3 text-right text-zinc-600">
+                        </div>
+                        {([
+                          ["Запрошено", line.requestedQty],
+                          ["Согласовано", line.approvedQty ?? "—"],
+                          ["Выдано", line.issuedQty ?? "—"],
+                        ] as const).map(([label, value]) => (
+                          <div key={label} className="border-l border-zinc-200 pl-3 lg:border-l-0 lg:pl-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</div>
+                            <div className="mt-1 font-black tabular-nums text-zinc-950">{value}</div>
+                          </div>
+                        ))}
+                        <div className="border-l border-zinc-200 pl-3 lg:border-l-0 lg:pl-0 lg:text-right">
+                          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Цена / сутки</div>
+                          <div className="mt-1 text-sm text-zinc-700">
                           {(() => {
                             if (line.pricePerDaySnapshot == null) return "—";
                             const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
@@ -2336,52 +2379,52 @@ export default function OrderDetailsPage() {
                               `${before.toFixed(0)} ₽`
                             );
                           })()}
-                        </td>
-                        <td className="p-3 text-zinc-600 text-left max-w-[200px] truncate" title={line.greenwichComment ?? undefined}>
-                          {line.greenwichComment ?? "—"}
-                        </td>
-                        <td className="p-3 text-zinc-600 text-left max-w-[200px] truncate" title={line.warehouseComment ?? undefined}>
-                          {line.warehouseComment ?? "—"}
-                        </td>
-                      </tr>
+                          </div>
+                        </div>
+                        {(line.greenwichComment || line.warehouseComment) ? (
+                          <div className="rounded-md bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600 lg:col-span-5">
+                            {line.greenwichComment ? <span><strong className="text-zinc-800">Клиент:</strong> {line.greenwichComment}</span> : null}
+                            {line.greenwichComment && line.warehouseComment ? <span className="mx-2 text-zinc-300">/</span> : null}
+                            {line.warehouseComment ? <span><strong className="text-zinc-800">Склад:</strong> {line.warehouseComment}</span> : null}
+                          </div>
+                        ) : null}
+                      </div>
                     ))}
-                  </tbody>
-                </table>
               </div>
             </div>
 
             {(order.deliveryEnabled || order.montageEnabled || order.demontageEnabled) ? (
-              <div className={orderGlassCardClass + " p-4"}>
-                <div className="text-sm font-semibold text-zinc-700 mb-2">Доп. услуги</div>
-                <ul className="space-y-1.5 text-sm text-zinc-600">
+              <div className={orderGlassCardClass + " overflow-hidden"}>
+                <div className={orderSectionHeaderClass}>
+                  <div className="text-base font-black text-zinc-950">Дополнительные услуги</div>
+                  <div className="mt-0.5 text-xs text-zinc-500">Логистика и работы, включённые в заявку</div>
+                </div>
+                <ul className="grid gap-px bg-zinc-200 sm:grid-cols-3">
                   {order.deliveryEnabled ? (
-                    <li>
-                      Доставка
-                      {order.deliveryComment ? `: ${order.deliveryComment}` : ""}
-                      {order.deliveryPrice != null ? ` · ${order.deliveryPrice} ₽` : ""}
-                      {isWarehouse && order.deliveryInternalCost != null
-                        ? ` · внутр. ${Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽`
-                        : ""}
+                    <li className="bg-white p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
+                      <div className="mt-1 font-black text-zinc-950">Доставка</div>
+                      {order.deliveryComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.deliveryComment}</div> : null}
+                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.deliveryPrice != null ? `${order.deliveryPrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
+                      {isWarehouse && order.deliveryInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                   {order.montageEnabled ? (
-                    <li>
-                      Монтаж
-                      {order.montageComment ? `: ${order.montageComment}` : ""}
-                      {order.montagePrice != null ? ` · ${order.montagePrice} ₽` : ""}
-                      {isWarehouse && order.montageInternalCost != null
-                        ? ` · внутр. ${Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽`
-                        : ""}
+                    <li className="bg-white p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
+                      <div className="mt-1 font-black text-zinc-950">Монтаж</div>
+                      {order.montageComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.montageComment}</div> : null}
+                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.montagePrice != null ? `${order.montagePrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
+                      {isWarehouse && order.montageInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                   {order.demontageEnabled ? (
-                    <li>
-                      Демонтаж
-                      {order.demontageComment ? `: ${order.demontageComment}` : ""}
-                      {order.demontagePrice != null ? ` · ${order.demontagePrice} ₽` : ""}
-                      {isWarehouse && order.demontageInternalCost != null
-                        ? ` · внутр. ${Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽`
-                        : ""}
+                    <li className="bg-white p-4">
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
+                      <div className="mt-1 font-black text-zinc-950">Демонтаж</div>
+                      {order.demontageComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.demontageComment}</div> : null}
+                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.demontagePrice != null ? `${order.demontagePrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
+                      {isWarehouse && order.demontageInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                 </ul>

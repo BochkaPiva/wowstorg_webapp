@@ -9,6 +9,12 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { ItemModal } from "@/app/catalog/ItemModal";
+import {
+  getOrderDiscountError,
+  OrderDiscountControl,
+  type OrderDiscountType,
+  type OrderDiscountValue,
+} from "@/app/orders/OrderDiscountControl";
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { addDays, catalogDatesFromStorage, todayDateOnly } from "@/lib/catalogDates";
@@ -185,6 +191,9 @@ export default function CartPage() {
   const [demontageInternalPaymentMethod, setDemontageInternalPaymentMethod] =
     React.useState<OrderServicePaymentMethod>("NON_CASH");
   const [servicesOpen, setServicesOpen] = React.useState(false);
+  const [rentalDiscountType, setRentalDiscountType] = React.useState<OrderDiscountType>("NONE");
+  const [rentalDiscountPercent, setRentalDiscountPercent] = React.useState<OrderDiscountValue>("");
+  const [rentalDiscountAmount, setRentalDiscountAmount] = React.useState<OrderDiscountValue>("");
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -657,6 +666,16 @@ export default function CartPage() {
         ? 1
         : 0;
   const totalForPeriod = totalPerDay * (rentalDays || 1);
+  const requestedRentalDiscount =
+    rentalDiscountType === "PERCENT"
+      ? totalForPeriod * (Number(rentalDiscountPercent || 0) / 100)
+      : rentalDiscountType === "AMOUNT"
+        ? Number(rentalDiscountAmount || 0)
+        : 0;
+  const rentalDiscountValue = isWarehouse
+    ? Math.min(totalForPeriod, Math.max(0, Number.isFinite(requestedRentalDiscount) ? requestedRentalDiscount : 0))
+    : 0;
+  const totalForPeriodAfterDiscount = Math.max(0, totalForPeriod - rentalDiscountValue);
 
   const deliveryPriceNum =
     deliveryEnabled && deliveryPrice.trim()
@@ -671,7 +690,7 @@ export default function CartPage() {
       ? Number(demontagePrice.replace(",", ".")) || 0
       : 0;
   const totalWithServices =
-    totalForPeriod + deliveryPriceNum + montagePriceNum + demontagePriceNum;
+    totalForPeriodAfterDiscount + deliveryPriceNum + montagePriceNum + demontagePriceNum;
   const activeServicesCount = [deliveryEnabled, montageEnabled, demontageEnabled].filter(Boolean).length;
   const taxAmount = Math.round(totalWithServices * ORDER_TAX_RATE);
   const totalWithTax = Math.round(totalWithServices + taxAmount);
@@ -748,6 +767,18 @@ export default function CartPage() {
       return;
     }
     if (!isQuickSupplement && !isProjectCart && !customerInputTrim) return;
+    if (isWarehouse && !isQuickSupplement) {
+      const discountError = getOrderDiscountError({
+        type: rentalDiscountType,
+        percent: rentalDiscountPercent,
+        amount: rentalDiscountAmount,
+        rentalSubtotal: totalForPeriod,
+      });
+      if (discountError) {
+        setError(discountError);
+        return;
+      }
+    }
     const match = customers.find((c) => c.name.localeCompare(customerInputTrim, undefined, { sensitivity: "accent" }) === 0);
     setError(null);
     setSubmitting(true);
@@ -902,6 +933,17 @@ export default function CartPage() {
         if (montageEnabled) payload.montageInternalPaymentMethod = montageInternalPaymentMethod;
         if (dmi != null && !Number.isNaN(dmi)) payload.demontageInternalCost = dmi;
         if (demontageEnabled) payload.demontageInternalPaymentMethod = demontageInternalPaymentMethod;
+      }
+      if (isWarehouse) {
+        payload.rentalDiscountType = rentalDiscountType;
+        payload.rentalDiscountPercent =
+          rentalDiscountType === "PERCENT" && rentalDiscountPercent !== ""
+            ? Number(rentalDiscountPercent)
+            : null;
+        payload.rentalDiscountAmount =
+          rentalDiscountType === "AMOUNT" && rentalDiscountAmount !== ""
+            ? Number(rentalDiscountAmount)
+            : null;
       }
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -1382,6 +1424,18 @@ export default function CartPage() {
                       placeholder="Площадка, задача или важные детали — необязательно"
                     />
                   </label>
+                ) : null}
+
+                {isWarehouse && !isQuickSupplement && !isProjectDemoCart ? (
+                  <OrderDiscountControl
+                    type={rentalDiscountType}
+                    percent={rentalDiscountPercent}
+                    amount={rentalDiscountAmount}
+                    rentalSubtotal={totalForPeriod}
+                    onTypeChange={setRentalDiscountType}
+                    onPercentChange={setRentalDiscountPercent}
+                    onAmountChange={setRentalDiscountAmount}
+                  />
                 ) : null}
 
                 {!isProjectDemoCart ? (

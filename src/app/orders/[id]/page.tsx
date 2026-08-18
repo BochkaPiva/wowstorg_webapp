@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
+import { getOrderDiscountError, OrderDiscountControl } from "@/app/orders/OrderDiscountControl";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
@@ -163,12 +164,6 @@ const CONDITION_LEGEND: Array<{
     className: "border-zinc-200 bg-zinc-50 text-zinc-900",
   },
 ];
-const DISCOUNT_TYPE_OPTIONS: Array<{ value: "NONE" | "PERCENT" | "AMOUNT"; label: string; hint: string }> = [
-  { value: "NONE", label: "Без скидки", hint: "Итог без ручной скидки" },
-  { value: "PERCENT", label: "Процент", hint: "Например, 10%" },
-  { value: "AMOUNT", label: "Сумма", hint: "Фиксированная сумма" },
-];
-
 const orderShellClass =
   "overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.055)]";
 const orderGlassCardClass =
@@ -1365,6 +1360,16 @@ export default function OrderDetailsPage() {
         return;
       }
     }
+    const discountError = getOrderDiscountError({
+      type: isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType,
+      percent: isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent,
+      amount: isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount,
+      rentalSubtotal: editPricing?.rentalBeforeDiscount ?? 0,
+    });
+    if (discountError) {
+      setActionError(discountError);
+      return;
+    }
     setBusy(true);
     setActionError(null);
     try {
@@ -1952,116 +1957,42 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             </div>
-            <div className="overflow-hidden rounded-[1.5rem] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.9),rgba(255,255,255,0.82))] shadow-[0_18px_45px_rgba(5,150,105,0.08)] backdrop-blur">
-              <div className="border-b border-white/70 px-5 py-4">
-                <span className="text-sm font-semibold text-emerald-900">
-                  {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
-                </span>
-              </div>
-              <div className="p-5">
-                <div>
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Тип
-                  </div>
-                  <div className="grid items-start gap-3 sm:grid-cols-3">
-                    {DISCOUNT_TYPE_OPTIONS.map((option) => {
-                      const selectedType = isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType;
-                      const active = selectedType === option.value;
-                      const showValueInput = active && option.value !== "NONE";
-                      const inputValue =
-                        option.value === "PERCENT"
-                          ? isWarehouse
-                            ? editRentalDiscountPercent
-                            : editGreenwichRequestedDiscountPercent
-                          : isWarehouse
-                            ? editRentalDiscountAmount
-                            : editGreenwichRequestedDiscountAmount;
-                      return (
-                        <div
-                          key={option.value}
-                          onClick={() => {
-                            if (isWarehouse) setEditRentalDiscountType(option.value);
-                            else setEditGreenwichRequestedDiscountType(option.value);
-                          }}
-                          className={[
-                            "min-h-[72px] overflow-hidden rounded-2xl border px-3 py-3 text-left transition-all duration-300 ease-out shadow-sm",
-                            active
-                              ? "border-emerald-400 bg-gradient-to-br from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-100 ring-2 ring-emerald-100"
-                              : "border-emerald-100 bg-white/90 text-zinc-800 hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-md",
-                          ].join(" ")}
-                          role="radio"
-                          aria-checked={active}
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key !== "Enter" && e.key !== " ") return;
-                            e.preventDefault();
-                            if (isWarehouse) setEditRentalDiscountType(option.value);
-                            else setEditGreenwichRequestedDiscountType(option.value);
-                          }}
-                        >
-                          <div className="flex flex-col gap-3">
-                            <div>
-                              <span className="block text-sm font-semibold">{option.label}</span>
-                              <span className={["mt-1 block text-xs", active ? "text-emerald-50" : "text-zinc-500"].join(" ")}>
-                                {option.hint}
-                              </span>
-                            </div>
-                            {option.value !== "NONE" ? (
-                              <div
-                                className={[
-                                  "transition-all duration-300 ease-out",
-                                  showValueInput
-                                    ? "max-h-24 translate-y-0 opacity-100"
-                                    : "pointer-events-none max-h-0 -translate-y-1 opacity-0",
-                                ].join(" ")}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <label className="block text-xs font-semibold uppercase tracking-wide text-emerald-50">
-                                  {option.value === "PERCENT" ? "Процент" : "Сумма, ₽"}
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={option.value === "PERCENT" ? 100 : undefined}
-                                    value={inputValue}
-                                    onChange={(e) => {
-                                      const value = e.target.value === "" ? "" : Number(e.target.value);
-                                      if (option.value === "PERCENT") {
-                                        if (isWarehouse) setEditRentalDiscountPercent(value);
-                                        else setEditGreenwichRequestedDiscountPercent(value);
-                                      } else if (isWarehouse) {
-                                        setEditRentalDiscountAmount(value);
-                                      } else {
-                                        setEditGreenwichRequestedDiscountAmount(value);
-                                      }
-                                    }}
-                                    className="mt-1 w-full rounded-2xl border border-white/30 bg-white/95 px-3 py-2 text-sm font-semibold text-emerald-950 shadow-inner outline-none placeholder:text-emerald-300 focus:border-white focus:ring-4 focus:ring-white/40"
-                                    placeholder={option.value === "PERCENT" ? "10" : "5000"}
-                                    autoFocus={showValueInput}
-                                    tabIndex={showValueInput ? 0 : -1}
-                                  />
-                                </label>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                {!isWarehouse ? (
-                  <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                    Комментарий к запросу
-                    <textarea
-                      value={editGreenwichDiscountRequestComment}
-                      onChange={(e) => setEditGreenwichDiscountRequestComment(e.target.value)}
-                      rows={2}
-                      className={orderInputClass + " mt-1 w-full normal-case text-zinc-800"}
-                      placeholder="Например: нужна скидка из-за объема заявки"
-                    />
-                  </label>
-                ) : null}
-              </div>
-            </div>
+            <OrderDiscountControl
+              type={isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType}
+              percent={isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent}
+              amount={isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount}
+              rentalSubtotal={editPricing?.rentalBeforeDiscount ?? 0}
+              onTypeChange={(value) => {
+                if (isWarehouse) setEditRentalDiscountType(value);
+                else setEditGreenwichRequestedDiscountType(value);
+              }}
+              onPercentChange={(value) => {
+                if (isWarehouse) setEditRentalDiscountPercent(value);
+                else setEditGreenwichRequestedDiscountPercent(value);
+              }}
+              onAmountChange={(value) => {
+                if (isWarehouse) setEditRentalDiscountAmount(value);
+                else setEditGreenwichRequestedDiscountAmount(value);
+              }}
+              title={isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
+              description={
+                isWarehouse
+                  ? "Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."
+                  : "Укажите желаемую скидку — склад увидит запрос и примет решение."
+              }
+            />
+            {!isWarehouse ? (
+              <label className={orderGlassCardClass + " block p-5 text-xs font-semibold uppercase tracking-wide text-zinc-500"}>
+                Комментарий к запросу
+                <textarea
+                  value={editGreenwichDiscountRequestComment}
+                  onChange={(e) => setEditGreenwichDiscountRequestComment(e.target.value)}
+                  rows={2}
+                  className={orderInputClass + " mt-2 w-full normal-case text-zinc-800"}
+                  placeholder="Например: нужна скидка из-за объема заявки"
+                />
+              </label>
+            ) : null}
             <div className={orderGlassCardClass + " overflow-hidden"}>
               <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Состав заявки</span>

@@ -1739,6 +1739,8 @@ export function ProjectEstimatePanel({
       } else {
         window.alert(j?.error?.message ?? "Ошибка");
       }
+    } catch {
+      window.alert("Не удалось связаться с сервером. Проверьте соединение и повторите сохранение.");
     } finally {
       setBusy(false);
     }

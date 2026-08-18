@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { buildStandaloneEstimateReadModel } from "@/server/standalone-estimates/read-model";
 
 const InternalExpenseSchema = z.object({
+  id: z.string().trim().min(1).optional(),
   sortOrder: z.number().int().min(0).max(10000),
   title: z.string().trim().max(500).nullable().optional(),
   cost: z.number().finite().nullable().optional(),
@@ -17,6 +18,7 @@ const InternalExpenseSchema = z.object({
 }).strict();
 
 const LineSchema = z.object({
+  id: z.string().trim().min(1).optional(),
   position: z.number().int().min(0).max(10000),
   lineNumber: z.number().int().min(0).max(9999),
   name: z.string().trim().min(1).max(500),
@@ -42,6 +44,7 @@ const PatchSchema = z.object({
   clientTaxEnabled: z.boolean().optional(),
   clientChargeTaxEnabled: z.boolean().optional(),
   localSections: z.array(z.object({
+    id: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).max(200),
     sortOrder: z.number().int().min(-10000).max(10000),
     kind: z.enum(["LOCAL", "CONTRACTOR"]).optional(),

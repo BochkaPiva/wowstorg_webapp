@@ -97,6 +97,7 @@ type Order = {
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   hiddenExpenses?: OrderHiddenExpense[];
   payMultiplier?: number | null;
+  clientPaymentMethod?: OrderServicePaymentMethod;
   rentalDiscountType: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent: number | null;
   rentalDiscountAmount: number | null;
@@ -225,6 +226,7 @@ function orderTotal(order: {
   rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
+  clientPaymentMethod?: OrderServicePaymentMethod;
 }): number {
   return calcOrderPricingClient(order).grandTotal;
 }
@@ -245,6 +247,7 @@ function calcOrderPricingClient(order: {
   rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
+  clientPaymentMethod?: OrderServicePaymentMethod;
 }) {
   const startPart: RentalPartOfDay = order.rentalStartPartOfDay ?? "MORNING";
   const endPart: RentalPartOfDay = order.rentalEndPartOfDay ?? "MORNING";
@@ -272,7 +275,8 @@ function calcOrderPricingClient(order: {
     (order.montageEnabled === false ? 0 : order.montagePrice ?? 0) +
     (order.demontageEnabled === false ? 0 : order.demontagePrice ?? 0);
   const grandTotalBeforeTax = roundMoney(rentalAfterDiscount + services);
-  const taxAmount = roundMoney(grandTotalBeforeTax * ORDER_TAX_RATE);
+  const taxRate = order.clientPaymentMethod === "CASH" ? 0 : ORDER_TAX_RATE;
+  const taxAmount = roundMoney(grandTotalBeforeTax * taxRate);
   return {
     days,
     multiplier,
@@ -281,7 +285,7 @@ function calcOrderPricingClient(order: {
     rentalAfterDiscount,
     services,
     grandTotalBeforeTax,
-    taxRate: ORDER_TAX_RATE,
+    taxRate,
     taxAmount,
     grandTotal: roundMoney(grandTotalBeforeTax + taxAmount),
   };
@@ -934,6 +938,7 @@ export default function OrderDetailsPage() {
       rentalDiscountAmount: isWarehouse
         ? editRentalDiscountAmount === "" ? null : Number(editRentalDiscountAmount)
         : order.rentalDiscountAmount,
+      clientPaymentMethod: order.clientPaymentMethod,
     });
   }, [
     catalogItemsById,

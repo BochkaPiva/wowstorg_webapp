@@ -438,6 +438,7 @@ export async function PATCH(
           rentalStartPartOfDay: order.rentalStartPartOfDay,
           rentalEndPartOfDay: order.rentalEndPartOfDay,
           payMultiplier: order.payMultiplier,
+          clientPaymentMethod: order.clientPaymentMethod,
           deliveryEnabled: nextDeliveryEnabled,
           deliveryPrice: nextDeliveryPrice,
           montageEnabled: nextMontageEnabled,

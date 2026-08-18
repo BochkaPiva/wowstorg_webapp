@@ -33,6 +33,7 @@ export async function GET() {
         rentalDiscountType: true,
         rentalDiscountPercent: true,
         rentalDiscountAmount: true,
+        clientPaymentMethod: true,
         customer: { select: { id: true, name: true } },
         lines: {
           select: { requestedQty: true, pricePerDaySnapshot: true },
@@ -55,6 +56,7 @@ export async function GET() {
         demontagePrice: o.demontagePrice,
         lines: o.lines,
         discount: o,
+        clientPaymentMethod: o.clientPaymentMethod,
       });
       return {
         id: o.id,

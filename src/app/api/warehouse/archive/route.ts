@@ -132,6 +132,7 @@ export async function GET(req: Request) {
       rentalDiscountType: true,
       rentalDiscountPercent: true,
       rentalDiscountAmount: true,
+      clientPaymentMethod: true,
       project: { select: { id: true, title: true } },
       customer: { select: { id: true, name: true } },
       greenwichUser: {
@@ -159,6 +160,7 @@ export async function GET(req: Request) {
       demontagePrice: o.demontageEnabled ? o.demontagePrice : 0,
       lines: o.lines,
       discount: o,
+      clientPaymentMethod: o.clientPaymentMethod,
       quantityMode: "issued",
     });
     const profit = calcWarehouseProfitEstimate({

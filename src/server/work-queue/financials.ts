@@ -29,6 +29,7 @@ type QueueOrderPricingInput = {
   rentalDiscountType?: string | null;
   rentalDiscountPercent?: unknown;
   rentalDiscountAmount?: unknown;
+  clientPaymentMethod?: "NON_CASH" | "CASH" | string | null;
   estimateSentSnapshot?: unknown;
   lines: QueueOrderLine[];
 };
@@ -104,6 +105,7 @@ function orderPricing(input: QueueOrderPricingInput, lines: QueueOrderLine[], di
     demontagePrice: input.demontagePrice,
     lines,
     discount,
+    clientPaymentMethod: input.clientPaymentMethod,
   });
 }
 

@@ -10,8 +10,8 @@ import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { CartRelatedSuggestions } from "@/app/cart/CartRelatedSuggestions";
 import { ItemModal } from "@/app/catalog/ItemModal";
 import {
+  CompactOrderDiscountControl,
   getOrderDiscountError,
-  OrderDiscountControl,
   type OrderDiscountType,
   type OrderDiscountValue,
 } from "@/app/orders/OrderDiscountControl";
@@ -194,6 +194,8 @@ export default function CartPage() {
   const [rentalDiscountType, setRentalDiscountType] = React.useState<OrderDiscountType>("NONE");
   const [rentalDiscountPercent, setRentalDiscountPercent] = React.useState<OrderDiscountValue>("");
   const [rentalDiscountAmount, setRentalDiscountAmount] = React.useState<OrderDiscountValue>("");
+  const [clientPaymentMethod, setClientPaymentMethod] =
+    React.useState<OrderServicePaymentMethod>("NON_CASH");
 
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
@@ -692,7 +694,8 @@ export default function CartPage() {
   const totalWithServices =
     totalForPeriodAfterDiscount + deliveryPriceNum + montagePriceNum + demontagePriceNum;
   const activeServicesCount = [deliveryEnabled, montageEnabled, demontageEnabled].filter(Boolean).length;
-  const taxAmount = Math.round(totalWithServices * ORDER_TAX_RATE);
+  const clientTaxRate = isWarehouse && clientPaymentMethod === "CASH" ? 0 : ORDER_TAX_RATE;
+  const taxAmount = Math.round(totalWithServices * clientTaxRate);
   const totalWithTax = Math.round(totalWithServices + taxAmount);
   const checkoutReadyByDate =
     isWarehouse && startDate
@@ -935,6 +938,7 @@ export default function CartPage() {
         if (demontageEnabled) payload.demontageInternalPaymentMethod = demontageInternalPaymentMethod;
       }
       if (isWarehouse) {
+        payload.clientPaymentMethod = clientPaymentMethod;
         payload.rentalDiscountType = rentalDiscountType;
         payload.rentalDiscountPercent =
           rentalDiscountType === "PERCENT" && rentalDiscountPercent !== ""
@@ -1426,18 +1430,6 @@ export default function CartPage() {
                   </label>
                 ) : null}
 
-                {isWarehouse && !isQuickSupplement && !isProjectDemoCart ? (
-                  <OrderDiscountControl
-                    type={rentalDiscountType}
-                    percent={rentalDiscountPercent}
-                    amount={rentalDiscountAmount}
-                    rentalSubtotal={totalForPeriod}
-                    onTypeChange={setRentalDiscountType}
-                    onPercentChange={setRentalDiscountPercent}
-                    onAmountChange={setRentalDiscountAmount}
-                  />
-                ) : null}
-
                 {!isProjectDemoCart ? (
                   <details
                     className="co-services co-servicesDisclosure co-services--checkout"
@@ -1618,13 +1610,52 @@ export default function CartPage() {
                 <aside className="cart-summaryRail" aria-label="Итог заявки">
                 <div className="cart-footer">
                   <div className="cart-summaryEyebrow">Итог заявки</div>
+                  {isWarehouse && !isQuickSupplement && !isProjectDemoCart ? (
+                    <div className="checkout-financeControls">
+                      <fieldset className="checkout-paymentMethod">
+                        <legend>Оплата</legend>
+                        <div role="radiogroup" aria-label="Способ оплаты клиентом">
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={clientPaymentMethod === "NON_CASH"}
+                            className={clientPaymentMethod === "NON_CASH" ? "is-active" : ""}
+                            onClick={() => setClientPaymentMethod("NON_CASH")}
+                          >
+                            Безнал
+                          </button>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={clientPaymentMethod === "CASH"}
+                            className={clientPaymentMethod === "CASH" ? "is-active" : ""}
+                            onClick={() => setClientPaymentMethod("CASH")}
+                          >
+                            Наличные
+                          </button>
+                        </div>
+                      </fieldset>
+                      <CompactOrderDiscountControl
+                        type={rentalDiscountType}
+                        percent={rentalDiscountPercent}
+                        amount={rentalDiscountAmount}
+                        rentalSubtotal={totalForPeriod}
+                        onTypeChange={setRentalDiscountType}
+                        onPercentChange={setRentalDiscountPercent}
+                        onAmountChange={setRentalDiscountAmount}
+                        disabled={submitting}
+                      />
+                    </div>
+                  ) : null}
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>
                     {isWarehouse && (deliveryPriceNum > 0 || montagePriceNum > 0 || demontagePriceNum > 0) ? (
                       <>
                         <span className="cart-totalLabel">Итого</span>
                         <strong className="cart-totalValue">{formatMoneyRub(totalWithTax)}</strong>
                         <span className="cart-total-detail">
-                          До налога {formatMoneyRub(totalWithServices)} · налог {formatMoneyRub(taxAmount)}
+                          {isWarehouse && clientPaymentMethod === "CASH"
+                            ? "Наличные · налог не начисляется"
+                            : `До налога ${formatMoneyRub(totalWithServices)} · налог ${formatMoneyRub(taxAmount)}`}
                         </span>
                       </>
                     ) : (
@@ -1632,7 +1663,9 @@ export default function CartPage() {
                         <span className="cart-totalLabel">Итого за период</span>
                         <strong className="cart-totalValue">{formatMoneyRub(totalWithTax)}</strong>
                         <span className="cart-total-detail">
-                          До налога {formatMoneyRub(totalWithServices)} · налог {formatMoneyRub(taxAmount)}
+                          {isWarehouse && clientPaymentMethod === "CASH"
+                            ? "Наличные · налог не начисляется"
+                            : `До налога ${formatMoneyRub(totalWithServices)} · налог ${formatMoneyRub(taxAmount)}`}
                         </span>
                       </>
                     )}

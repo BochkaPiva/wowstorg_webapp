@@ -63,6 +63,7 @@ export async function GET(req: Request) {
       rentalDiscountType: true,
       rentalDiscountPercent: true,
       rentalDiscountAmount: true,
+      clientPaymentMethod: true,
       lines: {
         select: {
           itemId: true,
@@ -100,6 +101,7 @@ export async function GET(req: Request) {
       payMultiplier: o.payMultiplier,
       lines: o.lines,
       discount: o,
+      clientPaymentMethod: o.clientPaymentMethod,
       quantityMode: "issued",
     });
     for (const [idx, l] of o.lines.entries()) {

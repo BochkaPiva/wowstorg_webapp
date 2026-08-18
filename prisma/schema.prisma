@@ -1058,6 +1058,10 @@ model Order {
   /// чтобы изменения правил не ломали историю.
   payMultiplier Decimal @db.Decimal(5, 4)
 
+  /// Способ оплаты клиентом. Для наличной оплаты клиентский налог не начисляется.
+  /// Greenwich всегда оформляет заявки как NON_CASH.
+  clientPaymentMethod OrderServicePaymentMethod @default(NON_CASH)
+
   /// Ручная скидка склада на аренду реквизита (не применяется к доп. услугам).
   rentalDiscountType    OrderDiscountType @default(NONE)
   rentalDiscountPercent Decimal?          @db.Decimal(5, 2)

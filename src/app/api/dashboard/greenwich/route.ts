@@ -62,6 +62,7 @@ export async function GET() {
         rentalDiscountType: true,
         rentalDiscountPercent: true,
         rentalDiscountAmount: true,
+        clientPaymentMethod: true,
         lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
       },
     }),
@@ -100,6 +101,7 @@ export async function GET() {
             demontagePrice: nearestOrder.demontagePrice,
             lines: nearestOrder.lines,
             discount: nearestOrder,
+            clientPaymentMethod: nearestOrder.clientPaymentMethod,
           }).grandTotal,
         }
       : null;

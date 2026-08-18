@@ -157,6 +157,7 @@ function calcOrderTotalAmount(args: {
   rentalStartPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalStartPartOfDay"];
   rentalEndPartOfDay?: Parameters<typeof calcOrderPricing>[0]["rentalEndPartOfDay"];
   payMultiplier: Prisma.Decimal | number | null;
+  clientPaymentMethod?: Parameters<typeof calcOrderPricing>[0]["clientPaymentMethod"];
   deliveryEnabled?: boolean;
   deliveryPrice: Prisma.Decimal | number | null;
   montageEnabled?: boolean;
@@ -248,6 +249,7 @@ export async function listOrdersForCleanup(
       eventName: true,
       estimateFileKey: true,
       payMultiplier: true,
+      clientPaymentMethod: true,
       deliveryEnabled: true,
       deliveryPrice: true,
       montageEnabled: true,
@@ -288,6 +290,7 @@ export async function listOrdersForCleanup(
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
+      clientPaymentMethod: order.clientPaymentMethod,
       deliveryEnabled: order.deliveryEnabled,
       deliveryPrice: order.deliveryPrice,
       montageEnabled: order.montageEnabled,
@@ -396,6 +399,7 @@ async function prepareOrderCleanup(
       greenwichUser: { select: { displayName: true } },
       estimateFileKey: true,
       payMultiplier: true,
+      clientPaymentMethod: true,
       deliveryEnabled: true,
       deliveryPrice: true,
       montageEnabled: true,
@@ -470,6 +474,7 @@ async function prepareOrderCleanup(
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
+      clientPaymentMethod: order.clientPaymentMethod,
       deliveryEnabled: order.deliveryEnabled,
       deliveryPrice: order.deliveryPrice,
       montageEnabled: order.montageEnabled,

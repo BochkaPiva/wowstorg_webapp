@@ -113,6 +113,7 @@ type RequisiteOrder = {
   demontageInternalCost: number | null;
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   payMultiplier?: number | null;
+  clientPaymentMethod?: OrderServicePaymentMethod;
   rentalDiscountType?: "NONE" | "PERCENT" | "AMOUNT";
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
@@ -4240,6 +4241,7 @@ function RequisiteSectionEditor({
       rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
       rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
       payMultiplier: order.payMultiplier,
+      clientPaymentMethod: order.clientPaymentMethod,
       deliveryEnabled: services.deliveryEnabled,
       deliveryPrice: services.deliveryPrice,
       montageEnabled: services.montageEnabled,

@@ -59,6 +59,7 @@ type OrderForNotify = {
   demontageComment: string | null;
   demontagePrice: unknown;
   payMultiplier: unknown;
+  clientPaymentMethod?: string | null;
   rentalDiscountType?: string | null;
   rentalDiscountPercent?: unknown;
   rentalDiscountAmount?: unknown;
@@ -345,6 +346,7 @@ export async function notifyRentalDiscountApplied(order: OrderForNotify): Promis
       rentalStartPartOfDay: order.rentalStartPartOfDay,
       rentalEndPartOfDay: order.rentalEndPartOfDay,
       payMultiplier: order.payMultiplier,
+      clientPaymentMethod: order.clientPaymentMethod,
       deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
       montagePrice: order.montageEnabled ? order.montagePrice : 0,
       demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
@@ -394,6 +396,7 @@ function buildEstimateBody(o: OrderForNotify): string {
     rentalStartPartOfDay: o.rentalStartPartOfDay,
     rentalEndPartOfDay: o.rentalEndPartOfDay,
     payMultiplier: o.payMultiplier,
+    clientPaymentMethod: o.clientPaymentMethod,
     deliveryPrice: o.deliveryEnabled ? o.deliveryPrice : 0,
     montagePrice: o.montageEnabled ? o.montagePrice : 0,
     demontagePrice: o.demontageEnabled ? o.demontagePrice : 0,

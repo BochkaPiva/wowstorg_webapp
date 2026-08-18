@@ -50,6 +50,7 @@ export type CreateOrderInput = {
   rentalDiscountType?: OrderDiscountType;
   rentalDiscountPercent?: number | null;
   rentalDiscountAmount?: number | null;
+  clientPaymentMethod?: OrderServicePaymentMethod;
   greenwichRequestedDiscountType?: OrderDiscountType;
   greenwichRequestedDiscountPercent?: number | null;
   greenwichRequestedDiscountAmount?: number | null;
@@ -302,6 +303,9 @@ export async function createOrderInTransaction(
     rentalDiscountPercent: isWarehouse ? input.rentalDiscountPercent ?? null : null,
     rentalDiscountAmount: isWarehouse ? input.rentalDiscountAmount ?? null : null,
   };
+  const clientPaymentMethod: OrderServicePaymentMethod = isWarehouse
+    ? (input.clientPaymentMethod ?? "NON_CASH")
+    : "NON_CASH";
   const pricingPreview = calcOrderPricing({
     startDate,
     endDate,
@@ -320,6 +324,7 @@ export async function createOrderInTransaction(
       pricePerDaySnapshot: itemById.get(line.itemId)!.pricePerDay,
     })),
     discount: actualDiscount,
+    clientPaymentMethod,
   });
   const discountValidation = validateOrderDiscount({
     discount: actualDiscount,
@@ -385,6 +390,7 @@ export async function createOrderInTransaction(
         ? { demontageInternalPaymentMethod: input.demontageInternalPaymentMethod }
         : {}),
       payMultiplier,
+      clientPaymentMethod,
       rentalDiscountType: actualDiscount.rentalDiscountType,
       rentalDiscountPercent:
         actualDiscount.rentalDiscountType === "PERCENT" ? actualDiscount.rentalDiscountPercent : null,

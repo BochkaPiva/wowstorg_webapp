@@ -50,6 +50,7 @@ const BodySchema = z.object({
   montageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
   demontageInternalCost: z.number().min(0).nullable().optional(),
   demontageInternalPaymentMethod: ServicePaymentMethodSchema.optional(),
+  clientPaymentMethod: ServicePaymentMethodSchema.optional(),
 
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
@@ -183,6 +184,7 @@ export async function POST(req: Request) {
           rentalDiscountType: isWarehouse ? data.rentalDiscountType : "NONE",
           rentalDiscountPercent: isWarehouse ? data.rentalDiscountPercent : null,
           rentalDiscountAmount: isWarehouse ? data.rentalDiscountAmount : null,
+          clientPaymentMethod: isWarehouse ? data.clientPaymentMethod : "NON_CASH",
           greenwichRequestedDiscountType: !isWarehouse ? data.greenwichRequestedDiscountType : "NONE",
           greenwichRequestedDiscountPercent: !isWarehouse ? data.greenwichRequestedDiscountPercent : null,
           greenwichRequestedDiscountAmount: !isWarehouse ? data.greenwichRequestedDiscountAmount : null,

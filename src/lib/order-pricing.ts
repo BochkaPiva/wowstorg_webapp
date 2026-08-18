@@ -88,6 +88,7 @@ export function calcOrderPricing(args: {
   demontagePrice?: unknown;
   lines: OrderPricingLine[];
   discount?: OrderDiscountInput;
+  clientPaymentMethod?: "NON_CASH" | "CASH" | string | null;
   quantityMode?: "requested" | "issued";
 }): OrderPricingBreakdown {
   const startPart = args.rentalStartPartOfDay ?? "MORNING";
@@ -130,7 +131,7 @@ export function calcOrderPricing(args: {
   const demontageTotal = args.demontageEnabled === false ? 0 : num(args.demontagePrice);
   const servicesTotal = deliveryTotal + montageTotal + demontageTotal;
   const grandTotalBeforeTax = roundMoney(rentalSubtotalAfterDiscount + servicesTotal);
-  const taxRate = ORDER_TAX_RATE;
+  const taxRate = args.clientPaymentMethod === "CASH" ? 0 : ORDER_TAX_RATE;
   const taxAmount = roundMoney(grandTotalBeforeTax * taxRate);
   const grandTotal = roundMoney(grandTotalBeforeTax + taxAmount);
   const lineAllocations = baseLines.map((line) => {

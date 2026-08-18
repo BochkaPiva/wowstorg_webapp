@@ -21,6 +21,7 @@ export function calcOrderTotalAmount(args: {
   demontagePrice: number | null;
   lines: Array<{ requestedQty: number; pricePerDaySnapshot: unknown }>;
   discount?: OrderDiscountInput;
+  clientPaymentMethod?: "NON_CASH" | "CASH" | string | null;
 }): number {
   return calcOrderPricing({
     ...args,

@@ -220,6 +220,7 @@ export async function GET(req: Request) {
                   rentalDiscountType: true,
                   rentalDiscountPercent: true,
                   rentalDiscountAmount: true,
+                  clientPaymentMethod: true,
                   lines: {
                     select: {
                       requestedQty: true,
@@ -287,6 +288,7 @@ export async function GET(req: Request) {
             montagePrice: order.montageEnabled ? order.montagePrice : 0,
             demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
             discount: order,
+            clientPaymentMethod: order.clientPaymentMethod,
           });
           clientSubtotal += pricing.grandTotalBeforeTax;
           const serviceCosts = calcOrderServicesInternalCosts({

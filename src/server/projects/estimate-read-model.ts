@@ -134,6 +134,7 @@ export async function buildProjectEstimateReadModel(args: {
           rentalStartPartOfDay: true,
           rentalEndPartOfDay: true,
           payMultiplier: true,
+          clientPaymentMethod: true,
           deliveryEnabled: true,
           deliveryComment: true,
           deliveryPrice: true,
@@ -322,6 +323,7 @@ export async function buildProjectEstimateReadModel(args: {
           rentalStartPartOfDay: linkedOrder.rentalStartPartOfDay,
           rentalEndPartOfDay: linkedOrder.rentalEndPartOfDay,
           payMultiplier: linkedOrder.payMultiplier,
+          clientPaymentMethod: linkedOrder.clientPaymentMethod,
           lines: linkedOrder.lines,
           discount: linkedOrder,
         });
@@ -437,6 +439,7 @@ export async function buildProjectEstimateReadModel(args: {
                   rentalStartPartOfDay: linkedOrder.rentalStartPartOfDay,
                   rentalEndPartOfDay: linkedOrder.rentalEndPartOfDay,
                   payMultiplier: linkedOrder.payMultiplier,
+                  clientPaymentMethod: linkedOrder.clientPaymentMethod,
                   lines: linkedOrder.lines,
                   discount: linkedOrder,
                 });

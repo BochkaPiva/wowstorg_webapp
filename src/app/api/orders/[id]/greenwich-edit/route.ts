@@ -150,6 +150,7 @@ export async function PATCH(
             rentalStartPartOfDay: order.rentalStartPartOfDay,
             rentalEndPartOfDay: order.rentalEndPartOfDay,
             payMultiplier: order.payMultiplier,
+            clientPaymentMethod: "NON_CASH",
             lines: data.lines.map((row) => ({
               itemId: row.itemId,
               requestedQty: row.requestedQty,

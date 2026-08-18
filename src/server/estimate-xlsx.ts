@@ -33,6 +33,7 @@ type OrderForEstimate = {
   rentalStartPartOfDay?: "MORNING" | "EVENING";
   rentalEndPartOfDay?: "MORNING" | "EVENING";
   payMultiplier: unknown;
+  clientPaymentMethod?: OrderServicePaymentMethod | string | null;
   deliveryEnabled: boolean;
   deliveryPrice: unknown;
   deliveryComment: string | null;
@@ -540,6 +541,7 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
     rentalStartPartOfDay: order.rentalStartPartOfDay,
     rentalEndPartOfDay: order.rentalEndPartOfDay,
     payMultiplier: order.payMultiplier,
+    clientPaymentMethod: order.clientPaymentMethod,
     deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
     montagePrice: order.montageEnabled ? order.montagePrice : 0,
     demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,
@@ -719,6 +721,7 @@ export async function buildInternalEstimateXlsx(order: OrderForEstimate): Promis
     rentalStartPartOfDay: order.rentalStartPartOfDay,
     rentalEndPartOfDay: order.rentalEndPartOfDay,
     payMultiplier: order.payMultiplier,
+    clientPaymentMethod: order.clientPaymentMethod,
     deliveryPrice: order.deliveryEnabled ? order.deliveryPrice : 0,
     montagePrice: order.montageEnabled ? order.montagePrice : 0,
     demontagePrice: order.demontageEnabled ? order.demontagePrice : 0,

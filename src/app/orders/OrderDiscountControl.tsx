@@ -183,3 +183,100 @@ export function OrderDiscountControl({
     </section>
   );
 }
+
+export function CompactOrderDiscountControl({
+  type,
+  percent,
+  amount,
+  rentalSubtotal,
+  onTypeChange,
+  onPercentChange,
+  onAmountChange,
+  disabled = false,
+}: DiscountState & {
+  rentalSubtotal: number;
+  onTypeChange: (value: OrderDiscountType) => void;
+  onPercentChange: (value: OrderDiscountValue) => void;
+  onAmountChange: (value: OrderDiscountValue) => void;
+  disabled?: boolean;
+}) {
+  const state = { type, percent, amount };
+  const discount = calculateDiscount(state, rentalSubtotal);
+  const error = getOrderDiscountError({ ...state, rentalSubtotal });
+  const summary =
+    type === "PERCENT" && percent !== ""
+      ? `${percent}%`
+      : type === "AMOUNT" && amount !== ""
+        ? money(Number(amount))
+        : "Нет";
+
+  const reset = () => {
+    onTypeChange("NONE");
+    onPercentChange("");
+    onAmountChange("");
+  };
+
+  return (
+    <details className="checkout-financeDisclosure">
+      <summary className="checkout-financeSummary">
+        <span>
+          <small>Скидка на аренду</small>
+          <strong>{summary}</strong>
+        </span>
+        <span className="checkout-financeAction">{type === "NONE" ? "Добавить" : "Изменить"}</span>
+      </summary>
+      <div className="checkout-financeEditor">
+        <div className="checkout-financeTabs" role="radiogroup" aria-label="Формат скидки">
+          {([
+            ["PERCENT", "%"],
+            ["AMOUNT", "₽"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={type === value}
+              disabled={disabled}
+              onClick={() => onTypeChange(value)}
+              className={type === value ? "is-active" : ""}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {type !== "NONE" ? (
+          <label className="checkout-financeInput">
+            <span>{type === "PERCENT" ? "Процент" : "Сумма"}</span>
+            <span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={type === "PERCENT" ? 100 : rentalSubtotal}
+                step={type === "PERCENT" ? 0.5 : 1}
+                value={type === "PERCENT" ? percent : amount}
+                disabled={disabled}
+                onChange={(event) => {
+                  const next = event.target.value === "" ? "" : Number(event.target.value);
+                  if (type === "PERCENT") onPercentChange(next);
+                  else onAmountChange(next);
+                }}
+                aria-invalid={Boolean(error)}
+                placeholder={type === "PERCENT" ? "10" : "5000"}
+              />
+              <b>{type === "PERCENT" ? "%" : "₽"}</b>
+            </span>
+          </label>
+        ) : null}
+        <div className="checkout-financeMeta">
+          <span className={error ? "is-error" : ""}>
+            {error ?? (discount > 0 ? `Экономия ${money(discount)}` : "Только на аренду реквизита")}
+          </span>
+          {type !== "NONE" ? (
+            <button type="button" onClick={reset} disabled={disabled}>Сбросить</button>
+          ) : null}
+        </div>
+      </div>
+    </details>
+  );
+}

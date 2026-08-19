@@ -8,6 +8,8 @@ import { scheduleAfterResponse } from "@/server/notifications/schedule-after-res
 import { buildProjectEstimateReadModel } from "@/server/projects/estimate-read-model";
 import { assertProjectEditable } from "@/server/projects/project-guard";
 
+export const maxDuration = 60;
+
 const DraftLineInternalExpenseSchema = z
   .object({
     id: z.string().trim().min(1).optional(),
@@ -140,182 +142,97 @@ export async function PATCH(
 
   const version = await prisma.projectEstimateVersion.findFirst({
     where: { projectId, versionNumber },
-    select: { id: true },
+    select: {
+      id: true,
+      sections: {
+        where: {
+          kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
+        },
+        select: { id: true },
+      },
+    },
   });
   if (!version) return jsonError(404, "Версия сметы не найдена");
 
+  if (
+    version.sections.length > 0
+    && localSections.length === 0
+    && !allowDeleteAllLocalSections
+  ) {
+    return jsonError(400, "Подтвердите удаление всех локальных разделов перед сохранением");
+  }
+
+  const draftStats = {
+    sections: localSections.length,
+    lines: localSections.reduce((total, section) => total + section.lines.length, 0),
+    internalExpenses: localSections.reduce(
+      (total, section) =>
+        total
+        + section.lines.reduce(
+          (lineTotal, line) => lineTotal + (line.internalExpenses?.length ?? 0),
+          0,
+        ),
+      0,
+    ),
+  };
+
   try {
     await prisma.$transaction(async (tx) => {
-      const existingSections = await tx.projectEstimateSection.findMany({
+      // LOCAL/CONTRACTOR sections are an editable draft without external references.
+      // Replacing the draft in bulk avoids hundreds of sequential update/delete calls
+      // that can exceed Prisma's interactive transaction timeout on large estimates.
+      await tx.projectEstimateSection.deleteMany({
         where: {
           versionId: version.id,
           kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
         },
-        include: {
-          lines: {
-            orderBy: { position: "asc" },
-            include: {
-              internalExpenses: {
-                orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-              },
-            },
-          },
-        },
-        orderBy: { sortOrder: "asc" },
       });
 
-      const existingSectionMap = new Map(existingSections.map((section) => [section.id, section]));
-      if (existingSections.length > 0 && localSections.length === 0 && !allowDeleteAllLocalSections) {
-        throw new Error("DELETE_ALL_LOCAL_SECTIONS_REQUIRES_CONFIRMATION");
-      }
-      const keptSectionIds = new Set(
-        localSections
-          .map((section) => section.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0)
-          .filter((id) => existingSectionMap.has(id)),
-      );
-
-      for (const section of existingSections) {
-        if (!keptSectionIds.has(section.id)) {
-          await tx.projectEstimateSection.delete({ where: { id: section.id } });
-        }
-      }
-
-      for (const sectionDraft of localSections.sort((a, b) => a.sortOrder - b.sortOrder)) {
-        const existingSection =
-          sectionDraft.id && existingSectionMap.has(sectionDraft.id)
-            ? existingSectionMap.get(sectionDraft.id)!
-            : null;
-
-        const sectionKind =
-          sectionDraft.kind === "LOCAL"
-            ? ProjectEstimateSectionKind.LOCAL
-            : ProjectEstimateSectionKind.CONTRACTOR;
-
-        const savedSection = existingSection
-          ? await tx.projectEstimateSection.update({
-              where: { id: existingSection.id },
-              data: {
-                title: sectionDraft.title.trim(),
-                sortOrder: sectionDraft.sortOrder,
-                kind: sectionKind,
-              },
-            })
-          : await tx.projectEstimateSection.create({
-              data: {
-                versionId: version.id,
-                title: sectionDraft.title.trim(),
-                sortOrder: sectionDraft.sortOrder,
-                kind: sectionKind,
-              },
-            });
-
-        const existingLineMap = new Map((existingSection?.lines ?? []).map((line) => [line.id, line]));
-        const keptLineIds = new Set(
-          sectionDraft.lines
-            .map((line) => line.id)
-            .filter((id): id is string => typeof id === "string" && id.length > 0)
-            .filter((id) => existingLineMap.has(id)),
-        );
-
-        for (const line of existingSection?.lines ?? []) {
-          if (!keptLineIds.has(line.id)) {
-            await tx.projectEstimateLine.delete({ where: { id: line.id } });
-          }
-        }
-
-        for (const lineDraft of sectionDraft.lines.sort((a, b) => a.position - b.position)) {
-          const data = {
-            sectionId: savedSection.id,
-            position: lineDraft.position,
-            lineNumber: lineDraft.lineNumber,
-            name: lineDraft.name.trim(),
-            description: lineDraft.description?.trim() || null,
-            lineType: lineDraft.lineType?.trim() || "OTHER",
-            costClient:
-              lineDraft.costClient == null ? null : new Prisma.Decimal(lineDraft.costClient),
-            costInternal:
-              lineDraft.costInternal == null ? null : new Prisma.Decimal(lineDraft.costInternal),
-            unit: lineDraft.unit === undefined ? undefined : lineDraft.unit?.trim() || null,
-            qty: lineDraft.qty == null ? null : new Prisma.Decimal(lineDraft.qty),
-            unitPriceClient:
-              lineDraft.unitPriceClient == null ? null : new Prisma.Decimal(lineDraft.unitPriceClient),
-            paymentMethod:
-              lineDraft.paymentMethod === undefined
-                ? undefined
-                : lineDraft.paymentMethod?.trim() || null,
-            paymentStatus:
-              lineDraft.paymentStatus === undefined
-                ? undefined
-                : lineDraft.paymentStatus?.trim() || null,
-            contractorNote:
-              lineDraft.contractorNote === undefined
-                ? undefined
-                : lineDraft.contractorNote?.trim() || null,
-            contractorRequisites:
-              lineDraft.contractorRequisites === undefined
-                ? undefined
-                : lineDraft.contractorRequisites?.trim() || null,
-            itemId: lineDraft.itemId ?? null,
-          };
-
-          const savedLine =
-            lineDraft.id && existingLineMap.has(lineDraft.id)
-              ? await tx.projectEstimateLine.update({
-              where: { id: lineDraft.id },
-              data,
-                })
-              : await tx.projectEstimateLine.create({ data });
-
-          const existingExpenses = existingLineMap.get(savedLine.id)?.internalExpenses ?? [];
-          const existingExpenseMap = new Map(existingExpenses.map((expense) => [expense.id, expense]));
-          const expenseDrafts = lineDraft.internalExpenses ?? [];
-          const keptExpenseIds = new Set(
-            expenseDrafts
-              .map((expense) => expense.id)
-              .filter((id): id is string => typeof id === "string" && id.length > 0)
-              .filter((id) => existingExpenseMap.has(id)),
-          );
-
-          for (const expense of existingExpenses) {
-            if (!keptExpenseIds.has(expense.id)) {
-              await tx.projectEstimateLineInternalExpense.delete({ where: { id: expense.id } });
-            }
-          }
-
-          for (const expenseDraft of expenseDrafts.sort((a, b) => a.sortOrder - b.sortOrder)) {
-            const expenseData = {
-              lineId: savedLine.id,
-              sortOrder: expenseDraft.sortOrder,
-              title: expenseDraft.title?.trim() || null,
-              cost: expenseDraft.cost == null ? null : new Prisma.Decimal(expenseDraft.cost),
-              paymentMethod:
-                expenseDraft.paymentMethod === undefined
-                  ? undefined
-                  : expenseDraft.paymentMethod?.trim() || null,
-              paymentStatus:
-                expenseDraft.paymentStatus === undefined
-                  ? undefined
-                  : expenseDraft.paymentStatus?.trim() || null,
-              contractorNote:
-                expenseDraft.contractorNote === undefined
-                  ? undefined
-                  : expenseDraft.contractorNote?.trim() || null,
-              contractorRequisites:
-                expenseDraft.contractorRequisites === undefined
-                  ? undefined
-                  : expenseDraft.contractorRequisites?.trim() || null,
-            };
-            if (expenseDraft.id && existingExpenseMap.has(expenseDraft.id)) {
-              await tx.projectEstimateLineInternalExpense.update({
-                where: { id: expenseDraft.id },
-                data: expenseData,
-              });
-            } else {
-              await tx.projectEstimateLineInternalExpense.create({ data: expenseData });
-            }
-          }
-        }
+      for (const section of [...localSections].sort((a, b) => a.sortOrder - b.sortOrder)) {
+        await tx.projectEstimateSection.create({
+          data: {
+            versionId: version.id,
+            title: section.title.trim(),
+            sortOrder: section.sortOrder,
+            kind:
+              section.kind === "LOCAL"
+                ? ProjectEstimateSectionKind.LOCAL
+                : ProjectEstimateSectionKind.CONTRACTOR,
+            lines: {
+              create: [...section.lines].sort((a, b) => a.position - b.position).map((line) => ({
+                position: line.position,
+                lineNumber: line.lineNumber,
+                name: line.name.trim(),
+                description: line.description?.trim() || null,
+                lineType: line.lineType?.trim() || "OTHER",
+                costClient: line.costClient == null ? null : new Prisma.Decimal(line.costClient),
+                costInternal: line.costInternal == null ? null : new Prisma.Decimal(line.costInternal),
+                unit: line.unit?.trim() || null,
+                qty: line.qty == null ? null : new Prisma.Decimal(line.qty),
+                unitPriceClient:
+                  line.unitPriceClient == null ? null : new Prisma.Decimal(line.unitPriceClient),
+                paymentMethod: line.paymentMethod?.trim() || null,
+                paymentStatus: line.paymentStatus?.trim() || null,
+                contractorNote: line.contractorNote?.trim() || null,
+                contractorRequisites: line.contractorRequisites?.trim() || null,
+                itemId: line.itemId ?? null,
+                internalExpenses: {
+                  create: [...(line.internalExpenses ?? [])]
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                    .map((expense) => ({
+                      sortOrder: expense.sortOrder,
+                      title: expense.title?.trim() || null,
+                      cost: expense.cost == null ? null : new Prisma.Decimal(expense.cost),
+                      paymentMethod: expense.paymentMethod?.trim() || null,
+                      paymentStatus: expense.paymentStatus?.trim() || null,
+                      contractorNote: expense.contractorNote?.trim() || null,
+                      contractorRequisites: expense.contractorRequisites?.trim() || null,
+                    })),
+                },
+              })),
+            },
+          },
+        });
       }
 
       if (
@@ -332,12 +249,24 @@ export async function PATCH(
           },
         });
       }
-    });
+    }, { maxWait: 5_000, timeout: 45_000 });
   } catch (e) {
-    if (e instanceof Error && e.message === "DELETE_ALL_LOCAL_SECTIONS_REQUIRES_CONFIRMATION") {
-      return jsonError(400, "Подтвердите удаление всех локальных разделов перед сохранением");
+    console.error("Failed to save project estimate draft", {
+      projectId,
+      versionNumber,
+      ...draftStats,
+      error: e,
+    });
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError
+      && (e.code === "P2024" || e.code === "P2028")
+    ) {
+      return jsonError(
+        503,
+        "Смета слишком большая для быстрого сохранения. Повторите попытку — черновик остался в браузере.",
+      );
     }
-    throw e;
+    return jsonError(500, "Не удалось сохранить смету. Черновик остался в браузере, повторите попытку.");
   }
   scheduleAfterResponse("notifyProjectEstimateDraftSaved", async () => {
     const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");

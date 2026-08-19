@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-18 — добавлен безопасный перенос дат заявки.
+> **Дата сверки:** 2026-08-19 — оптимизировано атомарное сохранение крупных проектных смет.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -25,6 +25,7 @@
 | `src/app/api/projects/[id]/draft-order/route.ts` | нет |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |
 | `src/app/api/projects/[id]/convert/route.ts` | **да** |
+| `src/app/api/projects/[id]/estimate/route.ts` | нет (bulk-замена редактируемых разделов, timeout 45 с) |
 | `src/app/api/standalone-estimates/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |

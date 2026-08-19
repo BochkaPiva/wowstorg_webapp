@@ -119,6 +119,7 @@ export function greenwichConfirmationMessage(args: {
   rentalEndPartOfDay?: "MORNING" | "EVENING" | null;
   daysBefore: number;
   orderUrl: string;
+  attempt?: 1 | 2 | 3;
 }): string {
   const title = args.eventName?.trim() || args.customerName;
   const period = formatRentalPeriodRangeFromUtcDatesRu({
@@ -127,14 +128,23 @@ export function greenwichConfirmationMessage(args: {
     rentalStartPartOfDay: args.rentalStartPartOfDay,
     rentalEndPartOfDay: args.rentalEndPartOfDay,
   });
+  const header = args.attempt === 3
+    ? "🔔 <b>Финальное напоминание</b>"
+    : args.attempt === 2
+      ? "⏰ <b>Напоминаем об актуальности заявки</b>"
+      : "🦖 <b>Проверим актуальность заявки</b>";
+  const attention = args.attempt && args.attempt > 1
+    ? ["", "Пожалуйста, выберите один из вариантов ниже — это займёт несколько секунд."]
+    : [];
   return [
-    "🦖 <b>Проверим актуальность заявки</b>",
+    header,
     "",
     `Событие «<b>${escapeTelegramHtml(title)}</b>» начинается ${checkpointLeadText(args.daysBefore)}.`,
     `Заказчик: ${escapeTelegramHtml(args.customerName)}`,
     `Период: ${escapeTelegramHtml(period)}`,
     "",
     "Всё остаётся в силе или появились изменения?",
+    ...attention,
     "",
     `<a href="${args.orderUrl}">Открыть заявку</a>`,
   ].join("\n");

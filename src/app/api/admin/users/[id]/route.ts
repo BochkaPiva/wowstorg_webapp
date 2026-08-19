@@ -4,6 +4,10 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import {
+  addGreenwichRatingEvent,
+  recomputeGreenwichRatingScore,
+} from "@/server/ratings/greenwich-rating";
 
 const UpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(200).optional(),
@@ -12,9 +16,8 @@ const UpdateSchema = z.object({
   isActive: z.boolean().optional(),
   mustSetPassword: z.boolean().optional(),
   password: z.string().min(6).max(512).optional(),
-  // Ручная правка рейтинга Greenwich.
-  // Если задано `greenwichRatingAuto=true` — выключаем ручную блокировку и применяем авто-пересчёт.
-  // Если задано `greenwichRatingScore` — ставим manualLocked=true и фиксируем score.
+  // Ручная правка — корректирующее событие, а не блокировка автоматики.
+  // `greenwichRatingAuto=true` удаляет только административные корректировки.
   greenwichRatingScore: z.number().int().min(0).max(100).optional(),
   greenwichRatingAuto: z.boolean().optional(),
 });
@@ -89,36 +92,32 @@ export async function PATCH(
         return jsonError(400, "Рейтинг доступен только пользователям роли GREENWICH");
       }
 
-      const orders = await prisma.order.findMany({
-        where: { greenwichUserId: id },
-        select: {
-          greenwichRatingOverdueDelta: true,
-          greenwichRatingIncidentsDelta: true,
-        },
+      await prisma.$transaction(async (tx) => {
+        if (parsed.data.greenwichRatingAuto === true) {
+          await tx.greenwichRatingEvent.deleteMany({
+            where: { userId: id, type: "ADMIN_ADJUSTMENT" },
+          });
+          await recomputeGreenwichRatingScore(tx, id);
+          return;
+        }
+
+        await recomputeGreenwichRatingScore(tx, id);
+        const current = await tx.greenwichRating.findUnique({
+          where: { userId: id },
+          select: { score: true },
+        });
+        const target = parsed.data.greenwichRatingScore ?? current?.score ?? 100;
+        const delta = target - (current?.score ?? 100);
+        if (delta === 0) return;
+        await addGreenwichRatingEvent(tx, {
+          userId: id,
+          type: "ADMIN_ADJUSTMENT",
+          delta,
+          reason: `Корректировка администратором ${auth.user.displayName}`,
+          sourceKey: `admin:${auth.user.id}:${id}:${crypto.randomUUID()}`,
+          recoverable: false,
+        });
       });
-
-      const sum = orders.reduce(
-        (s, o) => s + o.greenwichRatingOverdueDelta + o.greenwichRatingIncidentsDelta,
-        0,
-      );
-
-      const clamp0to100 = (n: number) => Math.max(0, Math.min(100, n));
-      const base = 100 + sum;
-
-      const score = parsed.data.greenwichRatingAuto === true
-        ? clamp0to100(base)
-        : clamp0to100(parsed.data.greenwichRatingScore ?? base);
-
-      const manualLocked = parsed.data.greenwichRatingAuto === true ? false : true;
-
-      await prisma.$executeRaw`
-        INSERT INTO "GreenwichRating" ("userId", "score", "manualLocked", "updatedAt")
-        VALUES (${id}, ${score}, ${manualLocked}, NOW())
-        ON CONFLICT ("userId") DO UPDATE
-        SET "score" = EXCLUDED."score",
-            "manualLocked" = EXCLUDED."manualLocked",
-            "updatedAt" = NOW()
-      `;
     }
 
     const telegramRow = (await prisma.$queryRaw<

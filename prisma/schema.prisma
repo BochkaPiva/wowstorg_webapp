@@ -48,6 +48,12 @@ enum GreenwichReminderResponse {
   CANCELLED
 }
 
+enum GreenwichRatingEventType {
+  CONFIRMATION_REPEAT_MISSED
+  CONFIRMATION_FINAL_MISSED
+  ADMIN_ADJUSTMENT
+}
+
 enum OrderDiscountType {
   NONE
   PERCENT
@@ -231,6 +237,7 @@ model User {
   ordersGreenwich                Order[]                     @relation("order_greenwich_user")
   orderHiddenExpensesCreated     OrderHiddenExpense[]        @relation("order_hidden_expense_created_by")
   greenwichRating                GreenwichRating?
+  greenwichRatingEvents          GreenwichRatingEvent[]
   sessions                       Session[]
   achievementProgress            AchievementProgress[]
   achievementUnlocks             AchievementUnlock[]
@@ -264,6 +271,37 @@ model GreenwichRating {
   score        Int      @default(100)
   manualLocked Boolean  @default(false)
   updatedAt    DateTime @updatedAt
+}
+
+/// Объяснимый журнал изменений рейтинга. sourceKey защищает от повторных штрафов cron.
+model GreenwichRatingEvent {
+  id               String                   @id @default(cuid())
+  userId           String
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type             GreenwichRatingEventType
+  delta            Int
+  reason           String
+  sourceKey        String                   @unique
+  orderId          String?
+  order            Order?                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reminderId       String?
+  reminder         GreenwichOrderReminder?  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  recoveryStartsAt DateTime?
+  recoveryEndsAt   DateTime?
+  createdAt        DateTime                 @default(now())
+
+  @@index([userId, createdAt])
+  @@index([orderId])
+}
+
+/// Политика будущих штрафов. Изменение не переписывает уже созданные события.
+model GreenwichRatingPolicy {
+  id                   String   @id @default("default")
+  repeatMissedPenalty  Int      @default(-1)
+  finalMissedPenalty   Int      @default(-2)
+  recoveryGraceDays    Int      @default(14)
+  recoveryDurationDays Int      @default(60)
+  updatedAt            DateTime @updatedAt
 }
 
 model Session {
@@ -301,16 +339,19 @@ model GreenwichOrderReminder {
   order      Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   checkpoint GreenwichReminderCheckpoint
 
-  scheduledFor DateTime
-  sentAt      DateTime?
+  scheduledFor   DateTime
+  sentAt         DateTime?
+  lastSentAt     DateTime?
+  sendCount      Int       @default(0)
   telegramChatId String
 
-  response                GreenwichReminderResponse?
-  respondedAt             DateTime?
-  respondedByTelegramId   String?
+  response              GreenwichReminderResponse?
+  respondedAt           DateTime?
+  respondedByTelegramId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  ratingEvents GreenwichRatingEvent[]
 
   @@unique([orderId, checkpoint])
   @@index([scheduledFor, sentAt])
@@ -1141,6 +1182,7 @@ model Order {
   tasks                   WorkTask[]
   notificationCooldowns   OrderNotificationCooldown[]
   greenwichReminders      GreenwichOrderReminder[]
+  greenwichRatingEvents   GreenwichRatingEvent[]
 
   @@index([status, readyByDate])
   @@index([source, status])

@@ -2,6 +2,10 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { getOrSetRuntimeCache } from "@/server/runtime-cache";
+import {
+  effectiveRatingEventDelta,
+  recomputeGreenwichRatingScore,
+} from "@/server/ratings/greenwich-rating";
 
 export async function GET() {
   const auth = await requireUser();
@@ -11,11 +15,48 @@ export async function GET() {
   }
 
   const data = await getOrSetRuntimeCache(`greenwich:rating:${auth.user.id}`, 15_000, async () => {
-    const row = await prisma.greenwichRating.findUnique({
+    const now = new Date();
+    const score = await prisma.$transaction((tx) =>
+      recomputeGreenwichRatingScore(tx, auth.user.id, now),
+    );
+    const events = await prisma.greenwichRatingEvent.findMany({
       where: { userId: auth.user.id },
-      select: { score: true },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: {
+        id: true,
+        type: true,
+        delta: true,
+        reason: true,
+        recoveryStartsAt: true,
+        recoveryEndsAt: true,
+        createdAt: true,
+      },
     });
-    return { score: row?.score ?? 100 };
+    const activeEventDelta = events.reduce(
+      (sum, event) => sum + effectiveRatingEventDelta(event, now),
+      0,
+    );
+    const recovering = events.filter(
+      (event) =>
+        event.delta < 0 &&
+        event.recoveryEndsAt !== null &&
+        event.recoveryEndsAt.getTime() > now.getTime(),
+    ).length;
+
+    return {
+      score,
+      breakdown: { activeEventDelta, recovering },
+      recentEvents: events.slice(0, 6).map((event) => ({
+        id: event.id,
+        type: event.type,
+        delta: effectiveRatingEventDelta(event, now),
+        originalDelta: event.delta,
+        reason: event.reason,
+        createdAt: event.createdAt,
+        recoveryEndsAt: event.recoveryEndsAt,
+      })),
+    };
   });
   return jsonOk(data);
 }

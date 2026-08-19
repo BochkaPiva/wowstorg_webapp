@@ -11,9 +11,48 @@ type ScenarioAudience = "warehouse" | "greenwich";
 type TargetKind = "warehouse" | "greenwich-user" | "dm";
 type Scenario = { id: string; group: ScenarioGroup; audience: ScenarioAudience; title: string; description: string; hasActions?: boolean; preview: string };
 type GreenwichUser = { id: string; displayName: string; login: string; telegramChatId: string | null; hasTelegramChatId: boolean };
+type LiveCheckpoint = { id: "DAYS_30" | "DAYS_7" | "DAYS_3"; daysBefore: number; label: string };
+type LiveOrder = {
+  id: string;
+  eventName: string | null;
+  customerName: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  readyByDate: string;
+  greenwichUserId: string | null;
+  greenwichUser: { id: string; displayName: string; hasTelegramChatId: boolean } | null;
+};
+type LiveReminder = {
+  id: string;
+  checkpoint: LiveCheckpoint["id"];
+  scheduledFor: string;
+  sentAt: string | null;
+  lastSentAt: string | null;
+  sendCount: number;
+  response: "CONFIRMED" | "CHANGES_PENDING" | "CANCELLED" | null;
+  respondedAt: string | null;
+  telegramChatId: string;
+  order: {
+    id: string;
+    eventName: string | null;
+    customerName: string;
+    status: string;
+    greenwichUser: { id: string; displayName: string } | null;
+  };
+};
+type RatingPolicy = {
+  repeatMissedPenalty: number;
+  finalMissedPenalty: number;
+  recoveryGraceDays: number;
+  recoveryDurationDays: number;
+  updatedAt: string;
+};
 type TelegramStatus = {
   telegram: { hasBotToken: boolean; warehouseChatId: string | null; warehouseTopicId: string | null; webhookUrl: string | null; webhookSecretConfigured: boolean; sendTimeoutMs?: number; proxyEnabled?: boolean; proxyLabel?: string | null };
   greenwich: { activeUsers: number; withTelegramChatId: number; users: GreenwichUser[] };
+  liveConfirmation: { checkpoints: LiveCheckpoint[]; orders: LiveOrder[]; recent: LiveReminder[] };
+  ratingPolicy: RatingPolicy;
   scenarios: Scenario[];
 };
 type HistoryItem = { id: string; title: string; target: string; time: string; ok: boolean; detail: string };
@@ -36,9 +75,44 @@ function Icon({ name, className = "h-5 w-5" }: { name: "send" | "refresh" | "shi
 
 function cleanPreview(value: string) { return value.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&").replaceAll("&quot;", '"'); }
 function audienceLabel(audience: ScenarioAudience) { return audience === "warehouse" ? "Склад" : "Greenwich"; }
+function formatDate(value: string | null | undefined) { return value ? new Date(value).toLocaleDateString("ru-RU") : "—"; }
+function checkpointLabel(value: LiveCheckpoint["id"]) { return value === "DAYS_30" ? "За 30 дней" : value === "DAYS_7" ? "За 7 дней" : "За 3 дня"; }
+function responseLabel(value: LiveReminder["response"]) { if (value === "CONFIRMED") return "Всё актуально"; if (value === "CHANGES_PENDING") return "Будут изменения"; if (value === "CANCELLED") return "Заявка отменена"; return "Ожидает ответа"; }
+function responseClass(value: LiveReminder["response"]) { if (value === "CONFIRMED") return "bg-emerald-100 text-emerald-800"; if (value === "CHANGES_PENDING") return "bg-amber-100 text-amber-900"; if (value === "CANCELLED") return "bg-rose-100 text-rose-800"; return "bg-zinc-100 text-zinc-700"; }
 
 function StatusCell({ label, value, ok, detail }: { label: string; value: string; ok: boolean; detail?: string }) {
   return <div className="min-w-0 border-r border-zinc-200 px-4 py-4 last:border-r-0 md:px-5"><div className="flex items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-rose-500"}`} /><span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">{label}</span></div><p className="mt-2 truncate text-sm font-semibold text-zinc-950">{value}</p>{detail ? <p className="mt-0.5 truncate text-xs text-zinc-500">{detail}</p> : null}</div>;
+}
+
+function PolicyField({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return <label className="block border border-zinc-300 bg-white p-4">
+    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">{label}</span>
+    <span className="mt-3 flex items-end gap-3">
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="h-12 w-24 border-b-2 border-zinc-950 bg-transparent px-1 text-2xl font-black tabular-nums text-zinc-950 outline-none focus:border-[#6426cf]"
+      />
+      <span className="pb-3 text-xs leading-5 text-zinc-500">{hint}</span>
+    </span>
+  </label>;
 }
 
 export default function AdminTelegramPage() {
@@ -55,26 +129,135 @@ export default function AdminTelegramPage() {
   const [dmChatId, setDmChatId] = React.useState("");
   const [history, setHistory] = React.useState<HistoryItem[]>([]);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const [liveUserId, setLiveUserId] = React.useState("");
+  const [liveOrderId, setLiveOrderId] = React.useState("");
+  const [liveCheckpoint, setLiveCheckpoint] = React.useState<LiveCheckpoint["id"]>("DAYS_7");
+  const [liveBusy, setLiveBusy] = React.useState(false);
+  const [liveError, setLiveError] = React.useState<string | null>(null);
+  const [policyDraft, setPolicyDraft] = React.useState<RatingPolicy | null>(null);
+  const [policyBusy, setPolicyBusy] = React.useState(false);
+  const [policyMessage, setPolicyMessage] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true); setError(null);
+  const load = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
     try {
       const response = await fetch("/api/admin/telegram", { cache: "no-store" });
       const data = (await response.json()) as TelegramStatus & { error?: { message?: string } };
       if (!response.ok) throw new Error(data.error?.message || `Ошибка ${response.status}`);
       setStatus(data); setScenarioId((current) => current || data.scenarios[0]?.id || "");
+      setPolicyDraft(data.ratingPolicy);
       setGreenwichUserId((current) => current || data.greenwich.users.find((user) => user.hasTelegramChatId)?.id || "");
+      setLiveUserId((currentUserId) => {
+        const currentIsEligible = data.liveConfirmation.orders.some(
+          (order) => order.greenwichUserId === currentUserId && order.greenwichUser?.hasTelegramChatId,
+        );
+        const nextUserId = currentIsEligible
+          ? currentUserId
+          : data.liveConfirmation.orders.find((order) => order.greenwichUser?.hasTelegramChatId)?.greenwichUserId ?? "";
+        setLiveOrderId((currentOrderId) => {
+          const currentOrderIsEligible = data.liveConfirmation.orders.some(
+            (order) => order.id === currentOrderId && order.greenwichUserId === nextUserId,
+          );
+          return currentOrderIsEligible
+            ? currentOrderId
+            : data.liveConfirmation.orders.find((order) => order.greenwichUserId === nextUserId)?.id ?? "";
+        });
+        return nextUserId;
+      });
     } catch (cause) { setStatus(null); setError(cause instanceof Error ? cause.message : "Не удалось получить настройки Telegram"); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }, []);
 
   React.useEffect(() => { if (!forbidden) void load(); }, [forbidden, load]);
   const selectedScenario = status?.scenarios.find((item) => item.id === scenarioId) ?? null;
   const filteredScenarios = status?.scenarios.filter((item) => group === "all" || item.group === group) ?? [];
   const selectedUser = status?.greenwich.users.find((user) => user.id === greenwichUserId) ?? null;
+  const liveOrdersForUser = status?.liveConfirmation.orders.filter((order) => order.greenwichUserId === liveUserId) ?? [];
+  const selectedLiveOrder = liveOrdersForUser.find((order) => order.id === liveOrderId) ?? null;
+  const selectedLiveReminder = status?.liveConfirmation.recent.find(
+    (item) => item.order.id === liveOrderId && item.checkpoint === liveCheckpoint,
+  ) ?? null;
+
+  React.useEffect(() => {
+    if (!selectedLiveReminder?.sentAt || selectedLiveReminder.response) return;
+    const timer = window.setInterval(() => void load(true), 5000);
+    return () => window.clearInterval(timer);
+  }, [load, selectedLiveReminder?.response, selectedLiveReminder?.sentAt]);
 
   function selectScenario(item: Scenario) { setScenarioId(item.id); setTarget(item.audience === "greenwich" ? "greenwich-user" : "warehouse"); }
   function targetName(kind: TargetKind | "greenwich-broadcast") { if (kind === "warehouse") return "Чат склада"; if (kind === "greenwich-broadcast") return "Все подключённые Greenwich"; if (kind === "dm") return dmChatId.trim() || "Личный chat_id"; return selectedUser?.displayName || "Сотрудник Greenwich"; }
+  function selectLiveUser(userId: string) {
+    setLiveUserId(userId);
+    setLiveOrderId(status?.liveConfirmation.orders.find((order) => order.greenwichUserId === userId)?.id ?? "");
+    setLiveError(null);
+  }
+
+  async function saveRatingPolicy() {
+    if (!policyDraft || policyBusy) return;
+    setPolicyBusy(true);
+    setPolicyMessage(null);
+    try {
+      const response = await fetch("/api/admin/telegram", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repeatMissedPenalty: policyDraft.repeatMissedPenalty,
+          finalMissedPenalty: policyDraft.finalMissedPenalty,
+          recoveryGraceDays: policyDraft.recoveryGraceDays,
+          recoveryDurationDays: policyDraft.recoveryDurationDays,
+        }),
+      });
+      const data = (await response.json()) as { ratingPolicy?: RatingPolicy; error?: { message?: string } };
+      if (!response.ok || !data.ratingPolicy) {
+        throw new Error(data.error?.message || `Ошибка ${response.status}`);
+      }
+      setPolicyDraft(data.ratingPolicy);
+      setStatus((current) => current ? { ...current, ratingPolicy: data.ratingPolicy as RatingPolicy } : current);
+      setPolicyMessage("Правила сохранены. Они применятся к следующим пропущенным подтверждениям.");
+    } catch (cause) {
+      setPolicyMessage(cause instanceof Error ? cause.message : "Не удалось сохранить правила рейтинга");
+    } finally {
+      setPolicyBusy(false);
+    }
+  }
+
+  async function sendLiveConfirmation() {
+    if (!selectedLiveOrder || !liveUserId || liveBusy) return;
+    const recipient = selectedLiveOrder.greenwichUser?.displayName ?? "сотрудник Greenwich";
+    const confirmed = window.confirm(
+      [
+        `Отправить реальное подтверждение сотруднику «${recipient}»?`,
+        "",
+        `Заявка: ${selectedLiveOrder.eventName || selectedLiveOrder.customerName}`,
+        `Контрольная точка: ${checkpointLabel(liveCheckpoint)}.`,
+        "",
+        "Это боевой сценарий: ответ запишется в заявку, склад получит уведомление, а подтверждённая отмена действительно отменит заявку и активные дополнения.",
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+    setLiveBusy(true);
+    setLiveError(null);
+    try {
+      const response = await fetch("/api/admin/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "greenwich-live-confirmation",
+          userId: liveUserId,
+          orderId: selectedLiveOrder.id,
+          checkpoint: liveCheckpoint,
+        }),
+      });
+      const data = (await response.json()) as { error?: { message?: string } };
+      if (!response.ok) throw new Error(data.error?.message || `Ошибка ${response.status}`);
+      await load(true);
+    } catch (cause) {
+      setLiveError(cause instanceof Error ? cause.message : "Не удалось отправить боевое подтверждение");
+    } finally {
+      setLiveBusy(false);
+    }
+  }
 
   async function send(kind: TargetKind | "greenwich-broadcast" = target) {
     if (!selectedScenario || busy) return;
@@ -101,7 +284,114 @@ export default function AdminTelegramPage() {
         <div className="grid gap-8 px-6 py-8 lg:grid-cols-[1fr_auto] lg:items-end lg:px-9"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6426cf]">Администрирование · Telegram</p><h1 className="mt-3 max-w-4xl text-4xl font-black tracking-[-0.045em] text-zinc-950 md:text-6xl">Центр проверки бота</h1><p className="mt-4 max-w-3xl text-base leading-7 text-zinc-600">Проверяйте реальные шаблоны, маршруты доставки и inline-кнопки до того, как уведомление понадобится в работе.</p></div><button type="button" onClick={() => void load()} disabled={loading} className="inline-flex h-12 items-center justify-center gap-2 border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-950 transition-colors hover:bg-zinc-100 disabled:opacity-50"><Icon name="refresh" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить статус</button></div>
         {loading ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4">{[0,1,2,3].map((item) => <div key={item} className="h-24 animate-pulse border-r border-zinc-200 bg-zinc-50 last:border-r-0" />)}</div> : status ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4"><StatusCell label="Bot API" value={status.telegram.hasBotToken ? "Токен подключён" : "Токен не задан"} ok={status.telegram.hasBotToken} detail={`${status.telegram.sendTimeoutMs ?? 0} мс`} /><StatusCell label="Склад" value={status.telegram.warehouseChatId ? "Маршрут готов" : "Чат не задан"} ok={Boolean(status.telegram.warehouseChatId)} detail={status.telegram.warehouseTopicId ? `Топик ${status.telegram.warehouseTopicId}` : "Без топика"} /><StatusCell label="Webhook" value={status.telegram.webhookSecretConfigured ? "Защищён" : "Нужна настройка"} ok={status.telegram.webhookSecretConfigured} detail={status.telegram.webhookUrl ?? "URL не задан"} /><StatusCell label="Greenwich" value={`${status.greenwich.withTelegramChatId} из ${status.greenwich.activeUsers} подключено`} ok={status.greenwich.activeUsers === status.greenwich.withTelegramChatId && status.greenwich.activeUsers > 0} detail="Личные получатели" /></div> : null}
       </section>
-      <div className="mt-4 flex gap-3 border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-950"><Icon name="shield" className="mt-0.5 h-5 w-5 shrink-0" /><div><strong>Безопасный режим.</strong> Все сообщения помечены как тестовые. Кнопки подтверждения проверяют webhook, но не меняют заявки, статусы, резерв или проекты.</div></div>
+
+      {!loading && status ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-rose-500 bg-white">
+        <div className="grid gap-6 border-b border-zinc-200 bg-[#0b0b0b] px-6 py-7 text-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">
+          <div>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-rose-300">Боевой end-to-end тест</p>
+              <span className="border border-rose-400/50 bg-rose-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-rose-200">Меняет реальные данные</span>
+            </div>
+            <h2 className="mt-3 text-3xl font-black tracking-[-0.035em] md:text-4xl">Проверка настоящего сценария</h2>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-300">Выберите сотрудника и его активную заявку. Сообщение уйдёт с настоящими кнопками, ответ пройдёт через production webhook, запишется в журнал заявки и вызовет реальные уведомления склада.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-px border border-zinc-700 bg-zinc-700 text-center text-xs">
+            <div className="bg-zinc-950 px-4 py-3"><span className="block font-black text-emerald-300">Актуально</span><span className="mt-1 block text-zinc-500">уведомит склад</span></div>
+            <div className="bg-zinc-950 px-4 py-3"><span className="block font-black text-amber-300">Изменения</span><span className="mt-1 block text-zinc-500">создаст сигнал</span></div>
+            <div className="bg-zinc-950 px-4 py-3"><span className="block font-black text-rose-300">Отмена</span><span className="mt-1 block text-zinc-500">отменит заявку</span></div>
+          </div>
+        </div>
+
+        <div className="grid gap-px bg-zinc-200 lg:grid-cols-[0.8fr_1.35fr_0.85fr]">
+          <label className="bg-white p-5 lg:p-6">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">01 · Получатель</span>
+            <span className="relative mt-3 block">
+              <select value={liveUserId} onChange={(event) => selectLiveUser(event.target.value)} className="h-14 w-full appearance-none border border-zinc-300 bg-white px-4 pr-11 text-sm font-bold text-zinc-950 outline-none focus:border-[#6426cf] focus:ring-2 focus:ring-violet-100">
+                <option value="">Выберите сотрудника</option>
+                {status.greenwich.users.map((user) => {
+                  const hasOrders = status.liveConfirmation.orders.some((order) => order.greenwichUserId === user.id);
+                  return <option key={user.id} value={user.id} disabled={!user.hasTelegramChatId || !hasOrders}>{user.displayName}{!user.hasTelegramChatId ? " · нет Chat ID" : !hasOrders ? " · нет активных заявок" : ""}</option>;
+                })}
+              </select>
+              <Icon name="chevron" className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-zinc-500" />
+            </span>
+          </label>
+
+          <label className="bg-white p-5 lg:p-6">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">02 · Реальная заявка</span>
+            <span className="relative mt-3 block">
+              <select value={liveOrderId} onChange={(event) => { setLiveOrderId(event.target.value); setLiveError(null); }} disabled={!liveUserId} className="h-14 w-full appearance-none border border-zinc-300 bg-white px-4 pr-11 text-sm font-bold text-zinc-950 outline-none focus:border-[#6426cf] focus:ring-2 focus:ring-violet-100 disabled:bg-zinc-100 disabled:text-zinc-400">
+                <option value="">Выберите заявку</option>
+                {liveOrdersForUser.map((order) => <option key={order.id} value={order.id}>{order.eventName || order.customerName} · {formatDate(order.startDate)}</option>)}
+              </select>
+              <Icon name="chevron" className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-zinc-500" />
+            </span>
+          </label>
+
+          <div className="bg-white p-5 lg:p-6">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">03 · Контрольная точка</span>
+            <div className="mt-3 grid h-14 grid-cols-3 border border-zinc-300 bg-zinc-100 p-1">
+              {status.liveConfirmation.checkpoints.map((checkpoint) => <button type="button" key={checkpoint.id} onClick={() => { setLiveCheckpoint(checkpoint.id); setLiveError(null); }} className={`px-2 text-xs font-black transition-colors ${liveCheckpoint === checkpoint.id ? "bg-zinc-950 text-white" : "text-zinc-600 hover:bg-white hover:text-zinc-950"}`}>{checkpoint.daysBefore} дн.</button>)}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:px-8">
+          {selectedLiveOrder ? <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[#6426cf]">{selectedLiveOrder.customerName}</p>
+              <p className="mt-1 text-xl font-black tracking-[-0.02em] text-zinc-950">{selectedLiveOrder.eventName || "Заявка без названия"}</p>
+              <p className="mt-2 text-sm text-zinc-500">{formatDate(selectedLiveOrder.startDate)} — {formatDate(selectedLiveOrder.endDate)} · статус {selectedLiveOrder.status}</p>
+            </div>
+            {selectedLiveReminder ? <div className="border-l-2 border-zinc-200 pl-4">
+              <span className={`inline-flex px-2.5 py-1 text-xs font-black ${responseClass(selectedLiveReminder.response)}`}>{responseLabel(selectedLiveReminder.response)}</span>
+              <p className="mt-2 text-xs text-zinc-500">{checkpointLabel(selectedLiveReminder.checkpoint)} · отправлено {formatDate(selectedLiveReminder.sentAt)}</p>
+            </div> : null}
+          </div> : <p className="text-sm text-zinc-500">Выберите сотрудника и активную заявку, чтобы разблокировать боевую отправку.</p>}
+          <button type="button" onClick={() => void sendLiveConfirmation()} disabled={!selectedLiveOrder || liveBusy || !status.telegram.hasBotToken || !status.telegram.webhookSecretConfigured} className="inline-flex h-14 items-center justify-center gap-2 bg-rose-600 px-6 text-sm font-black text-white transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"><Icon name="send" className="h-4 w-4" />{liveBusy ? "Отправляем…" : "Запустить реальный тест"}</button>
+        </div>
+        {liveError ? <div role="alert" className="mx-6 mb-6 flex gap-3 border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900 lg:mx-8"><Icon name="warning" className="h-5 w-5 shrink-0" />{liveError}</div> : null}
+
+        <div className="border-t border-zinc-200">
+          <div className="flex flex-wrap items-end justify-between gap-3 px-6 py-5 lg:px-8">
+            <div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Журнал production-ответов</p><p className="mt-1 text-sm text-zinc-600">Обновляется автоматически, пока выбранное сообщение ждёт нажатия.</p></div>
+            <button type="button" onClick={() => void load(true)} className="inline-flex items-center gap-2 text-sm font-bold text-zinc-600 hover:text-zinc-950"><Icon name="refresh" className="h-4 w-4" /> Обновить журнал</button>
+          </div>
+          {status.liveConfirmation.recent.length ? <div className="divide-y divide-zinc-200 border-t border-zinc-200">
+            {status.liveConfirmation.recent.slice(0, 8).map((entry) => <div key={entry.id} className="grid gap-3 px-6 py-4 md:grid-cols-[minmax(0,1fr)_150px_180px] md:items-center lg:px-8">
+              <div className="min-w-0"><p className="truncate text-sm font-bold text-zinc-950">{entry.order.eventName || entry.order.customerName}</p><p className="mt-1 truncate text-xs text-zinc-500">{entry.order.greenwichUser?.displayName ?? "Greenwich"} · {checkpointLabel(entry.checkpoint)} · касание {entry.sendCount}/3 · последнее {formatDate(entry.lastSentAt || entry.sentAt)}</p></div>
+              <span className={`w-fit px-2.5 py-1 text-xs font-black ${responseClass(entry.response)}`}>{responseLabel(entry.response)}</span>
+              <p className="text-xs text-zinc-500 md:text-right">{entry.respondedAt ? `Ответ ${formatDate(entry.respondedAt)}` : "Telegram ждёт действие"}<br />Текущий статус: {entry.order.status}</p>
+            </div>)}
+          </div> : <div className="border-t border-zinc-200 px-6 py-8 text-sm text-zinc-500 lg:px-8">Боевых проверок пока не было.</div>}
+        </div>
+      </section> : null}
+
+      {!loading && policyDraft ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-[#6426cf] bg-white">
+        <div className="grid gap-5 border-b border-zinc-200 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6426cf]">Рейтинг Greenwich · политика реакции</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-zinc-950 md:text-3xl">Штраф не вечный — дисциплина восстанавливает баллы</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Первое сообщение не штрафует. Баллы снимаются только перед повторным и финальным касанием, а затем автоматически возвращаются после периода стабильной работы.</p>
+          </div>
+          <div className="border-l-2 border-[#ffd21f] pl-4 text-xs leading-5 text-zinc-600">
+            <strong className="block text-zinc-950">Цепочка ограничена тремя сообщениями</strong>
+            Основное → через 3 часа повтор → ещё через 1 час финальное.
+          </div>
+        </div>
+        <div className="grid gap-px bg-zinc-200 md:grid-cols-2 xl:grid-cols-4">
+          <PolicyField label="После 3 часов" hint="баллов" value={policyDraft.repeatMissedPenalty} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, repeatMissedPenalty: value } : current)} />
+          <PolicyField label="После финального" hint="баллов" value={policyDraft.finalMissedPenalty} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, finalMissedPenalty: value } : current)} />
+          <PolicyField label="Пауза до возврата" hint="дней" value={policyDraft.recoveryGraceDays} min={0} max={365} onChange={(value) => setPolicyDraft((current) => current ? { ...current, recoveryGraceDays: value } : current)} />
+          <PolicyField label="Срок восстановления" hint="дней" value={policyDraft.recoveryDurationDays} min={1} max={730} onChange={(value) => setPolicyDraft((current) => current ? { ...current, recoveryDurationDays: value } : current)} />
+        </div>
+        <div className="flex flex-col gap-3 border-t border-zinc-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+          <p className={`text-sm ${policyMessage?.startsWith("Правила") ? "text-emerald-700" : "text-rose-700"}`}>{policyMessage ?? "Ручная корректировка сотрудника остаётся динамической: автоматический расчёт не отключается."}</p>
+          <button type="button" onClick={() => void saveRatingPolicy()} disabled={policyBusy} className="h-12 bg-zinc-950 px-6 text-sm font-black text-white transition-colors hover:bg-[#6426cf] disabled:bg-zinc-300">{policyBusy ? "Сохраняем…" : "Сохранить правила"}</button>
+        </div>
+      </section> : null}
+
+      <div className="mt-5 flex gap-3 border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-950"><Icon name="shield" className="mt-0.5 h-5 w-5 shrink-0" /><div><strong>Безопасные шаблонные тесты ниже.</strong> Они помечены как тестовые: кнопки проверяют webhook, но не меняют заявки, статусы, резерв или проекты.</div></div>
       {error ? <div role="alert" className="mt-4 flex items-start gap-3 border border-rose-300 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-900"><Icon name="warning" className="mt-0.5 h-5 w-5 shrink-0" />{error}</div> : null}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(390px,0.82fr)]">

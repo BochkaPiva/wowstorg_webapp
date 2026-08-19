@@ -154,6 +154,36 @@ async function notifyWarehouseAboutUpcomingChanges(args: {
   });
 }
 
+async function notifyWarehouseAboutGreenwichConfirmation(args: {
+  orderId: string;
+  eventName: string | null;
+  customerName: string;
+  greenwichName: string;
+}): Promise<void> {
+  const title = args.eventName?.trim() || args.customerName;
+  const warehouseChatId = getWarehouseChatId();
+  if (warehouseChatId) {
+    await sendTelegramMessage(
+      warehouseChatId,
+      [
+        "✅ <b>Greenwich подтвердил заявку</b>",
+        "",
+        `${escapeTelegramHtml(args.greenwichName)} подтвердил, что всё остаётся в силе.`,
+        `Заявка: <b>${escapeTelegramHtml(title)}</b>`,
+        `Заказчик: ${escapeTelegramHtml(args.customerName)}`,
+        "",
+        `<a href="${appUrl(`/orders/${args.orderId}`)}">Открыть заявку</a>`,
+      ].join("\n"),
+      warehouseTelegramOptions(),
+    );
+  }
+  await notifyWarehouseOrderInApp({
+    orderId: args.orderId,
+    title: "Greenwich подтвердил актуальность",
+    body: `${args.greenwichName}: ${title}. Всё остаётся в силе.`,
+  });
+}
+
 async function handleGreenwichConfirmationCallback(
   callback: NonNullable<z.infer<typeof UpdateSchema>["callback_query"]>,
 ) {
@@ -279,7 +309,16 @@ async function handleGreenwichConfirmationCallback(
       callbackQueryId: callback.id,
       text: parsedCallback.action === "ok" ? "Спасибо, заявка подтверждена" : "Спасибо, склад предупреждён",
     });
-    if (parsedCallback.action === "chg") {
+    if (parsedCallback.action === "ok") {
+      scheduleAfterResponse("notifyWarehouseAboutGreenwichConfirmation", async () => {
+        await notifyWarehouseAboutGreenwichConfirmation({
+          orderId: reminder.order.id,
+          eventName: reminder.order.eventName,
+          customerName: reminder.order.customer.name,
+          greenwichName: reminder.order.greenwichUser?.displayName ?? "Greenwich",
+        });
+      });
+    } else {
       scheduleAfterResponse("notifyWarehouseAboutUpcomingGreenwichChanges", async () => {
         await notifyWarehouseAboutUpcomingChanges({
           orderId: reminder.order.id,

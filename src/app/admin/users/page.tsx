@@ -209,7 +209,6 @@ export default function AdminUsersPage() {
   function openEdit(u: UserRow) {
     setModal(u);
     const ratingScore = u.greenwichRating?.score ?? 100;
-    const ratingManualLocked = u.greenwichRating?.manualLocked ?? false;
     setEditForm({
       displayName: u.displayName,
       role: u.role as "GREENWICH" | "WOWSTORG",
@@ -217,7 +216,7 @@ export default function AdminUsersPage() {
       isActive: u.isActive,
       password: "",
       greenwichRatingScore: ratingScore,
-      greenwichRatingManualLocked: ratingManualLocked,
+      greenwichRatingManualLocked: false,
       greenwichRatingOriginalScore: ratingScore,
     });
     setError(null);
@@ -239,8 +238,7 @@ export default function AdminUsersPage() {
 
       if (
         editForm.role === "GREENWICH" &&
-        (editForm.greenwichRatingManualLocked ||
-          editForm.greenwichRatingScore !== editForm.greenwichRatingOriginalScore)
+        editForm.greenwichRatingScore !== editForm.greenwichRatingOriginalScore
       ) {
         body.greenwichRatingScore = editForm.greenwichRatingScore;
       }
@@ -271,7 +269,7 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function setGreenwichRatingAuto() {
+  async function resetGreenwichRatingAdjustments() {
     if (!modal || modal === "create" || !("id" in modal)) return;
     setError(null);
     setSaving(true);
@@ -359,11 +357,7 @@ export default function AdminUsersPage() {
                         {u.role === "GREENWICH" ? (
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-zinc-900">{u.greenwichRating?.score ?? 100}</span>
-                            {u.greenwichRating?.manualLocked ? (
-                              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
-                                ручной
-                              </span>
-                            ) : null}
+                            <span className="text-[11px] text-zinc-500">динамический</span>
                           </div>
                         ) : (
                           <span className="text-zinc-400">—</span>
@@ -528,27 +522,25 @@ export default function AdminUsersPage() {
                           setEditForm((f) => ({
                             ...f,
                             greenwichRatingScore: Number.isFinite(v) ? v : f.greenwichRatingScore,
-                            greenwichRatingManualLocked: true,
+                            greenwichRatingManualLocked: false,
                           }));
                         }}
                         className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                       />
-                      <div className="mt-1 text-xs text-zinc-500">
-                        {editForm.greenwichRatingManualLocked ? "Ручной режим" : "Авто-пересчёт"}
+                      <div className="mt-1 text-xs leading-5 text-zinc-500">
+                        Новое значение сохранится как корректировка. Дедлайны, инциденты,
+                        подтверждения и восстановление рейтинга продолжат работать автоматически.
                       </div>
-
-                      {editForm.greenwichRatingManualLocked ? (
-                        <div className="mt-2">
-                          <button
-                            type="button"
-                            onClick={() => void setGreenwichRatingAuto()}
-                            disabled={saving}
-                            className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                          >
-                            Вернуть авто-пересчёт
-                          </button>
-                        </div>
-                      ) : null}
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => void resetGreenwichRatingAdjustments()}
+                          disabled={saving}
+                          className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                        >
+                          Сбросить ручные корректировки
+                        </button>
+                      </div>
                     </div>
                   ) : null}
                   <div>

@@ -78,8 +78,22 @@ function dinoPhrase(score: number) {
   return "Начни с аккуратных возвратов — рейтинг пойдёт вверх.";
 }
 
+type GreenwichRatingSnapshot = {
+  score: number;
+  breakdown?: { activeEventDelta: number; recovering: number };
+  recentEvents?: Array<{
+    id: string;
+    type: "CONFIRMATION_REPEAT_MISSED" | "CONFIRMATION_FINAL_MISSED" | "ADMIN_ADJUSTMENT";
+    delta: number;
+    originalDelta: number;
+    reason: string;
+    createdAt: string;
+    recoveryEndsAt: string | null;
+  }>;
+};
+
 function GreenwichRatingCard() {
-  const [score, setScore] = React.useState<number | null>(null);
+  const [snapshot, setSnapshot] = React.useState<GreenwichRatingSnapshot | null>(null);
   const [showInfo, setShowInfo] = React.useState(false);
   const [riding, setRiding] = React.useState(false);
   const infoRef = React.useRef<HTMLDivElement | null>(null);
@@ -88,11 +102,13 @@ function GreenwichRatingCard() {
     let cancelled = false;
     void fetch("/api/greenwich/rating", { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { score?: number }) => {
-        if (!cancelled && typeof data.score === "number") setScore(data.score);
+      .then((data: Partial<GreenwichRatingSnapshot>) => {
+        if (!cancelled && typeof data.score === "number") {
+          setSnapshot(data as GreenwichRatingSnapshot);
+        }
       })
       .catch(() => {
-        if (!cancelled) setScore(100);
+        if (!cancelled) setSnapshot({ score: 100 });
       });
     return () => {
       cancelled = true;
@@ -119,7 +135,7 @@ function GreenwichRatingCard() {
     };
   }, [showInfo]);
 
-  const s = score ?? 100;
+  const s = snapshot?.score ?? 100;
   const pct = Math.max(0, Math.min(100, s));
   const phrase = dinoPhrase(s);
 
@@ -131,7 +147,7 @@ function GreenwichRatingCard() {
   const dinoPct = Math.max(5, Math.min(95, pct));
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <div className="border border-zinc-200 bg-white p-4">
       <style jsx>{`
         @keyframes dinoNudge {
           0% {
@@ -156,13 +172,13 @@ function GreenwichRatingCard() {
       `}</style>
       <div className="relative flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-zinc-900">Рейтинг</div>
-          <div className="mt-1 text-xs text-zinc-500">Зависит от дедлайнов возврата и состояния реквизита</div>
+          <div className="text-sm font-semibold text-zinc-900">Рейтинг надёжности</div>
+          <div className="mt-1 text-xs text-zinc-500">Сроки, состояние реквизита и ответы по заявкам</div>
         </div>
         <button
           type="button"
           onClick={() => setShowInfo((v) => !v)}
-          className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700 transition hover:border-zinc-950"
+          className="shrink-0 border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700 transition hover:border-zinc-950"
           aria-expanded={showInfo}
           title="Как считается"
         >
@@ -171,14 +187,21 @@ function GreenwichRatingCard() {
         {showInfo ? (
           <div
             ref={infoRef}
-            className="absolute right-0 top-9 z-20 w-[300px] max-w-[calc(100vw-2rem)] rounded-xl border border-zinc-200 bg-white p-3 shadow-lg"
+            className="absolute right-0 top-9 z-20 w-[330px] max-w-[calc(100vw-2rem)] border border-zinc-200 bg-white p-4 shadow-[0_18px_50px_rgba(0,0,0,0.14)]"
           >
             <div className="text-sm font-semibold text-zinc-900">Как считается</div>
             <div className="mt-1 text-sm text-zinc-700 space-y-1">
               <div>• Возврат вовремя → больше баллов</div>
               <div>• На приёмке нашли поломки/потери → меньше</div>
+              <div>• Пропущено подтверждение заявки → временный минус</div>
               <div>• Расходники не штрафуются</div>
             </div>
+            {snapshot?.breakdown?.recovering ? (
+              <div className="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500">
+                Восстанавливается факторов: {snapshot.breakdown.recovering}. Штрафы за ответы постепенно
+                сгорают при стабильной работе.
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

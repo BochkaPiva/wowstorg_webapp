@@ -15,6 +15,9 @@ import {
   greenwichConfirmationMessage,
 } from "@/server/reminders/greenwich-confirmation";
 import { sendWorkTaskDeadlineReminder } from "@/server/work-task-notifications";
+import {
+  addGreenwichRatingEvent,
+} from "@/server/ratings/greenwich-rating";
 
 const OMSK_TZ = "Asia/Omsk";
 
@@ -109,6 +112,7 @@ function warehouseTopicOptions(topicId: string | undefined) {
 export async function runDailyReminders(now = new Date()): Promise<{
   warehousePrepSent: number;
   greenwichConfirmationSent: number;
+  greenwichConfirmationRepeatSent: number;
   greenwichConfirmationFallbackSent: number;
   greenwichReturnSent: number;
   warehouseReturnSent: number;
@@ -118,6 +122,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     return {
       warehousePrepSent: 0,
       greenwichConfirmationSent: 0,
+      greenwichConfirmationRepeatSent: 0,
       greenwichConfirmationFallbackSent: 0,
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
@@ -130,6 +135,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     return {
       warehousePrepSent: 0,
       greenwichConfirmationSent: 0,
+      greenwichConfirmationRepeatSent: 0,
       greenwichConfirmationFallbackSent: 0,
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
@@ -362,12 +368,131 @@ export async function runDailyReminders(now = new Date()): Promise<{
       });
       if (!sent) continue;
 
+      const sentAt = new Date();
       await prisma.greenwichOrderReminder.updateMany({
         where: { id: journal.id, sentAt: null },
-        data: { sentAt: new Date(), telegramChatId: personalChatId },
+        data: { sentAt, lastSentAt: sentAt, sendCount: 1, telegramChatId: personalChatId },
       });
       greenwichConfirmationSent += 1;
     }
+  }
+
+  // 2.1) Неотвеченные подтверждения: один повтор через 3 часа и финальный через час.
+  // Состояние хранится в БД, поэтому почасовой cron безопасен и никогда не зацикливается.
+  let greenwichConfirmationRepeatSent = 0;
+  const repeatDue = await prisma.greenwichOrderReminder.findMany({
+    where: {
+      response: null,
+      sendCount: { in: [1, 2] },
+      lastSentAt: { not: null },
+      order: {
+        is: {
+          source: "GREENWICH_INTERNAL",
+          parentOrderId: null,
+          status: { notIn: ["CANCELLED", "CLOSED"] },
+          greenwichUserId: { not: null },
+          greenwichUser: { is: { isActive: true } },
+        },
+      },
+    },
+    select: {
+      id: true,
+      checkpoint: true,
+      sendCount: true,
+      lastSentAt: true,
+      telegramChatId: true,
+      order: {
+        select: {
+          id: true,
+          eventName: true,
+          startDate: true,
+          endDate: true,
+          rentalStartPartOfDay: true,
+          rentalEndPartOfDay: true,
+          greenwichUserId: true,
+          customer: { select: { name: true } },
+          greenwichUser: { select: { displayName: true, telegramChatId: true } },
+        },
+      },
+    },
+  });
+  const ratingPolicy = await prisma.greenwichRatingPolicy.upsert({
+    where: { id: "default" }, update: {}, create: { id: "default" },
+  });
+  for (const reminder of repeatDue) {
+    if (!reminder.lastSentAt || !reminder.order.greenwichUserId) continue;
+    const waitMs = reminder.sendCount === 1 ? 3 * 3_600_000 : 3_600_000;
+    if (now.getTime() - reminder.lastSentAt.getTime() < waitMs) continue;
+    const chatId = reminder.order.greenwichUser?.telegramChatId?.trim() || reminder.telegramChatId;
+    if (!chatId) continue;
+    const checkpoint = GREENWICH_CONFIRMATION_CHECKPOINTS.find(
+      (entry) => entry.checkpoint === reminder.checkpoint,
+    );
+    if (!checkpoint) continue;
+    const attempt = (reminder.sendCount + 1) as 2 | 3;
+    const reservedAt = new Date();
+    const reservation = await prisma.greenwichOrderReminder.updateMany({
+      where: {
+        id: reminder.id,
+        response: null,
+        sendCount: reminder.sendCount,
+        lastSentAt: reminder.lastSentAt,
+      },
+      data: { sendCount: attempt, lastSentAt: reservedAt, telegramChatId: chatId },
+    });
+    if (reservation.count === 0) continue;
+
+    const message = greenwichConfirmationMessage({
+      eventName: reminder.order.eventName,
+      customerName: reminder.order.customer.name,
+      startDate: reminder.order.startDate,
+      endDate: reminder.order.endDate,
+      rentalStartPartOfDay: reminder.order.rentalStartPartOfDay,
+      rentalEndPartOfDay: reminder.order.rentalEndPartOfDay,
+      daysBefore: checkpoint.daysBefore,
+      orderUrl: `${SITE_LINK()}/orders/${reminder.order.id}`,
+      attempt,
+    });
+    const sent = await sendTelegramMessage(chatId, message, {
+      replyMarkup: greenwichConfirmationKeyboard({
+        orderId: reminder.order.id,
+        checkpoint: reminder.checkpoint,
+      }),
+    });
+    if (!sent) {
+      await prisma.greenwichOrderReminder.updateMany({
+        where: { id: reminder.id, response: null, sendCount: attempt, lastSentAt: reservedAt },
+        data: {
+          sendCount: reminder.sendCount,
+          lastSentAt: reminder.lastSentAt,
+          telegramChatId: reminder.telegramChatId,
+        },
+      });
+      continue;
+    }
+    const sentAt = new Date();
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.greenwichOrderReminder.updateMany({
+        where: { id: reminder.id, response: null, sendCount: attempt, lastSentAt: reservedAt },
+        data: { lastSentAt: sentAt },
+      });
+      if (updated.count === 0) return;
+      const final = attempt === 3;
+      await addGreenwichRatingEvent(tx, {
+        userId: reminder.order.greenwichUserId!,
+        type: final ? "CONFIRMATION_FINAL_MISSED" : "CONFIRMATION_REPEAT_MISSED",
+        delta: final ? ratingPolicy.finalMissedPenalty : ratingPolicy.repeatMissedPenalty,
+        reason: final
+          ? `Не отвечено на повторное подтверждение заявки «${reminder.order.eventName?.trim() || reminder.order.customer.name}»`
+          : `Не отвечено на подтверждение заявки «${reminder.order.eventName?.trim() || reminder.order.customer.name}» в течение 3 часов`,
+        sourceKey: `greenwich-confirmation:${reminder.id}:attempt:${attempt}`,
+        orderId: reminder.order.id,
+        reminderId: reminder.id,
+        recoverable: true,
+        now: sentAt,
+      });
+    });
+    greenwichConfirmationRepeatSent += 1;
   }
 
   // 3) Возврат: в день endDate, только ISSUED.
@@ -567,6 +692,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     warehousePrepSent,
     greenwichConfirmationSent,
     greenwichConfirmationFallbackSent,
+    greenwichConfirmationRepeatSent,
     greenwichReturnSent,
     warehouseReturnSent,
     workTaskDeadlineSent,

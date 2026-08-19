@@ -15,6 +15,11 @@ import {
   sendTelegramMessageDetailed,
 } from "@/server/telegram";
 import {
+  GREENWICH_CONFIRMATION_CHECKPOINTS,
+  greenwichConfirmationKeyboard,
+  greenwichConfirmationMessage,
+} from "@/server/reminders/greenwich-confirmation";
+import {
   buildTelegramTestScenario,
   TELEGRAM_TEST_SCENARIO_IDS,
   TELEGRAM_TEST_SCENARIOS,
@@ -27,22 +32,91 @@ export async function GET() {
   const warehouseChatId = getWarehouseChatId() ?? null;
   const warehouseTopicId = getWarehouseTopicId() ?? null;
 
-  const totalGreenwich = await prisma.user.count({
-    where: { role: "GREENWICH", isActive: true },
-  });
-  const greenwichWithTelegram = await prisma.user.count({
-    where: { role: "GREENWICH", isActive: true, telegramChatId: { not: null } },
-  });
-  const greenwichUsers = await prisma.user.findMany({
-    where: { role: "GREENWICH", isActive: true },
-    orderBy: [{ displayName: "asc" }, { login: "asc" }],
-    select: {
-      id: true,
-      displayName: true,
-      login: true,
-      telegramChatId: true,
-    },
-  });
+  const [
+    totalGreenwich,
+    greenwichWithTelegram,
+    greenwichUsers,
+    liveOrders,
+    recentConfirmations,
+    ratingPolicy,
+  ] =
+    await Promise.all([
+      prisma.user.count({ where: { role: "GREENWICH", isActive: true } }),
+      prisma.user.count({
+        where: { role: "GREENWICH", isActive: true, telegramChatId: { not: null } },
+      }),
+      prisma.user.findMany({
+        where: { role: "GREENWICH", isActive: true },
+        orderBy: [{ displayName: "asc" }, { login: "asc" }],
+        select: {
+          id: true,
+          displayName: true,
+          login: true,
+          telegramChatId: true,
+        },
+      }),
+      prisma.order.findMany({
+        where: {
+          source: "GREENWICH_INTERNAL",
+          parentOrderId: null,
+          status: { notIn: ["CANCELLED", "CLOSED"] },
+          greenwichUserId: { not: null },
+          greenwichUser: { is: { isActive: true } },
+        },
+        orderBy: [{ startDate: "asc" }, { updatedAt: "desc" }],
+        take: 250,
+        select: {
+          id: true,
+          eventName: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          readyByDate: true,
+          greenwichUserId: true,
+          customer: { select: { name: true } },
+          greenwichUser: {
+            select: { id: true, displayName: true, telegramChatId: true },
+          },
+        },
+      }),
+      prisma.greenwichOrderReminder.findMany({
+        where: { order: { is: { source: "GREENWICH_INTERNAL" } } },
+        orderBy: [{ updatedAt: "desc" }],
+        take: 24,
+        select: {
+          id: true,
+          checkpoint: true,
+          scheduledFor: true,
+          sentAt: true,
+          lastSentAt: true,
+          sendCount: true,
+          response: true,
+          respondedAt: true,
+          telegramChatId: true,
+          order: {
+            select: {
+              id: true,
+              eventName: true,
+              status: true,
+              customer: { select: { name: true } },
+              greenwichUser: { select: { id: true, displayName: true } },
+            },
+          },
+        },
+      }),
+      prisma.greenwichRatingPolicy.upsert({
+        where: { id: "default" },
+        create: { id: "default" },
+        update: {},
+        select: {
+          repeatMissedPenalty: true,
+          finalMissedPenalty: true,
+          recoveryGraceDays: true,
+          recoveryDurationDays: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
 
   return jsonOk({
     telegram: {
@@ -66,6 +140,49 @@ export async function GET() {
         hasTelegramChatId: Boolean(user.telegramChatId?.trim()),
       })),
     },
+    liveConfirmation: {
+      checkpoints: GREENWICH_CONFIRMATION_CHECKPOINTS.map((entry) => ({
+        id: entry.checkpoint,
+        daysBefore: entry.daysBefore,
+        label: `За ${entry.daysBefore} дн.`,
+      })),
+      orders: liveOrders.map((order) => ({
+        id: order.id,
+        eventName: order.eventName,
+        customerName: order.customer.name,
+        status: order.status,
+        startDate: order.startDate,
+        endDate: order.endDate,
+        readyByDate: order.readyByDate,
+        greenwichUserId: order.greenwichUserId,
+        greenwichUser: order.greenwichUser
+          ? {
+              id: order.greenwichUser.id,
+              displayName: order.greenwichUser.displayName,
+              hasTelegramChatId: Boolean(order.greenwichUser.telegramChatId?.trim()),
+            }
+          : null,
+      })),
+      recent: recentConfirmations.map((entry) => ({
+        id: entry.id,
+        checkpoint: entry.checkpoint,
+        scheduledFor: entry.scheduledFor,
+        sentAt: entry.sentAt,
+        lastSentAt: entry.lastSentAt,
+        sendCount: entry.sendCount,
+        response: entry.response,
+        respondedAt: entry.respondedAt,
+        telegramChatId: entry.telegramChatId,
+        order: {
+          id: entry.order.id,
+          eventName: entry.order.eventName,
+          customerName: entry.order.customer.name,
+          status: entry.order.status,
+          greenwichUser: entry.order.greenwichUser,
+        },
+      })),
+    },
+    ratingPolicy,
     scenarios: TELEGRAM_TEST_SCENARIOS.map((scenario) => ({
       ...scenario,
       preview: buildTelegramTestScenario(scenario.id).text,
@@ -73,13 +190,63 @@ export async function GET() {
   });
 }
 
+const RatingPolicySchema = z.object({
+  repeatMissedPenalty: z.number().int().min(-20).max(0),
+  finalMissedPenalty: z.number().int().min(-20).max(0),
+  recoveryGraceDays: z.number().int().min(0).max(365),
+  recoveryDurationDays: z.number().int().min(1).max(730),
+});
+
+export async function PATCH(req: Request) {
+  const auth = await requireRole("WOWSTORG");
+  if (!auth.ok) return auth.response;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonError(400, "Invalid JSON");
+  }
+  const parsed = RatingPolicySchema.safeParse(body);
+  if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
+
+  const ratingPolicy = await prisma.greenwichRatingPolicy.upsert({
+    where: { id: "default" },
+    create: { id: "default", ...parsed.data },
+    update: parsed.data,
+    select: {
+      repeatMissedPenalty: true,
+      finalMissedPenalty: true,
+      recoveryGraceDays: true,
+      recoveryDurationDays: true,
+      updatedAt: true,
+    },
+  });
+  return jsonOk({ ratingPolicy });
+}
+
 const PostSchema = z.object({
-  kind: z.enum(["warehouse", "dm", "greenwich-broadcast", "greenwich-user"]),
+  kind: z.enum([
+    "warehouse",
+    "dm",
+    "greenwich-broadcast",
+    "greenwich-user",
+    "greenwich-live-confirmation",
+  ]),
   text: z.string().trim().min(1).max(4000).optional(),
   chatId: z.string().trim().min(1).max(64).optional(), // only for dm
   userId: z.string().trim().min(1).max(64).optional(), // only for greenwich-user
+  orderId: z.string().trim().min(1).max(64).optional(),
+  checkpoint: z.enum(["DAYS_30", "DAYS_7", "DAYS_3"]).optional(),
   scenarioId: z.enum(TELEGRAM_TEST_SCENARIO_IDS).default("connection"),
 });
+
+function publicAppUrl(path: string): string {
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") ||
+    "https://wowstorg.example.com";
+  return `${base}${path}`;
+}
 
 export async function POST(req: Request) {
   const auth = await requireRole("WOWSTORG");
@@ -96,6 +263,149 @@ export async function POST(req: Request) {
 
   if (!isTelegramConfigured()) {
     return jsonError(400, "TELEGRAM_BOT_TOKEN is missing");
+  }
+
+  if (parsed.data.kind === "greenwich-live-confirmation") {
+    if (!getTelegramWebhookSecret()) {
+      return jsonError(
+        400,
+        "TELEGRAM_WEBHOOK_SECRET is missing: live buttons cannot be processed",
+      );
+    }
+    const { userId, orderId, checkpoint } = parsed.data;
+    if (!userId || !orderId || !checkpoint) {
+      return jsonError(400, "userId, orderId and checkpoint are required for live confirmation");
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        source: "GREENWICH_INTERNAL",
+        parentOrderId: null,
+        status: { notIn: ["CANCELLED", "CLOSED"] },
+        greenwichUserId: userId,
+        greenwichUser: { is: { role: "GREENWICH", isActive: true } },
+      },
+      select: {
+        id: true,
+        eventName: true,
+        startDate: true,
+        endDate: true,
+        rentalStartPartOfDay: true,
+        rentalEndPartOfDay: true,
+        customer: { select: { name: true } },
+        greenwichUser: {
+          select: { id: true, displayName: true, login: true, telegramChatId: true },
+        },
+      },
+    });
+    if (!order?.greenwichUser) {
+      return jsonError(404, "Активная заявка не найдена или назначена другому сотруднику Greenwich");
+    }
+    const chatId = order.greenwichUser.telegramChatId?.trim();
+    if (!chatId) {
+      return jsonError(
+        400,
+        `У сотрудника ${order.greenwichUser.displayName} не заполнен Telegram Chat ID`,
+      );
+    }
+
+    const checkpointConfig = GREENWICH_CONFIRMATION_CHECKPOINTS.find(
+      (entry) => entry.checkpoint === checkpoint,
+    );
+    if (!checkpointConfig) return jsonError(400, "Unsupported confirmation checkpoint");
+
+    const previous = await prisma.greenwichOrderReminder.findUnique({
+      where: { orderId_checkpoint: { orderId: order.id, checkpoint } },
+      select: {
+        id: true,
+        scheduledFor: true,
+        sentAt: true,
+        lastSentAt: true,
+        sendCount: true,
+        telegramChatId: true,
+        response: true,
+        respondedAt: true,
+        respondedByTelegramId: true,
+      },
+    });
+    const armedAt = new Date();
+    const journal = await prisma.greenwichOrderReminder.upsert({
+      where: { orderId_checkpoint: { orderId: order.id, checkpoint } },
+      create: {
+        orderId: order.id,
+        checkpoint,
+        scheduledFor: armedAt,
+        telegramChatId: chatId,
+      },
+      update: {
+        scheduledFor: armedAt,
+        sentAt: null,
+        lastSentAt: null,
+        sendCount: 0,
+        telegramChatId: chatId,
+        response: null,
+        respondedAt: null,
+        respondedByTelegramId: null,
+      },
+    });
+
+    const message = greenwichConfirmationMessage({
+      eventName: order.eventName,
+      customerName: order.customer.name,
+      startDate: order.startDate,
+      endDate: order.endDate,
+      rentalStartPartOfDay: order.rentalStartPartOfDay,
+      rentalEndPartOfDay: order.rentalEndPartOfDay,
+      daysBefore: checkpointConfig.daysBefore,
+      orderUrl: publicAppUrl(`/orders/${order.id}`),
+    });
+    const result = await sendTelegramMessageDetailed(chatId, message, {
+      replyMarkup: greenwichConfirmationKeyboard({ orderId: order.id, checkpoint }),
+    });
+    if (!result.ok) {
+      if (previous) {
+        await prisma.greenwichOrderReminder.updateMany({
+          where: { id: journal.id, response: null, sentAt: null },
+          data: {
+            scheduledFor: previous.scheduledFor,
+            sentAt: previous.sentAt,
+            lastSentAt: previous.lastSentAt,
+            sendCount: previous.sendCount,
+            telegramChatId: previous.telegramChatId,
+            response: previous.response,
+            respondedAt: previous.respondedAt,
+            respondedByTelegramId: previous.respondedByTelegramId,
+          },
+        });
+      } else {
+        await prisma.greenwichOrderReminder.deleteMany({
+          where: { id: journal.id, response: null, sentAt: null },
+        });
+      }
+      return jsonError(400, result.error, { hint: "greenwich_live_confirmation" });
+    }
+
+    const sentAt = new Date();
+    await prisma.greenwichOrderReminder.update({
+      where: { id: journal.id },
+      data: { sentAt, lastSentAt: sentAt, sendCount: 1 },
+    });
+    return jsonOk({
+      ok: true,
+      liveConfirmation: {
+        reminderId: journal.id,
+        orderId: order.id,
+        checkpoint,
+        sentAt,
+        recipient: {
+          id: order.greenwichUser.id,
+          displayName: order.greenwichUser.displayName,
+          login: order.greenwichUser.login,
+          telegramChatId: chatId,
+        },
+      },
+    });
   }
 
   const baseScenario = buildTelegramTestScenario(parsed.data.scenarioId);

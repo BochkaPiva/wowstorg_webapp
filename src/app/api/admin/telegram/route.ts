@@ -14,6 +14,11 @@ import {
   isTelegramProxyConfigured,
   sendTelegramMessageDetailed,
 } from "@/server/telegram";
+import {
+  buildTelegramTestScenario,
+  TELEGRAM_TEST_SCENARIO_IDS,
+  TELEGRAM_TEST_SCENARIOS,
+} from "@/server/telegram-test-scenarios";
 
 export async function GET() {
   const auth = await requireRole("WOWSTORG");
@@ -61,6 +66,10 @@ export async function GET() {
         hasTelegramChatId: Boolean(user.telegramChatId?.trim()),
       })),
     },
+    scenarios: TELEGRAM_TEST_SCENARIOS.map((scenario) => ({
+      ...scenario,
+      preview: buildTelegramTestScenario(scenario.id).text,
+    })),
   });
 }
 
@@ -69,6 +78,7 @@ const PostSchema = z.object({
   text: z.string().trim().min(1).max(4000).optional(),
   chatId: z.string().trim().min(1).max(64).optional(), // only for dm
   userId: z.string().trim().min(1).max(64).optional(), // only for greenwich-user
+  scenarioId: z.enum(TELEGRAM_TEST_SCENARIO_IDS).default("connection"),
 });
 
 export async function POST(req: Request) {
@@ -88,9 +98,8 @@ export async function POST(req: Request) {
     return jsonError(400, "TELEGRAM_BOT_TOKEN is missing");
   }
 
-  const text =
-    parsed.data.text ??
-    `🧪 <b>Тест уведомлений</b>\n\nВремя: ${new Date().toLocaleString("ru-RU")}`;
+  const baseScenario = buildTelegramTestScenario(parsed.data.scenarioId);
+  const text = parsed.data.text ?? baseScenario.text;
 
   if (parsed.data.kind === "greenwich-broadcast") {
     const users = await prisma.user.findMany({
@@ -120,10 +129,14 @@ export async function POST(req: Request) {
     let sent = 0;
     const failed: Array<{ id: string; displayName: string; login: string; telegramChatId: string }> = [];
     for (const user of recipients) {
-      const personalizedText =
-        parsed.data.text ??
-        `🧪 <b>Тест уведомлений Grinvich</b>\n\nПолучатель: ${user.displayName}\nЛогин: ${user.login}\nTelegram ID: ${user.telegramChatId}\nВремя: ${new Date().toLocaleString("ru-RU")}`;
-      const result = await sendTelegramMessageDetailed(user.telegramChatId, personalizedText);
+      const personalizedScenario = buildTelegramTestScenario(
+        parsed.data.scenarioId,
+        user.displayName,
+      );
+      const personalizedText = parsed.data.text ?? personalizedScenario.text;
+      const result = await sendTelegramMessageDetailed(user.telegramChatId, personalizedText, {
+        replyMarkup: personalizedScenario.replyMarkup,
+      });
       if (result.ok) sent += 1;
       else {
         failed.push({
@@ -148,6 +161,7 @@ export async function POST(req: Request) {
     const topicId = getWarehouseTopicId();
     const result = await sendTelegramMessageDetailed(chatId, text, {
       messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
+      replyMarkup: baseScenario.replyMarkup,
     });
     if (!result.ok) {
       return jsonError(400, result.error, { hint: "warehouse_group" });
@@ -176,10 +190,14 @@ export async function POST(req: Request) {
     if (!chatId) {
       return jsonError(400, `У сотрудника ${user.displayName} не заполнен Telegram Chat ID`);
     }
+    const personalizedScenario = buildTelegramTestScenario(
+      parsed.data.scenarioId,
+      user.displayName,
+    );
     const result = await sendTelegramMessageDetailed(
       chatId,
-      parsed.data.text ??
-        `🧪 <b>Индивидуальный тест уведомлений</b>\n\nПолучатель: ${user.displayName}\nЛогин: ${user.login}\nВремя: ${new Date().toLocaleString("ru-RU")}`,
+      parsed.data.text ?? personalizedScenario.text,
+      { replyMarkup: personalizedScenario.replyMarkup },
     );
     if (!result.ok) {
       return jsonError(400, result.error, { hint: "greenwich_user", userId: user.id });
@@ -197,7 +215,9 @@ export async function POST(req: Request) {
 
   const dmChatId = parsed.data.chatId;
   if (!dmChatId) return jsonError(400, "chatId is required for dm");
-  const dmResult = await sendTelegramMessageDetailed(dmChatId, text);
+  const dmResult = await sendTelegramMessageDetailed(dmChatId, text, {
+    replyMarkup: baseScenario.replyMarkup,
+  });
   if (!dmResult.ok) {
     return jsonError(400, dmResult.error, { hint: "dm" });
   }

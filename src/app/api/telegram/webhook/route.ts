@@ -22,6 +22,7 @@ import {
   sendTelegramMessage,
   sendTelegramMessageDetailed,
 } from "@/server/telegram";
+import { TELEGRAM_TEST_CALLBACK_PREFIX } from "@/server/telegram-test-scenarios";
 
 const UpdateSchema = z.object({
   message: z
@@ -404,6 +405,22 @@ export async function POST(req: Request) {
 
   const update = parsed.data;
   if (update.callback_query) {
+    const testCallback = update.callback_query.data;
+    if (testCallback?.startsWith(TELEGRAM_TEST_CALLBACK_PREFIX)) {
+      const action = testCallback.slice(TELEGRAM_TEST_CALLBACK_PREFIX.length).split(":")[0];
+      const responseText =
+        action === "ok"
+          ? "Тест пройден: подтверждение работает"
+          : action === "changes"
+            ? "Тест пройден: запрос изменений работает"
+            : "Тест пройден: отмена распознана";
+      await acknowledgeCallback({
+        callbackQueryId: update.callback_query.id,
+        text: `${responseText}. Данные не изменены.`,
+        showAlert: true,
+      });
+      return jsonOk({ ok: true, testCallback: action });
+    }
     return handleGreenwichConfirmationCallback(update.callback_query);
   }
   const text = update.message?.text?.trim() ?? "";

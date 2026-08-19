@@ -194,13 +194,28 @@ export type TelegramSendMessageResult =
   | { ok: true }
   | { ok: false; error: string };
 
+export type TelegramInlineKeyboardButton = {
+  text: string;
+  callback_data?: string;
+  url?: string;
+};
+
+export type TelegramInlineKeyboardMarkup = {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+};
+
+type TelegramSendMessageOptions = {
+  messageThreadId?: number | string;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
+};
+
 /**
  * Как {@link sendTelegramMessage}, но возвращает текст ошибки от Bot API (поле description) или сеть/таймаут.
  */
 export async function sendTelegramMessageDetailed(
   chatId: string,
   text: string,
-  options?: { messageThreadId?: number | string },
+  options?: TelegramSendMessageOptions,
 ): Promise<TelegramSendMessageResult> {
   const token = getBotToken();
   if (!token) return { ok: false, error: "Нет TELEGRAM_BOT_TOKEN" };
@@ -210,7 +225,13 @@ export async function sendTelegramMessageDetailed(
       ? text.slice(0, TELEGRAM_MAX_MESSAGE_LENGTH - 20) + "\n\n… (обрезано)"
       : text;
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
-  const body: { chat_id: string; text: string; parse_mode?: string; message_thread_id?: number } = {
+  const body: {
+    chat_id: string;
+    text: string;
+    parse_mode?: string;
+    message_thread_id?: number;
+    reply_markup?: TelegramInlineKeyboardMarkup;
+  } = {
     chat_id: chatId,
     text: truncated,
     parse_mode: "HTML",
@@ -222,6 +243,7 @@ export async function sendTelegramMessageDetailed(
         : options.messageThreadId;
     if (Number.isFinite(parsed)) body.message_thread_id = parsed;
   }
+  if (options?.replyMarkup) body.reply_markup = options.replyMarkup;
   const sendTimeoutMs = getSendTimeoutMs();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), sendTimeoutMs);
@@ -300,10 +322,71 @@ export async function sendTelegramMessageDetailed(
 export async function sendTelegramMessage(
   chatId: string,
   text: string,
-  options?: { messageThreadId?: number | string },
+  options?: TelegramSendMessageOptions,
 ): Promise<boolean> {
   const r = await sendTelegramMessageDetailed(chatId, text, options);
   return r.ok;
+}
+
+async function callTelegramJsonMethod(
+  method: string,
+  body: Record<string, unknown>,
+): Promise<TelegramSendMessageResult> {
+  const token = getBotToken();
+  if (!token) return { ok: false, error: "Нет TELEGRAM_BOT_TOKEN" };
+  const timeoutMs = getSendTimeoutMs();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await telegramFetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const bodyText = await res.text();
+    clearTimeout(timeoutId);
+    const parsed = parseTelegramApiBody(bodyText);
+    if (!res.ok || !parsed.ok) {
+      const error = parsed.description ?? telegramErrorDescription(bodyText);
+      console.error(`[Telegram] ${method} failed`, res.status, error);
+      return { ok: false, error };
+    }
+    return { ok: true };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const message = error instanceof Error && error.name === "AbortError"
+      ? `Таймаут ${timeoutMs} мс до ответа api.telegram.org`
+      : describeNetworkError(error);
+    console.error(`[Telegram] ${method} error:`, message);
+    return { ok: false, error: message };
+  }
+}
+
+/** Убирает или заменяет inline-кнопки у уже отправленного сообщения. */
+export async function editTelegramMessageReplyMarkup(args: {
+  chatId: string;
+  messageId: number;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
+}): Promise<TelegramSendMessageResult> {
+  return callTelegramJsonMethod("editMessageReplyMarkup", {
+    chat_id: args.chatId,
+    message_id: args.messageId,
+    reply_markup: args.replyMarkup ?? { inline_keyboard: [] },
+  });
+}
+
+/** Закрывает индикатор загрузки Telegram после нажатия inline-кнопки. */
+export async function answerTelegramCallbackQuery(args: {
+  callbackQueryId: string;
+  text?: string;
+  showAlert?: boolean;
+}): Promise<TelegramSendMessageResult> {
+  return callTelegramJsonMethod("answerCallbackQuery", {
+    callback_query_id: args.callbackQueryId,
+    ...(args.text ? { text: args.text } : {}),
+    ...(args.showAlert ? { show_alert: true } : {}),
+  });
 }
 
 const TELEGRAM_CAPTION_MAX_LENGTH = 1024;

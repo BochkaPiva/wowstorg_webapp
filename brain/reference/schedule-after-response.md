@@ -1,6 +1,6 @@
 # `scheduleAfterResponse` — где вызывается (сверка с кодом)
 
-> **Дата сверки:** 2026-08-18 — импорт/вызов в `src/app/api`.
+> **Дата сверки:** 2026-08-19 — добавлены реакции на Telegram-подтверждение Greenwich.
 
 | Файл | Имя задачи (1-й аргумент) |
 |------|---------------------------|
@@ -38,5 +38,6 @@
 | `src/app/api/projects/[id]/files/[fileId]/route.ts` | `notifyProjectFileDeleted`, `notifyProjectFileRenamed` |
 | `src/app/api/projects/[id]/files/folders/route.ts` | `notifyProjectFolderCreated` |
 | `src/app/api/projects/[id]/files/folders/[folderId]/route.ts` | `notifyProjectFolderRenamed`, `notifyProjectFolderDeleted` |
+| `src/app/api/telegram/webhook/route.ts` | `notifyWarehouseAboutUpcomingGreenwichChanges`, `notifyOrderCancelledFromGreenwichReminder`, `recomputeGreenwichAchievementsFromReminderCancel` |
 
 Реализация: `src/server/notifications/schedule-after-response.ts` → `after()` из `next/server`.

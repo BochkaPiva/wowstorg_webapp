@@ -9,11 +9,20 @@ import {
   isTelegramConfigured,
   sendTelegramMessage,
 } from "@/server/telegram";
+import {
+  GREENWICH_CONFIRMATION_CHECKPOINTS,
+  greenwichConfirmationKeyboard,
+  greenwichConfirmationMessage,
+} from "@/server/reminders/greenwich-confirmation";
 import { sendWorkTaskDeadlineReminder } from "@/server/work-task-notifications";
 
 const OMSK_TZ = "Asia/Omsk";
 
-type ReminderType = "WAREHOUSE_PREP" | "GREENWICH_RETURN" | "WORK_TASK_DUE_24H";
+type ReminderType =
+  | "WAREHOUSE_PREP"
+  | "GREENWICH_RETURN"
+  | "GREENWICH_CONFIRMATION_FALLBACK"
+  | "WORK_TASK_DUE_24H";
 
 /** Подготовка: всё, кроме отмены и закрытых (страховка от «застряла в смете»). */
 const WAREHOUSE_PREP_EXCLUDED_STATUSES: OrderStatus[] = ["CANCELLED", "CLOSED"];
@@ -99,17 +108,33 @@ function warehouseTopicOptions(topicId: string | undefined) {
 
 export async function runDailyReminders(now = new Date()): Promise<{
   warehousePrepSent: number;
+  greenwichConfirmationSent: number;
+  greenwichConfirmationFallbackSent: number;
   greenwichReturnSent: number;
   warehouseReturnSent: number;
   workTaskDeadlineSent: number;
 }> {
   if (!isTelegramConfigured()) {
-    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0, workTaskDeadlineSent: 0 };
+    return {
+      warehousePrepSent: 0,
+      greenwichConfirmationSent: 0,
+      greenwichConfirmationFallbackSent: 0,
+      greenwichReturnSent: 0,
+      warehouseReturnSent: 0,
+      workTaskDeadlineSent: 0,
+    };
   }
 
   const warehouseChatId = getWarehouseChatId();
   if (!warehouseChatId) {
-    return { warehousePrepSent: 0, greenwichReturnSent: 0, warehouseReturnSent: 0, workTaskDeadlineSent: 0 };
+    return {
+      warehousePrepSent: 0,
+      greenwichConfirmationSent: 0,
+      greenwichConfirmationFallbackSent: 0,
+      greenwichReturnSent: 0,
+      warehouseReturnSent: 0,
+      workTaskDeadlineSent: 0,
+    };
   }
   const topicId = getWarehouseTopicId();
   const warehouseOpts = warehouseTopicOptions(topicId);
@@ -187,7 +212,165 @@ export async function runDailyReminders(now = new Date()): Promise<{
     warehousePrepSent += 1;
   }
 
-  // 2) Возврат: в день endDate, только ISSUED.
+  // 2) Greenwich: подтверждение актуальности за 30 / 7 / 3 дня до начала аренды.
+  // Запись создаём до отправки: если Telegram временно недоступен, незавершённая
+  // попытка останется в outbox и будет повторена следующим ежедневным запуском.
+  let greenwichConfirmationSent = 0;
+  let greenwichConfirmationFallbackSent = 0;
+  for (const checkpoint of GREENWICH_CONFIRMATION_CHECKPOINTS) {
+    const targetYmd = addDaysToYmd(omskTodayYmd, checkpoint.daysBefore);
+    const targetNextYmd = addDaysToYmd(targetYmd, 1);
+    const targetStart = parseDateOnlyToUtcMidnight(targetYmd);
+    const targetEnd = parseDateOnlyToUtcMidnight(targetNextYmd);
+
+    const exactOrders = await prisma.order.findMany({
+      where: {
+        source: "GREENWICH_INTERNAL",
+        parentOrderId: null,
+        status: { notIn: ["CANCELLED", "CLOSED"] },
+        startDate: { gte: targetStart, lt: targetEnd },
+        greenwichUserId: { not: null },
+        greenwichUser: { is: { isActive: true } },
+      },
+      select: {
+        id: true,
+        eventName: true,
+        startDate: true,
+        endDate: true,
+        rentalStartPartOfDay: true,
+        rentalEndPartOfDay: true,
+        greenwichUserId: true,
+        customer: { select: { name: true } },
+        greenwichUser: {
+          select: { displayName: true, telegramChatId: true, isActive: true },
+        },
+      },
+    });
+
+    const pendingRows = await prisma.greenwichOrderReminder.findMany({
+      where: {
+        checkpoint: checkpoint.checkpoint,
+        sentAt: null,
+        scheduledFor: { lt: tomorrowStartForReturnUtc },
+        order: {
+          is: {
+            source: "GREENWICH_INTERNAL",
+            parentOrderId: null,
+            status: { notIn: ["CANCELLED", "CLOSED"] },
+            greenwichUser: { is: { isActive: true } },
+          },
+        },
+      },
+      select: {
+        order: {
+          select: {
+            id: true,
+            eventName: true,
+            startDate: true,
+            endDate: true,
+            rentalStartPartOfDay: true,
+            rentalEndPartOfDay: true,
+            greenwichUserId: true,
+            customer: { select: { name: true } },
+            greenwichUser: {
+              select: { displayName: true, telegramChatId: true, isActive: true },
+            },
+          },
+        },
+      },
+    });
+
+    const candidates = new Map(exactOrders.map((order) => [order.id, order]));
+    pendingRows.forEach(({ order }) => candidates.set(order.id, order));
+
+    for (const order of candidates.values()) {
+      if (!order.greenwichUserId || !order.greenwichUser?.isActive) continue;
+      const personalChatId = order.greenwichUser.telegramChatId?.trim() || "";
+      const journal = await prisma.greenwichOrderReminder.upsert({
+        where: {
+          orderId_checkpoint: {
+            orderId: order.id,
+            checkpoint: checkpoint.checkpoint,
+          },
+        },
+        update: {},
+        create: {
+          orderId: order.id,
+          checkpoint: checkpoint.checkpoint,
+          scheduledFor: todayStartUtc,
+          telegramChatId: personalChatId,
+        },
+      });
+      if (journal.sentAt) continue;
+
+      if (!personalChatId) {
+        const scheduledYmd = journal.scheduledFor.toISOString().slice(0, 10);
+        const receiverKey = `warehouse:greenwich-confirmation-missing-tg:${order.greenwichUserId}:${checkpoint.checkpoint}`;
+        if (
+          await alreadySent({
+            type: "GREENWICH_CONFIRMATION_FALLBACK",
+            orderId: order.id,
+            ymd: scheduledYmd,
+            receiverKey,
+          })
+        ) {
+          continue;
+        }
+        const title = order.eventName?.trim() || order.customer.name;
+        const fallbackText = [
+          "⚠️ <b>Не удалось запросить актуальность заявки</b>",
+          "",
+          `У ${escapeTelegramHtml(order.greenwichUser.displayName)} не привязан Telegram.`,
+          `Заявка: <b>${escapeTelegramHtml(title)}</b>`,
+          `До начала: ${checkpoint.daysBefore} дн.`,
+          "",
+          "Привяжите Telegram ID в админке или уточните актуальность вручную.",
+          link(`/orders/${order.id}`, "Открыть заявку"),
+        ].join("\n");
+        const fallbackOk = await sendTelegramMessage(
+          warehouseChatId,
+          fallbackText,
+          warehouseOpts,
+        );
+        if (!fallbackOk) continue;
+        await markSent({
+          type: "GREENWICH_CONFIRMATION_FALLBACK",
+          orderId: order.id,
+          ymd: scheduledYmd,
+          receiverKey,
+          receiverChatId: warehouseChatId,
+        });
+        greenwichConfirmationFallbackSent += 1;
+        continue;
+      }
+
+      const message = greenwichConfirmationMessage({
+        eventName: order.eventName,
+        customerName: order.customer.name,
+        startDate: order.startDate,
+        endDate: order.endDate,
+        rentalStartPartOfDay: order.rentalStartPartOfDay,
+        rentalEndPartOfDay: order.rentalEndPartOfDay,
+        daysBefore: checkpoint.daysBefore,
+        orderUrl: `${SITE_LINK()}/orders/${order.id}`,
+      });
+      const sent = await sendTelegramMessage(personalChatId, message, {
+        replyMarkup: greenwichConfirmationKeyboard({
+          orderId: order.id,
+          checkpoint: checkpoint.checkpoint,
+        }),
+      });
+      if (!sent) continue;
+
+      await prisma.greenwichOrderReminder.updateMany({
+        where: { id: journal.id, sentAt: null },
+        data: { sentAt: new Date(), telegramChatId: personalChatId },
+      });
+      greenwichConfirmationSent += 1;
+    }
+  }
+
+  // 3) Возврат: в день endDate, только ISSUED.
   const returnOrders = await prisma.order.findMany({
     where: {
       status: RETURN_REMINDER_STATUS,
@@ -380,5 +563,12 @@ export async function runDailyReminders(now = new Date()): Promise<{
     workTaskDeadlineSent += 1;
   }
 
-  return { warehousePrepSent, greenwichReturnSent, warehouseReturnSent, workTaskDeadlineSent };
+  return {
+    warehousePrepSent,
+    greenwichConfirmationSent,
+    greenwichConfirmationFallbackSent,
+    greenwichReturnSent,
+    warehouseReturnSent,
+    workTaskDeadlineSent,
+  };
 }

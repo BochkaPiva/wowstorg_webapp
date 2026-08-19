@@ -917,6 +917,7 @@ export default function WorkQueuePage() {
                   <article
                     key={item.key}
                     className="work-card"
+                    data-kind={item.kind}
                     data-phase={item.phase}
                     data-expanded={isExpanded || undefined}
                     onClick={(event) => toggleFromCardBody(event, item)}
@@ -1122,11 +1123,11 @@ export default function WorkQueuePage() {
                               ) : null}
                             </aside>
                           </div>
-                        ) : (
+                        ) : item.kind === "PROJECT" ? (
                           <div className="work-brief">
                             <section>
                               <h3>Коротко</h3>
-                              <p>{item.summary || (item.kind === "STANDALONE_ESTIMATE" ? "Независимая смета без обязательных дат и проектной карточки." : "Внутреннее резюме пока не заполнено.")}</p>
+                              <p>{item.summary || "Внутреннее резюме пока не заполнено."}</p>
                             </section>
                             <section data-warning={Boolean(item.blockers) || undefined}>
                               <h3>Блокеры</h3>
@@ -1136,6 +1137,28 @@ export default function WorkQueuePage() {
                               <h3>Следующий ориентир</h3>
                               <p>{PHASE_LABEL[item.phase]} · {item.ball === "CLIENT" ? "мяч у клиента" : item.ball === "WOWSTORG" ? "мяч у Wowstorg" : "контроль команды"}</p>
                             </section>
+                          </div>
+                        ) : (
+                          <div className="work-estimatePreview">
+                            <section>
+                              <span className="work-estimatePreview__eyebrow">Быстрая смета</span>
+                              <h3>Расчёт готов к работе</h3>
+                              <p>Независимая смета без проектной карточки, задач и блокеров.</p>
+                            </section>
+                            <dl>
+                              <div>
+                                <dt>Заказчик</dt>
+                                <dd>{customerName}</dd>
+                              </div>
+                              <div>
+                                <dt>Версия</dt>
+                                <dd>{item.estimate ? `№${item.estimate.versionNumber}` : "Не создана"}</dd>
+                              </div>
+                              <div>
+                                <dt>Сумма клиенту</dt>
+                                <dd>{money(item.totalAmount)}</dd>
+                              </div>
+                            </dl>
                           </div>
                         )}
 
@@ -1188,9 +1211,9 @@ export default function WorkQueuePage() {
                           ) : null
                         ) : null}
 
-                        {!item.orders.length ? (
+                        {item.kind === "PROJECT" && !item.orders.length ? (
                           <div className="work-emptyState">
-                            <strong>{item.kind === "STANDALONE_ESTIMATE" ? "Смета готова к заполнению" : "Заявок пока нет"}</strong>
+                            <strong>Заявок пока нет</strong>
                             <span>{item.estimate ? `Создана версия сметы №${item.estimate.versionNumber}` : "Откройте карточку, чтобы начать расчёт."}</span>
                           </div>
                         ) : null}

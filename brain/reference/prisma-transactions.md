@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-19 — оптимизировано атомарное сохранение крупных проектных смет.
+> **Дата сверки:** 2026-08-19 — добавлена атомарная отмена заявки из Telegram-подтверждения Greenwich.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -29,6 +29,7 @@
 | `src/app/api/standalone-estimates/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |
+| `src/app/api/telegram/webhook/route.ts` | нет (ответ на напоминание + отмена основной и дочерних заявок) |
 | `src/app/api/warehouse/incidents/[id]/repair/route.ts` | нет |
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |

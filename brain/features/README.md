@@ -54,6 +54,7 @@
 | Единая рабочая очередь и быстрые расчёты | [`unified-work-queue.md`](./unified-work-queue.md) |
 | Финансовая сверка Excel ↔ WebApp | [`financial-reconciliation.md`](./financial-reconciliation.md) |
 | Рабочая карточка заявки и перенос дат | [`order-workspace.md`](./order-workspace.md) |
+| Подтверждение актуальности заявок Greenwich | [`greenwich-order-confirmations.md`](./greenwich-order-confirmations.md) |
 
 ## Индекс существующих крупных тем (в docs)
 

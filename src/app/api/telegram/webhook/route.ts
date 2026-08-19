@@ -1,10 +1,25 @@
+import { ProjectActivityKind } from "@prisma/client";
 import { z } from "zod";
 
+import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
+import { notifyWarehouseOrderInApp } from "@/server/notifications/in-app";
+import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import {
+  greenwichCancellationKeyboard,
+  greenwichConfirmationKeyboard,
+  parseGreenwichConfirmationCallback,
+} from "@/server/reminders/greenwich-confirmation";
+import {
+  answerTelegramCallbackQuery,
+  editTelegramMessageReplyMarkup,
   escapeTelegramHtml,
+  getWarehouseChatId,
+  getWarehouseTopicId,
   getTelegramWebhookSecret,
+  sendTelegramMessage,
   sendTelegramMessageDetailed,
 } from "@/server/telegram";
 
@@ -22,6 +37,23 @@ const UpdateSchema = z.object({
           first_name: z.string().optional(),
           last_name: z.string().optional(),
           username: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  callback_query: z
+    .object({
+      id: z.string(),
+      data: z.string().optional(),
+      from: z.object({
+        id: z.union([z.string(), z.number()]),
+      }),
+      message: z
+        .object({
+          message_id: z.number(),
+          chat: z.object({
+            id: z.union([z.string(), z.number()]),
+          }),
         })
         .optional(),
     })
@@ -70,6 +102,285 @@ function startTextForUnknown(chatId: string, name: string): string {
   ].join("\n");
 }
 
+function appUrl(path: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://wowstorg.example.com";
+  return `${base}${path}`;
+}
+
+function warehouseTelegramOptions() {
+  const topicId = getWarehouseTopicId();
+  if (!topicId) return undefined;
+  const parsed = Number.parseInt(topicId, 10);
+  return Number.isFinite(parsed) ? { messageThreadId: parsed } : undefined;
+}
+
+async function acknowledgeCallback(args: {
+  callbackQueryId: string;
+  text: string;
+  showAlert?: boolean;
+}): Promise<void> {
+  await answerTelegramCallbackQuery(args);
+}
+
+async function notifyWarehouseAboutUpcomingChanges(args: {
+  orderId: string;
+  eventName: string | null;
+  customerName: string;
+  greenwichName: string;
+}): Promise<void> {
+  const title = args.eventName?.trim() || args.customerName;
+  const warehouseChatId = getWarehouseChatId();
+  if (warehouseChatId) {
+    await sendTelegramMessage(
+      warehouseChatId,
+      [
+        "✏️ <b>Greenwich предупредил о будущих правках</b>",
+        "",
+        `${escapeTelegramHtml(args.greenwichName)} сообщил, что по заявке появятся изменения.`,
+        `Заявка: <b>${escapeTelegramHtml(title)}</b>`,
+        `Заказчик: ${escapeTelegramHtml(args.customerName)}`,
+        "",
+        "Пока состав заявки не изменён — это ранний сигнал, чтобы не потерять правки.",
+        `<a href="${appUrl(`/orders/${args.orderId}`)}">Открыть заявку</a>`,
+      ].join("\n"),
+      warehouseTelegramOptions(),
+    );
+  }
+  await notifyWarehouseOrderInApp({
+    orderId: args.orderId,
+    title: "Greenwich сообщил о будущих правках",
+    body: `${args.greenwichName}: ${title}. Состав заявки пока не изменён.`,
+  });
+}
+
+async function handleGreenwichConfirmationCallback(
+  callback: NonNullable<z.infer<typeof UpdateSchema>["callback_query"]>,
+) {
+  const parsedCallback = callback.data
+    ? parseGreenwichConfirmationCallback(callback.data)
+    : null;
+  const message = callback.message;
+  if (!parsedCallback || !message) {
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Эта кнопка больше не поддерживается",
+      showAlert: true,
+    });
+    return jsonOk({ ok: true, ignored: "unsupported_callback" });
+  }
+
+  const chatId = chatIdToString(message.chat.id);
+  const telegramUserId = chatIdToString(callback.from.id);
+  const reminder = await prisma.greenwichOrderReminder.findUnique({
+    where: {
+      orderId_checkpoint: {
+        orderId: parsedCallback.orderId,
+        checkpoint: parsedCallback.checkpoint,
+      },
+    },
+    select: {
+      id: true,
+      response: true,
+      telegramChatId: true,
+      order: {
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          greenwichUserId: true,
+          projectId: true,
+          eventName: true,
+          customer: { select: { name: true } },
+          greenwichUser: {
+            select: { displayName: true, telegramChatId: true },
+          },
+        },
+      },
+    },
+  });
+
+  const assignedChatId = reminder?.order.greenwichUser?.telegramChatId?.trim();
+  const isValidOwner =
+    reminder?.order.source === "GREENWICH_INTERNAL" &&
+    reminder.telegramChatId === chatId &&
+    assignedChatId === chatId &&
+    telegramUserId === chatId;
+  if (!reminder || !isValidOwner) {
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Эта заявка привязана к другому аккаунту",
+      showAlert: true,
+    });
+    return jsonOk({ ok: true, ignored: "callback_owner_mismatch" });
+  }
+
+  if (reminder.response) {
+    await editTelegramMessageReplyMarkup({
+      chatId,
+      messageId: message.message_id,
+    });
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Ответ уже сохранён",
+    });
+    return jsonOk({ ok: true, repeated: true });
+  }
+
+  if (parsedCallback.action === "cancel") {
+    await editTelegramMessageReplyMarkup({
+      chatId,
+      messageId: message.message_id,
+      replyMarkup: greenwichCancellationKeyboard({
+        orderId: parsedCallback.orderId,
+        checkpoint: parsedCallback.checkpoint,
+      }),
+    });
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Подтвердите отмену",
+    });
+    return jsonOk({ ok: true, confirmationRequired: true });
+  }
+
+  if (parsedCallback.action === "back") {
+    await editTelegramMessageReplyMarkup({
+      chatId,
+      messageId: message.message_id,
+      replyMarkup: greenwichConfirmationKeyboard({
+        orderId: parsedCallback.orderId,
+        checkpoint: parsedCallback.checkpoint,
+      }),
+    });
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Отмена не выполнена",
+    });
+    return jsonOk({ ok: true, cancelledConfirmation: true });
+  }
+
+  if (parsedCallback.action === "ok" || parsedCallback.action === "chg") {
+    const response = parsedCallback.action === "ok" ? "CONFIRMED" : "CHANGES_PENDING";
+    const updated = await prisma.greenwichOrderReminder.updateMany({
+      where: { id: reminder.id, response: null },
+      data: {
+        response,
+        respondedAt: new Date(),
+        respondedByTelegramId: telegramUserId,
+      },
+    });
+    if (updated.count === 0) {
+      await acknowledgeCallback({ callbackQueryId: callback.id, text: "Ответ уже сохранён" });
+      return jsonOk({ ok: true, repeated: true });
+    }
+
+    await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: parsedCallback.action === "ok" ? "Спасибо, заявка подтверждена" : "Спасибо, склад предупреждён",
+    });
+    if (parsedCallback.action === "chg") {
+      scheduleAfterResponse("notifyWarehouseAboutUpcomingGreenwichChanges", async () => {
+        await notifyWarehouseAboutUpcomingChanges({
+          orderId: reminder.order.id,
+          eventName: reminder.order.eventName,
+          customerName: reminder.order.customer.name,
+          greenwichName: reminder.order.greenwichUser?.displayName ?? "Greenwich",
+        });
+      });
+    }
+    return jsonOk({ ok: true, response });
+  }
+
+  const cancellation = await prisma.$transaction(async (tx) => {
+    const freshOrder = await tx.order.findUnique({
+      where: { id: reminder.order.id },
+      select: {
+        id: true,
+        status: true,
+        projectId: true,
+        greenwichUserId: true,
+      },
+    });
+    if (!freshOrder || freshOrder.status === "CLOSED") {
+      return { cancelled: false as const, reason: freshOrder ? "closed" : "missing" };
+    }
+
+    await tx.order.updateMany({
+      where: {
+        OR: [{ id: freshOrder.id }, { parentOrderId: freshOrder.id }],
+        status: { notIn: ["CANCELLED", "CLOSED"] },
+      },
+      data: { status: "CANCELLED" },
+    });
+    await tx.greenwichOrderReminder.updateMany({
+      where: { id: reminder.id, response: null },
+      data: {
+        response: "CANCELLED",
+        respondedAt: new Date(),
+        respondedByTelegramId: telegramUserId,
+      },
+    });
+    if (freshOrder.projectId && freshOrder.greenwichUserId) {
+      await appendProjectActivityLog(tx, {
+        projectId: freshOrder.projectId,
+        actorUserId: freshOrder.greenwichUserId,
+        kind: ProjectActivityKind.ORDER_CANCELLED,
+        payload: { orderId: freshOrder.id, source: "TELEGRAM_CONFIRMATION" },
+      });
+    }
+    return {
+      cancelled: true as const,
+      greenwichUserId: freshOrder.greenwichUserId,
+    };
+  });
+
+  if (!cancellation.cancelled) {
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: cancellation.reason === "closed" ? "Закрытую заявку отменить нельзя" : "Заявка не найдена",
+      showAlert: true,
+    });
+    return jsonOk({ ok: true, cancelled: false, reason: cancellation.reason });
+  }
+
+  await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+  await acknowledgeCallback({ callbackQueryId: callback.id, text: "Заявка отменена" });
+
+  const fullOrder = await prisma.order.findUnique({
+    where: { id: reminder.order.id },
+    include: {
+      customer: { select: { name: true } },
+      greenwichUser: { select: { displayName: true } },
+      lines: {
+        orderBy: [{ position: "asc" }],
+        include: { item: { select: { name: true } } },
+      },
+    },
+  });
+  if (fullOrder) {
+    type NotifyCancelled = typeof import("@/server/notifications/order-notifications").notifyOrderCancelled;
+    const payload = fullOrder as Parameters<NotifyCancelled>[0];
+    scheduleAfterResponse("notifyOrderCancelledFromGreenwichReminder", async () => {
+      const { notifyOrderCancelled } = await import("@/server/notifications/order-notifications");
+      await notifyOrderCancelled(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Greenwich отменил заявку",
+        body: `${fullOrder.greenwichUser?.displayName ?? "Greenwich"}: ${fullOrder.eventName?.trim() || fullOrder.customer.name}`,
+      });
+    });
+  }
+  if (cancellation.greenwichUserId) {
+    scheduleAfterResponse("recomputeGreenwichAchievementsFromReminderCancel", async () => {
+      await prisma.$transaction(async (tx) => {
+        await recomputeGreenwichAchievements(tx, cancellation.greenwichUserId!);
+      });
+    });
+  }
+
+  return jsonOk({ ok: true, cancelled: true });
+}
+
 export async function POST(req: Request) {
   const secret = getTelegramWebhookSecret();
   if (!secret) {
@@ -92,6 +403,9 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonOk({ ok: true, ignored: "unsupported_update" });
 
   const update = parsed.data;
+  if (update.callback_query) {
+    return handleGreenwichConfirmationCallback(update.callback_query);
+  }
   const text = update.message?.text?.trim() ?? "";
   const chatId = update.message?.chat?.id != null ? chatIdToString(update.message.chat.id) : "";
   if (!chatId) {

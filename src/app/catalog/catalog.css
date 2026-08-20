@@ -4638,6 +4638,7 @@ button.mk-cartPill small {
 
 /* Final catalog composition: keep these overrides after legacy header layers. */
 .mk-headKicker { display: none; }
+.mk-headIntro::after { display: none; }
 
 .mk-headOperations {
   display: block;
@@ -4668,6 +4669,17 @@ button.mk-cartPill small {
 }
 
 .mk-dateControls { display: block; min-width: 0; padding: 0; }
+
+.mk-headOperations .mk-dateField,
+.mk-headOperations .mk-rentalPeriod {
+  gap: 0;
+}
+
+.mk-headOperations .mk-dateFieldLabel {
+  min-height: 17px;
+  margin: 0 0 8px;
+  line-height: 17px;
+}
 
 .mk-headOperations .mk-datesRowGrouped,
 .mk-headOperations .mk-datesRowGrouped--withReady {

@@ -574,7 +574,7 @@ export function BackgroundStackGame() {
             <span />
           </span>
           <span className="tower-launcher__copy">
-            <strong>Башня надёжности</strong>
+            <strong>Башня надежности</strong>
             <span>Проверьте точность и обновите личный рекорд</span>
           </span>
         </span>
@@ -600,7 +600,7 @@ export function BackgroundStackGame() {
                 <header className="tower-header">
                   <div className="tower-header__copy">
                     <span className="tower-eyebrow"><i aria-hidden /> Игра на точность</span>
-                    <h2 id="tower-game-title">Башня надёжности</h2>
+                    <h2 id="tower-game-title">Башня надежности</h2>
                   </div>
                   <div className="tower-header__tools">
                     <div className="tower-score" aria-label={`Высота башни: ${score} ${scoreUnit}`}>

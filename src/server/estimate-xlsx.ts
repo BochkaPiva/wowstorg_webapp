@@ -57,6 +57,7 @@ type OrderForEstimate = {
     itemId?: string;
     requestedQty: number;
     pricePerDaySnapshot: unknown;
+    payMultiplierSnapshot?: unknown;
     item?: { name: string };
   }>;
   hiddenExpenses?: Array<{
@@ -549,6 +550,7 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
       itemId: line.itemId,
       requestedQty: line.requestedQty,
       pricePerDaySnapshot: line.pricePerDaySnapshot,
+      payMultiplierSnapshot: line.payMultiplierSnapshot,
     })),
     discount: order,
   });
@@ -592,7 +594,11 @@ export async function buildEstimateXlsx(order: OrderForEstimate): Promise<Buffer
   const requisiteTotals: number[] = [];
   for (const [idx, line] of order.lines.entries()) {
     const price = line.pricePerDaySnapshot != null ? Number(line.pricePerDaySnapshot) : 0;
-    const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+    const multiplier = line.payMultiplierSnapshot != null
+      ? Number(line.payMultiplierSnapshot)
+      : order.payMultiplier != null
+        ? Number(order.payMultiplier)
+        : 1;
     const clientPrice = roundMoney(price * multiplier);
     const allocation = pricing.lineAllocations[idx];
     const total = roundMoney(
@@ -729,6 +735,7 @@ export async function buildInternalEstimateXlsx(order: OrderForEstimate): Promis
       itemId: line.itemId,
       requestedQty: line.requestedQty,
       pricePerDaySnapshot: line.pricePerDaySnapshot,
+      payMultiplierSnapshot: line.payMultiplierSnapshot,
     })),
     discount: order,
   });
@@ -799,10 +806,13 @@ export async function buildInternalEstimateXlsx(order: OrderForEstimate): Promis
   const requisiteTotals: number[] = [];
   for (const [idx, line] of order.lines.entries()) {
     const price = num(line.pricePerDaySnapshot);
-    const clientPrice = roundMoney(price * pricing.payMultiplier);
+    const lineMultiplier = line.payMultiplierSnapshot != null
+      ? num(line.payMultiplierSnapshot)
+      : pricing.payMultiplier;
+    const clientPrice = roundMoney(price * lineMultiplier);
     const allocation = pricing.lineAllocations[idx];
     const total = roundMoney(
-      allocation?.rentalAfterDiscount ?? price * line.requestedQty * pricing.days * pricing.payMultiplier,
+      allocation?.rentalAfterDiscount ?? price * line.requestedQty * pricing.days * lineMultiplier,
     );
     requisiteRows.push([
       "",

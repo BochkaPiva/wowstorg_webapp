@@ -91,7 +91,7 @@ async function computeBiggestCheck(db: DbClient, userId: string): Promise<number
       rentalDiscountType: true,
       rentalDiscountPercent: true,
       rentalDiscountAmount: true,
-      lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
+      lines: { select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true } },
     },
   });
 
@@ -126,7 +126,7 @@ async function computeMetrics(db: DbClient, userId: string): Promise<Record<Achi
           greenwichUserId: userId,
           status: "CLOSED",
           greenwichRatingOverdueDelta: 0,
-          greenwichRatingIncidentsDelta: { gte: 10 },
+          greenwichRatingIncidentsDelta: { gt: 0 },
         },
       }),
       db.userTowerStats.findUnique({

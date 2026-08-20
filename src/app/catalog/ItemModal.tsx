@@ -9,6 +9,8 @@ type CatalogItem = {
   description: string | null;
   type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
+  basePricePerDay?: number;
+  loyalty?: { discountPercent: number; source: "RATING_TIER" | "PERSONAL_OFFER"; sourceLabel: string; offerTitle: string | null } | null;
   photo1Key?: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };

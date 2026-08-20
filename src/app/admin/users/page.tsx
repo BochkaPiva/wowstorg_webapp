@@ -208,7 +208,7 @@ export default function AdminUsersPage() {
 
   function openEdit(u: UserRow) {
     setModal(u);
-    const ratingScore = u.greenwichRating?.score ?? 100;
+    const ratingScore = u.greenwichRating?.score ?? 70;
     setEditForm({
       displayName: u.displayName,
       role: u.role as "GREENWICH" | "WOWSTORG",
@@ -356,7 +356,7 @@ export default function AdminUsersPage() {
                       <td className="p-3">
                         {u.role === "GREENWICH" ? (
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-zinc-900">{u.greenwichRating?.score ?? 100}</span>
+                            <span className="font-semibold text-zinc-900">{u.greenwichRating?.score ?? 70}</span>
                             <span className="text-[11px] text-zinc-500">динамический</span>
                           </div>
                         ) : (

@@ -161,6 +161,7 @@ export async function GET(req: Request) {
           approvedQty: true,
           issuedQty: true,
           pricePerDaySnapshot: true,
+          payMultiplierSnapshot: true,
           item: { select: { id: true, name: true } },
         },
       },
@@ -205,7 +206,7 @@ export async function GET(req: Request) {
         ? {
             id: o.greenwichUser.id,
             displayName: o.greenwichUser.displayName,
-            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 70,
           }
         : null,
       totalAmount,

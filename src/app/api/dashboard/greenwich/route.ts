@@ -63,7 +63,7 @@ export async function GET() {
         rentalDiscountPercent: true,
         rentalDiscountAmount: true,
         clientPaymentMethod: true,
-        lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
+        lines: { select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true } },
       },
     }),
     ]);

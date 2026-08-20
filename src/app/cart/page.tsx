@@ -82,6 +82,12 @@ type GreenwichUser = {
   tierName: string;
   discountPercent: number;
   payMultiplier: number;
+  activeOffers: Array<{
+    id: string;
+    title: string;
+    discountPercent: number;
+    itemIds: string[];
+  }>;
 };
 type DraftOrderResponse = {
   draftOrder?: {
@@ -656,12 +662,23 @@ export default function CartPage() {
   // У склада при выборе «выдача Greenwich» корзина считается со скидкой; для 3-х лиц — полная цена.
   // Greenwich получает из каталога уже цены со скидкой, поэтому multiplier для них не применяем.
   const selectedGreenwichUser = greenwichUsers.find((user) => user.id === greenwichUserId);
+  const canUseManualOrderDiscount = isWarehouse && orderType === "external" && !isQuickSupplement;
   const displayMultiplier =
     isWarehouse && orderType === "greenwich" ? (selectedGreenwichUser?.payMultiplier ?? 1) : 1;
+  const getDisplayMultiplier = (itemId: string) => {
+    if (!isWarehouse || orderType !== "greenwich" || !selectedGreenwichUser) return 1;
+    const bestDiscount = selectedGreenwichUser.activeOffers
+      .filter((offer) => offer.itemIds.includes(itemId))
+      .reduce(
+        (maximum, offer) => Math.max(maximum, offer.discountPercent),
+        selectedGreenwichUser.discountPercent,
+      );
+    return Math.round((1 - bestDiscount / 100) * 10_000) / 10_000;
+  };
 
   const totalPerDay = lines.reduce((sum, { line, item }) => {
     const basePrice = Number(item.pricePerDay) || 0;
-    const price = basePrice * displayMultiplier;
+    const price = basePrice * getDisplayMultiplier(item.id);
     return sum + price * line.qty;
   }, 0);
   const rentalDays =
@@ -682,7 +699,7 @@ export default function CartPage() {
       : rentalDiscountType === "AMOUNT"
         ? Number(rentalDiscountAmount || 0)
         : 0;
-  const rentalDiscountValue = isWarehouse
+  const rentalDiscountValue = canUseManualOrderDiscount
     ? Math.min(totalForPeriod, Math.max(0, Number.isFinite(requestedRentalDiscount) ? requestedRentalDiscount : 0))
     : 0;
   const totalForPeriodAfterDiscount = Math.max(0, totalForPeriod - rentalDiscountValue);
@@ -778,7 +795,7 @@ export default function CartPage() {
       return;
     }
     if (!isQuickSupplement && !isProjectCart && !customerInputTrim) return;
-    if (isWarehouse && !isQuickSupplement) {
+    if (canUseManualOrderDiscount) {
       const discountError = getOrderDiscountError({
         type: rentalDiscountType,
         percent: rentalDiscountPercent,
@@ -947,13 +964,13 @@ export default function CartPage() {
       }
       if (isWarehouse) {
         payload.clientPaymentMethod = clientPaymentMethod;
-        payload.rentalDiscountType = rentalDiscountType;
+        payload.rentalDiscountType = canUseManualOrderDiscount ? rentalDiscountType : "NONE";
         payload.rentalDiscountPercent =
-          rentalDiscountType === "PERCENT" && rentalDiscountPercent !== ""
+          canUseManualOrderDiscount && rentalDiscountType === "PERCENT" && rentalDiscountPercent !== ""
             ? Number(rentalDiscountPercent)
             : null;
         payload.rentalDiscountAmount =
-          rentalDiscountType === "AMOUNT" && rentalDiscountAmount !== ""
+          canUseManualOrderDiscount && rentalDiscountType === "AMOUNT" && rentalDiscountAmount !== ""
             ? Number(rentalDiscountAmount)
             : null;
       }
@@ -1042,7 +1059,7 @@ export default function CartPage() {
             <ul className="cart-list">
               {lines.map(({ line, item }) => {
                 const basePrice = Number(item.pricePerDay) || 0;
-                const price = basePrice * displayMultiplier;
+                const price = basePrice * getDisplayMultiplier(item.id);
                 const lineTotalPerDay = price * line.qty;
                 const lineTotalForPeriod = lineTotalPerDay * (rentalDays || 0);
                 const maxAvail = item.availability.availableForDates ?? item.availability.availableNow;
@@ -1647,16 +1664,22 @@ export default function CartPage() {
                           </button>
                         </div>
                       </fieldset>
-                      <CompactOrderDiscountControl
-                        type={rentalDiscountType}
-                        percent={rentalDiscountPercent}
-                        amount={rentalDiscountAmount}
-                        rentalSubtotal={totalForPeriod}
-                        onTypeChange={setRentalDiscountType}
-                        onPercentChange={setRentalDiscountPercent}
-                        onAmountChange={setRentalDiscountAmount}
-                        disabled={submitting}
-                      />
+                      {canUseManualOrderDiscount ? (
+                        <CompactOrderDiscountControl
+                          type={rentalDiscountType}
+                          percent={rentalDiscountPercent}
+                          amount={rentalDiscountAmount}
+                          rentalSubtotal={totalForPeriod}
+                          onTypeChange={setRentalDiscountType}
+                          onPercentChange={setRentalDiscountPercent}
+                          onAmountChange={setRentalDiscountAmount}
+                          disabled={submitting}
+                        />
+                      ) : (
+                        <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+                          Для Greenwich применяется одна лучшая скидка по каждой позиции: уровень или персональное предложение.
+                        </div>
+                      )}
                     </div>
                   ) : null}
                   <div className="cart-total" style={{ fontSize: "1.35rem" }}>

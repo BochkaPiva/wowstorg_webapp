@@ -19,6 +19,10 @@ import {
   addGreenwichRatingEvent,
   ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
+import {
+  createInAppNotification,
+  notifyWarehouseOrderInApp,
+} from "@/server/notifications/in-app";
 
 const OMSK_TZ = "Asia/Omsk";
 
@@ -114,6 +118,164 @@ function warehouseTopicOptions(topicId: string | undefined) {
   return topicId ? { messageThreadId: parseInt(topicId, 10) } : undefined;
 }
 
+async function runApprovalStageReminders(args: {
+  now: Date;
+  warehouseChatId: string;
+  warehouseOptions?: { messageThreadId: number };
+}): Promise<{ warningSent: number; penaltyApplied: number }> {
+  const policy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
+  if (getOmskHour(args.now) < policy.reminderHourOmsk) {
+    return { warningSent: 0, penaltyApplied: 0 };
+  }
+
+  const todayYmd = getOmskYmd(args.now);
+  const warningLimitYmd = addDaysToYmd(todayYmd, policy.approvalWarningDays);
+  const candidates = await prisma.order.findMany({
+    where: {
+      source: "GREENWICH_INTERNAL",
+      parentOrderId: null,
+      status: { in: UNAPPROVED_STATUSES },
+      readyByDate: {
+        gte: parseDateOnlyToUtcMidnight(todayYmd),
+        lte: parseDateOnlyToUtcMidnight(warningLimitYmd),
+      },
+      greenwichUserId: { not: null },
+    },
+    select: {
+      id: true,
+      eventName: true,
+      createdAt: true,
+      readyByDate: true,
+      greenwichUserId: true,
+      customer: { select: { name: true } },
+      greenwichUser: { select: { displayName: true, telegramChatId: true, isActive: true } },
+    },
+  });
+
+  let warningSent = 0;
+  for (const order of candidates) {
+    const readyYmd = order.readyByDate.toISOString().slice(0, 10);
+    const createdYmd = getOmskYmd(order.createdAt);
+    const leadDays = Math.round(
+      (parseDateOnlyToUtcMidnight(readyYmd).getTime() - parseDateOnlyToUtcMidnight(createdYmd).getTime()) /
+        86_400_000,
+    );
+    if (leadDays < policy.approvalLeadDays || !order.greenwichUserId) continue;
+
+    const sourceKey = `approval-warning:${order.id}`;
+    const existing = await prisma.orderStageReminder.findUnique({ where: { sourceKey } });
+    if (existing?.status === "SENT" || existing?.status === "RESOLVED") continue;
+    if (existing?.lastAttemptAt && getOmskYmd(existing.lastAttemptAt) === todayYmd) continue;
+
+    const scheduledFor = omskWorkdayUtc(todayYmd, policy.reminderHourOmsk);
+    const dueAt = omskWorkdayUtc(addDaysToYmd(todayYmd, 1), policy.reminderHourOmsk);
+    const reminder = await prisma.orderStageReminder.upsert({
+      where: { sourceKey },
+      update: { scheduledFor, dueAt, status: "PENDING", lastError: null },
+      create: {
+        sourceKey,
+        orderId: order.id,
+        recipientId: order.greenwichUserId,
+        audience: "GREENWICH",
+        kind: "APPROVAL_DUE",
+        scheduledFor,
+        dueAt,
+      },
+    });
+    const title = order.eventName?.trim() || order.customer.name;
+    const message = [
+      "⏳ <b>Заявку пора согласовать</b>",
+      "",
+      `Событие: <b>${escapeTelegramHtml(title)}</b>`,
+      `Выдача: <b>${escapeTelegramHtml(formatDateRu(order.readyByDate))}</b>`,
+      "",
+      "Проверь смету и согласуй заявку до следующего рабочего напоминания. Срочные заявки исключены из штрафов.",
+      link(`/orders/${order.id}`, "Открыть заявку"),
+    ].join("\n");
+    const chatId = order.greenwichUser?.isActive
+      ? order.greenwichUser.telegramChatId?.trim()
+      : undefined;
+    const sent = chatId ? await sendTelegramMessage(chatId, message) : false;
+
+    await createInAppNotification({
+      userId: order.greenwichUserId,
+      type: "ORDER_UPDATED",
+      title: "Заявку пора согласовать",
+      body: `${title}: выдача ${formatDateRu(order.readyByDate)}. Проверьте смету до следующего рабочего дня.`,
+      payloadJson: { kind: "APPROVAL_DUE", orderId: order.id, href: `/orders/${order.id}` },
+    });
+    await notifyWarehouseOrderInApp({
+      orderId: order.id,
+      title: "Greenwich получил напоминание о согласовании",
+      body: `${order.greenwichUser?.displayName ?? "Сотрудник"}: ${title}`,
+    });
+    await sendTelegramMessage(args.warehouseChatId, [
+      "👀 <b>Контроль согласования Greenwich</b>",
+      `${escapeTelegramHtml(order.greenwichUser?.displayName ?? "Сотрудник")}: ${escapeTelegramHtml(title)}`,
+      `Выдача ${escapeTelegramHtml(formatDateRu(order.readyByDate))}`,
+      link(`/orders/${order.id}`, "Открыть заявку"),
+    ].join("\n"), args.warehouseOptions);
+
+    await prisma.orderStageReminder.update({
+      where: { id: reminder.id },
+      data: sent
+        ? { status: "SENT", sentAt: args.now, attemptCount: { increment: 1 }, lastAttemptAt: args.now }
+        : {
+            status: "FAILED",
+            attemptCount: { increment: 1 },
+            lastAttemptAt: args.now,
+            lastError: chatId ? "Telegram не подтвердил отправку" : "У сотрудника не привязан Telegram",
+          },
+    });
+    if (sent) warningSent += 1;
+  }
+
+  const due = await prisma.orderStageReminder.findMany({
+    where: { kind: "APPROVAL_DUE", status: "SENT", dueAt: { lte: args.now } },
+    include: {
+      order: {
+        select: {
+          status: true,
+          greenwichUserId: true,
+          eventName: true,
+          customer: { select: { name: true } },
+        },
+      },
+    },
+  });
+  let penaltyApplied = 0;
+  for (const reminder of due) {
+    if (!UNAPPROVED_STATUSES.includes(reminder.order.status)) {
+      await prisma.orderStageReminder.update({
+        where: { id: reminder.id },
+        data: { status: "RESOLVED", resolvedAt: args.now },
+      });
+      continue;
+    }
+    if (!reminder.sentAt || !reminder.order.greenwichUserId) continue;
+    const added = await prisma.$transaction(async (tx) => {
+      const created = await addGreenwichRatingEvent(tx, {
+        userId: reminder.order.greenwichUserId!,
+        type: "APPROVAL_WARNING_MISSED",
+        delta: policy.approvalMissedPenalty,
+        reason: `Заявка «${reminder.order.eventName?.trim() || reminder.order.customer.name}» не согласована после предупреждения`,
+        sourceKey: `approval-warning:${reminder.orderId}:penalty`,
+        orderId: reminder.orderId,
+        stageReminderId: reminder.id,
+        recoverable: true,
+        now: args.now,
+      });
+      await tx.orderStageReminder.update({
+        where: { id: reminder.id },
+        data: { status: "RESOLVED", resolvedAt: args.now },
+      });
+      return created;
+    });
+    if (added) penaltyApplied += 1;
+  }
+  return { warningSent, penaltyApplied };
+}
+
 export async function runDailyReminders(now = new Date()): Promise<{
   warehousePrepSent: number;
   warehouseStageSent: number;
@@ -123,6 +285,8 @@ export async function runDailyReminders(now = new Date()): Promise<{
   greenwichReturnSent: number;
   warehouseReturnSent: number;
   workTaskDeadlineSent: number;
+  approvalWarningSent: number;
+  approvalPenaltyApplied: number;
 }> {
   if (!isTelegramConfigured()) {
     return {
@@ -134,6 +298,8 @@ export async function runDailyReminders(now = new Date()): Promise<{
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
       workTaskDeadlineSent: 0,
+      approvalWarningSent: 0,
+      approvalPenaltyApplied: 0,
     };
   }
 
@@ -148,10 +314,17 @@ export async function runDailyReminders(now = new Date()): Promise<{
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
       workTaskDeadlineSent: 0,
+      approvalWarningSent: 0,
+      approvalPenaltyApplied: 0,
     };
   }
   const topicId = getWarehouseTopicId();
   const warehouseOpts = warehouseTopicOptions(topicId);
+  const approval = await runApprovalStageReminders({
+    now,
+    warehouseChatId,
+    warehouseOptions: warehouseOpts,
+  });
 
   const omskTodayYmd = getOmskYmd(now);
   const omskTomorrowYmd = addDaysToYmd(omskTodayYmd, 1);
@@ -789,5 +962,21 @@ export async function runDailyReminders(now = new Date()): Promise<{
     greenwichReturnSent,
     warehouseReturnSent,
     workTaskDeadlineSent,
+    approvalWarningSent: approval.warningSent,
+    approvalPenaltyApplied: approval.penaltyApplied,
   };
 }
+
+function getOmskHour(now: Date): number {
+  return Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: OMSK_TZ,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(now));
+}
+
+function omskWorkdayUtc(ymd: string, hour: number): Date {
+  return new Date(`${ymd}T${String(hour).padStart(2, "0")}:00:00+06:00`);
+}
+
+const UNAPPROVED_STATUSES: OrderStatus[] = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"];

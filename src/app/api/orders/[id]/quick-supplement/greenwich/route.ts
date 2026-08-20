@@ -6,6 +6,7 @@ import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 import {
   escapeTelegramHtml,
   getWarehouseChatId,
@@ -140,6 +141,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         if (items.length !== itemIds.length) throw new Error("ITEM_NOT_FOUND");
 
         const itemById = new Map(items.map((i) => [i.id, i]));
+        const itemBenefits = await getGreenwichItemBenefits(tx, {
+          userId: auth.user.id,
+          itemIds,
+        });
         const reservedByItemId = await getReservedQtyByItemId({
           db: tx,
           startDate: parent.startDate,
@@ -188,11 +193,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             lines: {
               create: parsed.data.lines.map((l, idx) => {
                 const item = itemById.get(l.itemId)!;
+                const benefit = itemBenefits.get(l.itemId);
                 return {
                   itemId: l.itemId,
                   requestedQty: l.qty,
                   position: idx,
                   pricePerDaySnapshot: item.pricePerDay,
+                  payMultiplierSnapshot: benefit?.payMultiplier,
+                  greenwichOfferId: benefit?.offerId ?? undefined,
+                  greenwichDiscountPercent: benefit?.discountPercent,
+                  greenwichDiscountSource: benefit?.sourceLabel,
                   greenwichComment: null,
                 };
               }),

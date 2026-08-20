@@ -94,13 +94,13 @@ export default function InventoryPositionsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <a
+              <Link
                 href="/api/inventory/positions/export"
                 className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-violet-200/70 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-200/80"
               >
                 <span aria-hidden="true">↓</span>
                 Скачать реквизит
-              </a>
+              </Link>
               <button
                 type="button"
                 onClick={load}

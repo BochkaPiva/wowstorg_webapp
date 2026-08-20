@@ -12,6 +12,7 @@ type QueueOrderLine = {
   requestedQty: number;
   issuedQty?: number | null;
   pricePerDaySnapshot: unknown;
+  payMultiplierSnapshot?: unknown;
 };
 
 type QueueOrderPricingInput = {
@@ -37,6 +38,7 @@ type QueueOrderPricingInput = {
 type SnapshotLine = {
   requestedQty: number;
   pricePerDaySnapshot: number;
+  payMultiplierSnapshot?: number | null;
 };
 
 function numberOrNull(value: unknown): number | null {
@@ -61,8 +63,10 @@ function snapshotPricingInput(snapshot: unknown): {
     const line = value as Record<string, unknown>;
     const requestedQty = numberOrNull(line.requestedQty);
     const pricePerDaySnapshot = numberOrNull(line.pricePerDaySnapshot);
+    const payMultiplierSnapshot =
+      line.payMultiplierSnapshot == null ? null : numberOrNull(line.payMultiplierSnapshot);
     if (requestedQty == null || pricePerDaySnapshot == null) return [];
-    return [{ requestedQty, pricePerDaySnapshot }];
+    return [{ requestedQty, pricePerDaySnapshot, payMultiplierSnapshot }];
   });
   if (lines.length === 0) return null;
 

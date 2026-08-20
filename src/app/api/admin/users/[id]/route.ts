@@ -95,7 +95,7 @@ export async function PATCH(
       await prisma.$transaction(async (tx) => {
         if (parsed.data.greenwichRatingAuto === true) {
           await tx.greenwichRatingEvent.deleteMany({
-            where: { userId: id, type: "ADMIN_ADJUSTMENT" },
+            where: { userId: id, type: "ADMIN_ADJUSTMENT", sourceKey: { startsWith: "admin:" } },
           });
           await recomputeGreenwichRatingScore(tx, id);
           return;
@@ -106,8 +106,8 @@ export async function PATCH(
           where: { userId: id },
           select: { score: true },
         });
-        const target = parsed.data.greenwichRatingScore ?? current?.score ?? 100;
-        const delta = target - (current?.score ?? 100);
+        const target = parsed.data.greenwichRatingScore ?? current?.score ?? 70;
+        const delta = target - (current?.score ?? 70);
         if (delta === 0) return;
         await addGreenwichRatingEvent(tx, {
           userId: id,

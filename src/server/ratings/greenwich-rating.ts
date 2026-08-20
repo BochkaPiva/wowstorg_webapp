@@ -22,6 +22,16 @@ export type GreenwichRatingBenefit = {
   payMultiplier: number;
 };
 
+export type GreenwichMonthlyLeader = {
+  userId: string;
+  displayName: string;
+  monthlyDelta: number;
+  perfectReturns: number;
+  penalties: number;
+  currentScore: number;
+  position: number;
+};
+
 function utcDateOnlyToYmd(d: Date): string {
   const y = d.getUTCFullYear();
   const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -168,6 +178,7 @@ export async function addGreenwichRatingEvent(
     sourceKey: string;
     orderId?: string;
     reminderId?: string;
+    stageReminderId?: string;
     recoverable?: boolean;
     now?: Date;
   },
@@ -189,6 +200,7 @@ export async function addGreenwichRatingEvent(
       sourceKey: args.sourceKey,
       orderId: args.orderId,
       reminderId: args.reminderId,
+      stageReminderId: args.stageReminderId,
       recoveryStartsAt,
       recoveryEndsAt,
       createdAt: now,
@@ -204,31 +216,88 @@ export async function recomputeGreenwichRatingScore(
   userId: string,
   now = new Date(),
 ): Promise<number> {
-  const [orders, events] = await Promise.all([tx.order.findMany({
-    where: { greenwichUserId: userId },
-    select: {
-      greenwichRatingOverdueDelta: true,
-      greenwichRatingIncidentsDelta: true,
-    },
-  }), tx.greenwichRatingEvent.findMany({
+  const policy = await ensureGreenwichRatingPolicy(tx);
+  const rating = await tx.greenwichRating.upsert({
+    where: { userId },
+    update: {},
+    create: { userId, baseScore: policy.startingScore, score: policy.startingScore },
+    select: { baseScore: true },
+  });
+  const events = await tx.greenwichRatingEvent.findMany({
     where: { userId },
     select: { delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
-  })]);
-  const sum = orders.reduce(
-    (s, o) => s + o.greenwichRatingOverdueDelta + o.greenwichRatingIncidentsDelta,
-    0,
-  );
+  });
 
   const eventSum = events.reduce((total, event) => total + effectiveRatingEventDelta(event, now), 0);
-  const score = Math.max(0, Math.min(100, 100 + sum + eventSum));
+  const score = Math.max(0, Math.min(100, rating.baseScore + eventSum));
 
-  await tx.$executeRaw`
-    INSERT INTO "GreenwichRating" ("userId", "score", "manualLocked", "updatedAt")
-    VALUES (${userId}, ${score}, false, NOW())
-    ON CONFLICT ("userId") DO UPDATE
-    SET "score" = EXCLUDED."score",
-        "manualLocked" = false,
-        "updatedAt" = NOW()
-  `;
+  await tx.greenwichRating.update({
+    where: { userId },
+    data: { score, manualLocked: false },
+  });
   return score;
+}
+
+/** Границы календарного месяца Омска. В регионе нет перехода на летнее время (UTC+6). */
+export function getOmskMonthUtcRange(now = new Date()): { start: Date; end: Date } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: OMSK_TZ,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const monthIndex = Number(parts.find((part) => part.type === "month")?.value) - 1;
+  return {
+    start: new Date(Date.UTC(year, monthIndex, 1, -6)),
+    end: new Date(Date.UTC(year, monthIndex + 1, 1, -6)),
+  };
+}
+
+export async function getGreenwichMonthlyLeaderboard(
+  tx: Prisma.TransactionClient,
+  now = new Date(),
+): Promise<GreenwichMonthlyLeader[]> {
+  const range = getOmskMonthUtcRange(now);
+  const users = await tx.user.findMany({
+    where: { role: "GREENWICH", isActive: true },
+    select: {
+      id: true,
+      displayName: true,
+      greenwichRating: { select: { score: true } },
+      greenwichRatingEvents: {
+        where: {
+          createdAt: { gte: range.start, lt: range.end },
+          type: { not: "ADMIN_ADJUSTMENT" },
+        },
+        select: { type: true, delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
+      },
+      ordersGreenwich: {
+        where: { status: "CLOSED", updatedAt: { gte: range.start, lt: range.end } },
+        select: { id: true },
+      },
+    },
+  });
+
+  const ranked = users
+    .filter((user) => user.greenwichRatingEvents.length > 0 || user.ordersGreenwich.length > 0)
+    .map((user) => ({
+      userId: user.id,
+      displayName: user.displayName,
+      monthlyDelta: user.greenwichRatingEvents.reduce(
+        (sum, event) => sum + effectiveRatingEventDelta(event, now),
+        0,
+      ),
+      perfectReturns: user.greenwichRatingEvents.filter((event) => event.type === "PERFECT_RETURN").length,
+      penalties: user.greenwichRatingEvents.filter((event) => event.delta < 0).length,
+      currentScore: user.greenwichRating?.score ?? 70,
+    }))
+    .sort((a, b) =>
+      b.monthlyDelta - a.monthlyDelta ||
+      b.perfectReturns - a.perfectReturns ||
+      a.penalties - b.penalties ||
+      b.currentScore - a.currentScore ||
+      a.displayName.localeCompare(b.displayName, "ru"),
+    );
+
+  return ranked.map((entry, index) => ({ ...entry, position: index + 1 }));
 }

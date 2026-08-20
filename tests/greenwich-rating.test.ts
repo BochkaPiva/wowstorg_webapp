@@ -4,6 +4,7 @@ import {
   computeGreenwichIncidentsDelta,
   computeGreenwichOverdueDelta,
   effectiveRatingEventDelta,
+  getOmskMonthUtcRange,
 } from "@/server/ratings/greenwich-rating";
 
 describe("recoverable Greenwich rating events", () => {
@@ -61,7 +62,7 @@ describe("Greenwich rating policy limits", () => {
   it("rewards a clean return and ignores consumables", () => {
     expect(
       computeGreenwichIncidentsDelta([
-        { condition: "OK", qty: 2, itemType: "RENTAL" },
+        { condition: "OK", qty: 2, itemType: "ASSET" },
         { condition: "MISSING", qty: 20, itemType: "CONSUMABLE" },
       ]),
     ).toBe(5);
@@ -71,8 +72,8 @@ describe("Greenwich rating policy limits", () => {
     expect(
       computeGreenwichIncidentsDelta(
         [
-          { condition: "NEEDS_REPAIR", qty: 8, itemType: "RENTAL" },
-          { condition: "MISSING", qty: 8, itemType: "RENTAL" },
+          { condition: "NEEDS_REPAIR", qty: 8, itemType: "ASSET" },
+          { condition: "MISSING", qty: 8, itemType: "ASSET" },
         ],
         {
           repairPenaltyPerUnit: -1,
@@ -81,5 +82,14 @@ describe("Greenwich rating policy limits", () => {
         },
       ),
     ).toBe(-20);
+  });
+});
+
+describe("Greenwich monthly activity window", () => {
+  it("uses calendar month boundaries at UTC+6", () => {
+    expect(getOmskMonthUtcRange(new Date("2026-08-20T06:00:00.000Z"))).toEqual({
+      start: new Date("2026-07-31T18:00:00.000Z"),
+      end: new Date("2026-08-31T18:00:00.000Z"),
+    });
   });
 });

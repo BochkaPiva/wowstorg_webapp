@@ -62,6 +62,11 @@ export default function AdminIndexPage() {
             description="Статус бота, тест в чат склада и в личку."
           />
           <AdminCard
+            href="/admin/loyalty"
+            title="Лояльность Greenwich"
+            description="Рейтинг, уровни скидок, персональные предложения и предупреждения."
+          />
+          <AdminCard
             href="/admin/inventory-audit"
             title="Аудит инвентаря"
             description="Проверка расхождений, история запусков, детализация по позициям."

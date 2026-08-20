@@ -8,6 +8,7 @@ import { calcOrderPricing, validateOrderDiscount } from "@/server/orders/order-p
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 import { assertEnabledServicePricesPresent } from "@/server/orders/service-pricing";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 
 const LineSchema = z.object({
   id: z.string().optional(),
@@ -329,6 +330,9 @@ export async function PATCH(
         if (items.length !== itemIds.length) {
           throw new Error("ITEM_NOT_FOUND");
         }
+        const itemBenefits = order.greenwichUserId
+          ? await getGreenwichItemBenefits(tx, { userId: order.greenwichUserId, itemIds })
+          : new Map();
 
         const requestedByItemId = new Map<string, number>();
         for (const row of editLines) {
@@ -359,13 +363,20 @@ export async function PATCH(
         wasCycleStatus = CYCLE_RESET_STATUSES.includes(order.status as (typeof CYCLE_RESET_STATUSES)[number]);
 
         const linePriceById = new Map(order.lines.map((l) => [l.id, l.pricePerDaySnapshot]));
+        const lineMultiplierById = new Map(order.lines.map((l) => [l.id, l.payMultiplierSnapshot]));
         const nextDeliveryEnabled = data.deliveryEnabled ?? order.deliveryEnabled;
         const nextMontageEnabled = data.montageEnabled ?? order.montageEnabled;
         const nextDemontageEnabled = data.demontageEnabled ?? order.demontageEnabled;
         const nextDeliveryPrice = data.deliveryPrice ?? order.deliveryPrice;
         const nextMontagePrice = data.montagePrice ?? order.montagePrice;
         const nextDemontagePrice = data.demontagePrice ?? order.demontagePrice;
-        const nextDiscount = {
+        const nextDiscount = order.greenwichUserId
+          ? {
+              rentalDiscountType: "NONE" as const,
+              rentalDiscountPercent: null,
+              rentalDiscountAmount: null,
+            }
+          : {
           rentalDiscountType: data.rentalDiscountType ?? order.rentalDiscountType,
           rentalDiscountPercent:
             (data.rentalDiscountType ?? order.rentalDiscountType) === "PERCENT"
@@ -452,6 +463,10 @@ export async function PATCH(
               row.id && linePriceById.has(row.id)
                 ? linePriceById.get(row.id)
                 : itemById.get(row.itemId)!.pricePerDay,
+            payMultiplierSnapshot:
+              row.id && lineMultiplierById.has(row.id)
+                ? lineMultiplierById.get(row.id)
+                : itemBenefits.get(row.itemId)?.payMultiplier,
           })),
           discount: nextDiscount,
         });
@@ -478,12 +493,17 @@ export async function PATCH(
               },
             });
           } else {
+            const benefit = itemBenefits.get(row.itemId);
             await tx.orderLine.create({
               data: {
                 orderId: id,
                 itemId: row.itemId,
                 requestedQty: row.requestedQty,
                 pricePerDaySnapshot: price,
+                payMultiplierSnapshot: benefit?.payMultiplier,
+                greenwichOfferId: benefit?.offerId ?? undefined,
+                greenwichDiscountPercent: benefit?.discountPercent,
+                greenwichDiscountSource: benefit?.sourceLabel,
                 warehouseComment: row.warehouseComment?.trim() || null,
                 position,
               },

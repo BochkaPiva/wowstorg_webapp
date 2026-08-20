@@ -413,6 +413,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         requestedQty: true,
         issuedQty: true,
         pricePerDaySnapshot: true,
+        payMultiplierSnapshot: true,
       },
     },
   } satisfies Prisma.OrderSelect;
@@ -794,6 +795,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
                       requestedQty: true,
                       issuedQty: true,
                       pricePerDaySnapshot: true,
+                      payMultiplierSnapshot: true,
                     },
                   },
                 },

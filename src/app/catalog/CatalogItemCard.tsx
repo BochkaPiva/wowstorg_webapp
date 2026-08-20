@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React from "react";
 
 export type CatalogGridItem = {
@@ -8,6 +9,13 @@ export type CatalogGridItem = {
   description: string | null;
   type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
+  basePricePerDay?: number;
+  loyalty?: {
+    discountPercent: number;
+    source: "RATING_TIER" | "PERSONAL_OFFER";
+    sourceLabel: string;
+    offerTitle: string | null;
+  } | null;
   photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
@@ -76,17 +84,13 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
         <span className="mk-cardNumber" aria-hidden="true">{String(displayIndex).padStart(2, "0")}</span>
         <div className="mk-box">
           {item.photo1Key ? (
-            <img
+            <Image
               src={`/api/inventory/positions/${item.id}/photo?w=480`}
               alt=""
+              fill
               className="mk-cardPhoto"
-              loading="lazy"
-              decoding="async"
-              fetchPriority="low"
               sizes="(max-width: 640px) 100vw, (max-width: 1100px) 50vw, 320px"
               style={{
-                width: "100%",
-                height: "100%",
                 objectFit: "contain",
                 borderRadius: "inherit",
               }}
@@ -107,6 +111,11 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
       <div className="mk-content">
         <div className="mk-meta">
           <span className="mk-pill">{typeLabelRu(item.type)}</span>
+          {item.loyalty?.source === "PERSONAL_OFFER" ? (
+            <span className="rounded-full bg-[#6426cf] px-2.5 py-1 text-[11px] font-black text-white">
+              Для вас −{item.loyalty.discountPercent}%
+            </span>
+          ) : null}
         </div>
         <button type="button" className="mk-cardLink" onClick={() => onDetail(item.id)}>
           <div className="mk-name">{item.name}</div>
@@ -117,6 +126,9 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
           <div className="mk-price">
             <strong>{item.pricePerDay}</strong>
             <span className="mk-priceUnit">₽ / сутки</span>
+            {item.basePricePerDay != null && Number(item.basePricePerDay) > priceNum ? (
+              <span className="ml-2 text-xs text-zinc-400 line-through">{item.basePricePerDay} ₽</span>
+            ) : null}
           </div>
           <span className="mk-available">В наличии: <strong>{available}</strong></span>
         </div>

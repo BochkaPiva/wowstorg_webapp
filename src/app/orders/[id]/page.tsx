@@ -37,6 +37,9 @@ type OrderLine = {
   approvedQty: number | null;
   issuedQty: number | null;
   pricePerDaySnapshot: number | null;
+  payMultiplierSnapshot?: number | null;
+  greenwichDiscountPercent?: number | null;
+  greenwichDiscountSource?: string | null;
   warehouseComment: string | null;
   greenwichComment?: string | null;
   item: { id: string; name: string; type: string; photo1Key: string | null };
@@ -211,7 +214,7 @@ function fmtDateRentPart(dateIso: string, part: RentalPartOfDay) {
 }
 
 function orderTotal(order: {
-  lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
+  lines: { pricePerDaySnapshot: number | null; payMultiplierSnapshot?: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
   rentalStartPartOfDay?: RentalPartOfDay;
@@ -232,7 +235,7 @@ function orderTotal(order: {
 }
 
 function calcOrderPricingClient(order: {
-  lines: { pricePerDaySnapshot: number | null; requestedQty: number }[];
+  lines: { pricePerDaySnapshot: number | null; payMultiplierSnapshot?: number | null; requestedQty: number }[];
   startDate: string;
   endDate: string;
   rentalStartPartOfDay?: RentalPartOfDay;
@@ -259,7 +262,7 @@ function calcOrderPricingClient(order: {
   });
   const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
   const rentalBeforeDiscount = order.lines.reduce(
-    (sum, l) => sum + (l.pricePerDaySnapshot ?? 0) * l.requestedQty * days * multiplier,
+    (sum, l) => sum + (l.pricePerDaySnapshot ?? 0) * l.requestedQty * days * (l.payMultiplierSnapshot ?? multiplier),
     0,
   );
   const rawDiscount =
@@ -851,6 +854,7 @@ export default function OrderDetailsPage() {
     itemName: string;
     itemPhoto1Key?: string | null;
     pricePerDaySnapshot?: number | null;
+    payMultiplierSnapshot?: number | null;
     requestedQty: number | string;
     lineComment: string;
   };
@@ -887,13 +891,6 @@ export default function OrderDetailsPage() {
   const [editRentalDiscountType, setEditRentalDiscountType] = React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
   const [editRentalDiscountPercent, setEditRentalDiscountPercent] = React.useState<number | "">("");
   const [editRentalDiscountAmount, setEditRentalDiscountAmount] = React.useState<number | "">("");
-  const [editGreenwichRequestedDiscountType, setEditGreenwichRequestedDiscountType] =
-    React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
-  const [editGreenwichRequestedDiscountPercent, setEditGreenwichRequestedDiscountPercent] =
-    React.useState<number | "">("");
-  const [editGreenwichRequestedDiscountAmount, setEditGreenwichRequestedDiscountAmount] =
-    React.useState<number | "">("");
-  const [editGreenwichDiscountRequestComment, setEditGreenwichDiscountRequestComment] = React.useState("");
   const [catalogItems, setCatalogItems] = React.useState<CatalogItemOption[]>([]);
 
   const user = state.status === "authenticated" ? state.user : null;
@@ -913,6 +910,7 @@ export default function OrderDetailsPage() {
     [catalogItems],
   );
   const orderPricing = order ? calcOrderPricingClient(order) : null;
+  const isInternalGreenwichOrder = Boolean(order?.greenwichUserId);
   const warehouseProfitEstimate =
     order && isWarehouse ? orderServicesProfitEstimate(order) : null;
   const editPricing = React.useMemo(() => {
@@ -921,6 +919,7 @@ export default function OrderDetailsPage() {
       lines: editLines.map((line) => ({
         pricePerDaySnapshot:
           line.pricePerDaySnapshot ?? catalogItemsById.get(line.itemId)?.pricePerDay ?? 0,
+        payMultiplierSnapshot: line.payMultiplierSnapshot,
         requestedQty: Number(line.requestedQty) || 0,
       })),
       startDate: order.startDate,
@@ -931,13 +930,13 @@ export default function OrderDetailsPage() {
       deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
       montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
       demontagePrice: editDemontageEnabled ? Number(editDemontagePrice || 0) : 0,
-      rentalDiscountType: isWarehouse ? editRentalDiscountType : order.rentalDiscountType,
-      rentalDiscountPercent: isWarehouse
+      rentalDiscountType: isWarehouse && !order.greenwichUserId ? editRentalDiscountType : "NONE",
+      rentalDiscountPercent: isWarehouse && !order.greenwichUserId
         ? editRentalDiscountPercent === "" ? null : Number(editRentalDiscountPercent)
-        : order.rentalDiscountPercent,
-      rentalDiscountAmount: isWarehouse
+        : null,
+      rentalDiscountAmount: isWarehouse && !order.greenwichUserId
         ? editRentalDiscountAmount === "" ? null : Number(editRentalDiscountAmount)
-        : order.rentalDiscountAmount,
+        : null,
       clientPaymentMethod: order.clientPaymentMethod,
     });
   }, [
@@ -1177,6 +1176,7 @@ export default function OrderDetailsPage() {
         itemName: l.item.name,
         itemPhoto1Key: l.item.photo1Key,
         pricePerDaySnapshot: l.pricePerDaySnapshot,
+        payMultiplierSnapshot: l.payMultiplierSnapshot,
         requestedQty: l.requestedQty,
         lineComment: (isGreenwich ? (l.greenwichComment ?? "") : (l.warehouseComment ?? "")) as string,
       })),
@@ -1216,10 +1216,6 @@ export default function OrderDetailsPage() {
     setEditRentalDiscountType(order.rentalDiscountType ?? "NONE");
     setEditRentalDiscountPercent(order.rentalDiscountPercent ?? "");
     setEditRentalDiscountAmount(order.rentalDiscountAmount ?? "");
-    setEditGreenwichRequestedDiscountType(order.greenwichRequestedDiscountType ?? "NONE");
-    setEditGreenwichRequestedDiscountPercent(order.greenwichRequestedDiscountPercent ?? "");
-    setEditGreenwichRequestedDiscountAmount(order.greenwichRequestedDiscountAmount ?? "");
-    setEditGreenwichDiscountRequestComment(order.greenwichDiscountRequestComment ?? "");
     setIsEditing(true);
     setActionError(null);
     if (canEditOrderServicesOnly) {
@@ -1365,12 +1361,14 @@ export default function OrderDetailsPage() {
         return;
       }
     }
-    const discountError = getOrderDiscountError({
-      type: isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType,
-      percent: isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent,
-      amount: isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount,
-      rentalSubtotal: editPricing?.rentalBeforeDiscount ?? 0,
-    });
+    const discountError = isWarehouse && !order.greenwichUserId
+      ? getOrderDiscountError({
+          type: editRentalDiscountType,
+          percent: editRentalDiscountPercent,
+          amount: editRentalDiscountAmount,
+          rentalSubtotal: editPricing?.rentalBeforeDiscount ?? 0,
+        })
+      : null;
     if (discountError) {
       setActionError(discountError);
       return;
@@ -1431,7 +1429,7 @@ export default function OrderDetailsPage() {
                 hiddenExpenses: hiddenExpensePayload(),
               }
             : {}),
-          ...(isWarehouse
+          ...(isWarehouse && !order.greenwichUserId
             ? {
                 rentalDiscountType: editRentalDiscountType,
                 rentalDiscountPercent:
@@ -1443,20 +1441,14 @@ export default function OrderDetailsPage() {
                     ? Number(editRentalDiscountAmount)
                     : null,
               }
-            : {
-                greenwichRequestedDiscountType: editGreenwichRequestedDiscountType,
-                greenwichRequestedDiscountPercent:
-                  editGreenwichRequestedDiscountType === "PERCENT" &&
-                  editGreenwichRequestedDiscountPercent !== ""
-                    ? Number(editGreenwichRequestedDiscountPercent)
-                    : null,
-                greenwichRequestedDiscountAmount:
-                  editGreenwichRequestedDiscountType === "AMOUNT" &&
-                  editGreenwichRequestedDiscountAmount !== ""
-                    ? Number(editGreenwichRequestedDiscountAmount)
-                    : null,
-                greenwichDiscountRequestComment: editGreenwichDiscountRequestComment.trim() || null,
-              }),
+            : isWarehouse
+              ? { rentalDiscountType: "NONE", rentalDiscountPercent: null, rentalDiscountAmount: null }
+              : {
+                  greenwichRequestedDiscountType: "NONE",
+                  greenwichRequestedDiscountPercent: null,
+                  greenwichRequestedDiscountAmount: null,
+                  greenwichDiscountRequestComment: null,
+                }),
           lines: editLines.map((l) => ({
             id: l.id,
             itemId: l.itemId,
@@ -1897,29 +1889,6 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
-        {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
-          <div className="rounded-[1.5rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.9),rgba(255,255,255,0.82))] p-4 shadow-[0_18px_45px_rgba(217,119,6,0.08)] backdrop-blur">
-            <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-              Запрос скидки от Grinvich
-            </div>
-            <div className="mt-1 text-lg font-bold text-amber-950">
-              {formatDiscountLabel(
-                order.greenwichRequestedDiscountType,
-                order.greenwichRequestedDiscountPercent,
-                order.greenwichRequestedDiscountAmount,
-              )}
-            </div>
-            {order.greenwichDiscountRequestComment ? (
-              <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900">
-                {order.greenwichDiscountRequestComment}
-              </p>
-            ) : null}
-            <p className="mt-2 text-xs text-amber-800">
-              Это только запрос клиента. На сумму заявки влияет только подтвержденная скидка склада.
-            </p>
-          </div>
-        ) : null}
-
         {!isEditing && order.comment ? (
           <div className={orderGlassCardClass + " p-4"}>
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Комментарий</div>
@@ -1962,42 +1931,26 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             </div>
-            <OrderDiscountControl
-              type={isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType}
-              percent={isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent}
-              amount={isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount}
-              rentalSubtotal={editPricing?.rentalBeforeDiscount ?? 0}
-              onTypeChange={(value) => {
-                if (isWarehouse) setEditRentalDiscountType(value);
-                else setEditGreenwichRequestedDiscountType(value);
-              }}
-              onPercentChange={(value) => {
-                if (isWarehouse) setEditRentalDiscountPercent(value);
-                else setEditGreenwichRequestedDiscountPercent(value);
-              }}
-              onAmountChange={(value) => {
-                if (isWarehouse) setEditRentalDiscountAmount(value);
-                else setEditGreenwichRequestedDiscountAmount(value);
-              }}
-              title={isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
-              description={
-                isWarehouse
-                  ? "Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."
-                  : "Укажите желаемую скидку — склад увидит запрос и примет решение."
-              }
-            />
-            {!isWarehouse ? (
-              <label className={orderGlassCardClass + " block p-5 text-xs font-semibold uppercase tracking-wide text-zinc-500"}>
-                Комментарий к запросу
-                <textarea
-                  value={editGreenwichDiscountRequestComment}
-                  onChange={(e) => setEditGreenwichDiscountRequestComment(e.target.value)}
-                  rows={2}
-                  className={orderInputClass + " mt-2 w-full normal-case text-zinc-800"}
-                  placeholder="Например: нужна скидка из-за объема заявки"
-                />
-              </label>
-            ) : null}
+            {isWarehouse && !isInternalGreenwichOrder ? (
+              <OrderDiscountControl
+                type={editRentalDiscountType}
+                percent={editRentalDiscountPercent}
+                amount={editRentalDiscountAmount}
+                rentalSubtotal={editPricing?.rentalBeforeDiscount ?? 0}
+                onTypeChange={setEditRentalDiscountType}
+                onPercentChange={setEditRentalDiscountPercent}
+                onAmountChange={setEditRentalDiscountAmount}
+                title="Скидка на реквизит"
+                description="Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."
+              />
+            ) : (
+              <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50/80 p-5 text-sm text-violet-950">
+                <strong className="block">Единая скидка Greenwich уже применена</strong>
+                <span className="mt-1 block text-violet-800">
+                  Для каждой позиции сохранена одна лучшая цена: уровень рейтинга либо более выгодное персональное предложение.
+                </span>
+              </div>
+            )}
             <div className={orderGlassCardClass + " overflow-hidden"}>
               <div className={orderSectionHeaderClass}>
                 <span className="text-sm font-semibold text-zinc-700">Состав заявки</span>
@@ -2299,7 +2252,7 @@ export default function OrderDetailsPage() {
                           {(() => {
                             if (line.pricePerDaySnapshot == null) return "—";
                             const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-                            const before = line.pricePerDaySnapshot * multiplier;
+                            const before = line.pricePerDaySnapshot * (line.payMultiplierSnapshot ?? multiplier);
                             const pricing = calcOrderPricingClient(order);
                             const ratio =
                               pricing.rentalBeforeDiscount > 0

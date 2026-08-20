@@ -226,6 +226,7 @@ export async function GET(req: Request) {
                       requestedQty: true,
                       issuedQty: true,
                       pricePerDaySnapshot: true,
+                      payMultiplierSnapshot: true,
                     },
                   },
                 },

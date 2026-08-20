@@ -8,7 +8,7 @@ import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import type { RentalPartOfDay } from "@/lib/rental-days";
-import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 
 const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
@@ -145,9 +145,11 @@ export async function GET(req: Request) {
   }
 
   const isGreenwich = auth.user.role === "GREENWICH";
-  const priceMultiplier = isGreenwich
-    ? (await prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, auth.user.id))).payMultiplier
-    : 1;
+  const itemBenefits = isGreenwich
+    ? await prisma.$transaction((tx) =>
+        getGreenwichItemBenefits(tx, { userId: auth.user.id, itemIds: items.map((item) => item.id) }),
+      )
+    : new Map();
   const mappedItems = items.map((i) => {
     const availableNow = usableStockUnits(i);
     const reserved = reservedByItemId.get(i.id) ?? 0;
@@ -156,6 +158,8 @@ export async function GET(req: Request) {
         ? Math.max(0, availableNow - reserved)
         : undefined;
     const basePrice = Number(i.pricePerDay);
+    const benefit = itemBenefits.get(i.id);
+    const priceMultiplier = benefit?.payMultiplier ?? 1;
     // Всегда число в JSON: иначе Prisma Decimal для WOWSTORG уезжает строкой, клиент теряет цену (сумма 0 в смете).
     const pricePerDay =
       priceMultiplier !== 1
@@ -164,7 +168,18 @@ export async function GET(req: Request) {
 
     return {
       ...i,
+      basePricePerDay: basePrice,
       pricePerDay,
+      loyalty: benefit
+        ? {
+            discountPercent: benefit.discountPercent,
+            source: benefit.source,
+            sourceLabel: benefit.sourceLabel,
+            offerId: benefit.offerId,
+            offerTitle: benefit.offerTitle,
+            offerEndsAt: benefit.offerEndsAt,
+          }
+        : null,
       availability: {
         availableNow,
         ...(availableForDates !== undefined && { availableForDates }),

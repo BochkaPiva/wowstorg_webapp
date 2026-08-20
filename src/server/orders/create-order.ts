@@ -9,6 +9,7 @@ import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
 import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 
 type InputLine = {
   itemId: string;
@@ -277,6 +278,9 @@ export async function createOrderInTransaction(
     throw new CreateOrderError("ITEM_NOT_FOUND");
   }
   const itemById = new Map(items.map((item) => [item.id, item]));
+  const itemBenefits = greenwichUserId
+    ? await getGreenwichItemBenefits(tx, { userId: greenwichUserId, itemIds })
+    : new Map();
 
   const reserved = await getReservedQtyByItemId({
     db: tx,
@@ -299,9 +303,9 @@ export async function createOrderInTransaction(
   }
 
   const actualDiscount = {
-    rentalDiscountType: isWarehouse ? (input.rentalDiscountType ?? "NONE") : "NONE",
-    rentalDiscountPercent: isWarehouse ? input.rentalDiscountPercent ?? null : null,
-    rentalDiscountAmount: isWarehouse ? input.rentalDiscountAmount ?? null : null,
+    rentalDiscountType: isWarehouse && !greenwichUserId ? (input.rentalDiscountType ?? "NONE") : "NONE",
+    rentalDiscountPercent: isWarehouse && !greenwichUserId ? input.rentalDiscountPercent ?? null : null,
+    rentalDiscountAmount: isWarehouse && !greenwichUserId ? input.rentalDiscountAmount ?? null : null,
   };
   const clientPaymentMethod: OrderServicePaymentMethod = isWarehouse
     ? (input.clientPaymentMethod ?? "NON_CASH")
@@ -322,6 +326,7 @@ export async function createOrderInTransaction(
       itemId: line.itemId,
       requestedQty: line.qty,
       pricePerDaySnapshot: itemById.get(line.itemId)!.pricePerDay,
+      payMultiplierSnapshot: itemBenefits.get(line.itemId)?.payMultiplier,
     })),
     discount: actualDiscount,
     clientPaymentMethod,
@@ -332,19 +337,6 @@ export async function createOrderInTransaction(
   });
   if (!discountValidation.ok) {
     throw new CreateOrderError("INVALID_DISCOUNT", discountValidation.message);
-  }
-  if (!isWarehouse) {
-    const requestedDiscountValidation = validateOrderDiscount({
-      discount: {
-        rentalDiscountType: input.greenwichRequestedDiscountType ?? "NONE",
-        rentalDiscountPercent: input.greenwichRequestedDiscountPercent ?? null,
-        rentalDiscountAmount: input.greenwichRequestedDiscountAmount ?? null,
-      },
-      rentalSubtotalBeforeDiscount: pricingPreview.rentalSubtotalBeforeDiscount,
-    });
-    if (!requestedDiscountValidation.ok) {
-      throw new CreateOrderError("INVALID_DISCOUNT_REQUEST", requestedDiscountValidation.message);
-    }
   }
 
   const order = await tx.order.create({
@@ -396,24 +388,20 @@ export async function createOrderInTransaction(
         actualDiscount.rentalDiscountType === "PERCENT" ? actualDiscount.rentalDiscountPercent : null,
       rentalDiscountAmount:
         actualDiscount.rentalDiscountType === "AMOUNT" ? actualDiscount.rentalDiscountAmount : null,
-      greenwichRequestedDiscountType: !isWarehouse ? (input.greenwichRequestedDiscountType ?? "NONE") : "NONE",
-      greenwichRequestedDiscountPercent:
-        !isWarehouse && input.greenwichRequestedDiscountType === "PERCENT"
-          ? input.greenwichRequestedDiscountPercent ?? null
-          : null,
-      greenwichRequestedDiscountAmount:
-        !isWarehouse && input.greenwichRequestedDiscountType === "AMOUNT"
-          ? input.greenwichRequestedDiscountAmount ?? null
-          : null,
-      greenwichDiscountRequestComment: !isWarehouse
-        ? normalizeNullableComment(input.greenwichDiscountRequestComment ?? null)
-        : null,
+      greenwichRequestedDiscountType: "NONE",
+      greenwichRequestedDiscountPercent: null,
+      greenwichRequestedDiscountAmount: null,
+      greenwichDiscountRequestComment: null,
       lines: {
         create: lines.map((line, index) => ({
           itemId: line.itemId,
           sourceKitId: line.sourceKitId ?? undefined,
           requestedQty: line.qty,
           pricePerDaySnapshot: itemById.get(line.itemId)!.pricePerDay,
+          payMultiplierSnapshot: itemBenefits.get(line.itemId)?.payMultiplier,
+          greenwichOfferId: itemBenefits.get(line.itemId)?.offerId ?? undefined,
+          greenwichDiscountPercent: itemBenefits.get(line.itemId)?.discountPercent,
+          greenwichDiscountSource: itemBenefits.get(line.itemId)?.sourceLabel,
           greenwichComment: normalizeComment(line.comment ?? null),
           position: index,
         })),

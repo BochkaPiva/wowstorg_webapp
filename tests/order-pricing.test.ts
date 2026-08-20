@@ -64,6 +64,21 @@ describe("order pricing", () => {
     expect(pricing.rentalSubtotalBeforeDiscount).toBe(300);
   });
 
+  it("uses one per-line loyalty discount without stacking it with the order tier", () => {
+    const pricing = calcOrderPricing({
+      startDate: utcDate("2026-05-20"),
+      endDate: utcDate("2026-05-20"),
+      payMultiplier: 0.7,
+      lines: [
+        { itemId: "regular", requestedQty: 1, pricePerDaySnapshot: 100 },
+        { itemId: "personal", requestedQty: 1, pricePerDaySnapshot: 100, payMultiplierSnapshot: 0.5 },
+      ],
+    });
+
+    expect(pricing.rentalSubtotalBeforeDiscount).toBe(120);
+    expect(pricing.lineAllocations.map((line) => line.rentalBeforeDiscount)).toEqual([70, 50]);
+  });
+
   it("ignores stale prices for explicitly disabled services", () => {
     const pricing = calcOrderPricing({
       startDate: utcDate("2026-06-07"),

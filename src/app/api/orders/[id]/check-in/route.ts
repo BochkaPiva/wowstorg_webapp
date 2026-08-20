@@ -9,7 +9,7 @@ import { scheduleAfterResponse } from "@/server/notifications/schedule-after-res
 import {
   computeGreenwichIncidentsDelta,
   ensureGreenwichRatingPolicy,
-  recomputeGreenwichRatingScore,
+  addGreenwichRatingEvent,
 } from "@/server/ratings/greenwich-rating";
 import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 
@@ -261,7 +261,25 @@ export async function POST(
     });
 
       if (order.greenwichUserId) {
-        await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+        const hasMissing = ratingRows.some((row) => row.condition === "MISSING" && row.qty > 0);
+        const eventType = incidentsDelta >= 0
+          ? "PERFECT_RETURN"
+          : hasMissing
+            ? "RETURN_MISSING"
+            : "RETURN_DAMAGED";
+        await addGreenwichRatingEvent(tx, {
+          userId: order.greenwichUserId,
+          type: eventType,
+          delta: incidentsDelta,
+          reason: incidentsDelta >= 0
+            ? "Весь реквизит возвращён в исправном состоянии"
+            : hasMissing
+              ? "При приёмке обнаружена потеря или недостача реквизита"
+              : "При приёмке обнаружено повреждение реквизита",
+          sourceKey: `order:${id}:check-in-result`,
+          orderId: id,
+          recoverable: false,
+        });
       }
     },
     { maxWait: 5_000, timeout: 15_000 },

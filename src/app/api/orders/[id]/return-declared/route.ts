@@ -7,7 +7,7 @@ import { scheduleAfterResponse } from "@/server/notifications/schedule-after-res
 import {
   computeGreenwichOverdueDelta,
   ensureGreenwichRatingPolicy,
-  recomputeGreenwichRatingScore,
+  addGreenwichRatingEvent,
 } from "@/server/ratings/greenwich-rating";
 
 const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
@@ -133,7 +133,18 @@ export async function POST(
       });
 
       if (order.greenwichUserId) {
-        await recomputeGreenwichRatingScore(tx, order.greenwichUserId);
+        if (overdueDelta < 0) {
+          await addGreenwichRatingEvent(tx, {
+            userId: order.greenwichUserId,
+            type: "RETURN_OVERDUE",
+            delta: overdueDelta,
+            reason: "Возврат отправлен на приёмку позже установленного срока",
+            sourceKey: `order:${id}:return-overdue`,
+            orderId: id,
+            recoverable: true,
+            now: declaredAt,
+          });
+        }
       }
     },
     { maxWait: 5_000, timeout: 15_000 },

@@ -19,7 +19,11 @@ export function calcOrderTotalAmount(args: {
   montagePrice: number | null;
   demontageEnabled?: boolean;
   demontagePrice: number | null;
-  lines: Array<{ requestedQty: number; pricePerDaySnapshot: unknown }>;
+  lines: Array<{
+    requestedQty: number;
+    pricePerDaySnapshot: unknown;
+    payMultiplierSnapshot?: unknown;
+  }>;
   discount?: OrderDiscountInput;
   clientPaymentMethod?: "NON_CASH" | "CASH" | string | null;
 }): number {

@@ -87,9 +87,25 @@ type GreenwichRatingSnapshot = {
     next: { name: string; minScore: number; discountPercent: number; pointsNeeded: number } | null;
   };
   breakdown?: { activeEventDelta: number; recovering: number };
+  month?: {
+    position: number | null;
+    delta: number;
+    activeParticipants: number;
+    leader: { displayName: string; monthlyDelta: number } | null;
+  };
+  rules?: { reminderHourOmsk: number };
+  activeOffers?: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    discountPercent: number;
+    endsAt: string;
+    itemCount: number;
+    items: Array<{ id: string; name: string; photo1Key: string | null }>;
+  }>;
   recentEvents?: Array<{
     id: string;
-    type: "CONFIRMATION_RESPONDED" | "CONFIRMATION_REPEAT_MISSED" | "CONFIRMATION_FINAL_MISSED" | "ADMIN_ADJUSTMENT";
+    type: string;
     delta: number;
     originalDelta: number;
     reason: string;
@@ -114,7 +130,7 @@ function GreenwichRatingCard() {
         }
       })
       .catch(() => {
-        if (!cancelled) setSnapshot({ score: 100 });
+        if (!cancelled) setSnapshot({ score: 70 });
       });
     return () => {
       cancelled = true;
@@ -141,7 +157,7 @@ function GreenwichRatingCard() {
     };
   }, [showInfo]);
 
-  const s = snapshot?.score ?? 100;
+  const s = snapshot?.score ?? 70;
   const pct = Math.max(0, Math.min(100, s));
   const phrase = dinoPhrase(s);
 
@@ -153,7 +169,15 @@ function GreenwichRatingCard() {
   const dinoPct = Math.max(5, Math.min(95, pct));
 
   return (
-    <div className="border border-zinc-200 bg-white p-4">
+    <div className="relative overflow-hidden rounded-[30px] border border-violet-100 bg-[#f4efff] p-5 md:min-h-[350px] md:p-8 md:pr-[330px]">
+      <Image
+        src="/brand/dino-catalog.webp"
+        alt="Фиолетовый динозавр Wowstorg"
+        width={350}
+        height={621}
+        className="pointer-events-none absolute -bottom-48 right-3 hidden w-[290px] drop-shadow-[0_28px_34px_rgba(94,32,187,0.22)] md:block"
+        priority
+      />
       <style jsx>{`
         @keyframes dinoNudge {
           0% {
@@ -178,13 +202,13 @@ function GreenwichRatingCard() {
       `}</style>
       <div className="relative flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-zinc-900">Рейтинг надёжности</div>
-          <div className="mt-1 text-xs text-zinc-500">Сроки, состояние реквизита и ответы по заявкам</div>
+          <div className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">Ваш рейтинг надёжности</div>
+          <div className="mt-2 text-sm text-zinc-600">Скидка, дисциплина и забота о реквизите — в одном понятном результате</div>
         </div>
         <button
           type="button"
           onClick={() => setShowInfo((v) => !v)}
-          className="shrink-0 border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700 transition hover:border-zinc-950"
+            className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-bold text-violet-800 transition-colors hover:bg-violet-50"
           aria-expanded={showInfo}
           title="Как считается"
         >
@@ -212,8 +236,8 @@ function GreenwichRatingCard() {
         ) : null}
       </div>
 
-      <div className="mt-4 grid grid-cols-[64px_minmax(0,1fr)] items-start gap-3">
-        <div className="text-3xl font-extrabold tabular-nums text-violet-800 leading-none">
+      <div className="mt-7 grid grid-cols-[92px_minmax(0,1fr)] items-start gap-4">
+        <div className="text-6xl font-black tabular-nums text-violet-800 leading-none tracking-[-0.07em]">
           {s}
         </div>
         <div className="min-w-0 flex-1">
@@ -264,7 +288,7 @@ function GreenwichRatingCard() {
               >
                 <div className={riding ? "dinoNudge" : ""}>
                   <div className="relative h-9 w-9">
-                    <Image src="/dino.png" alt="" fill className="object-contain" sizes="36px" />
+                    <Image src="/brand/dino-catalog.webp" alt="" fill className="object-contain object-top" sizes="36px" />
                   </div>
                 </div>
               </button>
@@ -278,6 +302,27 @@ function GreenwichRatingCard() {
         </div>
       </div>
 
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl bg-white/80 p-4 ring-1 ring-violet-100">
+          <div className="text-xs font-bold text-zinc-500">Этот месяц</div>
+          <div className="mt-1 text-lg font-black text-zinc-950">
+            {snapshot?.month?.position ? `Место №${snapshot.month.position}` : "Набираем активность"}
+          </div>
+          <div className="mt-1 text-xs text-zinc-600">
+            {snapshot?.month?.delta ? `${snapshot.month.delta > 0 ? "+" : ""}${snapshot.month.delta} баллов за действия` : "Лидер определяется по реальным действиям, не по старому рейтингу"}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-[#ffd21f] p-4 text-zinc-950">
+          <div className="text-xs font-bold">Персональные предложения</div>
+          <div className="mt-1 text-lg font-black">
+            {snapshot?.activeOffers?.length ? `${snapshot.activeOffers.length} активных` : "Пока нет"}
+          </div>
+          <div className="mt-1 text-xs leading-5">
+            {snapshot?.activeOffers?.[0] ? `${snapshot.activeOffers[0].title}: скидка ${snapshot.activeOffers[0].discountPercent}% на выбранные позиции` : "Они появятся здесь и автоматически применятся в каталоге"}
+          </div>
+          {snapshot?.activeOffers?.length ? <Link href="/catalog" className="mt-2 inline-flex text-xs font-black underline underline-offset-2">Посмотреть в каталоге</Link> : null}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1179,6 +1224,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           </>
         ) : null}
       </div>
+
       </div>
     </div>
   );
@@ -1225,7 +1271,7 @@ export default function HomeDashboardPage() {
           <div className={DASH_SECTION_SHELL}>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <div>
-                <div className="text-sm font-semibold text-zinc-900">Дашборд Grinvich</div>
+                <div className="text-sm font-semibold text-zinc-900">Дашборд Greenwich</div>
                 <div className="mt-1 text-xs text-zinc-600">
                   Держи темп: возвращай вовремя и в норме на приёмке
                 </div>
@@ -1234,13 +1280,13 @@ export default function HomeDashboardPage() {
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
               <div className="md:col-span-12">
+                <GreenwichRatingCard />
+              </div>
+              <div className="md:col-span-12">
                 <GreenwichAchievementsStrip isGreenwich={isGreenwich} />
               </div>
-              <div className="md:col-span-8">
+              <div className="md:col-span-12">
                 <GreenwichDashboardBlock isGreenwich={isGreenwich} />
-              </div>
-              <div className="md:col-span-4">
-                <GreenwichRatingCard />
               </div>
             </div>
             {showBackgroundGame ? (

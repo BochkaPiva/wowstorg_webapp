@@ -148,7 +148,7 @@ export async function GET() {
             greenwichRating: { select: { score: true } },
           },
         },
-        lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
+        lines: { select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true } },
       },
     }),
     prisma.order.findMany({
@@ -181,7 +181,7 @@ export async function GET() {
             greenwichRating: { select: { score: true } },
           },
         },
-        lines: { select: { requestedQty: true, pricePerDaySnapshot: true } },
+        lines: { select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true } },
       },
     }),
     prisma.item.aggregate({
@@ -277,7 +277,7 @@ export async function GET() {
       o.greenwichUser != null
         ? {
             displayName: o.greenwichUser.displayName,
-            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 70,
           }
         : null,
     readyByDate: o.readyByDate.toISOString().slice(0, 10),
@@ -313,7 +313,7 @@ export async function GET() {
           nearestOrder.greenwichUser != null
             ? {
                 displayName: nearestOrder.greenwichUser.displayName,
-                ratingScore: nearestOrder.greenwichUser.greenwichRating?.score ?? 100,
+                ratingScore: nearestOrder.greenwichUser.greenwichRating?.score ?? 70,
               }
             : null,
         readyByDate: nearestOrder.readyByDate.toISOString().slice(0, 10),

@@ -143,7 +143,7 @@ export async function GET(req: Request) {
         },
       },
       lines: {
-        select: { requestedQty: true, issuedQty: true, pricePerDaySnapshot: true },
+        select: { requestedQty: true, issuedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true },
       },
     },
   });
@@ -207,7 +207,7 @@ export async function GET(req: Request) {
         ? {
             id: o.greenwichUser.id,
             displayName: o.greenwichUser.displayName,
-            ratingScore: o.greenwichUser.greenwichRating?.score ?? 100,
+            ratingScore: o.greenwichUser.greenwichRating?.score ?? 70,
           }
         : null,
     };

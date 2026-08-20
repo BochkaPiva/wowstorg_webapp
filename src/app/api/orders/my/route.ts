@@ -36,7 +36,7 @@ export async function GET() {
         clientPaymentMethod: true,
         customer: { select: { id: true, name: true } },
         lines: {
-          select: { requestedQty: true, pricePerDaySnapshot: true },
+          select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true },
         },
       },
       take: 200,

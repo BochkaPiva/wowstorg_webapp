@@ -1,11 +1,12 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-19 — добавлена атомарная отмена заявки из Telegram-подтверждения Greenwich.
+> **Дата сверки:** 2026-08-20 — добавлены атомарные операции центра лояльности и предупреждение → штраф Greenwich.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
 | Файл | Serializable |
 |------|----------------|
+| `src/app/api/admin/loyalty/route.ts` | нет (обновление политики и уровней одним действием) |
 | `src/app/api/greenwich/achievements/route.ts` | нет |
 | `src/app/api/greenwich/tower-score/route.ts` | нет |
 | `src/app/api/inventory/collections/[id]/route.ts` | нет |
@@ -34,5 +35,6 @@
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
+| `src/server/reminders/reminder-runner.ts` | нет (идемпотентное событие рейтинга и закрытие предупреждения) |
 
 Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).

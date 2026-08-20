@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { getCatalogRelatedSuggestions } from "@/server/catalog/item-related";
-import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 
 export const dynamic = "force-dynamic";
 
@@ -55,9 +55,6 @@ export async function GET(req: Request) {
     return jsonError(400, "Слишком много позиций в запросе");
   }
 
-  const priceMultiplier = auth.user.role === "GREENWICH"
-    ? (await prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, auth.user.id))).payMultiplier
-    : 1;
   const result = await getCatalogRelatedSuggestions({
     db: prisma,
     role: auth.user.role,
@@ -67,8 +64,42 @@ export async function GET(req: Request) {
     rentalStartPartOfDay: parsed.data.rentalStartPartOfDay,
     rentalEndPartOfDay: parsed.data.rentalEndPartOfDay,
     excludeOrderId: parsed.data.excludeOrderId,
-    priceMultiplier,
+    priceMultiplier: 1,
   });
 
-  return jsonOk(result);
+  if (auth.user.role !== "GREENWICH" || result.flat.length === 0) {
+    return jsonOk(result);
+  }
+
+  const benefits = await prisma.$transaction((tx) =>
+    getGreenwichItemBenefits(tx, {
+      userId: auth.user.id,
+      itemIds: result.flat.map((item) => item.relatedItemId),
+    }),
+  );
+  const enrich = (item: (typeof result.flat)[number]) => {
+    const benefit = benefits.get(item.relatedItemId);
+    if (!benefit) return item;
+    return {
+      ...item,
+      basePricePerDay: item.pricePerDay,
+      pricePerDay: Math.round(item.pricePerDay * benefit.payMultiplier * 100) / 100,
+      loyalty: {
+        discountPercent: benefit.discountPercent,
+        source: benefit.source,
+        sourceLabel: benefit.sourceLabel,
+        offerId: benefit.offerId,
+        offerTitle: benefit.offerTitle,
+        offerEndsAt: benefit.offerEndsAt,
+      },
+    };
+  };
+  const flat = result.flat.map(enrich);
+  const flatById = new Map(flat.map((item) => [item.relatedItemId, item]));
+  const groups = result.groups.map((group) => ({
+    ...group,
+    suggestions: group.suggestions.map((item) => flatById.get(item.relatedItemId) ?? item),
+  }));
+
+  return jsonOk({ groups, flat });
 }

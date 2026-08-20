@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { calcOrderPricing, validateOrderDiscount } from "@/server/orders/order-pricing";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
+import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
 
 const LineSchema = z.object({
   id: z.string().optional(),
@@ -105,6 +106,10 @@ export async function PATCH(
             },
           });
           const itemById = new Map(items.map((i) => [i.id, i]));
+          const itemBenefits = await getGreenwichItemBenefits(tx, {
+            userId: order.greenwichUserId!,
+            itemIds,
+          });
           if (items.length !== itemIds.length) throw new Error("ITEM_NOT_FOUND");
 
           const requestedByItemId = new Map<string, number>();
@@ -133,16 +138,11 @@ export async function PATCH(
           const incomingIds = new Set(data.lines.filter((l) => l.id).map((l) => l.id as string));
           const toDelete = order.lines.filter((l) => !incomingIds.has(l.id));
           const linePriceById = new Map(order.lines.map((l) => [l.id, l.pricePerDaySnapshot]));
+          const lineMultiplierById = new Map(order.lines.map((l) => [l.id, l.payMultiplierSnapshot]));
           const requestedDiscount = {
-            rentalDiscountType: data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType,
-            rentalDiscountPercent:
-              (data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType) === "PERCENT"
-                ? data.greenwichRequestedDiscountPercent ?? Number(order.greenwichRequestedDiscountPercent ?? 0)
-                : null,
-            rentalDiscountAmount:
-              (data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType) === "AMOUNT"
-                ? data.greenwichRequestedDiscountAmount ?? Number(order.greenwichRequestedDiscountAmount ?? 0)
-                : null,
+            rentalDiscountType: "NONE" as const,
+            rentalDiscountPercent: null,
+            rentalDiscountAmount: null,
           };
           const pricingPreview = calcOrderPricing({
             startDate: order.startDate,
@@ -158,6 +158,10 @@ export async function PATCH(
                 row.id && linePriceById.has(row.id)
                   ? linePriceById.get(row.id)
                   : itemById.get(row.itemId)!.pricePerDay,
+              payMultiplierSnapshot:
+                row.id && lineMultiplierById.has(row.id)
+                  ? lineMultiplierById.get(row.id)
+                  : itemBenefits.get(row.itemId)?.payMultiplier,
             })),
           });
           const requestValidation = validateOrderDiscount({
@@ -179,23 +183,10 @@ export async function PATCH(
                   montageComment: data.montageComment !== undefined ? (data.montageComment.trim() || null) : order.montageComment,
                   demontageEnabled: data.demontageEnabled ?? order.demontageEnabled,
                   demontageComment: data.demontageComment !== undefined ? (data.demontageComment.trim() || null) : order.demontageComment,
-                  greenwichRequestedDiscountType: data.greenwichRequestedDiscountType ?? order.greenwichRequestedDiscountType,
-                  greenwichRequestedDiscountPercent:
-                    data.greenwichRequestedDiscountType === "PERCENT"
-                      ? data.greenwichRequestedDiscountPercent ?? null
-                      : order.greenwichRequestedDiscountPercent != null
-                        ? Number(order.greenwichRequestedDiscountPercent)
-                        : null,
-                  greenwichRequestedDiscountAmount:
-                    data.greenwichRequestedDiscountType === "AMOUNT"
-                      ? data.greenwichRequestedDiscountAmount ?? null
-                      : order.greenwichRequestedDiscountAmount != null
-                        ? Number(order.greenwichRequestedDiscountAmount)
-                        : null,
-                  greenwichDiscountRequestComment:
-                    data.greenwichDiscountRequestComment !== undefined
-                      ? (data.greenwichDiscountRequestComment?.trim() || null)
-                      : order.greenwichDiscountRequestComment,
+                  greenwichRequestedDiscountType: "NONE",
+                  greenwichRequestedDiscountPercent: null,
+                  greenwichRequestedDiscountAmount: null,
+                  greenwichDiscountRequestComment: null,
                   lines: [...data.lines]
                     .map((l) => ({
                       itemId: l.itemId,
@@ -229,12 +220,17 @@ export async function PATCH(
                 },
               });
             } else {
+              const benefit = itemBenefits.get(row.itemId);
               await tx.orderLine.create({
                 data: {
                   orderId: id,
                   itemId: row.itemId,
                   requestedQty: row.requestedQty,
                   pricePerDaySnapshot: price,
+                  payMultiplierSnapshot: benefit?.payMultiplier,
+                  greenwichOfferId: benefit?.offerId ?? undefined,
+                  greenwichDiscountPercent: benefit?.discountPercent,
+                  greenwichDiscountSource: benefit?.sourceLabel,
                   greenwichComment: row.greenwichComment?.trim() || null,
                   position,
                 },
@@ -254,22 +250,10 @@ export async function PATCH(
               ...(data.montageComment !== undefined ? { montageComment: data.montageComment.trim() || null } : {}),
               ...(data.demontageEnabled !== undefined ? { demontageEnabled: data.demontageEnabled } : {}),
               ...(data.demontageComment !== undefined ? { demontageComment: data.demontageComment.trim() || null } : {}),
-              ...(data.greenwichRequestedDiscountType !== undefined
-                ? {
-                    greenwichRequestedDiscountType: data.greenwichRequestedDiscountType,
-                    greenwichRequestedDiscountPercent:
-                      data.greenwichRequestedDiscountType === "PERCENT"
-                        ? data.greenwichRequestedDiscountPercent ?? null
-                        : null,
-                    greenwichRequestedDiscountAmount:
-                      data.greenwichRequestedDiscountType === "AMOUNT"
-                        ? data.greenwichRequestedDiscountAmount ?? null
-                        : null,
-                  }
-                : {}),
-              ...(data.greenwichDiscountRequestComment !== undefined
-                ? { greenwichDiscountRequestComment: data.greenwichDiscountRequestComment?.trim() || null }
-                : {}),
+              greenwichRequestedDiscountType: "NONE",
+              greenwichRequestedDiscountPercent: null,
+              greenwichRequestedDiscountAmount: null,
+              greenwichDiscountRequestComment: null,
               ...(shouldRequestChanges
                 ? { status: "CHANGES_REQUESTED", changesRequestedSnapshot: changesRequestedSnapshot as unknown as object }
                 : {}),

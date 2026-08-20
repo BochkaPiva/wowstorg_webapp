@@ -385,7 +385,12 @@ export default function AdminTelegramPage() {
         </div>
       </section> : null}
 
-      {!loading && policyDraft ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-[#6426cf] bg-white">
+      {!loading && policyDraft ? <section className="mt-5 flex flex-col gap-4 border border-violet-200 bg-violet-50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6426cf]">Рейтинг и скидки Greenwich</p><h2 className="mt-1 text-xl font-black text-zinc-950">Управление перенесено в единый центр лояльности</h2><p className="mt-1 text-sm text-zinc-600">Здесь остаются только проверка бота и production-сценарии отправки.</p></div>
+        <Link href="/admin/loyalty" className="inline-flex h-11 shrink-0 items-center justify-center bg-[#6426cf] px-5 text-sm font-black text-white transition-colors hover:bg-[#5320aa]">Открыть центр лояльности →</Link>
+      </section> : null}
+
+      {!loading && policyDraft ? <section className="hidden">
         <div className="grid gap-5 border-b border-zinc-200 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6426cf]">Рейтинг Greenwich · мотивация и лояльность</p>

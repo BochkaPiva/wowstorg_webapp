@@ -19,6 +19,10 @@ export type EstimateArtifacts = {
       itemId: string;
       requestedQty: number;
       pricePerDaySnapshot: number | null;
+      payMultiplierSnapshot: number | null;
+      greenwichOfferId: string | null;
+      greenwichDiscountPercent: number | null;
+      greenwichDiscountSource: string | null;
     }>;
   };
   xlsxBuffer: Buffer;
@@ -54,6 +58,11 @@ export async function makeEstimateArtifactsForOrder(db: Db, orderId: string): Pr
       itemId: l.itemId,
       requestedQty: l.requestedQty,
       pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+      payMultiplierSnapshot: l.payMultiplierSnapshot != null ? Number(l.payMultiplierSnapshot) : null,
+      greenwichOfferId: l.greenwichOfferId,
+      greenwichDiscountPercent:
+        l.greenwichDiscountPercent != null ? Number(l.greenwichDiscountPercent) : null,
+      greenwichDiscountSource: l.greenwichDiscountSource,
     })),
   };
 

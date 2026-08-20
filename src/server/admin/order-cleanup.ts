@@ -167,7 +167,11 @@ function calcOrderTotalAmount(args: {
   rentalDiscountType?: string | null;
   rentalDiscountPercent?: Prisma.Decimal | number | null;
   rentalDiscountAmount?: Prisma.Decimal | number | null;
-  lines: Array<{ requestedQty: number; pricePerDaySnapshot: Prisma.Decimal | number | null }>;
+  lines: Array<{
+    requestedQty: number;
+    pricePerDaySnapshot: Prisma.Decimal | number | null;
+    payMultiplierSnapshot?: Prisma.Decimal | number | null;
+  }>;
 }): number {
   return calcOrderPricing({
     ...args,
@@ -265,6 +269,7 @@ export async function listOrdersForCleanup(
         select: {
           requestedQty: true,
           pricePerDaySnapshot: true,
+          payMultiplierSnapshot: true,
         },
       },
     },
@@ -414,6 +419,7 @@ async function prepareOrderCleanup(
         select: {
           requestedQty: true,
           pricePerDaySnapshot: true,
+          payMultiplierSnapshot: true,
         },
       },
       _count: {

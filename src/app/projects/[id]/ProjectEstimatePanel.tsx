@@ -74,6 +74,7 @@ type RequisiteOrderLine = {
   approvedQty: number | null;
   issuedQty: number | null;
   pricePerDaySnapshot: number | null;
+  payMultiplierSnapshot?: number | null;
   warehouseComment: string | null;
   item: {
     id: string;
@@ -3916,6 +3917,7 @@ function RequisiteSectionEditor({
       requestedQty: number;
       warehouseComment: string;
       pricePerDaySnapshot: number | null;
+      payMultiplierSnapshot?: number | null;
       item: { total: number; inRepair: number; broken: number; missing: number };
     }>
   >([]);
@@ -4029,6 +4031,7 @@ function RequisiteSectionEditor({
           requestedQty: line.requestedQty,
           warehouseComment: line.warehouseComment ?? "",
           pricePerDaySnapshot: line.pricePerDaySnapshot,
+          payMultiplierSnapshot: line.payMultiplierSnapshot,
           item: {
             total: line.item.total,
             inRepair: line.item.inRepair,
@@ -4455,7 +4458,7 @@ function RequisiteSectionEditor({
               {lines.map((line, index) => {
                 const maxQty = maxQtyAllowedForRequisiteLine(linesForCap, index, availableForDatesByItemId);
                 const dayC = normalizeProjectEstimateDays(billableRentalDayCount) ?? 1;
-                const mult = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+                const mult = line.payMultiplierSnapshot ?? (order.payMultiplier != null ? Number(order.payMultiplier) : 1);
                 const lk = String(line.id ?? `${line.itemId}-${index}`);
                 const qtyDraftRaw = requisiteQtyDraft[lk];
                 const qtyDisplay =

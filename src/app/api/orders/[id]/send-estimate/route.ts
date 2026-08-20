@@ -100,6 +100,11 @@ export async function POST(
       itemId: l.itemId,
       requestedQty: l.requestedQty,
       pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+      payMultiplierSnapshot: l.payMultiplierSnapshot != null ? Number(l.payMultiplierSnapshot) : null,
+      greenwichOfferId: l.greenwichOfferId,
+      greenwichDiscountPercent:
+        l.greenwichDiscountPercent != null ? Number(l.greenwichDiscountPercent) : null,
+      greenwichDiscountSource: l.greenwichDiscountSource,
     })),
   };
 

@@ -118,13 +118,15 @@ export async function GET(
       ? {
           id: greenwichUser.id,
           displayName: greenwichUser.displayName,
-          ratingScore: greenwichUser.greenwichRating?.score ?? 100,
+          ratingScore: greenwichUser.greenwichRating?.score ?? 70,
         }
       : null,
     parentOrderId: quickRow?.[0]?.parentOrderId ?? null,
     lines: lines.map((l) => ({
       ...l,
       pricePerDaySnapshot: l.pricePerDaySnapshot != null ? Number(l.pricePerDaySnapshot) : null,
+      payMultiplierSnapshot: l.payMultiplierSnapshot != null ? Number(l.payMultiplierSnapshot) : null,
+      greenwichDiscountPercent: l.greenwichDiscountPercent != null ? Number(l.greenwichDiscountPercent) : null,
       warehouseComment: l.warehouseComment ?? null,
       greenwichComment: l.greenwichComment ?? null,
     })),

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ensureGreenwichRatingPolicy } from "@/server/ratings/greenwich-rating";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -100,6 +101,9 @@ export async function POST(req: Request) {
 
   const tempSecret = `first-login:${randomUUID()}`;
   const passwordHash = await hash(tempSecret, 10);
+  const startingScore = role === "GREENWICH"
+    ? (await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx))).startingScore
+    : null;
   const user = await prisma.user.create({
     data: {
       login,
@@ -109,6 +113,9 @@ export async function POST(req: Request) {
       displayName,
       role,
       isActive: isActive ?? true,
+      ...(startingScore != null
+        ? { greenwichRating: { create: { baseScore: startingScore, score: startingScore } } }
+        : {}),
     },
     select: {
       id: true,

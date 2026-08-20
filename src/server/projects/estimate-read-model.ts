@@ -79,6 +79,7 @@ export type ProjectEstimateReadLine = {
   qty?: number | null;
   plannedDays?: number | null;
   pricePerDaySnapshot?: number | null;
+  payMultiplierSnapshot?: number | null;
   /** Годные единицы на складе (ведра), без резерва по датам; для строк без позиции каталога — null */
   maxQtyPhysical?: number | null;
   paymentMethod?: string | null;
@@ -171,6 +172,7 @@ export async function buildProjectEstimateReadModel(args: {
               position: true,
               requestedQty: true,
               pricePerDaySnapshot: true,
+              payMultiplierSnapshot: true,
               warehouseComment: true,
               greenwichComment: true,
               itemId: true,
@@ -468,6 +470,8 @@ export async function buildProjectEstimateReadModel(args: {
                     qty,
                     plannedDays: dayCount,
                     pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
+                    payMultiplierSnapshot:
+                      line.payMultiplierSnapshot != null ? Number(line.payMultiplierSnapshot) : null,
                     maxQtyPhysical: usableStockUnits(line.item),
                   };
                 });

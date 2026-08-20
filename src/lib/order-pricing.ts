@@ -19,6 +19,7 @@ export type OrderPricingLine = {
   requestedQty?: number;
   issuedQty?: number | null;
   pricePerDaySnapshot: unknown;
+  payMultiplierSnapshot?: unknown;
 };
 
 export type OrderPricingAllocation = {
@@ -106,7 +107,9 @@ export function calcOrderPricing(args: {
       quantityMode === "issued"
         ? (line.issuedQty ?? line.requestedQty ?? 0)
         : (line.requestedQty ?? 0);
-    const rentalBeforeDiscount = num(line.pricePerDaySnapshot) * qty * days * payMultiplier;
+    const lineMultiplier =
+      line.payMultiplierSnapshot == null ? payMultiplier : num(line.payMultiplierSnapshot);
+    const rentalBeforeDiscount = num(line.pricePerDaySnapshot) * qty * days * lineMultiplier;
     return {
       itemId: line.itemId,
       qty,

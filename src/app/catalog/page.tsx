@@ -39,6 +39,14 @@ type CatalogItem = {
   description: string | null;
   type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
+  basePricePerDay?: number;
+  loyalty?: {
+    discountPercent: number;
+    source: "RATING_TIER" | "PERSONAL_OFFER";
+    sourceLabel: string;
+    offerTitle: string | null;
+    offerEndsAt: string | null;
+  } | null;
   photo1Key: string | null;
   photo2Key: string | null;
   total: number;
@@ -1210,6 +1218,16 @@ export default function CatalogPage() {
         </div>
 
         {catalogRelatedSuggestions}
+        {items.some((item) => item.loyalty?.source === "PERSONAL_OFFER") ? (
+          <div className="mb-5 flex flex-col gap-3 rounded-3xl bg-[#6426cf] px-5 py-5 text-white sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-[#ffd21f]">Только для вас</div>
+              <div className="mt-1 text-xl font-black tracking-tight">В каталоге действуют персональные цены</div>
+              <p className="mt-1 text-sm text-white/70">Фиолетовой меткой отмечены позиции, где предложение заменило обычную скидку рейтинга.</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-white/10 px-4 py-2 text-sm font-bold">Применяются автоматически</span>
+          </div>
+        ) : null}
         {loading && items.length > 0 ? (
           <div className="mk-refreshProgress" role="status" aria-live="polite">
             <span className="sr-only">Обновляем доступность каталога</span>

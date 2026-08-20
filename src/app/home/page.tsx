@@ -155,8 +155,8 @@ function GreenwichRatingCard() {
     };
   }, [showInfo]);
 
+  const isLoading = snapshot === null;
   const s = snapshot?.score ?? 70;
-  const pct = Math.max(0, Math.min(100, s));
   const monthLabel = snapshot?.month?.position
     ? `Место №${snapshot.month.position}`
     : "Ждём первое действие";
@@ -164,112 +164,109 @@ function GreenwichRatingCard() {
     ? `${snapshot.month.delta > 0 ? "+" : ""}${snapshot.month.delta} за месяц`
     : "Позиция появится после первого действия";
   const offer = snapshot?.activeOffers?.[0] ?? null;
+  const currentLevel = snapshot?.level?.name ?? "Синхронизация";
+  const discountLabel = snapshot?.level ? `${snapshot.level.discountPercent}%` : "...";
+  const nextLevelCopy = snapshot?.level?.next
+    ? `Ещё ${snapshot.level.next.pointsNeeded} баллов до уровня «${snapshot.level.next.name}»`
+    : snapshot?.level
+      ? "Вы достигли верхней границы рейтинга"
+      : "Загружаем актуальные условия";
+  const statusMessage = isLoading ? "Обновляем ваш рейтинг" : ratingMessage(s);
 
   return (
-    <section className="relative isolate overflow-hidden rounded-2xl bg-[#21132f] text-white shadow-[0_8px_24px_rgba(44,20,70,0.18)]">
-      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[340px] overflow-hidden md:block" aria-hidden>
-        <Image
-          src="/brand/dino-rating-star.png"
-          alt=""
-          fill
-          className="object-cover object-[50%_12%]"
-          sizes="340px"
-          priority
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#21132f_0%,rgba(33,19,47,0.72)_18%,rgba(33,19,47,0.06)_70%)]" />
-      </div>
-
-      <div className="relative px-5 py-5 md:min-h-[318px] md:px-7 md:py-6 md:pr-[340px]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold text-violet-200">Надёжность Greenwich</div>
-            <div className="mt-1 text-xs leading-5 text-violet-100/70">Рейтинг меняется после реальных действий с заявками</div>
-          </div>
-        <button
-          type="button"
-          onClick={() => setShowInfo((v) => !v)}
-          className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-300"
-          aria-expanded={showInfo}
-          title="Как считается"
-        >
-          Правила
-        </button>
-        {showInfo ? (
-          <div
-            ref={infoRef}
-            className="absolute right-0 top-10 z-20 w-[330px] max-w-[calc(100vw-2rem)] rounded-xl bg-white p-4 text-zinc-950 shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
-          >
-            <div className="text-sm font-bold">Что влияет на рейтинг</div>
-            <div className="mt-2 space-y-1.5 text-sm leading-5 text-zinc-700">
-              <div>Возвраты вовремя и без повреждений повышают результат.</div>
-              <div>Перед организационным штрафом бот обязательно присылает предупреждение.</div>
-              <div>Расходники не участвуют в оценке состояния.</div>
+    <section className="relative isolate overflow-hidden rounded-2xl border border-[#ded5ef] bg-[#f7f4fc] text-[#24132f]">
+      <div className="grid lg:min-h-[352px] lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_410px]">
+        <div className="relative z-10 flex min-w-0 flex-col px-5 py-5 md:px-8 md:py-7 lg:pr-10">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-[#4d2763]">Рейтинг надёжности Grinvich</h2>
+              <p className="mt-1 max-w-[50ch] text-sm leading-5 text-[#725f7d]">
+                От него зависит ваша единая скидка и доступ к персональным предложениям.
+              </p>
             </div>
-            {snapshot?.breakdown?.recovering ? (
-              <div className="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500">
-                Сейчас восстанавливается событий: {snapshot.breakdown.recovering}.
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-        <div className="mt-5 flex flex-wrap items-end gap-x-5 gap-y-2">
-          <div className="flex items-baseline gap-2">
-            <strong className="text-5xl font-black leading-none tabular-nums tracking-[-0.035em] md:text-6xl">{s}</strong>
-            <span className="text-sm font-semibold text-violet-200">из 100</span>
-          </div>
-          {snapshot?.level ? (
-            <div className="pb-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-yellow-300 px-2.5 py-1 text-xs font-black text-zinc-950">{snapshot.level.name}</span>
-                <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-bold text-white">Скидка {snapshot.level.discountPercent}%</span>
-              </div>
-              <div className="mt-2 text-sm font-semibold text-white">{ratingMessage(s)}</div>
+            <div ref={infoRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowInfo((v) => !v)}
+                className="rounded-full border border-[#c8bbdc] bg-white px-4 py-2 text-xs font-bold text-[#4d2763] transition-colors duration-200 hover:border-[#4d2763] hover:bg-[#f0eafb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd21f] motion-reduce:transition-none"
+                aria-expanded={showInfo}
+                aria-controls="rating-rules"
+              >
+                <span className="sm:hidden">Правила</span>
+                <span className="hidden sm:inline">Как это работает</span>
+              </button>
+              {showInfo ? (
+                <div
+                  id="rating-rules"
+                  className="absolute right-0 top-12 z-20 w-[330px] max-w-[calc(100vw-2rem)] rounded-xl bg-white p-4 text-zinc-950 shadow-[0_8px_24px_rgba(44,20,70,0.2)]"
+                >
+                  <div className="text-sm font-bold">Что влияет на рейтинг</div>
+                  <div className="mt-2 space-y-1.5 text-sm leading-5 text-zinc-700">
+                    <div>Возвраты вовремя и без повреждений повышают результат.</div>
+                    <div>Перед организационным штрафом бот обязательно присылает предупреждение.</div>
+                    <div>Расходники не участвуют в оценке состояния.</div>
+                  </div>
+                  {snapshot?.breakdown?.recovering ? (
+                    <div className="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500">
+                      Сейчас восстанавливается событий: {snapshot.breakdown.recovering}.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-
-        <div className="mt-5 max-w-3xl" role="meter" aria-label="Рейтинг надёжности" aria-valuemin={0} aria-valuemax={100} aria-valuenow={s}>
-          <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold text-violet-100/70">
-            <span>{snapshot?.level?.next ? `До уровня «${snapshot.level.next.name}»` : "Шкала надёжности"}</span>
-            <span>
-              {snapshot?.level?.next
-                ? `${snapshot.level.next.pointsNeeded} баллов`
-                : snapshot?.level
-                  ? "Максимальный уровень"
-                  : "Обновляем данные"}
-            </span>
           </div>
-          <div className="grid grid-cols-10 gap-1.5" aria-hidden>
-            {Array.from({ length: 10 }, (_, index) => {
-              const segmentFill = Math.max(0, Math.min(100, (pct - index * 10) * 10));
-              return (
-                <span key={index} className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <span
-                    className="block h-full rounded-full bg-yellow-300 transition-[width] duration-200 ease-out motion-reduce:transition-none"
-                    style={{ width: `${segmentFill}%` }}
-                  />
+
+          <div className="mt-7 grid items-end gap-5 lg:mt-8 2xl:grid-cols-[minmax(0,1fr)_180px] 2xl:gap-6">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full bg-[#ffd21f] px-3 py-1.5 text-xs font-black text-[#24132f]">
+                  {currentLevel}
                 </span>
-              );
-            })}
+                <span className="text-xs font-semibold text-[#725f7d]">{nextLevelCopy}</span>
+              </div>
+              <div className="mt-3 text-3xl font-black tracking-[-0.03em] text-[#24132f] md:text-[2.15rem] md:leading-[1.06] 2xl:text-[2.55rem] 2xl:leading-[1.05]">
+                {statusMessage}
+              </div>
+            </div>
+
+            <div className="flex items-end justify-between gap-6 border-t border-[#d7cce7] pt-4 2xl:block 2xl:border-l 2xl:border-t-0 2xl:pl-6 2xl:pt-0">
+              <div>
+                <div className="text-xs font-semibold text-[#725f7d]">Единая скидка</div>
+                <div className="mt-1 text-4xl font-black tracking-[-0.035em] text-[#4d2763]">{discountLabel}</div>
+              </div>
+              <div className="text-right 2xl:mt-3 2xl:text-left" role="meter" aria-label="Рейтинг надёжности" aria-valuemin={0} aria-valuemax={100} aria-valuenow={isLoading ? undefined : s}>
+                <span className="text-2xl font-black tabular-nums text-[#24132f]">{isLoading ? "..." : s}</span>
+                <span className="ml-1 text-xs font-bold text-[#725f7d]">из 100</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto grid gap-0 border-t border-[#d7cce7] pt-4 text-sm sm:grid-cols-2">
+            <div className="min-w-0 pb-3 sm:pb-0 sm:pr-6">
+              <div className="text-xs font-semibold text-[#725f7d]">Активность в этом месяце</div>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                <strong className="text-[#24132f]">{monthLabel}</strong>
+                <span className="text-xs text-[#725f7d]">{monthDetail}</span>
+              </div>
+            </div>
+            <div className="min-w-0 border-t border-[#d7cce7] pt-3 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+              <div className="text-xs font-semibold text-[#725f7d]">Персональное предложение</div>
+              <div className="mt-1 truncate font-bold text-[#24132f]">
+                {offer ? `${offer.title}, скидка ${offer.discountPercent}%` : "Предложений пока нет"}
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="mt-5 flex max-w-3xl flex-col gap-3 border-t border-white/12 pt-4 text-sm sm:flex-row sm:items-center sm:gap-0">
-          <div className="min-w-0 flex-1 sm:pr-5">
-            <span className="text-xs text-violet-200">Этот месяц</span>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-              <strong>{monthLabel}</strong>
-              <span className="text-xs text-violet-100/65">{monthDetail}</span>
-            </div>
-          </div>
-          <div className="min-w-0 flex-1 border-white/12 sm:border-l sm:pl-5">
-            <span className="text-xs text-violet-200">Персональные предложения</span>
-            <div className="mt-0.5 truncate font-semibold">
-              {offer ? `${offer.title} · ${offer.discountPercent}%` : "Сейчас нет — действует скидка уровня"}
-            </div>
-          </div>
+        <div className="relative min-h-[300px] overflow-hidden bg-[#ffd21f] lg:min-h-full" aria-hidden>
+          <Image
+            src="/brand/dino-rating-star-cutout.png"
+            alt=""
+            fill
+            className="object-contain object-bottom p-2 pt-3"
+            sizes="(min-width: 1536px) 410px, (min-width: 1280px) 340px, (min-width: 1024px) 300px, 100vw"
+            priority
+          />
         </div>
       </div>
     </section>

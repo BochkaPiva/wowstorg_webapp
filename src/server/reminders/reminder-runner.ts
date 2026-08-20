@@ -19,6 +19,7 @@ import {
   addGreenwichRatingEvent,
   ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
+import { maybeAwardPreviousMonthBonus } from "@/server/ratings/greenwich-bonuses";
 import {
   createInAppNotification,
   notifyWarehouseOrderInApp,
@@ -277,6 +278,7 @@ async function runApprovalStageReminders(args: {
 }
 
 export async function runDailyReminders(now = new Date()): Promise<{
+  greenwichMonthlyBonusAwarded: number;
   warehousePrepSent: number;
   warehouseStageSent: number;
   greenwichConfirmationSent: number;
@@ -288,8 +290,14 @@ export async function runDailyReminders(now = new Date()): Promise<{
   approvalWarningSent: number;
   approvalPenaltyApplied: number;
 }> {
+  // Начисление не зависит от Telegram: лидер должен получить бонус даже при
+  // временно отключённом боте или отсутствующем складском чате.
+  const monthlyBonus = await maybeAwardPreviousMonthBonus(now);
+  const greenwichMonthlyBonusAwarded = monthlyBonus.created ? 1 : 0;
+
   if (!isTelegramConfigured()) {
     return {
+      greenwichMonthlyBonusAwarded,
       warehousePrepSent: 0,
       warehouseStageSent: 0,
       greenwichConfirmationSent: 0,
@@ -306,6 +314,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   const warehouseChatId = getWarehouseChatId();
   if (!warehouseChatId) {
     return {
+      greenwichMonthlyBonusAwarded,
       warehousePrepSent: 0,
       warehouseStageSent: 0,
       greenwichConfirmationSent: 0,
@@ -954,6 +963,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   }
 
   return {
+    greenwichMonthlyBonusAwarded,
     warehousePrepSent,
     warehouseStageSent,
     greenwichConfirmationSent,

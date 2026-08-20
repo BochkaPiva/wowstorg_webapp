@@ -10,6 +10,10 @@ import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
 import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
 import { getGreenwichItemBenefits } from "@/server/ratings/greenwich-offers";
+import {
+  getActiveGreenwichMonthlyBonus,
+  redeemGreenwichMonthlyBonus,
+} from "@/server/ratings/greenwich-bonuses";
 
 type InputLine = {
   itemId: string;
@@ -46,6 +50,7 @@ export type CreateOrderInput = {
   demontageInternalPaymentMethod?: OrderServicePaymentMethod;
   source?: OrderSource;
   greenwichUserId?: string | null;
+  greenwichMonthlyBonusId?: string | null;
   projectId?: string | null;
   targetEstimateVersionId?: string | null;
   rentalDiscountType?: OrderDiscountType;
@@ -218,6 +223,21 @@ export async function createOrderInTransaction(
     payMultiplier = "1";
   }
 
+  let monthlyBonusId: string | null = null;
+  let monthlyBonusPercent: number | null = null;
+  if (input.greenwichMonthlyBonusId?.trim()) {
+    if (source !== "GREENWICH_INTERNAL" || !greenwichUserId) {
+      throw new CreateOrderError("MONTHLY_BONUS_UNAVAILABLE");
+    }
+    const bonus = await getActiveGreenwichMonthlyBonus(tx, {
+      userId: greenwichUserId,
+      bonusId: input.greenwichMonthlyBonusId.trim(),
+    });
+    if (!bonus) throw new CreateOrderError("MONTHLY_BONUS_UNAVAILABLE");
+    monthlyBonusId = bonus.id;
+    monthlyBonusPercent = bonus.discountPercent;
+  }
+
   let customerIdToUse: string;
   let orderProjectId: string | null = null;
 
@@ -279,7 +299,11 @@ export async function createOrderInTransaction(
   }
   const itemById = new Map(items.map((item) => [item.id, item]));
   const itemBenefits = greenwichUserId
-    ? await getGreenwichItemBenefits(tx, { userId: greenwichUserId, itemIds })
+    ? await getGreenwichItemBenefits(tx, {
+        userId: greenwichUserId,
+        itemIds,
+        monthlyBonusPercent,
+      })
     : new Map();
 
   const reserved = await getReservedQtyByItemId({
@@ -345,6 +369,7 @@ export async function createOrderInTransaction(
       status: "SUBMITTED",
       createdById: input.actorUserId,
       greenwichUserId,
+      greenwichMonthlyBonusId: monthlyBonusId,
       customerId: customerIdToUse,
       projectId: orderProjectId ?? undefined,
       eventName: normalizeComment(input.eventName ?? null),
@@ -409,6 +434,20 @@ export async function createOrderInTransaction(
     },
     select: { id: true },
   });
+
+  if (monthlyBonusId && greenwichUserId) {
+    const redeemed = await redeemGreenwichMonthlyBonus(tx, {
+      bonusId: monthlyBonusId,
+      userId: greenwichUserId,
+      orderId: order.id,
+    });
+    if (!redeemed) {
+      throw new CreateOrderError(
+        "MONTHLY_BONUS_UNAVAILABLE",
+        "Бонус уже использован, истёк или был применён в другой заявке",
+      );
+    }
+  }
 
   if (source === "WOWSTORG_EXTERNAL") {
     const artifacts = await makeEstimateArtifactsForOrder(tx, order.id);

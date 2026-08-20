@@ -60,6 +60,19 @@ enum GreenwichRatingEventType {
   ADMIN_ADJUSTMENT
 }
 
+enum GreenwichMonthlyBonusStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+}
+
+enum GreenwichMonthlyBonusEventType {
+  AWARDED
+  REDEEMED
+  RESTORED
+  EXPIRED
+}
+
 enum OrderStageReminderAudience {
   GREENWICH
   WOWSTORG
@@ -260,14 +273,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ordersCreated                  Order[]                     @relation("order_created_by")
-  ordersGreenwich                Order[]                     @relation("order_greenwich_user")
-  orderHiddenExpensesCreated     OrderHiddenExpense[]        @relation("order_hidden_expense_created_by")
+  ordersCreated                  Order[]                      @relation("order_created_by")
+  ordersGreenwich                Order[]                      @relation("order_greenwich_user")
+  orderHiddenExpensesCreated     OrderHiddenExpense[]         @relation("order_hidden_expense_created_by")
   greenwichRating                GreenwichRating?
   greenwichRatingEvents          GreenwichRatingEvent[]
-  greenwichOffers                GreenwichPersonalOffer[]    @relation("greenwich_offer_recipient")
-  greenwichOffersCreated         GreenwichPersonalOffer[]    @relation("greenwich_offer_creator")
-  stageReminders                 OrderStageReminder[]        @relation("stage_reminder_recipient")
+  greenwichOffers                GreenwichPersonalOffer[]     @relation("greenwich_offer_recipient")
+  greenwichOffersCreated         GreenwichPersonalOffer[]     @relation("greenwich_offer_creator")
+  greenwichMonthlyBonuses        GreenwichMonthlyBonus[]      @relation("greenwich_bonus_recipient")
+  greenwichMonthlyBonusEvents    GreenwichMonthlyBonusEvent[]
+  stageReminders                 OrderStageReminder[]         @relation("stage_reminder_recipient")
   sessions                       Session[]
   achievementProgress            AchievementProgress[]
   achievementUnlocks             AchievementUnlock[]
@@ -275,19 +290,19 @@ model User {
   inAppNotifications             InAppNotification[]
   browserPushSubscriptions       BrowserPushSubscription[]
   inventoryAuditRuns             InventoryAuditRun[]
-  projectsOwned                  Project[]                   @relation("project_owner")
-  standaloneEstimatesOwned       StandaloneEstimate[]        @relation("standalone_estimate_owner")
+  projectsOwned                  Project[]                    @relation("project_owner")
+  standaloneEstimatesOwned       StandaloneEstimate[]         @relation("standalone_estimate_owner")
   projectActivityLogs            ProjectActivityLog[]
   projectCommunicationEntries    ProjectCommunicationEntry[]
   projectFilesUploaded           ProjectFile[]
   projectEstimateVersionsCreated ProjectEstimateVersion[]
-  projectDraftOrdersCreated      ProjectDraftOrder[]         @relation("project_draft_order_created_by")
-  projectDraftOrdersUpdated      ProjectDraftOrder[]         @relation("project_draft_order_updated_by")
-  taskBoardsCreated              WorkTaskBoard[]             @relation("task_board_created_by")
-  taskColumnsCreated             WorkTaskColumn[]            @relation("task_column_created_by")
-  tasksCreated                   WorkTask[]                  @relation("task_created_by")
-  tasksAssigned                  WorkTask[]                  @relation("task_assigned_to")
-  taskChecklistItemsCreated      WorkTaskChecklistItem[]     @relation("task_checklist_created_by")
+  projectDraftOrdersCreated      ProjectDraftOrder[]          @relation("project_draft_order_created_by")
+  projectDraftOrdersUpdated      ProjectDraftOrder[]          @relation("project_draft_order_updated_by")
+  taskBoardsCreated              WorkTaskBoard[]              @relation("task_board_created_by")
+  taskColumnsCreated             WorkTaskColumn[]             @relation("task_column_created_by")
+  tasksCreated                   WorkTask[]                   @relation("task_created_by")
+  tasksAssigned                  WorkTask[]                   @relation("task_assigned_to")
+  taskChecklistItemsCreated      WorkTaskChecklistItem[]      @relation("task_checklist_created_by")
 
   @@index([role, isActive])
 }
@@ -453,6 +468,50 @@ model GreenwichPersonalOfferItem {
 
   @@id([offerId, itemId])
   @@index([itemId])
+}
+
+/// Персональный одноразовый бонус победителя месяца.
+model GreenwichMonthlyBonus {
+  id              String                      @id @default(cuid())
+  userId          String
+  user            User                        @relation("greenwich_bonus_recipient", fields: [userId], references: [id], onDelete: Cascade)
+  earnedMonth     DateTime                    @unique
+  validFrom       DateTime
+  validUntil      DateTime
+  discountPercent Int
+  code            String                      @unique
+  status          GreenwichMonthlyBonusStatus @default(ACTIVE)
+  awardedAt       DateTime                    @default(now())
+  redeemedAt      DateTime?
+  restoredAt      DateTime?
+  expiredAt       DateTime?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  redeemedOrder Order?                       @relation("greenwich_monthly_bonus_redemption")
+  events        GreenwichMonthlyBonusEvent[]
+
+  @@index([userId, status, validFrom, validUntil])
+  @@index([status, validUntil])
+}
+
+/// Неизменяемый журнал выдачи, применения, восстановления и истечения бонусов.
+model GreenwichMonthlyBonusEvent {
+  id        String                         @id @default(cuid())
+  bonusId   String
+  bonus     GreenwichMonthlyBonus          @relation(fields: [bonusId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      GreenwichMonthlyBonusEventType
+  sourceKey String                         @unique
+  orderId   String?
+  order     Order?                         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  reason    String
+  createdAt DateTime                       @default(now())
+
+  @@index([userId, createdAt])
+  @@index([bonusId, createdAt])
+  @@index([orderId])
 }
 
 /// Наблюдаемый журнал календарных предупреждений по этапам заявки.
@@ -1216,6 +1275,10 @@ model Order {
   greenwichUserId String?
   greenwichUser   User?   @relation("order_greenwich_user", fields: [greenwichUserId], references: [id], onDelete: Restrict)
 
+  /// Одноразовый бонус победителя месяца, применённый к заявке.
+  greenwichMonthlyBonusId String?                @unique
+  greenwichMonthlyBonus   GreenwichMonthlyBonus? @relation("greenwich_monthly_bonus_redemption", fields: [greenwichMonthlyBonusId], references: [id], onDelete: SetNull)
+
   /// Быстрая доп.-выдача (Quick Supplement): если заполнено, заявка является “дополнением” к parentOrder.
   /// Считаем признаком quick доп.-выдачи `parentOrderId != null`.
   parentOrderId String?
@@ -1309,6 +1372,7 @@ model Order {
   notificationCooldowns   OrderNotificationCooldown[]
   greenwichReminders      GreenwichOrderReminder[]
   greenwichRatingEvents   GreenwichRatingEvent[]
+  greenwichBonusEvents    GreenwichMonthlyBonusEvent[]
   stageReminders          OrderStageReminder[]
 
   @@index([status, readyByDate])

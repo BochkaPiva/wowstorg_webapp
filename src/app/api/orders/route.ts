@@ -54,6 +54,7 @@ const BodySchema = z.object({
 
   source: OrderSourceSchema.optional(),
   greenwichUserId: z.string().trim().min(1).optional(),
+  greenwichMonthlyBonusId: z.string().trim().min(1).optional(),
 
   /// Заявка реквизита в рамках проекта (только WOWSTORG): заказчик и источник берутся из проекта.
   projectId: z.string().trim().min(1).optional(),
@@ -179,6 +180,7 @@ export async function POST(req: Request) {
             : {}),
           source: data.source,
           greenwichUserId: data.greenwichUserId,
+          greenwichMonthlyBonusId: data.greenwichMonthlyBonusId,
           projectId: data.projectId,
           targetEstimateVersionId: data.targetEstimateVersionId,
           rentalDiscountType: isWarehouse ? data.rentalDiscountType : "NONE",
@@ -201,6 +203,13 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") {
       return jsonError(409, "Конфликт при резервировании. Повторите попытку.");
+    }
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002" &&
+      data.greenwichMonthlyBonusId
+    ) {
+      return jsonError(409, "Этот бонус уже применён в другой заявке. Обновите корзину.");
     }
     if (e instanceof CreateOrderError) {
       if (e.code === "CUSTOMER_NOT_FOUND") {
@@ -229,6 +238,9 @@ export async function POST(req: Request) {
       }
       if (e.code === "GREENWICH_USER_REQUIRED") {
         return jsonError(400, "Укажите сотрудника Grinvich для заявки");
+      }
+      if (e.code === "MONTHLY_BONUS_UNAVAILABLE") {
+        return jsonError(409, e.message || "Бонус уже использован, истёк или недоступен для этой заявки");
       }
       if (e.code === "CUSTOMER_REQUIRED") {
         return jsonError(400, "Укажите заказчика (выберите из списка или введите название)");

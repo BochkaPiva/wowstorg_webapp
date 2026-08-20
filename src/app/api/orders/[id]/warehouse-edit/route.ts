@@ -152,6 +152,7 @@ export async function PATCH(
           include: {
             customer: { select: { name: true } },
             greenwichUser: { select: { displayName: true } },
+            greenwichMonthlyBonus: { select: { discountPercent: true } },
             lines: {
               orderBy: [{ position: "asc" }],
               include: { item: { select: { name: true } } },
@@ -331,7 +332,11 @@ export async function PATCH(
           throw new Error("ITEM_NOT_FOUND");
         }
         const itemBenefits = order.greenwichUserId
-          ? await getGreenwichItemBenefits(tx, { userId: order.greenwichUserId, itemIds })
+          ? await getGreenwichItemBenefits(tx, {
+              userId: order.greenwichUserId,
+              itemIds,
+              monthlyBonusPercent: order.greenwichMonthlyBonus?.discountPercent,
+            })
           : new Map();
 
         const requestedByItemId = new Map<string, number>();

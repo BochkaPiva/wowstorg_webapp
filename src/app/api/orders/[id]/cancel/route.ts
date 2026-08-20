@@ -11,6 +11,7 @@ import {
 import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { recomputeGreenwichAchievements } from "@/server/achievements/service";
+import { restoreGreenwichMonthlyBonusForCancelledOrder } from "@/server/ratings/greenwich-bonuses";
 
 const CANCELLABLE = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"] as const;
 
@@ -25,7 +26,14 @@ export async function POST(
 
   const order = await prisma.order.findUnique({
     where: { id },
-    select: { id: true, status: true, greenwichUserId: true, createdById: true, projectId: true },
+    select: {
+      id: true,
+      status: true,
+      greenwichUserId: true,
+      greenwichMonthlyBonusId: true,
+      createdById: true,
+      projectId: true,
+    },
   });
 
   if (!order) return jsonError(404, "Not found");
@@ -37,10 +45,21 @@ export async function POST(
   const isWarehouse = auth.user.role === "WOWSTORG";
   if (!isGreenwich && !isWarehouse) return jsonError(403, "Нет прав отменить эту заявку");
 
-  await prisma.order.update({
-    where: { id },
-    data: { status: "CANCELLED" },
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.order.updateMany({
+      where: { id, status: order.status },
+      data: { status: "CANCELLED" },
+    });
+    if (changed.count === 0) return false;
+    await restoreGreenwichMonthlyBonusForCancelledOrder(tx, {
+      orderId: order.id,
+      orderStatus: order.status,
+      userId: order.greenwichUserId,
+      bonusId: order.greenwichMonthlyBonusId,
+    });
+    return true;
   });
+  if (!cancelled) return jsonError(409, "Статус заявки уже изменился. Обновите страницу.");
 
   if (order.projectId) {
     try {

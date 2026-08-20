@@ -133,10 +133,8 @@ export async function getGreenwichRatingBenefit(
   userId: string,
   now = new Date(),
 ): Promise<GreenwichRatingBenefit> {
-  // Interactive Prisma transactions execute sequentially. Keeping these calls
-  // explicit also guarantees that default tiers exist before we choose one.
-  const score = await recomputeGreenwichRatingScore(tx, userId, now);
   const policy = await ensureGreenwichRatingPolicy(tx);
+  const score = await recomputeGreenwichRatingScoreWithPolicy(tx, userId, policy, now);
   const tiers = policy.tiers.map((tier) => ({
     id: tier.id,
     name: tier.name,
@@ -216,9 +214,44 @@ export async function recomputeGreenwichRatingScore(
   userId: string,
   now = new Date(),
 ): Promise<number> {
-  const scores = await recomputeGreenwichRatingScores(tx, [userId], now);
-  const score = scores.get(userId);
-  if (score === undefined) throw new Error("GREENWICH_RATING_RECOMPUTE_FAILED");
+  const policy = await ensureGreenwichRatingPolicy(tx);
+  return recomputeGreenwichRatingScoreWithPolicy(tx, userId, policy, now);
+}
+
+async function recomputeGreenwichRatingScoreWithPolicy(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  policy: Awaited<ReturnType<typeof ensureGreenwichRatingPolicy>>,
+  now: Date,
+): Promise<number> {
+  const rating = await tx.greenwichRating.upsert({
+    where: { userId },
+    update: {},
+    create: {
+      userId,
+      baseScore: policy.startingScore,
+      score: policy.startingScore,
+    },
+    select: { baseScore: true, score: true, manualLocked: true },
+  });
+  const events = await tx.greenwichRatingEvent.findMany({
+    where: { userId },
+    select: { delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
+  });
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      rating.baseScore + events.reduce((sum, event) => sum + effectiveRatingEventDelta(event, now), 0),
+    ),
+  );
+
+  if (rating.score !== score || rating.manualLocked) {
+    await tx.greenwichRating.update({
+      where: { userId },
+      data: { score, manualLocked: false },
+    });
+  }
   return score;
 }
 

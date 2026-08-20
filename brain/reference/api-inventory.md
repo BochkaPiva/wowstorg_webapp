@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-20T11:52:17.331Z
-> **Файлов route.ts:** 128
+> **Сгенерировано:** 2026-08-20T13:55:39.858Z  
+> **Файлов route.ts:** 129  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -42,6 +42,7 @@
 | POST | `/api/dashboard/wowstorg/project-attention` | `src/app/api/dashboard/wowstorg/project-attention/route.ts` |
 | GET | `/api/dashboard/wowstorg` | `src/app/api/dashboard/wowstorg/route.ts` |
 | GET | `/api/greenwich/achievements` | `src/app/api/greenwich/achievements/route.ts` |
+| GET | `/api/greenwich/bonuses` | `src/app/api/greenwich/bonuses/route.ts` |
 | GET | `/api/greenwich/rating` | `src/app/api/greenwich/rating/route.ts` |
 | POST | `/api/greenwich/tower-score` | `src/app/api/greenwich/tower-score/route.ts` |
 | GET, PATCH, DELETE | `/api/inventory/collections/[id]` | `src/app/api/inventory/collections/[id]/route.ts` |

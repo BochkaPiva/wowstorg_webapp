@@ -63,12 +63,14 @@ function Brand() {
   );
 }
 
-function Navigation({ isWowstorg, onNavigate }: { isWowstorg: boolean; onNavigate?: () => void }) {
+function Navigation({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
+  const isWowstorg = role === "WOWSTORG";
   return (
     <nav className="app-nav" aria-label="Основная навигация">
       <div className="app-nav__group">
         {commonItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
         {!isWowstorg ? <NavLink item={{ href: "/orders", label: "Мои заявки" }} onClick={onNavigate} /> : null}
+        {role === "GREENWICH" ? <NavLink item={{ href: "/bonuses", label: "Мои бонусы" }} onClick={onNavigate} /> : null}
       </div>
       {isWowstorg ? (
         <>
@@ -143,7 +145,6 @@ export function AppShell({ title, children }: { title: string; children: React.R
     return <AppWorkspaceSkeleton />;
   }
 
-  const isWowstorg = state.user.role === "WOWSTORG";
   const showBack = pathname !== "/home";
   const headerSubtitle = state.user.role === "GREENWICH"
     ? state.user.displayName
@@ -153,7 +154,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
     <div className="app-shell">
       <aside className="app-sidebar">
         <Brand />
-        <Navigation isWowstorg={isWowstorg} />
+        <Navigation role={state.user.role} />
         <div className="app-sidebar__footer">
           <span>{state.user.displayName}</span>
           <button type="button" onClick={logout}>Выйти</button>
@@ -207,7 +208,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
               <Brand />
               <button className="app-iconButton" type="button" onClick={() => setNavOpen(false)} aria-label="Закрыть меню">×</button>
             </div>
-            <Navigation isWowstorg={isWowstorg} onNavigate={() => setNavOpen(false)} />
+            <Navigation role={state.user.role} onNavigate={() => setNavOpen(false)} />
             <div className="app-sidebar__footer">
               <span>{state.user.displayName}</span>
               <button type="button" onClick={logout}>Выйти</button>

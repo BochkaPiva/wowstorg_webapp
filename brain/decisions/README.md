@@ -10,5 +10,9 @@
 | 004 | [004-deferred-notifications.md](./004-deferred-notifications.md) | Уведомления через `after()` |
 | 005 | [005-order-status-enums.md](./005-order-status-enums.md) | Enum статусов в Prisma |
 | 006 | [006-project-demo-draft-requisition.md](./006-project-demo-draft-requisition.md) | Demo-заявка проекта как отдельный draft-слой |
+| 007 | [007-unified-work-queue-and-estimate-mode.md](./007-unified-work-queue-and-estimate-mode.md) | Единая рабочая очередь и режим быстрых расчётов |
+| 008 | [008-external-financial-snapshots.md](./008-external-financial-snapshots.md) | Финансовые снимки внешних заявок |
+| 009 | [009-greenwich-rating-ledger-and-price-snapshots.md](./009-greenwich-rating-ledger-and-price-snapshots.md) | Журнал рейтинга и строковые снимки скидки |
+| 010 | [010-greenwich-monthly-bonus-redemption.md](./010-greenwich-monthly-bonus-redemption.md) | Аккаунтный месячный бонус и атомарное погашение |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

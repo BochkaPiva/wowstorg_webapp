@@ -31,6 +31,13 @@ type CatalogItem = {
   description: string | null;
   type: "ASSET" | "BULK" | "CONSUMABLE";
   pricePerDay: string;
+  basePricePerDay?: number;
+  loyalty?: {
+    discountPercent: number;
+    source: "RATING_TIER" | "PERSONAL_OFFER";
+    sourceLabel: string;
+    offerTitle: string | null;
+  } | null;
   photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
@@ -82,12 +89,23 @@ type GreenwichUser = {
   tierName: string;
   discountPercent: number;
   payMultiplier: number;
+  activeBonuses: ActiveMonthlyBonus[];
   activeOffers: Array<{
     id: string;
     title: string;
     discountPercent: number;
     itemIds: string[];
   }>;
+};
+type ActiveMonthlyBonus = {
+  id: string;
+  code: string;
+  discountPercent: number;
+  validUntil: string;
+};
+type MyBonusSnapshot = {
+  rating: { tierDiscountPercent: number };
+  activeBonuses: ActiveMonthlyBonus[];
 };
 type DraftOrderResponse = {
   draftOrder?: {
@@ -112,6 +130,7 @@ type DraftOrderResponse = {
 export default function CartPage() {
   const router = useRouter();
   const { state } = useAuth();
+  const authRole = state.status === "authenticated" ? state.user.role : null;
   const [quickParentId, setQuickParentId] = React.useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("quickParentId");
@@ -213,6 +232,8 @@ export default function CartPage() {
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
   const [greenwichUserId, setGreenwichUserId] = React.useState("");
+  const [myBonus, setMyBonus] = React.useState<MyBonusSnapshot | null>(null);
+  const [selectedMonthlyBonusId, setSelectedMonthlyBonusId] = React.useState("");
 
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -298,8 +319,7 @@ export default function CartPage() {
       setProjectCartError(null);
       return;
     }
-    const role = state.status === "authenticated" ? state.user.role : null;
-    if (role !== "WOWSTORG") {
+    if (authRole !== "WOWSTORG") {
       setProjectContext(null);
       setProjectCartError("Корзина проекта доступна только со склада (Wowstorg).");
       return;
@@ -358,7 +378,7 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, quickParentId, state.status]);
+  }, [authRole, projectId, quickParentId]);
 
   React.useEffect(() => {
     setCart(loadCart(cartScope));
@@ -449,8 +469,7 @@ export default function CartPage() {
   }, [customerDropdownOpen]);
 
   React.useEffect(() => {
-    const role = state.status === "authenticated" ? state.user.role : null;
-    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
+    if (authRole !== "WOWSTORG") return;
     let cancelled = false;
     fetch("/api/users/greenwich", { cache: "no-store" })
       .then((res) => res.json().catch(() => null))
@@ -463,7 +482,30 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [state.status]);
+  }, [authRole]);
+
+  React.useEffect(() => {
+    if (authRole !== "GREENWICH") {
+      setMyBonus(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/greenwich/bonuses", { cache: "no-store" })
+      .then(async (response) => {
+        const json = (await response.json().catch(() => null)) as MyBonusSnapshot | null;
+        if (!cancelled && response.ok) setMyBonus(json);
+      })
+      .catch(() => {
+        if (!cancelled) setMyBonus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authRole]);
+
+  React.useEffect(() => {
+    setSelectedMonthlyBonusId("");
+  }, [greenwichUserId, quickParentId, projectId]);
 
   const cartItemIdsKey = React.useMemo(() => cart.map((l) => l.itemId).sort().join(","), [cart]);
 
@@ -635,8 +677,8 @@ export default function CartPage() {
     setQty(itemId, parsed);
   }
 
-  const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
-  const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
+  const isGreenwich = authRole === "GREENWICH";
+  const isWarehouse = authRole === "WOWSTORG";
 
   const customerInputTrim = customerInput.trim();
   const matchedCustomer =
@@ -662,23 +704,46 @@ export default function CartPage() {
   // У склада при выборе «выдача Greenwich» корзина считается со скидкой; для 3-х лиц — полная цена.
   // Greenwich получает из каталога уже цены со скидкой, поэтому multiplier для них не применяем.
   const selectedGreenwichUser = greenwichUsers.find((user) => user.id === greenwichUserId);
+  const activeCheckoutBonuses = isGreenwich
+    ? myBonus?.activeBonuses ?? []
+    : isWarehouse && orderType === "greenwich"
+      ? selectedGreenwichUser?.activeBonuses ?? []
+      : [];
+  const selectedMonthlyBonus = activeCheckoutBonuses.find((bonus) => bonus.id === selectedMonthlyBonusId) ?? null;
+  const activeTierDiscount = isGreenwich
+    ? myBonus?.rating.tierDiscountPercent ?? 0
+    : selectedGreenwichUser?.discountPercent ?? 0;
+  const canApplyMonthlyBonus =
+    !isQuickSupplement && !isProjectCart && activeCheckoutBonuses.length > 0 &&
+    (isGreenwich || (isWarehouse && orderType === "greenwich" && selectedGreenwichUser));
   const canUseManualOrderDiscount = isWarehouse && orderType === "external" && !isQuickSupplement;
   const displayMultiplier =
     isWarehouse && orderType === "greenwich" ? (selectedGreenwichUser?.payMultiplier ?? 1) : 1;
-  const getDisplayMultiplier = (itemId: string) => {
-    if (!isWarehouse || orderType !== "greenwich" || !selectedGreenwichUser) return 1;
-    const bestDiscount = selectedGreenwichUser.activeOffers
-      .filter((offer) => offer.itemIds.includes(itemId))
-      .reduce(
-        (maximum, offer) => Math.max(maximum, offer.discountPercent),
-        selectedGreenwichUser.discountPercent,
+  const getDisplayPrice = (item: CatalogItem) => {
+    const catalogPrice = Number(item.pricePerDay) || 0;
+    if (isGreenwich) {
+      if (!selectedMonthlyBonus || !canApplyMonthlyBonus) return catalogPrice;
+      const basePrice = Number(item.basePricePerDay ?? catalogPrice) || 0;
+      const currentDiscount = item.loyalty?.discountPercent ?? activeTierDiscount;
+      const finalDiscount = Math.max(
+        currentDiscount,
+        Math.min(100, activeTierDiscount + selectedMonthlyBonus.discountPercent),
       );
-    return Math.round((1 - bestDiscount / 100) * 10_000) / 10_000;
+      return basePrice * (1 - finalDiscount / 100);
+    }
+    if (!isWarehouse || orderType !== "greenwich" || !selectedGreenwichUser) return catalogPrice;
+    const personalDiscount = selectedGreenwichUser.activeOffers
+      .filter((offer) => offer.itemIds.includes(item.id))
+      .reduce((maximum, offer) => Math.max(maximum, offer.discountPercent), 0);
+    const ratingDiscount = selectedMonthlyBonus && canApplyMonthlyBonus
+      ? Math.min(100, selectedGreenwichUser.discountPercent + selectedMonthlyBonus.discountPercent)
+      : selectedGreenwichUser.discountPercent;
+    const bestDiscount = Math.max(personalDiscount, ratingDiscount);
+    return catalogPrice * (1 - bestDiscount / 100);
   };
 
   const totalPerDay = lines.reduce((sum, { line, item }) => {
-    const basePrice = Number(item.pricePerDay) || 0;
-    const price = basePrice * getDisplayMultiplier(item.id);
+    const price = getDisplayPrice(item);
     return sum + price * line.qty;
   }, 0);
   const rentalDays =
@@ -974,6 +1039,9 @@ export default function CartPage() {
             ? Number(rentalDiscountAmount)
             : null;
       }
+      if (selectedMonthlyBonus && canApplyMonthlyBonus) {
+        payload.greenwichMonthlyBonusId = selectedMonthlyBonus.id;
+      }
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1058,8 +1126,7 @@ export default function CartPage() {
             </div>
             <ul className="cart-list">
               {lines.map(({ line, item }) => {
-                const basePrice = Number(item.pricePerDay) || 0;
-                const price = basePrice * getDisplayMultiplier(item.id);
+                const price = getDisplayPrice(item);
                 const lineTotalPerDay = price * line.qty;
                 const lineTotalForPeriod = lineTotalPerDay * (rentalDays || 0);
                 const maxAvail = item.availability.availableForDates ?? item.availability.availableNow;
@@ -1332,6 +1399,39 @@ export default function CartPage() {
                   </div>
                 ) : null}
 
+                {activeCheckoutBonuses.length > 0 && !isProjectCart ? (
+                  <div className="cart-bonusChoice cart-bonusChoice--list" data-selected={selectedMonthlyBonus ? "true" : undefined}>
+                    <div className="cart-bonusChoice__copy">
+                      <span>Бонусы лидера · {activeCheckoutBonuses.length}</span>
+                      <strong>{isQuickSupplement ? "Сохраним для новой заявки" : "Выберите один бонус для этой заявки"}</strong>
+                      <small>{isQuickSupplement ? "Допвыдача продолжает родительскую заявку и не расходует персональный бонус." : "Бонус не включён по умолчанию. Персональная цена останется, если она выгоднее."}</small>
+                    </div>
+                    {isQuickSupplement ? (
+                      <Link href="/bonuses">Подробнее</Link>
+                    ) : (
+                      <div className="cart-bonusOptions" role="radiogroup" aria-label="Месячный бонус">
+                        {activeCheckoutBonuses.map((bonus) => {
+                          const selected = selectedMonthlyBonusId === bonus.id;
+                          return (
+                            <button
+                              key={bonus.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={selected}
+                              className={selected ? "is-selected" : ""}
+                              onClick={() => setSelectedMonthlyBonusId(selected ? "" : bonus.id)}
+                            >
+                              <strong>+{bonus.discountPercent}%</strong>
+                              <span>{bonus.code}</span>
+                              <small>Итого уровня до {Math.min(100, activeTierDiscount + bonus.discountPercent)}%</small>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
                 <div className="cart-formSectionTitle">
                   <span>О заявке</span>
                   <small>Заполни поля по порядку — без лишних переходов</small>
@@ -1348,7 +1448,7 @@ export default function CartPage() {
                         <option value="">Выберите сотрудника</option>
                         {greenwichUsers.map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.displayName} · {u.ratingScore} б. · скидка {u.discountPercent}%
+                            {u.displayName} · {u.ratingScore} б. · скидка {u.discountPercent}%{u.activeBonuses.length ? ` · бонусов ${u.activeBonuses.length}` : ""}
                           </option>
                         ))}
                       </select>
@@ -1357,6 +1457,7 @@ export default function CartPage() {
                       ) : selectedGreenwichUser ? (
                         <div className="co-help">
                           Уровень «{selectedGreenwichUser.tierName}»: цены каталога снижены на {selectedGreenwichUser.discountPercent}%.
+                          {selectedGreenwichUser.activeBonuses.length ? " Бонус лидера можно выбрать отдельно." : ""}
                         </div>
                       ) : null}
                     </label>

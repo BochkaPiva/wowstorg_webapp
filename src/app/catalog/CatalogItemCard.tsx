@@ -88,6 +88,7 @@ export const CatalogItemCard = React.memo(function CatalogItemCard({
               src={`/api/inventory/positions/${item.id}/photo?w=480`}
               alt=""
               fill
+              unoptimized
               className="mk-cardPhoto"
               sizes="(max-width: 640px) 100vw, (max-width: 1100px) 50vw, 320px"
               style={{

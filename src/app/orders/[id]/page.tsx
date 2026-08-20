@@ -83,6 +83,7 @@ type Order = {
   createdBy: { id: string; displayName: string };
   greenwichUserId?: string | null;
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
+  greenwichMonthlyBonus?: { id: string; code: string; discountPercent: number } | null;
   deliveryEnabled: boolean;
   deliveryComment: string | null;
   deliveryPrice: number | null;
@@ -1663,6 +1664,11 @@ export default function OrderDetailsPage() {
                 {order.greenwichUser ? <span>{order.greenwichUser.displayName}</span> : null}
                 {isWarehouse && order.greenwichUser?.ratingScore != null ? (
                   <span>Рейтинг {order.greenwichUser.ratingScore}</span>
+                ) : null}
+                {order.greenwichMonthlyBonus ? (
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
+                    Бонус лидера +{order.greenwichMonthlyBonus.discountPercent}%
+                  </span>
                 ) : null}
                 <span>Создана {fmtDate(order.createdAt)}</span>
               </div>

@@ -11,6 +11,7 @@ import {
   addGreenwichRatingEvent,
   ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
+import { restoreGreenwichMonthlyBonusForCancelledOrder } from "@/server/ratings/greenwich-bonuses";
 import {
   greenwichCancellationKeyboard,
   greenwichConfirmationKeyboard,
@@ -370,6 +371,19 @@ async function handleGreenwichConfirmationCallback(
       return { cancelled: false as const, reason: freshOrder ? "closed" : "missing" };
     }
 
+    const affectedOrders = await tx.order.findMany({
+      where: {
+        OR: [{ id: freshOrder.id }, { parentOrderId: freshOrder.id }],
+        status: { notIn: ["CANCELLED", "CLOSED"] },
+      },
+      select: {
+        id: true,
+        status: true,
+        greenwichUserId: true,
+        greenwichMonthlyBonusId: true,
+      },
+    });
+
     await tx.order.updateMany({
       where: {
         OR: [{ id: freshOrder.id }, { parentOrderId: freshOrder.id }],
@@ -377,6 +391,14 @@ async function handleGreenwichConfirmationCallback(
       },
       data: { status: "CANCELLED" },
     });
+    for (const affectedOrder of affectedOrders) {
+      await restoreGreenwichMonthlyBonusForCancelledOrder(tx, {
+        orderId: affectedOrder.id,
+        orderStatus: affectedOrder.status,
+        userId: affectedOrder.greenwichUserId,
+        bonusId: affectedOrder.greenwichMonthlyBonusId,
+      });
+    }
     const reminderUpdate = await tx.greenwichOrderReminder.updateMany({
       where: { id: reminder.id, response: null },
       data: {

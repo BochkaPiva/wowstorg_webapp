@@ -18,14 +18,15 @@ export async function GET() {
   });
 
   const enriched = await Promise.all(users.map(async (user) => {
-    const [benefit, activeOffers] = await Promise.all([
+    const now = new Date();
+    const [benefit, activeOffers, activeBonuses] = await Promise.all([
       prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, user.id)),
       prisma.greenwichPersonalOffer.findMany({
         where: {
           userId: user.id,
           isActive: true,
-          startsAt: { lte: new Date() },
-          endsAt: { gt: new Date() },
+          startsAt: { lte: now },
+          endsAt: { gt: now },
         },
         select: {
           id: true,
@@ -34,6 +35,16 @@ export async function GET() {
           items: { select: { itemId: true } },
         },
       }),
+      prisma.greenwichMonthlyBonus.findMany({
+        where: {
+          userId: user.id,
+          status: "ACTIVE",
+          validFrom: { lte: now },
+          validUntil: { gt: now },
+        },
+        orderBy: [{ validUntil: "asc" }, { awardedAt: "asc" }],
+        select: { id: true, code: true, discountPercent: true, validUntil: true },
+      }),
     ]);
     return {
       ...user,
@@ -41,6 +52,7 @@ export async function GET() {
       tierName: benefit.tier.name,
       discountPercent: benefit.tier.discountPercent,
       payMultiplier: benefit.payMultiplier,
+      activeBonuses,
       activeOffers: activeOffers.map((offer) => ({
         id: offer.id,
         title: offer.title,

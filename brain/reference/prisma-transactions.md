@@ -8,13 +8,14 @@
 |------|----------------|
 | `src/app/api/admin/loyalty/route.ts` | нет (обновление политики и уровней одним действием) |
 | `src/app/api/greenwich/achievements/route.ts` | нет |
+| `src/app/api/greenwich/bonuses/route.ts` | нет (единый снимок бонусов, рейтинга и истории) |
 | `src/app/api/greenwich/tower-score/route.ts` | нет |
 | `src/app/api/inventory/collections/[id]/route.ts` | нет |
 | `src/app/api/inventory/packages/[id]/route.ts` | нет |
 | `src/app/api/inventory/positions/[id]/route.ts` | нет |
 | `src/app/api/orders/route.ts` | **да** |
 | `src/app/api/orders/[id]/approve/route.ts` | нет |
-| `src/app/api/orders/[id]/cancel/route.ts` | нет (вторая транзакция внутри отложенной задачи) |
+| `src/app/api/orders/[id]/cancel/route.ts` | нет (отмена и возврат месячного бонуса атомарны; отдельная транзакция достижений в отложенной задаче) |
 | `src/app/api/orders/[id]/check-in/route.ts` | нет (две отдельные транзакции в файле) |
 | `src/app/api/orders/[id]/dates/route.ts` | **да** (проверка и повторная проверка при применении) |
 | `src/app/api/orders/[id]/greenwich-edit/route.ts` | **да** |
@@ -30,11 +31,12 @@
 | `src/app/api/standalone-estimates/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |
-| `src/app/api/telegram/webhook/route.ts` | нет (ответ на напоминание + отмена основной и дочерних заявок) |
+| `src/app/api/telegram/webhook/route.ts` | нет (ответ на напоминание + отмена основной и дочерних заявок + возврат их бонусов) |
 | `src/app/api/warehouse/incidents/[id]/repair/route.ts` | нет |
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
-| `src/server/reminders/reminder-runner.ts` | нет (идемпотентное событие рейтинга и закрытие предупреждения) |
+| `src/server/ratings/greenwich-bonuses.ts` | нет (идемпотентное начисление, истечение и журнал бонусов) |
+| `src/server/reminders/reminder-runner.ts` | нет (идемпотентное начисление месячного бонуса, событие рейтинга и закрытие предупреждения) |
 
 Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).

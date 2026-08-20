@@ -40,6 +40,9 @@ export async function GET(
           },
         },
       },
+      greenwichMonthlyBonus: {
+        select: { id: true, code: true, discountPercent: true },
+      },
       hiddenExpenses: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         select: {
@@ -84,7 +87,7 @@ export async function GET(
     LIMIT 1
   `;
 
-  const { greenwichUser, lines, hiddenExpenses, returnSplits, project, ...orderBase } = order;
+  const { greenwichUser, greenwichMonthlyBonus, lines, hiddenExpenses, returnSplits, project, ...orderBase } = order;
 
   const serialized: Record<string, unknown> = {
     ...orderBase,
@@ -121,6 +124,7 @@ export async function GET(
           ratingScore: greenwichUser.greenwichRating?.score ?? 70,
         }
       : null,
+    greenwichMonthlyBonus,
     parentOrderId: quickRow?.[0]?.parentOrderId ?? null,
     lines: lines.map((l) => ({
       ...l,

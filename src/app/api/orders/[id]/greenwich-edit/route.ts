@@ -69,6 +69,7 @@ export async function PATCH(
               customer: { select: { name: true } },
               createdBy: { select: { displayName: true } },
               greenwichUser: { select: { id: true, displayName: true } },
+              greenwichMonthlyBonus: { select: { discountPercent: true } },
               lines: {
                 orderBy: [{ position: "asc" }],
                 include: { item: { select: { name: true } } },
@@ -109,6 +110,7 @@ export async function PATCH(
           const itemBenefits = await getGreenwichItemBenefits(tx, {
             userId: order.greenwichUserId!,
             itemIds,
+            monthlyBonusPercent: order.greenwichMonthlyBonus?.discountPercent,
           });
           if (items.length !== itemIds.length) throw new Error("ITEM_NOT_FOUND");
 

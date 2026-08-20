@@ -6,12 +6,34 @@ export type GreenwichItemBenefit = {
   itemId: string;
   payMultiplier: number;
   discountPercent: number;
-  source: "RATING_TIER" | "PERSONAL_OFFER";
+  source: "RATING_TIER" | "PERSONAL_OFFER" | "MONTHLY_BONUS";
   sourceLabel: string;
   offerId: string | null;
   offerTitle: string | null;
   offerEndsAt: Date | null;
 };
+
+export function resolveGreenwichDiscount(args: {
+  tierDiscountPercent: number;
+  personalOfferDiscountPercent?: number | null;
+  monthlyBonusPercent?: number | null;
+}): {
+  discountPercent: number;
+  source: "RATING_TIER" | "PERSONAL_OFFER" | "MONTHLY_BONUS";
+} {
+  const tierDiscount = Math.max(0, Math.min(100, args.tierDiscountPercent));
+  const monthlyBonus = Math.max(0, Math.min(100, args.monthlyBonusPercent ?? 0));
+  const ratingWithBonus = Math.min(100, tierDiscount + monthlyBonus);
+  const offerDiscount = Math.max(0, Math.min(100, args.personalOfferDiscountPercent ?? 0));
+
+  if (offerDiscount > ratingWithBonus) {
+    return { discountPercent: offerDiscount, source: "PERSONAL_OFFER" };
+  }
+  if (monthlyBonus > 0) {
+    return { discountPercent: ratingWithBonus, source: "MONTHLY_BONUS" };
+  }
+  return { discountPercent: tierDiscount, source: "RATING_TIER" };
+}
 
 /**
  * Возвращает ровно одну финальную скидку на позицию.
@@ -19,7 +41,7 @@ export type GreenwichItemBenefit = {
  */
 export async function getGreenwichItemBenefits(
   tx: Prisma.TransactionClient,
-  args: { userId: string; itemIds: string[]; now?: Date },
+  args: { userId: string; itemIds: string[]; now?: Date; monthlyBonusPercent?: number | null },
 ): Promise<Map<string, GreenwichItemBenefit>> {
   const now = args.now ?? new Date();
   const itemIds = [...new Set(args.itemIds.filter(Boolean))];
@@ -57,20 +79,27 @@ export async function getGreenwichItemBenefits(
   return new Map(
     itemIds.map((itemId) => {
       const offer = bestOfferByItem.get(itemId);
-      const offerDiscount = offer ? Number(offer.discountPercent) : -1;
-      const useOffer = offer != null && offerDiscount > tierDiscount;
-      const discountPercent = useOffer ? offerDiscount : tierDiscount;
+      const resolved = resolveGreenwichDiscount({
+        tierDiscountPercent: tierDiscount,
+        personalOfferDiscountPercent: offer ? Number(offer.discountPercent) : null,
+        monthlyBonusPercent: args.monthlyBonusPercent,
+      });
+      const useOffer = resolved.source === "PERSONAL_OFFER";
       return [
         itemId,
         {
           itemId,
-          payMultiplier: Math.round((1 - discountPercent / 100) * 10_000) / 10_000,
-          discountPercent,
-          source: useOffer ? "PERSONAL_OFFER" : "RATING_TIER",
-          sourceLabel: useOffer ? offer.title : `Уровень «${rating.tier.name}»`,
-          offerId: useOffer ? offer.id : null,
-          offerTitle: useOffer ? offer.title : null,
-          offerEndsAt: useOffer ? offer.endsAt : null,
+          payMultiplier: Math.round((1 - resolved.discountPercent / 100) * 10_000) / 10_000,
+          discountPercent: resolved.discountPercent,
+          source: resolved.source,
+          sourceLabel: useOffer
+            ? offer?.title ?? "Персональное предложение"
+            : resolved.source === "MONTHLY_BONUS"
+              ? `Бонус лидера +${args.monthlyBonusPercent ?? 0}%`
+              : `Уровень «${rating.tier.name}»`,
+          offerId: useOffer ? offer?.id ?? null : null,
+          offerTitle: useOffer ? offer?.title ?? null : null,
+          offerEndsAt: useOffer ? offer?.endsAt ?? null : null,
         } satisfies GreenwichItemBenefit,
       ];
     }),

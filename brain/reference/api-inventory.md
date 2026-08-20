@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-20T13:55:39.858Z  
-> **Файлов route.ts:** 129  
+> **Сгенерировано:** 2026-08-20T15:44:03.303Z  
+> **Файлов route.ts:** 132  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -18,8 +18,10 @@
 | GET | `/api/admin/inventory-audit/runs` | `src/app/api/admin/inventory-audit/runs/route.ts` |
 | GET | `/api/admin/inventory-audit/status` | `src/app/api/admin/inventory-audit/status/route.ts` |
 | GET, POST | `/api/admin/loyalty` | `src/app/api/admin/loyalty/route.ts` |
+| GET | `/api/admin/loyalty/users/[id]/history` | `src/app/api/admin/loyalty/users/[id]/history/route.ts` |
 | POST | `/api/admin/order-cleanup/delete` | `src/app/api/admin/order-cleanup/delete/route.ts` |
 | GET | `/api/admin/order-cleanup` | `src/app/api/admin/order-cleanup/route.ts` |
+| GET | `/api/admin/quality` | `src/app/api/admin/quality/route.ts` |
 | GET, PATCH, POST | `/api/admin/telegram` | `src/app/api/admin/telegram/route.ts` |
 | GET | `/api/admin/users/[id]/achievements` | `src/app/api/admin/users/[id]/achievements/route.ts` |
 | PATCH | `/api/admin/users/[id]` | `src/app/api/admin/users/[id]/route.ts` |
@@ -43,6 +45,7 @@
 | GET | `/api/dashboard/wowstorg` | `src/app/api/dashboard/wowstorg/route.ts` |
 | GET | `/api/greenwich/achievements` | `src/app/api/greenwich/achievements/route.ts` |
 | GET | `/api/greenwich/bonuses` | `src/app/api/greenwich/bonuses/route.ts` |
+| GET, POST | `/api/greenwich/feedback` | `src/app/api/greenwich/feedback/route.ts` |
 | GET | `/api/greenwich/rating` | `src/app/api/greenwich/rating/route.ts` |
 | POST | `/api/greenwich/tower-score` | `src/app/api/greenwich/tower-score/route.ts` |
 | GET, PATCH, DELETE | `/api/inventory/collections/[id]` | `src/app/api/inventory/collections/[id]/route.ts` |

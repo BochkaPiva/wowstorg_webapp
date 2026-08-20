@@ -792,6 +792,7 @@ export async function notifyReturnDeclared(order: OrderForNotify): Promise<void>
 
 const CONDITION_LABEL: Record<string, string> = {
   OK: "В норме",
+  DIRTY: "Грязное",
   NEEDS_REPAIR: "Ремонт",
   BROKEN: "Сломано",
   MISSING: "Потеряно",

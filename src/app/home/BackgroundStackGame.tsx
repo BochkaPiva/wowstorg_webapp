@@ -4,10 +4,40 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { gsap } from "gsap";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import "./tower-game.css";
 
 type GameState = "ready" | "playing" | "ended" | "resetting";
 
 type BlockState = "active" | "stopped" | "missed";
+type PlacementQuality = "perfect" | "good" | "placed" | "missed";
+type PlacementResult = {
+  plane: "x" | "z";
+  direction: number;
+  bonus?: boolean;
+  quality: PlacementQuality;
+  placed?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
+  chopped?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
+};
+
+const BLOCK_HEIGHT = 1.45;
+const BLOCK_SIZE = 10.6;
+const BLOCK_TRAVEL = 8.8;
+const BLOCK_PALETTE = [0x4f2394, 0x6731b5, 0x8050ca, 0xf1c84b, 0x7340bd] as const;
+
+function createBlockMesh(
+  dimension: { width: number; height: number; depth: number },
+  material: THREE.MeshPhysicalMaterial,
+) {
+  const radius = Math.max(0.025, Math.min(0.12, dimension.width / 5, dimension.height / 5, dimension.depth / 5));
+  const geometry = new RoundedBoxGeometry(dimension.width, dimension.height, dimension.depth, 4, radius);
+  geometry.translate(dimension.width / 2, dimension.height / 2, dimension.depth / 2);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+
+  return mesh;
+}
 
 class Stage {
   scene: THREE.Scene;
@@ -15,19 +45,25 @@ class Stage {
   renderer: THREE.WebGLRenderer;
   container: HTMLDivElement;
   viewSize: number;
+  reducedMotion: boolean;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
     this.scene = new THREE.Scene();
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.06;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(this.renderer.domElement);
 
     const aspect = container.clientWidth / Math.max(1, container.clientHeight);
-    this.viewSize = 12;
+    this.viewSize = 8.6;
     this.camera = new THREE.OrthographicCamera(
       -this.viewSize * aspect,
       this.viewSize * aspect,
@@ -36,14 +72,58 @@ class Stage {
       -100,
       1000,
     );
-    this.camera.position.set(2, 2, 2);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(14.5, 12.5, 14.5);
+    this.camera.lookAt(BLOCK_SIZE / 2, 2.35, BLOCK_SIZE / 2);
 
-    const light = new THREE.DirectionalLight(0xffffff, 0.7);
-    light.position.set(0, 499, 0);
-    this.scene.add(light);
-    this.scene.add(new THREE.HemisphereLight(0xfacc15, 0x8b5cf6, 0.95));
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    const key = new THREE.DirectionalLight(0xfff6df, 3.3);
+    key.position.set(-7, 18, 9);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -18;
+    key.shadow.camera.right = 18;
+    key.shadow.camera.top = 18;
+    key.shadow.camera.bottom = -18;
+    key.shadow.bias = -0.0008;
+    this.scene.add(key);
+
+    const rim = new THREE.DirectionalLight(0x9f7aea, 1.65);
+    rim.position.set(13, 8, -10);
+    this.scene.add(rim);
+    this.scene.add(new THREE.HemisphereLight(0xe9ddff, 0x160d20, 1.25));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+
+    const lowerBase = new THREE.Mesh(
+      new RoundedBoxGeometry(BLOCK_SIZE + 2.2, 0.34, BLOCK_SIZE + 2.2, 5, 0.16),
+      new THREE.MeshPhysicalMaterial({ color: 0x241333, roughness: 0.3, metalness: 0.22, clearcoat: 0.5 }),
+    );
+    lowerBase.position.set(BLOCK_SIZE / 2, -0.65, BLOCK_SIZE / 2);
+    lowerBase.castShadow = true;
+    lowerBase.receiveShadow = true;
+    this.scene.add(lowerBase);
+
+    const upperBase = new THREE.Mesh(
+      new RoundedBoxGeometry(BLOCK_SIZE + 1.25, 0.48, BLOCK_SIZE + 1.25, 5, 0.18),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x6d3fba,
+        roughness: 0.28,
+        metalness: 0.08,
+        clearcoat: 0.72,
+        clearcoatRoughness: 0.24,
+      }),
+    );
+    upperBase.position.set(BLOCK_SIZE / 2, -0.24, BLOCK_SIZE / 2);
+    upperBase.castShadow = true;
+    upperBase.receiveShadow = true;
+    this.scene.add(upperBase);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(45, 45),
+      new THREE.ShadowMaterial({ color: 0x0d0712, opacity: 0.3 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(BLOCK_SIZE / 2, -0.84, BLOCK_SIZE / 2);
+    floor.receiveShadow = true;
+    this.scene.add(floor);
   }
 
   onResize() {
@@ -58,15 +138,17 @@ class Stage {
     this.camera.updateProjectionMatrix();
   }
 
-  setCamera(y: number, speed = 0.3) {
-    gsap.to(this.camera.position, { y: y + 0.8, duration: speed, ease: "power1.inOut" });
-  }
-
   render() {
     this.renderer.render(this.scene, this.camera);
   }
 
   destroy() {
+    this.scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.geometry.dispose();
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => material.dispose());
+    });
     this.renderer.dispose();
     this.container.innerHTML = "";
   }
@@ -77,7 +159,7 @@ class Block {
   state: BlockState;
   targetBlock: Block | null;
   mesh: THREE.Mesh;
-  material: THREE.MeshPhongMaterial;
+  material: THREE.MeshPhysicalMaterial;
   dimension: { width: number; height: number; depth: number };
   position: { x: number; y: number; z: number };
   /** Положительное |скорость| в координатах сцены за кадр при 60 FPS (до перевода на u/s). */
@@ -87,7 +169,7 @@ class Block {
   directionSign: number;
   workingPlane: "x" | "z";
   workingDimension: "width" | "depth";
-  readonly moveAmount = 12;
+  readonly moveAmount = BLOCK_TRAVEL;
   colorOffset: number;
 
   constructor(block: Block | null) {
@@ -96,44 +178,35 @@ class Block {
     this.workingPlane = this.index % 2 ? "x" : "z";
     this.workingDimension = this.index % 2 ? "width" : "depth";
     this.dimension = {
-      width: this.targetBlock ? this.targetBlock.dimension.width : 14,
-      height: this.targetBlock ? this.targetBlock.dimension.height : 2.8,
-      depth: this.targetBlock ? this.targetBlock.dimension.depth : 14,
+      width: this.targetBlock ? this.targetBlock.dimension.width : BLOCK_SIZE,
+      height: this.targetBlock ? this.targetBlock.dimension.height : BLOCK_HEIGHT,
+      depth: this.targetBlock ? this.targetBlock.dimension.depth : BLOCK_SIZE,
     };
     this.position = {
       x: this.targetBlock ? this.targetBlock.position.x : 0,
-      y: this.dimension.height * this.index,
+      y: this.dimension.height * (this.index - 1),
       z: this.targetBlock ? this.targetBlock.position.z : 0,
     };
     this.colorOffset = this.targetBlock ? this.targetBlock.colorOffset : Math.round(Math.random() * 100);
 
-    let color = new THREE.Color(0xa78bfa);
-    if (this.targetBlock) {
-      const offset = this.index + this.colorOffset;
-      const mix = (Math.sin(0.34 * offset) + 1) * 0.5;
-      const violet = new THREE.Color(0x8b5cf6);
-      const yellow = new THREE.Color(0xfde047);
-      color = violet.clone().lerp(yellow, mix);
-      const coolShift = (Math.sin(0.21 * offset + 1.2) + 1) * 0.06;
-      color.offsetHSL(-0.01, 0.02, coolShift - 0.03);
-    }
+    const paletteIndex = (this.index + this.colorOffset) % BLOCK_PALETTE.length;
+    const color = new THREE.Color(BLOCK_PALETTE[paletteIndex]);
 
     this.state = this.index > 1 ? "active" : "stopped";
     // Как раньше: ускоряется с уровнем, потолок сохранён.
     this.moveMagPerFrameRef = Math.min(8, 0.22 + this.index * 0.02);
     this.speedPerSecond = this.moveMagPerFrameRef * 60;
 
-    const geometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
-    geometry.translate(this.dimension.width / 2, this.dimension.height / 2, this.dimension.depth / 2);
-    this.material = new THREE.MeshPhongMaterial({
+    this.material = new THREE.MeshPhysicalMaterial({
       color,
-      shininess: 36,
-      specular: new THREE.Color(0xf3e8ff),
-      emissive: color.clone().multiplyScalar(0.12),
+      roughness: paletteIndex === 3 ? 0.34 : 0.28,
+      metalness: paletteIndex === 3 ? 0.12 : 0.05,
+      clearcoat: 0.78,
+      clearcoatRoughness: 0.22,
+      emissive: color.clone().multiplyScalar(0.055),
+      emissiveIntensity: 1,
     });
-    this.mesh = new THREE.Mesh(geometry, this.material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
+    this.mesh = createBlockMesh(this.dimension, this.material);
     this.mesh.position.set(this.position.x, this.position.y, this.position.z);
 
     this.directionSign = 1;
@@ -166,29 +239,27 @@ class Block {
     this.mesh.position[p] = v;
   }
 
-  place() {
+  place(): PlacementResult {
     this.state = "stopped";
     const impulseDir = this.directionSign * this.moveMagPerFrameRef;
 
-    if (!this.targetBlock) return { plane: this.workingPlane, direction: impulseDir };
+    if (!this.targetBlock) {
+      return { plane: this.workingPlane, direction: impulseDir, quality: "placed" };
+    }
 
     let overlap =
       this.targetBlock.dimension[this.workingDimension] -
       Math.abs(this.position[this.workingPlane] - this.targetBlock.position[this.workingPlane]);
-    const result: {
-      plane: "x" | "z";
-      direction: number;
-      bonus?: boolean;
-      placed?: THREE.Mesh;
-      chopped?: THREE.Mesh;
-    } = {
+    const result: PlacementResult = {
       plane: this.workingPlane,
       direction: impulseDir,
+      quality: "placed",
     };
 
     if (this.dimension[this.workingDimension] - overlap < 0.1) {
       overlap = this.dimension[this.workingDimension];
       result.bonus = true;
+      result.quality = "perfect";
       this.position.x = this.targetBlock.position.x;
       this.position.z = this.targetBlock.position.z;
       this.dimension.width = this.targetBlock.dimension.width;
@@ -198,7 +269,12 @@ class Block {
     if (overlap <= 0) {
       this.state = "missed";
       this.dimension[this.workingDimension] = overlap;
+      result.quality = "missed";
       return result;
+    }
+
+    if (!result.bonus && overlap / this.targetBlock.dimension[this.workingDimension] >= 0.82) {
+      result.quality = "good";
     }
 
     const choppedDimensions = {
@@ -209,17 +285,8 @@ class Block {
     choppedDimensions[this.workingDimension] -= overlap;
     this.dimension[this.workingDimension] = overlap;
 
-    const placedGeometry = new THREE.BoxGeometry(this.dimension.width, this.dimension.height, this.dimension.depth);
-    placedGeometry.translate(this.dimension.width / 2, this.dimension.height / 2, this.dimension.depth / 2);
-    const placedMesh = new THREE.Mesh(placedGeometry, this.material);
-
-    const choppedGeometry = new THREE.BoxGeometry(
-      choppedDimensions.width,
-      choppedDimensions.height,
-      choppedDimensions.depth,
-    );
-    choppedGeometry.translate(choppedDimensions.width / 2, choppedDimensions.height / 2, choppedDimensions.depth / 2);
-    const choppedMesh = new THREE.Mesh(choppedGeometry, this.material);
+    const placedMesh = createBlockMesh(this.dimension, this.material);
+    const choppedMesh = createBlockMesh(choppedDimensions, this.material.clone());
 
     const choppedPosition = { ...this.position };
     if (this.position[this.workingPlane] < this.targetBlock.position[this.workingPlane]) {
@@ -238,10 +305,12 @@ class Block {
 
 export function BackgroundStackGame() {
   const gameRef = React.useRef<HTMLDivElement | null>(null);
+  const dialogRef = React.useRef<HTMLElement | null>(null);
   const [mounted, setMounted] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [gameStatus, setGameStatus] = React.useState<GameState>("ready");
+  const [feedback, setFeedback] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
@@ -252,6 +321,7 @@ export function BackgroundStackGame() {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => dialogRef.current?.focus());
     return () => {
       document.body.style.overflow = previousOverflow;
     };
@@ -272,10 +342,12 @@ export function BackgroundStackGame() {
     let state: GameState = "ready";
     let raf = 0;
     let restartTimer = 0;
+    let feedbackTimer = 0;
     let lastFrameTime = performance.now();
     let reportedBest = 0;
     setScore(0);
     setGameStatus("ready");
+    setFeedback(null);
 
     const reportTowerScore = (score: number) => {
       if (score <= 0) return;
@@ -290,13 +362,22 @@ export function BackgroundStackGame() {
       });
     };
     const applyVerticalShift = (count: number) => {
-      // Рост блока по Y ~dimension.height (~2.8); смещение чуть ниже — верх медленнее уходит к меню, зона падения почти стабильна.
-      const linear = Math.max(0, (count - 2) * 2.5);
-      const extra = Math.max(0, count - 17) * 0.58;
-      const sink = Math.min(158, linear + extra);
-      gsap.to(newBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
-      gsap.to(placedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
-      gsap.to(choppedBlocks.position, { y: -sink, duration: 0.32, ease: "power2.out" });
+      const linear = Math.max(0, (count - 4) * (BLOCK_HEIGHT * 0.9));
+      const extra = Math.max(0, count - 20) * 0.28;
+      const sink = Math.min(96, linear + extra);
+      const duration = stage.reducedMotion ? 0 : 0.24;
+      gsap.to(newBlocks.position, { y: -sink, duration, ease: "power2.out" });
+      gsap.to(placedBlocks.position, { y: -sink, duration, ease: "power2.out" });
+      gsap.to(choppedBlocks.position, { y: -sink, duration, ease: "power2.out" });
+    };
+
+    const showFeedback = (quality: PlacementQuality) => {
+      if (feedbackTimer) window.clearTimeout(feedbackTimer);
+      const message = quality === "perfect" ? "Идеально" : quality === "good" ? "Точно" : quality === "missed" ? "Мимо" : null;
+      setFeedback(message);
+      if (message && quality !== "missed") {
+        feedbackTimer = window.setTimeout(() => setFeedback(null), 720);
+      }
     };
 
     const addBlock = (updateScore = true) => {
@@ -312,35 +393,51 @@ export function BackgroundStackGame() {
       if (updateScore) setScore(Math.max(0, blocks.length - 2));
       newBlocks.add(block.mesh);
       applyVerticalShift(blocks.length);
-      const followY = Math.min(0.95, blocks.length * 0.026);
-      stage.setCamera(followY);
     };
 
     const placeBlock = () => {
       const current = blocks[blocks.length - 1];
       if (!current) return;
       const parts = current.place();
+      showFeedback(parts.quality);
       newBlocks.remove(current.mesh);
-      if (parts.placed) placedBlocks.add(parts.placed);
+      current.mesh.geometry.dispose();
+      if (!parts.placed) current.material.dispose();
+      if (parts.placed) {
+        placedBlocks.add(parts.placed);
+        if (!stage.reducedMotion) {
+          parts.placed.scale.y = 0.93;
+          gsap.to(parts.placed.scale, { y: 1, duration: 0.16, ease: "power2.out" });
+          if (parts.quality === "perfect") {
+            parts.placed.material.emissiveIntensity = 1.75;
+            gsap.to(parts.placed.material, { emissiveIntensity: 1, duration: 0.38, ease: "power2.out" });
+          }
+        }
+      }
       if (parts.chopped) {
         choppedBlocks.add(parts.chopped);
         const dirVal = 40 * Math.abs(parts.direction);
         const position = parts.chopped.position;
+        const fallDuration = stage.reducedMotion ? 0.22 : 0.72;
         gsap.to(position, {
-          duration: 0.95,
+          duration: fallDuration,
           y: position.y - 26,
           [parts.plane]: position[parts.plane] + (position[parts.plane] > (parts.placed?.position[parts.plane] ?? 0) ? dirVal : -dirVal),
           ease: "power1.in",
           onComplete: () => {
             choppedBlocks.remove(parts.chopped!);
+            parts.chopped!.geometry.dispose();
+            parts.chopped!.material.dispose();
           },
         });
-        gsap.to(parts.chopped.rotation, {
-          duration: 0.95,
-          x: parts.plane === "z" ? (Math.random() * 8 - 4) : 0.3,
-          z: parts.plane === "x" ? (Math.random() * 8 - 4) : 0.3,
-          y: Math.random() * 0.2,
-        });
+        if (!stage.reducedMotion) {
+          gsap.to(parts.chopped.rotation, {
+            duration: fallDuration,
+            x: parts.plane === "z" ? (Math.random() * 5 - 2.5) : 0.2,
+            z: parts.plane === "x" ? (Math.random() * 5 - 2.5) : 0.2,
+            y: Math.random() * 0.15,
+          });
+        }
       }
       addBlock();
     };
@@ -355,9 +452,10 @@ export function BackgroundStackGame() {
     const restartGame = () => {
       state = "resetting";
       setGameStatus("resetting");
+      setFeedback(null);
       const old = [...placedBlocks.children];
-      const removeSpeed = 0.2;
-      const delayAmount = 0.02;
+      const removeSpeed = stage.reducedMotion ? 0 : 0.18;
+      const delayAmount = stage.reducedMotion ? 0 : 0.018;
       old.forEach((obj, i) => {
         gsap.to(obj.scale, {
           duration: removeSpeed,
@@ -368,11 +466,15 @@ export function BackgroundStackGame() {
           ease: "power1.in",
           onComplete: () => {
             placedBlocks.remove(obj);
+            if (obj instanceof THREE.Mesh) {
+              obj.geometry.dispose();
+              const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+              materials.forEach((material) => material.dispose());
+            }
           },
         });
       });
       const cameraMove = removeSpeed * 2 + old.length * delayAmount;
-      stage.setCamera(2, cameraMove);
       blocks.splice(1);
       applyVerticalShift(blocks.length);
       setScore(0);
@@ -428,12 +530,12 @@ export function BackgroundStackGame() {
       window.removeEventListener("keydown", onKey);
       gameEl.removeEventListener("pointerdown", onPointer);
       if (restartTimer) window.clearTimeout(restartTimer);
+      if (feedbackTimer) window.clearTimeout(feedbackTimer);
       if (raf) window.cancelAnimationFrame(raf);
       gsap.killTweensOf([
         newBlocks.position,
         placedBlocks.position,
         choppedBlocks.position,
-        stage.camera.position,
       ]);
       stage.destroy();
     };
@@ -441,84 +543,98 @@ export function BackgroundStackGame() {
 
   if (!mounted) return null;
 
+  const scoreUnit =
+    score % 10 === 1 && score % 100 !== 11
+      ? "блок"
+      : score % 10 >= 2 && score % 10 <= 4 && (score % 100 < 12 || score % 100 > 14)
+        ? "блока"
+        : "блоков";
+
   const statusText =
     gameStatus === "ended"
-      ? "Башня упала — нажмите на поле, чтобы начать заново"
+      ? "Попытка завершена. Нажмите, чтобы собрать новую башню"
       : gameStatus === "resetting"
         ? "Готовим новую попытку"
         : gameStatus === "playing"
-          ? "Нажимайте в момент, когда блок точно над башней"
-          : "Кликните по полю или нажмите пробел";
+          ? "Остановите плитку точно над предыдущей"
+          : "Первый блок уже в движении — поймайте момент";
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="group flex min-h-14 w-full items-center justify-between gap-4 rounded-xl border border-violet-200 bg-white px-4 py-3 text-left text-zinc-950 transition-colors duration-200 hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 motion-reduce:transition-none"
-      >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="relative block h-8 w-9 shrink-0" aria-hidden>
-            <span className="absolute bottom-0 left-0 h-2 w-7 rounded-sm bg-violet-300" />
-            <span className="absolute bottom-2 left-1 h-2 w-7 rounded-sm bg-yellow-300" />
-            <span className="absolute bottom-4 left-2 h-2 w-7 rounded-sm bg-violet-700" />
+      <button type="button" onClick={() => setOpen(true)} className="tower-launcher">
+        <span className="tower-launcher__main">
+          <span className="tower-launcher__mark" aria-hidden>
+            <span />
+            <span />
+            <span />
           </span>
-          <span className="min-w-0">
-            <strong className="block text-sm font-black">Башня надёжности</strong>
-            <span className="block truncate text-xs text-zinc-600">Соберите самую высокую башню и улучшайте личный рекорд</span>
+          <span className="tower-launcher__copy">
+            <strong>Башня надёжности</strong>
+            <span>Проверьте точность и обновите личный рекорд</span>
           </span>
         </span>
-        <span className="shrink-0 text-xs font-black text-violet-700">Играть →</span>
+        <span className="tower-launcher__action">Открыть игру <span aria-hidden>↗</span></span>
       </button>
 
       {open
         ? createPortal(
             <div
-              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm md:p-6"
+              className="tower-modal"
               onPointerDown={(event) => {
                 if (event.currentTarget === event.target) setOpen(false);
               }}
             >
               <section
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="tower-game-title"
-                className="flex h-[min(760px,calc(100dvh-24px))] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-[#f6f2ff] shadow-[0_8px_32px_rgba(0,0,0,0.34)] md:h-[min(760px,calc(100dvh-48px))]"
+                tabIndex={-1}
+                className="tower-dialog"
               >
-                <header className="flex items-center justify-between gap-4 border-b border-violet-200 bg-white px-4 py-3 md:px-5">
-                  <div className="min-w-0">
-                    <h2 id="tower-game-title" className="text-base font-black text-zinc-950">Башня надёжности</h2>
-                    <p className="truncate text-xs text-zinc-600">{statusText}</p>
+                <header className="tower-header">
+                  <div className="tower-header__copy">
+                    <span className="tower-eyebrow"><i aria-hidden /> Игра на точность</span>
+                    <h2 id="tower-game-title">Башня надёжности</h2>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-[10px] font-bold text-zinc-500">Результат</div>
-                      <div className="text-xl font-black tabular-nums text-violet-800">{score}</div>
+                  <div className="tower-header__tools">
+                    <div className="tower-score" aria-label={`Высота башни: ${score} ${scoreUnit}`}>
+                      <span>Высота</span>
+                      <strong>{String(score).padStart(2, "0")}</strong>
+                      <small>{scoreUnit}</small>
                     </div>
                     <button
                       type="button"
                       onClick={() => setOpen(false)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-300 bg-white text-lg text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                      className="tower-close"
                       aria-label="Закрыть игру"
                     >
-                      ×
+                      <span aria-hidden>×</span>
                     </button>
                   </div>
                 </header>
 
-                <div className="relative min-h-0 flex-1 overflow-hidden">
-                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_50%_100%,rgba(139,92,246,0.16),transparent_70%)]" />
+                <div className="tower-stage">
+                  <div className="tower-stage__glow" aria-hidden />
+                  <div className="tower-stage__horizon" aria-hidden />
                   <div
-                    className="pointer-events-none absolute inset-0 flex items-center justify-center text-[clamp(120px,28vw,360px)] font-black leading-none tabular-nums text-violet-700/[0.07]"
-                    aria-hidden
-                  >
-                    {score}
+                    ref={gameRef}
+                    className="tower-canvas"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={gameStatus === "ended" ? "Начать новую попытку" : "Остановить движущийся блок"}
+                  />
+                  <div className={`tower-feedback${feedback ? " is-visible" : ""}`} aria-live="polite">
+                    {feedback}
                   </div>
-                  <div ref={gameRef} className="absolute inset-0 cursor-pointer touch-manipulation" />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
-                    <span className="rounded-full bg-zinc-950/86 px-4 py-2 text-center text-xs font-semibold text-white shadow-sm">
-                      {statusText}
+                  <div className="tower-controls" aria-live="polite">
+                    <span className="tower-controls__keys" aria-hidden>
+                      <kbd>Пробел</kbd>
+                      <i>или</i>
+                      <kbd>Клик</kbd>
                     </span>
+                    <span className="tower-controls__status">{statusText}</span>
+                    <span className="tower-controls__signal" aria-hidden><i /></span>
                   </div>
                 </div>
               </section>

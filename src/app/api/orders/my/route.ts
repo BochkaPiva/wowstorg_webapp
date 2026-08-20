@@ -35,6 +35,9 @@ export async function GET() {
         rentalDiscountAmount: true,
         clientPaymentMethod: true,
         customer: { select: { id: true, name: true } },
+        serviceFeedback: {
+          select: { id: true, rating: true, comment: true, updatedAt: true },
+        },
         lines: {
           select: { requestedQty: true, pricePerDaySnapshot: true, payMultiplierSnapshot: true },
         },
@@ -81,6 +84,7 @@ export async function GET() {
                 amount: pricing.discountAmount,
               }
             : null,
+        serviceFeedback: o.serviceFeedback,
       };
     });
 

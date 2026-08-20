@@ -7,6 +7,7 @@ import * as React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
+import { TeamRatingPanel, type LoyaltyTeamUser } from "./TeamRatingPanel";
 
 type Tier = { id?: string; name: string; minScore: number; discountPercent: number; sortOrder: number };
 type Policy = {
@@ -17,7 +18,9 @@ type Policy = {
   overduePenaltyPerDay: number;
   overduePenaltyCap: number;
   perfectReturnReward: number;
+  dirtyPenaltyPerUnit: number;
   repairPenaltyPerUnit: number;
+  brokenPenaltyPerUnit: number;
   lostPenaltyPerUnit: number;
   incidentPenaltyCap: number;
   approvalLeadDays: number;
@@ -31,15 +34,7 @@ type Policy = {
 
 type LoyaltyData = {
   policy: Policy;
-  users: Array<{
-    id: string;
-    displayName: string;
-    login: string;
-    isActive: boolean;
-    telegramChatId: string | null;
-    greenwichRating: { baseScore: number; score: number; updatedAt: string } | null;
-    month: { position: number; monthlyDelta: number; perfectReturns: number; penalties: number } | null;
-  }>;
+  users: LoyaltyTeamUser[];
   leaderboard: Array<{ userId: string; displayName: string; position: number; monthlyDelta: number; currentScore: number }>;
   offers: Array<{
     id: string;
@@ -95,8 +90,10 @@ const numberFields: Array<{ key: keyof Omit<Policy, "tiers">; label: string; hin
   { key: "overduePenaltyPerDay", label: "Просрочка / день", hint: "Возврат" },
   { key: "overduePenaltyCap", label: "Потолок просрочки", hint: "Не ниже этого значения" },
   { key: "perfectReturnReward", label: "Идеальный возврат", hint: "Поощрение" },
-  { key: "repairPenaltyPerUnit", label: "Ремонт / единица", hint: "Факт приёмки" },
-  { key: "lostPenaltyPerUnit", label: "Потеря / единица", hint: "Факт приёмки" },
+  { key: "dirtyPenaltyPerUnit", label: "Грязное / единица", hint: "Самый мягкий штраф" },
+  { key: "repairPenaltyPerUnit", label: "Нужен ремонт / единица", hint: "Факт приёмки" },
+  { key: "brokenPenaltyPerUnit", label: "Сломано / единица", hint: "Серьёзное повреждение" },
+  { key: "lostPenaltyPerUnit", label: "Потеря / единица", hint: "Самый строгий штраф" },
   { key: "incidentPenaltyCap", label: "Потолок инцидента", hint: "На одну заявку" },
   { key: "approvalLeadDays", label: "Заявка считается ранней", hint: "Дней до выдачи" },
   { key: "approvalWarningDays", label: "Предупредить за", hint: "Дней до выдачи" },
@@ -107,11 +104,6 @@ const numberFields: Array<{ key: keyof Omit<Policy, "tiers">; label: string; hin
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
-}
-
-function ScoreBadge({ score }: { score: number }) {
-  const tone = score >= 90 ? "bg-emerald-100 text-emerald-800" : score >= 75 ? "bg-violet-100 text-violet-800" : "bg-amber-100 text-amber-900";
-  return <span className={`inline-flex min-w-14 justify-center rounded-full px-3 py-1 text-sm font-black ${tone}`}>{score}</span>;
 }
 
 export default function LoyaltyAdminPage() {
@@ -197,18 +189,7 @@ export default function LoyaltyAdminPage() {
 
           {data && tab === "people" && (
             <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_340px]">
-              <section className="rounded-3xl border border-zinc-200 bg-white p-5 md:p-6">
-                <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Текущий рейтинг</p><h2 className="mt-1 text-2xl font-black tracking-tight">Команда Grinvich</h2></div><p className="text-xs text-zinc-500">Новые начинают с {data.policy.startingScore}</p></div>
-                <div className="mt-5 divide-y divide-zinc-100">
-                  {data.users.map((user) => (
-                    <div key={user.id} className="grid gap-3 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                      <div><div className="font-bold text-zinc-950">{user.displayName}</div><div className="mt-1 text-xs text-zinc-500">{user.telegramChatId ? "Telegram подключён" : "Telegram не подключён"} · база {user.greenwichRating?.baseScore ?? data.policy.startingScore}</div></div>
-                      <div className="text-sm text-zinc-600">{user.month ? <><span className="font-black text-zinc-950">#{user.month.position}</span> в месяце · {user.month.monthlyDelta > 0 ? "+" : ""}{user.month.monthlyDelta}</> : "Без активности в месяце"}</div>
-                      <ScoreBadge score={user.greenwichRating?.score ?? data.policy.startingScore} />
-                    </div>
-                  ))}
-                </div>
-              </section>
+              <TeamRatingPanel users={data.users} startingScore={data.policy.startingScore} onAdjusted={load} />
               <aside className="rounded-3xl bg-[#ffd21f] p-6 text-zinc-950">
                 <p className="text-xs font-black uppercase tracking-[0.18em]">Лидер месяца</p>
                 {data.leaderboard[0] ? <><div className="mt-8 text-5xl font-black tracking-[-0.05em]">#{data.leaderboard[0].position}</div><h2 className="mt-3 text-2xl font-black">{data.leaderboard[0].displayName}</h2><p className="mt-2 text-sm font-semibold">{data.leaderboard[0].monthlyDelta >= 0 ? "+" : ""}{data.leaderboard[0].monthlyDelta} баллов за активность</p><div className="mt-8 border-t border-black/15 pt-4 text-xs leading-5">Административные корректировки не участвуют. При равенстве важны аккуратные возвраты и меньше штрафов.</div></> : <p className="mt-8 text-sm leading-6">Пока никто не совершил рейтингового действия в этом месяце. Победитель не назначен.</p>}

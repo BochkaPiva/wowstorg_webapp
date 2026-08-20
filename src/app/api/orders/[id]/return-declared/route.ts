@@ -10,7 +10,7 @@ import {
   addGreenwichRatingEvent,
 } from "@/server/ratings/greenwich-rating";
 
-const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
+const ConditionSchema = z.enum(["OK", "DIRTY", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
 
 const SplitSchema = z.object({
   condition: ConditionSchema,

@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-20 — добавлены атомарные операции центра лояльности и предупреждение → штраф Greenwich.
+> **Дата сверки:** 2026-08-20 — добавлены атомарные операции центра лояльности, предупреждение → штраф Grinvich и обратная связь по закрытым заявкам.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -9,6 +9,7 @@
 | `src/app/api/admin/loyalty/route.ts` | нет (обновление политики и уровней одним действием) |
 | `src/app/api/greenwich/achievements/route.ts` | нет |
 | `src/app/api/greenwich/bonuses/route.ts` | нет (единый снимок бонусов, рейтинга и истории) |
+| `src/app/api/greenwich/feedback/route.ts` | нет (оценка или пропуск и подавление более старых просьб одним действием) |
 | `src/app/api/greenwich/tower-score/route.ts` | нет |
 | `src/app/api/inventory/collections/[id]/route.ts` | нет |
 | `src/app/api/inventory/packages/[id]/route.ts` | нет |

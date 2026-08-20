@@ -4,10 +4,6 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
-import {
-  addGreenwichRatingEvent,
-  recomputeGreenwichRatingScore,
-} from "@/server/ratings/greenwich-rating";
 
 const UpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(200).optional(),
@@ -16,10 +12,6 @@ const UpdateSchema = z.object({
   isActive: z.boolean().optional(),
   mustSetPassword: z.boolean().optional(),
   password: z.string().min(6).max(512).optional(),
-  // Ручная правка — корректирующее событие, а не блокировка автоматики.
-  // `greenwichRatingAuto=true` удаляет только административные корректировки.
-  greenwichRatingScore: z.number().int().min(0).max(100).optional(),
-  greenwichRatingAuto: z.boolean().optional(),
 });
 
 /** Обновить пользователя. Только WOWSTORG. */
@@ -82,42 +74,6 @@ export async function PATCH(
         SET "telegramChatId" = ${telegramChatId}
         WHERE "id" = ${id}
       `;
-    }
-
-    if (
-      parsed.data.greenwichRatingScore !== undefined ||
-      parsed.data.greenwichRatingAuto === true
-    ) {
-      if (updated.role !== "GREENWICH") {
-        return jsonError(400, "Рейтинг доступен только пользователям роли GREENWICH");
-      }
-
-      await prisma.$transaction(async (tx) => {
-        if (parsed.data.greenwichRatingAuto === true) {
-          await tx.greenwichRatingEvent.deleteMany({
-            where: { userId: id, type: "ADMIN_ADJUSTMENT", sourceKey: { startsWith: "admin:" } },
-          });
-          await recomputeGreenwichRatingScore(tx, id);
-          return;
-        }
-
-        await recomputeGreenwichRatingScore(tx, id);
-        const current = await tx.greenwichRating.findUnique({
-          where: { userId: id },
-          select: { score: true },
-        });
-        const target = parsed.data.greenwichRatingScore ?? current?.score ?? 70;
-        const delta = target - (current?.score ?? 70);
-        if (delta === 0) return;
-        await addGreenwichRatingEvent(tx, {
-          userId: id,
-          type: "ADMIN_ADJUSTMENT",
-          delta,
-          reason: `Корректировка администратором ${auth.user.displayName}`,
-          sourceKey: `admin:${auth.user.id}:${id}:${crypto.randomUUID()}`,
-          recoverable: false,
-        });
-      });
     }
 
     const telegramRow = (await prisma.$queryRaw<

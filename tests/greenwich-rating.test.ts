@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeGreenwichIncidentsDelta,
   computeGreenwichOverdueDelta,
+  computeGreenwichTargetAdjustmentDelta,
   effectiveRatingEventDelta,
   getOmskMonthUtcRange,
 } from "@/server/ratings/greenwich-rating";
@@ -68,6 +69,28 @@ describe("Greenwich rating policy limits", () => {
     ).toBe(5);
   });
 
+  it("weights dirty, repair, broken and missing in ascending severity", () => {
+    const policy = {
+      dirtyPenaltyPerUnit: -1,
+      repairPenaltyPerUnit: -2,
+      brokenPenaltyPerUnit: -4,
+      lostPenaltyPerUnit: -6,
+      incidentPenaltyCap: -100,
+    };
+    expect(computeGreenwichIncidentsDelta([{ condition: "DIRTY", qty: 1, itemType: "ASSET" }], policy)).toBe(-1);
+    expect(computeGreenwichIncidentsDelta([{ condition: "NEEDS_REPAIR", qty: 1, itemType: "ASSET" }], policy)).toBe(-2);
+    expect(computeGreenwichIncidentsDelta([{ condition: "BROKEN", qty: 1, itemType: "ASSET" }], policy)).toBe(-4);
+    expect(computeGreenwichIncidentsDelta([{ condition: "MISSING", qty: 1, itemType: "ASSET" }], policy)).toBe(-6);
+  });
+
+  it("does not penalize dirty consumables", () => {
+    expect(
+      computeGreenwichIncidentsDelta([
+        { condition: "DIRTY", qty: 12, itemType: "CONSUMABLE" },
+      ]),
+    ).toBe(5);
+  });
+
   it("weights missing items stronger but applies an incident cap", () => {
     expect(
       computeGreenwichIncidentsDelta(
@@ -82,6 +105,28 @@ describe("Greenwich rating policy limits", () => {
         },
       ),
     ).toBe(-20);
+  });
+});
+
+describe("Greenwich admin adjustment", () => {
+  it("sets an exact target even when the unclamped score is above 100", () => {
+    expect(
+      computeGreenwichTargetAdjustmentDelta(
+        70,
+        [{ delta: 45, recoveryStartsAt: null, recoveryEndsAt: null }],
+        75,
+      ),
+    ).toBe(-40);
+  });
+
+  it("sets an exact target even when the unclamped score is below zero", () => {
+    expect(
+      computeGreenwichTargetAdjustmentDelta(
+        70,
+        [{ delta: -100, recoveryStartsAt: null, recoveryEndsAt: null }],
+        75,
+      ),
+    ).toBe(105);
   });
 });
 

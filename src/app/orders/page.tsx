@@ -6,6 +6,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
+import { OrderFeedbackEditor, type ServiceFeedback } from "@/app/_ui/OrderServiceFeedback";
 
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
@@ -34,6 +35,7 @@ type OrderCard = {
   totalAmount?: number;
   taxAmount?: number;
   discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
+  serviceFeedback?: ServiceFeedback | null;
 };
 
 const CANCELLABLE: OrderCard["status"][] = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"];
@@ -437,6 +439,17 @@ export default function OrdersPage() {
               </button>
             )}
           </div>
+          {o.status === "CLOSED" && !o.parentOrderId ? (
+            <div className="mt-4 border-t border-zinc-200 pt-4">
+              <OrderFeedbackEditor
+                orderId={o.id}
+                feedback={o.serviceFeedback}
+                onSaved={(feedback) => setOrders((current) => current.map((order) =>
+                  order.id === o.id ? { ...order, serviceFeedback: feedback } : order,
+                ))}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
     );

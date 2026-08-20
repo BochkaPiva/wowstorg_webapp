@@ -84,27 +84,43 @@ export function computeGreenwichIncidentsDelta(
   rows: Array<{ condition: Condition; qty: number; itemType: ItemType }>,
   policy: {
     perfectReturnReward?: number;
+    dirtyPenaltyPerUnit?: number;
     repairPenaltyPerUnit?: number;
+    brokenPenaltyPerUnit?: number;
     lostPenaltyPerUnit?: number;
     incidentPenaltyCap?: number;
   } = {},
 ): number {
+  let dirty = 0;
+  let needsRepair = 0;
   let broken = 0;
   let lost = 0;
   for (const row of rows) {
     if (row.itemType === "CONSUMABLE") continue;
-    if (row.condition === "NEEDS_REPAIR" || row.condition === "BROKEN") {
+    if (row.condition === "DIRTY") {
+      dirty += row.qty;
+    } else if (row.condition === "NEEDS_REPAIR") {
+      needsRepair += row.qty;
+    } else if (row.condition === "BROKEN") {
       broken += row.qty;
     } else if (row.condition === "MISSING") {
       lost += row.qty;
     }
   }
   const reward = Math.max(0, policy.perfectReturnReward ?? 5);
-  const repairPenalty = Math.min(0, policy.repairPenaltyPerUnit ?? -1);
-  const lostPenalty = Math.min(0, policy.lostPenaltyPerUnit ?? -3);
+  const dirtyPenalty = Math.min(0, policy.dirtyPenaltyPerUnit ?? -1);
+  const repairPenalty = Math.min(0, policy.repairPenaltyPerUnit ?? -2);
+  const brokenPenalty = Math.min(0, policy.brokenPenaltyPerUnit ?? -4);
+  const lostPenalty = Math.min(0, policy.lostPenaltyPerUnit ?? -6);
   const cap = Math.min(0, policy.incidentPenaltyCap ?? -20);
-  if (broken === 0 && lost === 0) return reward;
-  return Math.max(cap, repairPenalty * broken + lostPenalty * lost);
+  if (dirty === 0 && needsRepair === 0 && broken === 0 && lost === 0) return reward;
+  return Math.max(
+    cap,
+    dirtyPenalty * dirty +
+      repairPenalty * needsRepair +
+      brokenPenalty * broken +
+      lostPenalty * lost,
+  );
 }
 
 export async function ensureGreenwichRatingPolicy(tx: Prisma.TransactionClient) {
@@ -164,6 +180,21 @@ export function effectiveRatingEventDelta(
   if (duration <= 0) return 0;
   const remaining = (event.recoveryEndsAt.getTime() - now.getTime()) / duration;
   return Math.round(event.delta * Math.max(0, Math.min(1, remaining)));
+}
+
+/**
+ * Возвращает корректировку, которая приводит рейтинг ровно к targetScore.
+ * Использует сумму до ограничения 0…100, поэтому умеет снижать рейтинг,
+ * даже если скрытый баланс уже вышел выше 100 из-за прошлых начислений.
+ */
+export function computeGreenwichTargetAdjustmentDelta(
+  baseScore: number,
+  events: Array<{ delta: number; recoveryStartsAt: Date | null; recoveryEndsAt: Date | null }>,
+  targetScore: number,
+  now = new Date(),
+): number {
+  const rawScore = baseScore + events.reduce((sum, event) => sum + effectiveRatingEventDelta(event, now), 0);
+  return Math.max(0, Math.min(100, targetScore)) - rawScore;
 }
 
 export async function addGreenwichRatingEvent(
@@ -340,7 +371,7 @@ export async function getGreenwichMonthlyLeaderboard(
         select: { type: true, delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
       },
       ordersGreenwich: {
-        where: { status: "CLOSED", updatedAt: { gte: range.start, lt: range.end } },
+        where: { status: "CLOSED", closedAt: { gte: range.start, lt: range.end } },
         select: { id: true },
       },
     },

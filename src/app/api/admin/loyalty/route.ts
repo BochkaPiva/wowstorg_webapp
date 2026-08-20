@@ -4,8 +4,12 @@ import { requireUser } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
 import {
+  addGreenwichRatingEvent,
+  computeGreenwichTargetAdjustmentDelta,
+  effectiveRatingEventDelta,
   ensureGreenwichRatingPolicy,
   getGreenwichMonthlyLeaderboard,
+  recomputeGreenwichRatingScore,
   recomputeGreenwichRatingScores,
 } from "@/server/ratings/greenwich-rating";
 
@@ -20,6 +24,12 @@ const TierSchema = z.object({
 
 const ActionSchema = z.discriminatedUnion("action", [
   z.object({
+    action: z.literal("ADJUST_RATING"),
+    userId: z.string().min(1),
+    targetScore: z.number().int().min(0).max(100),
+    reason: z.string().trim().min(3).max(300),
+  }),
+  z.object({
     action: z.literal("UPDATE_POLICY"),
     policy: z.object({
       startingScore: z.number().int().min(0).max(100),
@@ -29,7 +39,9 @@ const ActionSchema = z.discriminatedUnion("action", [
       overduePenaltyPerDay: z.number().int().min(-50).max(0),
       overduePenaltyCap: z.number().int().min(-100).max(0),
       perfectReturnReward: z.number().int().min(0).max(50),
+      dirtyPenaltyPerUnit: z.number().int().min(-50).max(0),
       repairPenaltyPerUnit: z.number().int().min(-50).max(0),
+      brokenPenaltyPerUnit: z.number().int().min(-100).max(0),
       lostPenaltyPerUnit: z.number().int().min(-100).max(0),
       incidentPenaltyCap: z.number().int().min(-100).max(0),
       approvalLeadDays: z.number().int().min(1).max(30),
@@ -98,6 +110,23 @@ export async function GET() {
           isActive: true,
           telegramChatId: true,
           greenwichRating: { select: { baseScore: true, score: true, updatedAt: true } },
+          greenwichRatingEvents: {
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 5,
+            select: {
+              id: true,
+              type: true,
+              delta: true,
+              reason: true,
+              recoveryStartsAt: true,
+              recoveryEndsAt: true,
+              createdAt: true,
+              order: {
+                select: { id: true, eventName: true, customer: { select: { name: true } } },
+              },
+            },
+          },
+          _count: { select: { greenwichRatingEvents: true } },
         },
       });
       const leaderboard = await getGreenwichMonthlyLeaderboard(tx, now);
@@ -148,9 +177,14 @@ export async function GET() {
           discountPercent: Number(tier.discountPercent),
         })),
       },
-      users: base.users.map((user) => ({
+      users: base.users.map(({ _count, greenwichRatingEvents, ...user }) => ({
         ...user,
         month: base.leaderboard.find((entry) => entry.userId === user.id) ?? null,
+        eventCount: _count.greenwichRatingEvents,
+        recentEvents: greenwichRatingEvents.map((event) => ({
+          ...event,
+          effectiveDelta: effectiveRatingEventDelta(event, now),
+        })),
       })),
       leaderboard: base.leaderboard,
       offers: offers.map((offer) => ({
@@ -182,6 +216,49 @@ export async function POST(req: Request) {
   }
   const parsed = ActionSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
+
+  if (parsed.data.action === "ADJUST_RATING") {
+    const input = parsed.data;
+    const user = await prisma.user.findFirst({
+      where: { id: input.userId, role: "GREENWICH" },
+      select: { id: true, displayName: true },
+    });
+    if (!user) return jsonError(404, "Сотрудник Grinvich не найден");
+
+    const now = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      await recomputeGreenwichRatingScore(tx, user.id, now);
+      const rating = await tx.greenwichRating.findUniqueOrThrow({
+        where: { userId: user.id },
+        select: { baseScore: true, score: true },
+      });
+      const events = await tx.greenwichRatingEvent.findMany({
+        where: { userId: user.id },
+        select: { delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
+      });
+      const delta = computeGreenwichTargetAdjustmentDelta(
+        rating.baseScore,
+        events,
+        input.targetScore,
+        now,
+      );
+      if (delta !== 0) {
+        await addGreenwichRatingEvent(tx, {
+          userId: user.id,
+          type: "ADMIN_ADJUSTMENT",
+          delta,
+          reason: `${input.reason.trim()} · ${auth.user.displayName}`,
+          sourceKey: `admin-loyalty:${auth.user.id}:${user.id}:${crypto.randomUUID()}`,
+          recoverable: false,
+          now,
+        });
+      }
+      const score = await recomputeGreenwichRatingScore(tx, user.id, now);
+      return { score, delta };
+    });
+
+    return jsonOk({ adjustment: { userId: user.id, displayName: user.displayName, ...result } });
+  }
 
   if (parsed.data.action === "UPDATE_POLICY") {
     const input = parsed.data;

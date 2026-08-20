@@ -55,6 +55,7 @@ enum GreenwichRatingEventType {
   APPROVAL_WARNING_MISSED
   RETURN_OVERDUE
   PERFECT_RETURN
+  RETURN_DIRTY
   RETURN_DAMAGED
   RETURN_MISSING
   ADMIN_ADJUSTMENT
@@ -119,6 +120,7 @@ enum ItemRelationKind {
 
 enum Condition {
   OK
+  DIRTY
   NEEDS_REPAIR
   BROKEN
   MISSING
@@ -303,6 +305,7 @@ model User {
   tasksCreated                   WorkTask[]                   @relation("task_created_by")
   tasksAssigned                  WorkTask[]                   @relation("task_assigned_to")
   taskChecklistItemsCreated      WorkTaskChecklistItem[]      @relation("task_checklist_created_by")
+  orderServiceFeedbacks          OrderServiceFeedback[]       @relation("order_service_feedback_author")
 
   @@index([role, isActive])
 }
@@ -353,8 +356,10 @@ model GreenwichRatingPolicy {
   overduePenaltyPerDay       Int      @default(-5)
   overduePenaltyCap          Int      @default(-25)
   perfectReturnReward        Int      @default(5)
-  repairPenaltyPerUnit       Int      @default(-1)
-  lostPenaltyPerUnit         Int      @default(-3)
+  dirtyPenaltyPerUnit        Int      @default(-1)
+  repairPenaltyPerUnit       Int      @default(-2)
+  brokenPenaltyPerUnit       Int      @default(-4)
+  lostPenaltyPerUnit         Int      @default(-6)
   incidentPenaltyCap         Int      @default(-20)
   approvalLeadDays           Int      @default(3)
   approvalWarningDays        Int      @default(2)
@@ -1359,6 +1364,12 @@ model Order {
   /// Считается на `check-in` (когда склад подтвердил фактические статусы возврата).
   greenwichRatingIncidentsDelta Int @default(0)
 
+  /// Момент фактического закрытия после складской приёмки.
+  closedAt DateTime?
+
+  /// Пользователь убрал просьбу оценить эту заявку с главной. В архиве оценка остаётся доступна.
+  serviceFeedbackPromptDismissedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1374,13 +1385,35 @@ model Order {
   greenwichRatingEvents   GreenwichRatingEvent[]
   greenwichBonusEvents    GreenwichMonthlyBonusEvent[]
   stageReminders          OrderStageReminder[]
+  serviceFeedback         OrderServiceFeedback?
 
   @@index([status, readyByDate])
   @@index([source, status])
   @@index([customerId])
   @@index([greenwichUserId])
+  @@index([greenwichUserId, status, closedAt])
   @@index([parentOrderId])
   @@index([projectId])
+}
+
+/// Оценка качества работы Wowstorg по одной основной закрытой заявке Grinvich.
+model OrderServiceFeedback {
+  id      String @id @default(cuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("order_service_feedback_author", fields: [authorId], references: [id], onDelete: Restrict)
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rating, createdAt])
+  @@index([authorId, createdAt])
+  @@index([createdAt])
 }
 
 model OrderHiddenExpense {

@@ -184,13 +184,16 @@ export function CatalogRentalPeriodPicker({
       <div className="mk-rentalPeriodRow">
         <div className="mk-rentalPeriod-edge">
           {multiDay ? (
-            <RentalPartOfDayToggle
-              compact
-              edge="start"
-              id="catalog-rental-start"
-              value={rentalStartPartOfDay}
-              onChange={onStartPartChange}
-            />
+            <>
+              <span className="mk-rentalPeriod-edgeLabel">Выдача</span>
+              <RentalPartOfDayToggle
+                compact
+                edge="start"
+                id="catalog-rental-start"
+                value={rentalStartPartOfDay}
+                onChange={onStartPartChange}
+              />
+            </>
           ) : (
             <span className="mk-partDay-spacer" aria-hidden />
           )}
@@ -277,7 +280,10 @@ export function CatalogRentalPeriodPicker({
 
         <div className="mk-rentalPeriod-edge">
           {multiDay ? (
-            <RentalPartOfDayToggle compact edge="end" id="catalog-rental-end" value={rentalEndPartOfDay} onChange={onEndPartChange} />
+            <>
+              <span className="mk-rentalPeriod-edgeLabel">Возврат</span>
+              <RentalPartOfDayToggle compact edge="end" id="catalog-rental-end" value={rentalEndPartOfDay} onChange={onEndPartChange} />
+            </>
           ) : (
             <span
               className="mk-partDay-chip"

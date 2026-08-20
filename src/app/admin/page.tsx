@@ -67,6 +67,11 @@ export default function AdminIndexPage() {
             description="Рейтинг, уровни скидок, персональные предложения и предупреждения."
           />
           <AdminCard
+            href="/admin/quality"
+            title="Качество сервиса"
+            description="Оценки закрытых заявок, комментарии Grinvich и средний рейтинг Wowstorg."
+          />
+          <AdminCard
             href="/admin/inventory-audit"
             title="Аудит инвентаря"
             description="Проверка расхождений, история запусков, детализация по позициям."

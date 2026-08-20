@@ -23,7 +23,6 @@ type UserRow = {
   isActive: boolean;
   mustSetPassword: boolean;
   createdAt: string;
-  greenwichRating: null | { score: number; manualLocked: boolean };
 };
 
 type AdminAchievementsResponse = {
@@ -63,9 +62,6 @@ export default function AdminUsersPage() {
     telegramChatId: "",
     isActive: true,
     password: "",
-    greenwichRatingScore: 100,
-    greenwichRatingManualLocked: false,
-    greenwichRatingOriginalScore: 100,
   });
   const [saving, setSaving] = React.useState(false);
   const [adminAchievements, setAdminAchievements] = React.useState<AdminAchievementsResponse | null>(null);
@@ -208,16 +204,12 @@ export default function AdminUsersPage() {
 
   function openEdit(u: UserRow) {
     setModal(u);
-    const ratingScore = u.greenwichRating?.score ?? 70;
     setEditForm({
       displayName: u.displayName,
       role: u.role as "GREENWICH" | "WOWSTORG",
       telegramChatId: u.telegramChatId ?? "",
       isActive: u.isActive,
       password: "",
-      greenwichRatingScore: ratingScore,
-      greenwichRatingManualLocked: false,
-      greenwichRatingOriginalScore: ratingScore,
     });
     setError(null);
   }
@@ -235,13 +227,6 @@ export default function AdminUsersPage() {
         isActive: editForm.isActive,
       };
       if (editForm.password) body.password = editForm.password;
-
-      if (
-        editForm.role === "GREENWICH" &&
-        editForm.greenwichRatingScore !== editForm.greenwichRatingOriginalScore
-      ) {
-        body.greenwichRatingScore = editForm.greenwichRatingScore;
-      }
 
       const res = await fetch(`/api/admin/users/${modal.id}`, {
         method: "PATCH",
@@ -263,36 +248,6 @@ export default function AdminUsersPage() {
       setModal(null);
       await load();
     } catch (e) {
-      setError("Ошибка сети или сервера");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function resetGreenwichRatingAdjustments() {
-    if (!modal || modal === "create" || !("id" in modal)) return;
-    setError(null);
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/admin/users/${modal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ greenwichRatingAuto: true }),
-      });
-      const text = await res.text();
-      let data: { error?: { message?: string } } = {};
-      try {
-        data = text ? (JSON.parse(text) as { error?: { message?: string } }) : {};
-      } catch {
-        // ignore
-      }
-      if (!res.ok) {
-        setError(data?.error?.message ?? `Ошибка ${res.status}`);
-        return;
-      }
-      setModal(null);
-      await load();
-    } catch {
       setError("Ошибка сети или сервера");
     } finally {
       setSaving(false);
@@ -337,7 +292,6 @@ export default function AdminUsersPage() {
                     <th className="text-left p-3 font-semibold text-zinc-700">ФИО</th>
                     <th className="text-left p-3 font-semibold text-zinc-700">Логин</th>
                     <th className="text-left p-3 font-semibold text-zinc-700">Роль</th>
-                    <th className="text-left p-3 font-semibold text-zinc-700">Рейтинг</th>
                     <th className="text-left p-3 font-semibold text-zinc-700">Telegram ID</th>
                     <th className="text-left p-3 font-semibold text-zinc-700">Статус</th>
                     <th className="w-24 p-3" />
@@ -352,16 +306,6 @@ export default function AdminUsersPage() {
                         <span className={u.role === "WOWSTORG" ? "text-violet-600" : "text-zinc-600"}>
                           {u.role === "WOWSTORG" ? "Склад" : "Grinvich"}
                         </span>
-                      </td>
-                      <td className="p-3">
-                        {u.role === "GREENWICH" ? (
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-zinc-900">{u.greenwichRating?.score ?? 70}</span>
-                            <span className="text-[11px] text-zinc-500">динамический</span>
-                          </div>
-                        ) : (
-                          <span className="text-zinc-400">—</span>
-                        )}
                       </td>
                       <td className="p-3 text-zinc-500 font-mono text-xs">{u.telegramChatId ?? "—"}</td>
                       <td className="p-3">
@@ -506,43 +450,6 @@ export default function AdminUsersPage() {
                     </select>
                   </div>
 
-                  {editForm.role === "GREENWICH" ? (
-                    <div>
-                      <label className="block text-xs font-medium text-zinc-500">
-                        Рейтинг Greenwich (0..100)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={editForm.greenwichRatingScore}
-                        onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setEditForm((f) => ({
-                            ...f,
-                            greenwichRatingScore: Number.isFinite(v) ? v : f.greenwichRatingScore,
-                            greenwichRatingManualLocked: false,
-                          }));
-                        }}
-                        className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                      />
-                      <div className="mt-1 text-xs leading-5 text-zinc-500">
-                        Новое значение сохранится как корректировка. Дедлайны, инциденты,
-                        подтверждения и восстановление рейтинга продолжат работать автоматически.
-                      </div>
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={() => void resetGreenwichRatingAdjustments()}
-                          disabled={saving}
-                          className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                        >
-                          Сбросить ручные корректировки
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
                   <div>
                     <label className="block text-xs font-medium text-zinc-500">Telegram Chat ID</label>
                     <input

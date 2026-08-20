@@ -3932,3 +3932,395 @@ button.mk-cartPill small {
   }
 }
 
+/* Catalog header v4: a light, guided rental planner with the existing brand mascot. */
+.mk-head {
+  overflow: hidden;
+  border-color: #ded9e3;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mk-headIntro {
+  position: relative;
+  display: grid;
+  min-height: 292px;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 280px) minmax(240px, 300px);
+  align-items: center;
+  gap: clamp(20px, 2.4vw, 38px);
+  overflow: hidden;
+  padding: clamp(32px, 4vw, 56px);
+  background: #f5effb;
+  color: #211628;
+}
+
+.mk-headIntro::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 58%;
+  width: 1px;
+  background: linear-gradient(transparent, rgba(92, 35, 151, 0.13), transparent);
+  pointer-events: none;
+}
+
+.mk-headCopy {
+  position: relative;
+  z-index: 2;
+  max-width: 720px;
+}
+
+.mk-headKicker {
+  margin-bottom: 14px;
+  color: #6a28aa;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.mk-headIntro .mk-title {
+  max-width: 690px;
+  color: #1d1323;
+  font-size: clamp(2.65rem, 4vw, 4.4rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.mk-headIntro .mk-subtitle {
+  max-width: 660px;
+  margin-top: 17px;
+  color: #65596b;
+  font-size: clamp(0.94rem, 1.15vw, 1.06rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.mk-headDino {
+  position: relative;
+  z-index: 1;
+  align-self: stretch;
+  min-height: 250px;
+}
+
+.mk-headDino::before {
+  content: "";
+  position: absolute;
+  inset: 20% 0 7%;
+  border-radius: 50%;
+  background: #eadcf7;
+}
+
+.mk-headDinoImage {
+  object-fit: contain;
+  object-position: center bottom;
+  transform: translateY(12px) scale(1.08);
+  transform-origin: center bottom;
+}
+
+.mk-headIntro .mk-headCart,
+.mk-headIntro button.mk-cartPill {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  border: 0;
+  border-radius: 12px;
+  background: #2a1731;
+  color: #fff;
+  padding: 15px;
+  box-shadow: none;
+  white-space: normal;
+}
+
+.mk-headIntro .mk-headCart:hover {
+  background: #3a1d48;
+  transform: translateY(-2px);
+}
+
+.mk-headIntro .mk-headCartIcon {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mk-headIntro .mk-headCart .mk-headCartCopy small {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.mk-headIntro .mk-headCart strong {
+  background: #ffd21f;
+  color: #1b111e;
+}
+
+.mk-headOperations {
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
+  align-items: stretch;
+  border-top: 1px solid #e2dde5;
+  border-bottom: 1px solid #e2dde5;
+  background: #fff;
+}
+
+.mk-dateSectionIntro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  padding: 28px clamp(22px, 2.8vw, 38px);
+  border-right: 1px solid #e2dde5;
+  background: #f6f5f2;
+}
+
+.mk-dateSectionCopy h2 {
+  margin: 0;
+  color: #201922;
+  font-size: 1.18rem;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.mk-dateSectionCopy p {
+  max-width: 28rem;
+  margin: 8px 0 0;
+  color: #6c666e;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.mk-dateSectionIntro .mk-catalogDateSummary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin: 18px 0 0;
+  padding-top: 15px;
+  border-top: 1px solid #dedbd7;
+}
+
+.mk-dateSectionIntro .mk-dateBillInline {
+  color: #342d36;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mk-dateControls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 28px clamp(22px, 3vw, 44px);
+  background: #fff;
+}
+
+.mk-headOperations .mk-datesRowGrouped {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: 22px;
+}
+
+.mk-headOperations .mk-datesRowGrouped--withReady {
+  grid-template-columns: minmax(410px, 1.45fr) minmax(220px, 0.7fr);
+}
+
+.mk-headOperations .mk-dateFieldLabel {
+  margin-bottom: 5px;
+  color: #4f4653;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mk-headOperations .mk-rentalPeriod {
+  width: 100%;
+  max-width: none;
+  gap: 0;
+}
+
+.mk-headOperations .mk-rentalPeriodRow {
+  display: grid;
+  grid-template-columns: auto minmax(330px, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+}
+
+.mk-rentalPeriod-edge {
+  align-items: center;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mk-rentalPeriod-edgeLabel {
+  color: #7d7481;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.mk-headOperations .mk-rentalPeriod-trigger,
+.mk-headOperations .mk-dateWrap {
+  min-height: 68px;
+  border: 1px solid #d5ced9;
+  border-radius: 10px;
+  background: #fbf9fd;
+  box-shadow: none;
+}
+
+.mk-headOperations .mk-rentalPeriod-trigger:hover,
+.mk-headOperations .mk-dateWrap:hover {
+  border-color: #8a5ab7;
+  background: #fff;
+}
+
+.mk-headOperations .mk-rentalPeriod-seg {
+  padding: 11px 14px;
+}
+
+.mk-headOperations .mk-rentalPeriod-segHint,
+.mk-headOperations .mk-dateTextCaption {
+  color: #7b7180;
+  font-size: 0.59rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mk-headOperations .mk-rentalPeriod-segDate,
+.mk-headOperations .mk-dateText {
+  color: #211727;
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+}
+
+.mk-headOperations .mk-rentalPeriod-calIcon,
+.mk-headOperations .mk-datePickBtn {
+  min-width: 48px;
+  justify-content: center;
+  border-left: 1px solid #ddd5e2;
+  background: #f0e8f7;
+  color: #6426aa;
+}
+
+.mk-headOperations .mk-dateField .mk-dateWrap {
+  width: 100%;
+}
+
+.mk-headOperations .mk-dateTextCell {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  justify-content: center;
+  flex-direction: column;
+  padding-left: 14px;
+}
+
+.mk-headOperations .mk-dateText {
+  width: 100%;
+  padding: 0;
+}
+
+.mk-headOperations .mk-partDay-chip {
+  min-height: 36px;
+  border-color: #d8d0dd;
+  background: #f7f3fa;
+  color: #5b5060;
+}
+
+@media (max-width: 1180px) {
+  .mk-headIntro {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+
+  .mk-headDino {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .mk-headIntro .mk-headCart,
+  .mk-headIntro button.mk-cartPill {
+    grid-column: 1;
+    width: min(100%, 320px);
+  }
+
+  .mk-headIntro::after {
+    left: auto;
+    right: 240px;
+  }
+}
+
+@media (max-width: 1320px) {
+  .mk-headOperations {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-dateSectionIntro {
+    border-right: 0;
+    border-bottom: 1px solid #e2dde5;
+  }
+
+  .mk-headOperations .mk-datesRowGrouped--withReady {
+    grid-template-columns: minmax(0, 1.4fr) minmax(210px, 0.7fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .mk-headIntro {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    padding: 30px 22px;
+  }
+
+  .mk-headIntro::after,
+  .mk-headDino {
+    display: none;
+  }
+
+  .mk-headIntro .mk-title {
+    font-size: clamp(2.35rem, 12vw, 3.45rem);
+  }
+
+  .mk-headIntro .mk-headCart,
+  .mk-headIntro button.mk-cartPill {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .mk-dateSectionIntro,
+  .mk-dateControls {
+    padding: 22px 18px;
+  }
+
+  .mk-headOperations .mk-datesRowGrouped--withReady {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-headOperations .mk-rentalPeriodRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mk-headOperations .mk-rentalPeriod-trigger {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .mk-headOperations .mk-rentalPeriod-edge {
+    align-items: flex-start;
+  }
+
+  .mk-headOperations .mk-rentalPeriod-edge:last-child {
+    align-items: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-headIntro .mk-headCart,
+  .mk-headDinoImage {
+    transition: none;
+  }
+}
+

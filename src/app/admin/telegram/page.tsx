@@ -48,7 +48,9 @@ type RatingPolicy = {
   overduePenaltyPerDay: number;
   overduePenaltyCap: number;
   perfectReturnReward: number;
+  dirtyPenaltyPerUnit: number;
   repairPenaltyPerUnit: number;
+  brokenPenaltyPerUnit: number;
   lostPenaltyPerUnit: number;
   incidentPenaltyCap: number;
   recoveryGraceDays: number;
@@ -216,7 +218,9 @@ export default function AdminTelegramPage() {
           overduePenaltyPerDay: policyDraft.overduePenaltyPerDay,
           overduePenaltyCap: policyDraft.overduePenaltyCap,
           perfectReturnReward: policyDraft.perfectReturnReward,
+          dirtyPenaltyPerUnit: policyDraft.dirtyPenaltyPerUnit,
           repairPenaltyPerUnit: policyDraft.repairPenaltyPerUnit,
+          brokenPenaltyPerUnit: policyDraft.brokenPenaltyPerUnit,
           lostPenaltyPerUnit: policyDraft.lostPenaltyPerUnit,
           incidentPenaltyCap: policyDraft.incidentPenaltyCap,
           recoveryGraceDays: policyDraft.recoveryGraceDays,
@@ -413,7 +417,9 @@ export default function AdminTelegramPage() {
           <PolicyField label="Просрочка за день" hint="баллов" value={policyDraft.overduePenaltyPerDay} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, overduePenaltyPerDay: value } : current)} />
           <PolicyField label="Лимит просрочки" hint="баллов" value={policyDraft.overduePenaltyCap} min={-100} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, overduePenaltyCap: value } : current)} />
           <PolicyField label="Идеальный возврат" hint="баллов" value={policyDraft.perfectReturnReward} min={0} max={20} onChange={(value) => setPolicyDraft((current) => current ? { ...current, perfectReturnReward: value } : current)} />
-          <PolicyField label="Ремонт за единицу" hint="баллов" value={policyDraft.repairPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, repairPenaltyPerUnit: value } : current)} />
+          <PolicyField label="Грязное за единицу" hint="баллов" value={policyDraft.dirtyPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, dirtyPenaltyPerUnit: value } : current)} />
+          <PolicyField label="Требует ремонта" hint="баллов" value={policyDraft.repairPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, repairPenaltyPerUnit: value } : current)} />
+          <PolicyField label="Сломано за единицу" hint="баллов" value={policyDraft.brokenPenaltyPerUnit} min={-50} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, brokenPenaltyPerUnit: value } : current)} />
           <PolicyField label="Потеря за единицу" hint="баллов" value={policyDraft.lostPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, lostPenaltyPerUnit: value } : current)} />
           <PolicyField label="Лимит инцидента" hint="баллов" value={policyDraft.incidentPenaltyCap} min={-100} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, incidentPenaltyCap: value } : current)} />
           <PolicyField label="Пауза до возврата" hint="дней" value={policyDraft.recoveryGraceDays} min={0} max={365} onChange={(value) => setPolicyDraft((current) => current ? { ...current, recoveryGraceDays: value } : current)} />

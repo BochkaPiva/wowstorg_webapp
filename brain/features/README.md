@@ -56,6 +56,7 @@
 | Рабочая карточка заявки и перенос дат | [`order-workspace.md`](./order-workspace.md) |
 | Подтверждение актуальности заявок Greenwich | [`greenwich-order-confirmations.md`](./greenwich-order-confirmations.md) |
 | Рейтинг и уровни скидок Greenwich | [`greenwich-rating-loyalty.md`](./greenwich-rating-loyalty.md) |
+| Оценка качества заявок и чистота возврата | [`order-quality-feedback.md`](./order-quality-feedback.md) |
 | Центр проверки Telegram-бота | [`telegram-test-center.md`](./telegram-test-center.md) |
 
 ## Индекс существующих крупных тем (в docs)

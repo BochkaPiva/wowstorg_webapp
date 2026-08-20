@@ -13,7 +13,7 @@ import {
 } from "@/server/ratings/greenwich-rating";
 import { recomputeGreenwichAchievements } from "@/server/achievements/service";
 
-const ConditionSchema = z.enum(["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
+const ConditionSchema = z.enum(["OK", "DIRTY", "NEEDS_REPAIR", "BROKEN", "MISSING"]);
 
 // Новый формат
 const BodySchemaV2 = z.object({
@@ -105,6 +105,7 @@ export async function POST(
     comment?: string | null;
   }> = [];
 
+  const checkedInAt = new Date();
   await prisma.$transaction(
     async (tx) => {
       await tx.returnSplit.deleteMany({ where: { orderId: id, phase: "CHECKED_IN" } });
@@ -254,6 +255,7 @@ export async function POST(
       where: { id },
       data: {
         status: "CLOSED",
+        closedAt: checkedInAt,
         ...(order.greenwichUserId != null
           ? { greenwichRatingIncidentsDelta: incidentsDelta }
           : {}),
@@ -261,24 +263,37 @@ export async function POST(
     });
 
       if (order.greenwichUserId) {
-        const hasMissing = ratingRows.some((row) => row.condition === "MISSING" && row.qty > 0);
-        const eventType = incidentsDelta >= 0
-          ? "PERFECT_RETURN"
-          : hasMissing
-            ? "RETURN_MISSING"
-            : "RETURN_DAMAGED";
+        const ratingRelevantRows = ratingRows.filter((row) => row.itemType !== "CONSUMABLE");
+        const hasMissing = ratingRelevantRows.some((row) => row.condition === "MISSING" && row.qty > 0);
+        const hasDamage = ratingRelevantRows.some((row) =>
+          (row.condition === "NEEDS_REPAIR" || row.condition === "BROKEN") && row.qty > 0,
+        );
+        const hasDirty = ratingRelevantRows.some((row) => row.condition === "DIRTY" && row.qty > 0);
+        const hasIssue = hasMissing || hasDamage || hasDirty;
+        const eventType = hasMissing
+          ? "RETURN_MISSING"
+          : hasDamage
+            ? "RETURN_DAMAGED"
+            : hasDirty
+              ? "RETURN_DIRTY"
+              : "PERFECT_RETURN";
         await addGreenwichRatingEvent(tx, {
           userId: order.greenwichUserId,
           type: eventType,
           delta: incidentsDelta,
-          reason: incidentsDelta >= 0
-            ? "Весь реквизит возвращён в исправном состоянии"
+          reason: !hasIssue
+            ? "Весь реквизит возвращён чистым, исправным и в полном составе"
             : hasMissing
               ? "При приёмке обнаружена потеря или недостача реквизита"
-              : "При приёмке обнаружено повреждение реквизита",
+              : hasDamage
+                ? "При приёмке обнаружено повреждение реквизита"
+                : hasDirty
+                  ? "Реквизит возвращён загрязнённым и требует очистки"
+                  : "При приёмке зафиксировано несоответствие состояния",
           sourceKey: `order:${id}:check-in-result`,
           orderId: id,
           recoverable: false,
+          now: checkedInAt,
         });
       }
     },

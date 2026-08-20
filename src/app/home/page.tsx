@@ -8,6 +8,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { DashboardSkeleton, ListSkeleton, LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
+import { PendingOrderFeedbackCard } from "@/app/_ui/OrderServiceFeedback";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
@@ -1218,6 +1219,9 @@ export default function HomeDashboardPage() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
               <div className="md:col-span-12">
                 <GreenwichRatingCard />
+              </div>
+              <div className="md:col-span-12">
+                <PendingOrderFeedbackCard enabled={isGreenwich} />
               </div>
               <div className="md:col-span-12">
                 <GreenwichAchievementsStrip isGreenwich={isGreenwich} />

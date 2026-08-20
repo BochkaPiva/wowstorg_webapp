@@ -49,7 +49,7 @@ type ReturnSplit = {
   id: string;
   orderLineId: string;
   phase: "DECLARED" | "CHECKED_IN";
-  condition: "OK" | "NEEDS_REPAIR" | "BROKEN" | "MISSING";
+  condition: "OK" | "DIRTY" | "NEEDS_REPAIR" | "BROKEN" | "MISSING";
   qty: number;
   comment: string | null;
   createdAt: string;
@@ -137,12 +137,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 const CONDITION_LABEL: Record<ReturnSplit["condition"], string> = {
   OK: "Все в норме",
+  DIRTY: "Грязное",
   NEEDS_REPAIR: "Требует ремонта",
   BROKEN: "Сломано",
   MISSING: "Утеряно",
 };
 
-const CONDITIONS: ReturnSplit["condition"][] = ["OK", "NEEDS_REPAIR", "BROKEN", "MISSING"];
+const CONDITIONS: ReturnSplit["condition"][] = ["OK", "DIRTY", "NEEDS_REPAIR", "BROKEN", "MISSING"];
 const CONDITION_LEGEND: Array<{
   condition: ReturnSplit["condition"];
   description: string;
@@ -152,6 +153,11 @@ const CONDITION_LEGEND: Array<{
     condition: "OK",
     description: "Вернулось в исходном состоянии: реквизит чистый, целый и готов снова уйти в аренду.",
     className: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  },
+  {
+    condition: "DIRTY",
+    description: "Реквизит целый, но возвращён с загрязнениями и требует мойки или очистки перед следующей выдачей.",
+    className: "border-sky-200 bg-sky-50 text-sky-950",
   },
   {
     condition: "NEEDS_REPAIR",
@@ -900,8 +906,16 @@ export default function OrderDetailsPage() {
   const from = searchParams.get("from");
   /** Встроено в карточку проекта (iframe): без оболочки AppShell и без ухода в очередь после приёмки */
   const embed = searchParams.get("embed") === "1";
-  const warehouseBackHref = from === "warehouse-archive" ? "/warehouse/archive" : "/warehouse/queue";
-  const warehouseBackLabel = from === "warehouse-archive" ? "В архив" : "В очередь";
+  const warehouseBackHref = from === "warehouse-archive"
+    ? "/warehouse/archive"
+    : from === "admin-quality"
+      ? "/admin/quality"
+      : "/warehouse/queue";
+  const warehouseBackLabel = from === "warehouse-archive"
+    ? "В архив"
+    : from === "admin-quality"
+      ? "К оценкам"
+      : "В очередь";
 
   const [internalNoteDraft, setInternalNoteDraft] = React.useState("");
   const [internalNoteOpen, setInternalNoteOpen] = React.useState(false);

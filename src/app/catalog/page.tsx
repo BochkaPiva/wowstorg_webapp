@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -988,6 +989,9 @@ export default function CatalogPage() {
                       : "Подберите комплект и период аренды — склад проверит доступность и подготовит смету."}
               </div>
             </div>
+            <div className="mk-headDino" aria-hidden="true">
+              <Image src="/brand/dino-catalog.webp" alt="" fill sizes="(max-width: 1100px) 220px, 290px" priority className="mk-headDinoImage" />
+            </div>
             <button
               type="button"
               className="mk-cartPill mk-headCart"
@@ -1017,17 +1021,16 @@ export default function CatalogPage() {
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
               <div className="mk-dateSectionIntro">
-                <span className="mk-dateSectionIndex" aria-hidden="true">01</span>
                 <div className="mk-dateSectionCopy">
-                  <h2>Когда нужен реквизит?</h2>
+                  <h2>Сначала выберите даты</h2>
                   <p>
-                    Период аренды влияет на стоимость
-                    {isGreenwich ? ", дата готовности — на срок подготовки склада." : "."}
+                    Каталог сразу пересчитает цену
+                    {isGreenwich ? " и покажет складу, к какому дню подготовить заказ." : " и доступность позиций."}
                   </p>
                 </div>
                 <div className="mk-catalogDateSummary">
                   <span className="mk-dateBillInline">
-                    В расчёте <span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>{" "}
+                    Аренда на <span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>{" "}
                     {rentalDays === 1 ? "день" : rentalDays >= 2 && rentalDays <= 4 ? "дня" : "дней"}
                   </span>
                   <button

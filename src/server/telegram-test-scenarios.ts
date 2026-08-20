@@ -64,7 +64,7 @@ export const TELEGRAM_TEST_SCENARIOS: readonly TelegramTestScenarioMeta[] = [
   scenario("picking-started", "orders", "greenwich", "Началась сборка", "Склад перевёл заявку на этап сборки."),
   scenario("order-issued", "orders", "greenwich", "Заявка выдана", "Реквизит выдан и начался период аренды."),
   scenario("return-declared", "orders", "warehouse", "Заявлен возврат", "Greenwich сообщил о готовности вернуть реквизит."),
-  scenario("check-in-closed", "orders", "greenwich", "Приёмка завершена", "Итог возврата: норма, ремонт, поломки и потери."),
+  scenario("check-in-closed", "orders", "greenwich", "Приёмка завершена", "Итог возврата: норма, загрязнения, ремонт, поломки и потери."),
   scenario("order-cancelled", "orders", "warehouse", "Заявка отменена", "Уведомление об отмене на любом активном этапе."),
   scenario("greenwich-confirmation-30", "confirmations", "greenwich", "Актуальность · 30 дней", "Запрос подтверждения примерно за месяц.", true),
   scenario("greenwich-confirmation-7", "confirmations", "greenwich", "Актуальность · 7 дней", "Повторная проверка за неделю.", true),

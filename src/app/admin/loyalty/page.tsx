@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import { readJsonSafe } from "@/lib/fetchJson";
 
 type Tier = { id?: string; name: string; minScore: number; discountPercent: number; sortOrder: number };
 type Policy = {
@@ -77,6 +78,13 @@ type LoyaltyData = {
 };
 
 type Tab = "people" | "offers" | "rules" | "history";
+type ApiErrorPayload = { error?: { message?: string } | string };
+
+function getApiError(payload: ApiErrorPayload | null, fallback: string): string {
+  if (typeof payload?.error === "string") return payload.error;
+  if (payload?.error?.message) return payload.error.message;
+  return fallback;
+}
 
 const numberFields: Array<{ key: keyof Omit<Policy, "tiers">; label: string; hint: string }> = [
   { key: "startingScore", label: "Стартовый рейтинг", hint: "Только для новых сотрудников" },
@@ -123,8 +131,9 @@ export default function LoyaltyAdminPage() {
     setError(null);
     try {
       const response = await fetch("/api/admin/loyalty", { cache: "no-store" });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Не удалось загрузить центр лояльности");
+      const json = await readJsonSafe<LoyaltyData | ApiErrorPayload>(response);
+      if (!response.ok) throw new Error(getApiError(json as ApiErrorPayload | null, "Не удалось загрузить центр лояльности"));
+      if (!json || !("policy" in json)) throw new Error("Сервер не вернул данные. Попробуйте обновить страницу");
       setData(json);
       setPolicy(json.policy);
       setOffer((current) => ({ ...current, userId: current.userId || json.users.find((user: LoyaltyData["users"][number]) => user.isActive)?.id || "" }));
@@ -143,8 +152,9 @@ export default function LoyaltyAdminPage() {
     setNotice(null);
     try {
       const response = await fetch("/api/admin/loyalty", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Не удалось сохранить");
+      const json = await readJsonSafe<ApiErrorPayload>(response);
+      if (!response.ok) throw new Error(getApiError(json, "Не удалось сохранить"));
+      if (!json) throw new Error("Сервер не подтвердил сохранение. Обновите данные перед повтором");
       setNotice("Сохранено. Новые правила применятся только к будущим событиям и заявкам.");
       await load();
     } catch (cause) {
@@ -158,18 +168,20 @@ export default function LoyaltyAdminPage() {
   const visibleItems = (data?.items ?? []).filter((item) => item.name.toLowerCase().includes(itemQuery.toLowerCase())).slice(0, 24);
 
   return (
-    <AppShell title="Лояльность Greenwich">
+    <AppShell title="Лояльность Grinvich">
       {forbidden ? <p className="text-sm text-zinc-600">Раздел доступен только Wowstorg.</p> : (
         <div className="mx-auto max-w-7xl pb-16">
           <Link href="/admin" className="mb-5 inline-flex text-sm font-bold text-zinc-600 transition-colors hover:text-zinc-950">← Администрирование</Link>
 
-          <section className="relative overflow-hidden rounded-[30px] bg-[#17121f] px-6 py-8 text-white md:px-9 md:py-10">
-            <div className="relative z-10 max-w-3xl">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ffd21f]">Greenwich · единый центр управления</p>
-              <h1 className="mt-3 text-4xl font-black tracking-[-0.045em] md:text-6xl">Репутация, которая работает</h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/70 md:text-base">Рейтинг, скидки, персональные предложения и предупреждения собраны в одном месте. Любое изменение можно объяснить конкретным событием.</p>
+          <section className="relative grid overflow-hidden rounded-2xl border border-[#ded5ef] bg-[#f7f4fc] text-[#24132f] lg:min-h-[228px] lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="relative z-10 flex flex-col justify-center px-6 py-7 md:px-9">
+              <p className="text-sm font-bold text-[#6426cf]">Единый центр Grinvich</p>
+              <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-[-0.03em] md:text-4xl">Рейтинг, скидки и предупреждения</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#665970] md:text-base">Здесь видно, почему меняется рейтинг, кто лидирует в этом месяце и какие персональные условия действуют сейчас.</p>
             </div>
-            <Image src="/brand/dino-rating-star.png" alt="Фиолетовый динозавр Wowstorg со звездой" width={1024} height={1536} className="pointer-events-none absolute -right-8 -top-40 hidden w-[360px] opacity-90 lg:block" priority />
+            <div className="relative hidden min-h-[228px] bg-[#ffd21f] lg:block" aria-hidden>
+              <Image src="/brand/dino-rating-star-cutout.png" alt="" fill sizes="300px" className="object-contain object-bottom p-2 pt-3" priority />
+            </div>
           </section>
 
           <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Разделы лояльности">
@@ -179,14 +191,14 @@ export default function LoyaltyAdminPage() {
             <button type="button" onClick={() => void load()} className="ml-auto rounded-full px-4 py-2 text-sm font-bold text-zinc-600 transition-colors hover:bg-white" disabled={loading}>Обновить</button>
           </div>
 
-          {error && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+          {error && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-900"><div className="text-sm font-black">Не удалось загрузить данные</div><p className="mt-1 text-sm leading-5">{error}</p><button type="button" onClick={() => void load()} className="mt-3 rounded-lg bg-red-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-red-800">Попробовать снова</button></div>}
           {notice && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div>}
           {loading && !data ? <div className="mt-6 grid gap-3 md:grid-cols-3">{[1,2,3].map((key) => <div key={key} className="h-36 animate-pulse rounded-3xl bg-zinc-100" />)}</div> : null}
 
           {data && tab === "people" && (
             <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_340px]">
               <section className="rounded-3xl border border-zinc-200 bg-white p-5 md:p-6">
-                <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Текущий рейтинг</p><h2 className="mt-1 text-2xl font-black tracking-tight">Команда Greenwich</h2></div><p className="text-xs text-zinc-500">Новые начинают с {data.policy.startingScore}</p></div>
+                <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">Текущий рейтинг</p><h2 className="mt-1 text-2xl font-black tracking-tight">Команда Grinvich</h2></div><p className="text-xs text-zinc-500">Новые начинают с {data.policy.startingScore}</p></div>
                 <div className="mt-5 divide-y divide-zinc-100">
                   {data.users.map((user) => (
                     <div key={user.id} className="grid gap-3 py-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">

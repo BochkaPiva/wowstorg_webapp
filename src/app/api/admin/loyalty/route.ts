@@ -6,7 +6,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import {
   ensureGreenwichRatingPolicy,
   getGreenwichMonthlyLeaderboard,
-  recomputeGreenwichRatingScore,
+  recomputeGreenwichRatingScores,
 } from "@/server/ratings/greenwich-rating";
 
 export const dynamic = "force-dynamic";
@@ -70,42 +70,41 @@ async function requireWarehouse() {
 export async function GET() {
   const auth = await requireWarehouse();
   if (!auth.ok) return auth.response;
-  const now = new Date();
+  try {
+    const now = new Date();
 
-  const base = await prisma.$transaction(async (tx) => {
-    const policy = await ensureGreenwichRatingPolicy(tx);
-    const users = await tx.user.findMany({
-      where: { role: "GREENWICH" },
-      orderBy: [{ isActive: "desc" }, { displayName: "asc" }],
-      select: {
-        id: true,
-        displayName: true,
-        login: true,
-        isActive: true,
-        telegramChatId: true,
-        greenwichRating: { select: { baseScore: true, score: true, updatedAt: true } },
-      },
-    });
-    for (const user of users) {
-      if (user.isActive) await recomputeGreenwichRatingScore(tx, user.id, now);
-    }
-    const refreshed = await tx.user.findMany({
-      where: { role: "GREENWICH" },
-      orderBy: [{ isActive: "desc" }, { displayName: "asc" }],
-      select: {
-        id: true,
-        displayName: true,
-        login: true,
-        isActive: true,
-        telegramChatId: true,
-        greenwichRating: { select: { baseScore: true, score: true, updatedAt: true } },
-      },
-    });
-    const leaderboard = await getGreenwichMonthlyLeaderboard(tx, now);
-    return { policy, users: refreshed, leaderboard };
-  });
+    const base = await prisma.$transaction(async (tx) => {
+      const policy = await ensureGreenwichRatingPolicy(tx);
+      const users = await tx.user.findMany({
+        where: { role: "GREENWICH" },
+        orderBy: [{ isActive: "desc" }, { displayName: "asc" }],
+        select: {
+          id: true,
+          displayName: true,
+          login: true,
+          isActive: true,
+          telegramChatId: true,
+          greenwichRating: { select: { baseScore: true, score: true, updatedAt: true } },
+        },
+      });
+      await recomputeGreenwichRatingScores(tx, users.filter((user) => user.isActive).map((user) => user.id), now);
+      const refreshed = await tx.user.findMany({
+        where: { role: "GREENWICH" },
+        orderBy: [{ isActive: "desc" }, { displayName: "asc" }],
+        select: {
+          id: true,
+          displayName: true,
+          login: true,
+          isActive: true,
+          telegramChatId: true,
+          greenwichRating: { select: { baseScore: true, score: true, updatedAt: true } },
+        },
+      });
+      const leaderboard = await getGreenwichMonthlyLeaderboard(tx, now);
+      return { policy, users: refreshed, leaderboard };
+    }, { timeout: 20_000 });
 
-  const [offers, events, recentReminders, reminderCounts, items] = await Promise.all([
+    const [offers, events, recentReminders, reminderCounts, items] = await Promise.all([
     prisma.greenwichPersonalOffer.findMany({
       orderBy: [{ isActive: "desc" }, { endsAt: "desc" }],
       take: 100,
@@ -140,32 +139,36 @@ export async function GET() {
     }),
   ]);
 
-  return jsonOk({
-    now,
-    policy: {
-      ...base.policy,
-      tiers: base.policy.tiers.map((tier) => ({
-        ...tier,
-        discountPercent: Number(tier.discountPercent),
+    return jsonOk({
+      now,
+      policy: {
+        ...base.policy,
+        tiers: base.policy.tiers.map((tier) => ({
+          ...tier,
+          discountPercent: Number(tier.discountPercent),
+        })),
+      },
+      users: base.users.map((user) => ({
+        ...user,
+        month: base.leaderboard.find((entry) => entry.userId === user.id) ?? null,
       })),
-    },
-    users: base.users.map((user) => ({
-      ...user,
-      month: base.leaderboard.find((entry) => entry.userId === user.id) ?? null,
-    })),
-    leaderboard: base.leaderboard,
-    offers: offers.map((offer) => ({
-      ...offer,
-      discountPercent: Number(offer.discountPercent),
-      items: offer.items.map(({ item }) => item),
-    })),
-    events,
-    reminders: {
-      counts: Object.fromEntries(reminderCounts.map((row) => [row.status, row._count._all])),
-      recent: recentReminders,
-    },
-    items: items.map((item) => ({ ...item, pricePerDay: Number(item.pricePerDay) })),
-  });
+      leaderboard: base.leaderboard,
+      offers: offers.map((offer) => ({
+        ...offer,
+        discountPercent: Number(offer.discountPercent),
+        items: offer.items.map(({ item }) => item),
+      })),
+      events,
+      reminders: {
+        counts: Object.fromEntries(reminderCounts.map((row) => [row.status, row._count._all])),
+        recent: recentReminders,
+      },
+      items: items.map((item) => ({ ...item, pricePerDay: Number(item.pricePerDay) })),
+    });
+  } catch (error) {
+    console.error("admin loyalty load failed", error);
+    return jsonError(500, "Не удалось загрузить центр лояльности. Попробуйте ещё раз");
+  }
 }
 
 export async function POST(req: Request) {
@@ -217,7 +220,7 @@ export async function POST(req: Request) {
     prisma.user.findFirst({ where: { id: parsed.data.userId, role: "GREENWICH", isActive: true }, select: { id: true } }),
     prisma.item.count({ where: { id: { in: uniqueItemIds }, isActive: true, internalOnly: false } }),
   ]);
-  if (!user) return jsonError(404, "Сотрудник Greenwich не найден");
+  if (!user) return jsonError(404, "Сотрудник Grinvich не найден");
   if (itemCount !== uniqueItemIds.length) return jsonError(400, "Одна или несколько позиций не найдены");
 
   const offer = await prisma.greenwichPersonalOffer.create({

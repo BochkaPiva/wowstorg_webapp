@@ -63,7 +63,7 @@ export default function AdminIndexPage() {
           />
           <AdminCard
             href="/admin/loyalty"
-            title="Лояльность Greenwich"
+            title="Лояльность Grinvich"
             description="Рейтинг, уровни скидок, персональные предложения и предупреждения."
           />
           <AdminCard

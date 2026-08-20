@@ -216,26 +216,61 @@ export async function recomputeGreenwichRatingScore(
   userId: string,
   now = new Date(),
 ): Promise<number> {
+  const scores = await recomputeGreenwichRatingScores(tx, [userId], now);
+  const score = scores.get(userId);
+  if (score === undefined) throw new Error("GREENWICH_RATING_RECOMPUTE_FAILED");
+  return score;
+}
+
+/** Пересчитывает несколько сотрудников общими запросами, не создавая N+1 внутри транзакции. */
+export async function recomputeGreenwichRatingScores(
+  tx: Prisma.TransactionClient,
+  userIds: string[],
+  now = new Date(),
+): Promise<Map<string, number>> {
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+  if (uniqueUserIds.length === 0) return new Map();
+
   const policy = await ensureGreenwichRatingPolicy(tx);
-  const rating = await tx.greenwichRating.upsert({
-    where: { userId },
-    update: {},
-    create: { userId, baseScore: policy.startingScore, score: policy.startingScore },
-    select: { baseScore: true },
+  await tx.greenwichRating.createMany({
+    data: uniqueUserIds.map((userId) => ({
+      userId,
+      baseScore: policy.startingScore,
+      score: policy.startingScore,
+    })),
+    skipDuplicates: true,
+  });
+  const ratings = await tx.greenwichRating.findMany({
+    where: { userId: { in: uniqueUserIds } },
+    select: { userId: true, baseScore: true },
   });
   const events = await tx.greenwichRatingEvent.findMany({
-    where: { userId },
-    select: { delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
+    where: { userId: { in: uniqueUserIds } },
+    select: { userId: true, delta: true, recoveryStartsAt: true, recoveryEndsAt: true },
   });
 
-  const eventSum = events.reduce((total, event) => total + effectiveRatingEventDelta(event, now), 0);
-  const score = Math.max(0, Math.min(100, rating.baseScore + eventSum));
+  const baseScores = new Map(ratings.map((rating) => [rating.userId, rating.baseScore]));
+  const eventSums = new Map<string, number>();
+  for (const event of events) {
+    eventSums.set(event.userId, (eventSums.get(event.userId) ?? 0) + effectiveRatingEventDelta(event, now));
+  }
 
-  await tx.greenwichRating.update({
-    where: { userId },
-    data: { score, manualLocked: false },
-  });
-  return score;
+  const scores = new Map<string, number>();
+  const usersByScore = new Map<number, string[]>();
+  for (const userId of uniqueUserIds) {
+    const baseScore = baseScores.get(userId) ?? policy.startingScore;
+    const score = Math.max(0, Math.min(100, baseScore + (eventSums.get(userId) ?? 0)));
+    scores.set(userId, score);
+    usersByScore.set(score, [...(usersByScore.get(score) ?? []), userId]);
+  }
+
+  for (const [score, ids] of usersByScore) {
+    await tx.greenwichRating.updateMany({
+      where: { userId: { in: ids } },
+      data: { score, manualLocked: false },
+    });
+  }
+  return scores;
 }
 
 /** Границы календарного месяца Омска. В регионе нет перехода на летнее время (UTC+6). */

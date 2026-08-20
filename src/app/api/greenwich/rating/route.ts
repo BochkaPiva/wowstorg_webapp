@@ -17,11 +17,14 @@ export async function GET() {
 
   const data = await getOrSetRuntimeCache(`greenwich:rating:${auth.user.id}`, 15_000, async () => {
     const now = new Date();
-    const { benefit, leaderboard, policy } = await prisma.$transaction(async (tx) => ({
-      benefit: await getGreenwichRatingBenefit(tx, auth.user.id, now),
-      leaderboard: await getGreenwichMonthlyLeaderboard(tx, now),
-      policy: await tx.greenwichRatingPolicy.findUnique({ where: { id: "default" } }),
-    }));
+    const { benefit, leaderboard, policy } = await prisma.$transaction(
+      async (tx) => ({
+        benefit: await getGreenwichRatingBenefit(tx, auth.user.id, now),
+        leaderboard: await getGreenwichMonthlyLeaderboard(tx, now),
+        policy: await tx.greenwichRatingPolicy.findUnique({ where: { id: "default" } }),
+      }),
+      { timeout: 15_000 },
+    );
     const events = await prisma.greenwichRatingEvent.findMany({
       where: { userId: auth.user.id },
       orderBy: { createdAt: "desc" },

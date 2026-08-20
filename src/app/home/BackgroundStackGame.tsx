@@ -7,41 +7,6 @@ import * as THREE from "three";
 
 type GameState = "ready" | "playing" | "ended" | "resetting";
 
-/** Должно совпадать с Tailwind у fixed-контейнера игры. */
-const GAME_BOTTOM_OFFSET_PX = 38;
-const GAME_HEIGHT_MIN_PX = 240;
-const GAME_HEIGHT_MAX_PX = 400;
-const GAME_HEIGHT_VH = 0.36;
-const GAME_OVERLAP_BUFFER_PX = 40;
-/** Ниже этой высоты окна проверяем пересечение карточек навигации с зоной игры. */
-const MIN_VIEWPORT_HEIGHT_FOR_GAME = 860;
-const HOME_NAV_CARDS_SELECTOR = "[data-home-nav-cards]";
-
-function getGameZoneTop(viewportHeight: number): number {
-  const height = Math.min(
-    Math.max(viewportHeight * GAME_HEIGHT_VH, GAME_HEIGHT_MIN_PX),
-    GAME_HEIGHT_MAX_PX,
-  );
-  return viewportHeight + GAME_BOTTOM_OFFSET_PX - height;
-}
-
-function shouldShowBackgroundGame(): boolean {
-  if (typeof window === "undefined") return false;
-
-  const desktopMedia = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  if (!desktopMedia || window.innerWidth < 1024) return false;
-
-  const viewportHeight = window.innerHeight;
-  if (viewportHeight >= MIN_VIEWPORT_HEIGHT_FOR_GAME) return true;
-
-  const navCards = document.querySelector(HOME_NAV_CARDS_SELECTOR);
-  if (!navCards) return false;
-
-  const gameZoneTop = getGameZoneTop(viewportHeight);
-  const cardsBottom = navCards.getBoundingClientRect().bottom;
-  return cardsBottom <= gameZoneTop - GAME_OVERLAP_BUFFER_PX;
-}
-
 type BlockState = "active" | "stopped" | "missed";
 
 class Stage {
@@ -273,12 +238,10 @@ class Block {
 
 export function BackgroundStackGame() {
   const gameRef = React.useRef<HTMLDivElement | null>(null);
-  const gameStateRef = React.useRef<GameState>("ready");
   const [mounted, setMounted] = React.useState(false);
-  const [showGame, setShowGame] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
   const [score, setScore] = React.useState(0);
-  const [showHud, setShowHud] = React.useState(false);
-  const [isGameActive, setIsGameActive] = React.useState(false);
+  const [gameStatus, setGameStatus] = React.useState<GameState>("ready");
 
   React.useEffect(() => {
     setMounted(true);
@@ -286,32 +249,16 @@ export function BackgroundStackGame() {
   }, []);
 
   React.useEffect(() => {
-    if (!mounted) return;
-
-    const evaluate = () => {
-      setShowGame(shouldShowBackgroundGame());
-    };
-
-    evaluate();
-    window.addEventListener("resize", evaluate);
-    window.addEventListener("scroll", evaluate, { passive: true });
-
-    let ro: ResizeObserver | undefined;
-    const anchor = document.querySelector(HOME_NAV_CARDS_SELECTOR);
-    if (anchor && typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(evaluate);
-      ro.observe(anchor);
-    }
-
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("resize", evaluate);
-      window.removeEventListener("scroll", evaluate);
-      ro?.disconnect();
+      document.body.style.overflow = previousOverflow;
     };
-  }, [mounted]);
+  }, [open]);
 
   React.useEffect(() => {
-    if (!mounted || !showGame) return;
+    if (!mounted || !open) return;
     const gameEl = gameRef.current;
     if (!gameEl) return;
 
@@ -323,10 +270,13 @@ export function BackgroundStackGame() {
 
     const blocks: Block[] = [];
     let state: GameState = "ready";
-    gameStateRef.current = state;
     let raf = 0;
+    let restartTimer = 0;
     let lastFrameTime = performance.now();
     let reportedBest = 0;
+    setScore(0);
+    setGameStatus("ready");
+
     const reportTowerScore = (score: number) => {
       if (score <= 0) return;
       if (score <= reportedBest) return;
@@ -353,15 +303,13 @@ export function BackgroundStackGame() {
       const last = blocks[blocks.length - 1];
       if (last && last.state === "missed") {
         state = "ended";
-        gameStateRef.current = state;
-        setShowHud(false);
-        setIsGameActive(false);
-        reportTowerScore(Math.max(0, blocks.length - 1));
+        setGameStatus("ended");
+        reportTowerScore(Math.max(0, blocks.length - 2));
         return;
       }
       const block = new Block(last ?? null);
       blocks.push(block);
-      if (updateScore) setScore(Math.max(0, blocks.length - 1));
+      if (updateScore) setScore(Math.max(0, blocks.length - 2));
       newBlocks.add(block.mesh);
       applyVerticalShift(blocks.length);
       const followY = Math.min(0.95, blocks.length * 0.026);
@@ -400,16 +348,13 @@ export function BackgroundStackGame() {
     const startGame = () => {
       if (state === "playing") return;
       state = "playing";
-      gameStateRef.current = state;
-      setShowHud(true);
-      setIsGameActive(true);
+      setGameStatus("playing");
       if (blocks.length <= 1) addBlock();
     };
 
     const restartGame = () => {
       state = "resetting";
-      gameStateRef.current = state;
-      setIsGameActive(false);
+      setGameStatus("resetting");
       const old = [...placedBlocks.children];
       const removeSpeed = 0.2;
       const delayAmount = 0.02;
@@ -431,32 +376,11 @@ export function BackgroundStackGame() {
       blocks.splice(1);
       applyVerticalShift(blocks.length);
       setScore(0);
-      setShowHud(false);
-      window.setTimeout(() => {
+      restartTimer = window.setTimeout(() => {
         state = "ready";
-        gameStateRef.current = state;
+        setGameStatus("ready");
         startGame();
       }, cameraMove * 1000);
-    };
-
-    const resetToIdle = () => {
-      state = "ready";
-      gameStateRef.current = state;
-      setShowHud(false);
-      setIsGameActive(false);
-      setScore(0);
-      blocks.length = 0;
-      newBlocks.clear();
-      placedBlocks.clear();
-      choppedBlocks.clear();
-      gsap.killTweensOf([newBlocks.position, placedBlocks.position, choppedBlocks.position, stage.camera.position]);
-      newBlocks.position.set(0, 0, 0);
-      placedBlocks.position.set(0, 0, 0);
-      choppedBlocks.position.set(0, 0, 0);
-      stage.camera.position.set(2, 2, 2);
-      stage.camera.lookAt(0, 0, 0);
-      addBlock(false);
-      addBlock(false);
     };
 
     const onAction = () => {
@@ -471,17 +395,16 @@ export function BackgroundStackGame() {
     };
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         onAction();
       }
     };
     const onPointer = () => onAction();
-    const onGlobalPointerDown = (e: PointerEvent) => {
-      if (state === "ready" || state === "resetting") return;
-      const rect = gameEl.getBoundingClientRect();
-      if (e.clientY < rect.top) resetToIdle();
-    };
     const onResize = () => stage.onResize();
 
     addBlock();
@@ -498,81 +421,111 @@ export function BackgroundStackGame() {
 
     window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onGlobalPointerDown, true);
     gameEl.addEventListener("pointerdown", onPointer);
 
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onGlobalPointerDown, true);
       gameEl.removeEventListener("pointerdown", onPointer);
+      if (restartTimer) window.clearTimeout(restartTimer);
       if (raf) window.cancelAnimationFrame(raf);
+      gsap.killTweensOf([
+        newBlocks.position,
+        placedBlocks.position,
+        choppedBlocks.position,
+        stage.camera.position,
+      ]);
       stage.destroy();
     };
-  }, [mounted, showGame]);
+  }, [mounted, open]);
 
-  if (!mounted || !showGame) return null;
-  return createPortal(
+  if (!mounted) return null;
+
+  const statusText =
+    gameStatus === "ended"
+      ? "Башня упала — нажмите на поле, чтобы начать заново"
+      : gameStatus === "resetting"
+        ? "Готовим новую попытку"
+        : gameStatus === "playing"
+          ? "Нажимайте в момент, когда блок точно над башней"
+          : "Кликните по полю или нажмите пробел";
+
+  return (
     <>
-      <div className="home-stack-game-layer home-stack-game-layer--score pointer-events-none">
-        <div
-          className={[
-            "pointer-events-none absolute inset-0 flex items-end justify-center font-black tabular-nums tracking-[-0.04em] transition-all duration-700",
-            showHud ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95",
-            "text-[clamp(116px,24vw,360px)] leading-none text-violet-600/24",
-          ].join(" ")}
-          style={{ paddingBottom: "86px" }}
-          aria-hidden
-        >
-          <span className="select-none transition-all duration-500 [text-shadow:0_0_36px_rgba(139,92,246,0.22)]">
-            {score}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="group flex min-h-14 w-full items-center justify-between gap-4 rounded-xl border border-violet-200 bg-white px-4 py-3 text-left text-zinc-950 transition-colors duration-200 hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 motion-reduce:transition-none"
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="relative block h-8 w-9 shrink-0" aria-hidden>
+            <span className="absolute bottom-0 left-0 h-2 w-7 rounded-sm bg-violet-300" />
+            <span className="absolute bottom-2 left-1 h-2 w-7 rounded-sm bg-yellow-300" />
+            <span className="absolute bottom-4 left-2 h-2 w-7 rounded-sm bg-violet-700" />
           </span>
-        </div>
-      </div>
-      <div className="home-stack-game-layer home-stack-game-layer--scene overflow-hidden pointer-events-none [mask-image:linear-gradient(to_top,black_0%,black_68%,transparent_96%)] [mask-repeat:no-repeat]">
-        {/* Нижняя «полка» фона: в простое башня не висит в вакууме */}
-        <div
-          className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(ellipse_95%_72%_at_50%_100%,rgba(139,92,246,0.07)_0%,transparent_58%),radial-gradient(ellipse_70%_50%_at_18%_92%,rgba(250,204,21,0.05)_0%,transparent_50%),radial-gradient(ellipse_70%_50%_at_82%_90%,rgba(167,139,250,0.06)_0%,transparent_50%)]"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute inset-0 z-[5] opacity-[0.35]"
-          style={{
-            backgroundImage: [
-              "repeating-linear-gradient(-18deg, transparent, transparent 11px, rgba(139,92,246,0.02) 11px, rgba(139,92,246,0.02) 12px)",
-              "linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.05) 42%, rgba(250,250,252,0.55) 100%)",
-            ].join(","),
-          }}
-          aria-hidden
-        />
-        <div
-          ref={gameRef}
-          className={[
-            "absolute inset-0 z-10 pointer-events-auto cursor-pointer transition-[opacity,filter] duration-700 ease-out",
-            isGameActive ? "opacity-[0.94] [filter:saturate(1.02)_brightness(1)]" : "opacity-[0.22] [filter:saturate(0.72)_brightness(1.08)_blur(0.35px)]",
-          ].join(" ")}
-        />
-        {/* В простое лёгкая вуаль поверх WebGL — башня читается как текстура фона */}
-        <div
-          className={[
-            "pointer-events-none absolute inset-0 z-[11] transition-opacity duration-700",
-            isGameActive ? "opacity-0" : "opacity-100",
-          ].join(" ")}
-          style={{
-            background:
-              "linear-gradient(to top, rgba(250, 248, 255, 0.82) 0%, rgba(248, 246, 255, 0.42) 38%, rgba(252, 251, 255, 0.12) 72%, transparent 100%)",
-          }}
-          aria-hidden
-        />
-        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-[#f6f2ff]/66 via-[#f6f2ff]/18 to-[#f6f2ff]/00" />
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-[28%] max-w-48 bg-gradient-to-r from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-[28%] max-w-48 bg-gradient-to-l from-[#faf8ff]/88 via-[#f6f2ff]/40 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-[-34%] z-20 h-[54%] rounded-[50%] bg-white/22 blur-3xl" />
-        <div className="pointer-events-none absolute left-[8%] bottom-[6%] z-20 h-28 w-48 rounded-full bg-violet-200/25 blur-3xl" />
-        <div className="pointer-events-none absolute right-[10%] bottom-[8%] z-20 h-28 w-48 rounded-full bg-amber-200/22 blur-3xl" />
-        <div className="pointer-events-none absolute left-1/2 bottom-[2%] z-20 h-16 w-[min(72%,420px)] -translate-x-1/2 rounded-full bg-violet-300/10 blur-2xl" />
-      </div>
-    </>,
-    document.body,
+          <span className="min-w-0">
+            <strong className="block text-sm font-black">Башня надёжности</strong>
+            <span className="block truncate text-xs text-zinc-600">Соберите самую высокую башню и улучшайте личный рекорд</span>
+          </span>
+        </span>
+        <span className="shrink-0 text-xs font-black text-violet-700">Играть →</span>
+      </button>
+
+      {open
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm md:p-6"
+              onPointerDown={(event) => {
+                if (event.currentTarget === event.target) setOpen(false);
+              }}
+            >
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="tower-game-title"
+                className="flex h-[min(760px,calc(100dvh-24px))] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-[#f6f2ff] shadow-[0_8px_32px_rgba(0,0,0,0.34)] md:h-[min(760px,calc(100dvh-48px))]"
+              >
+                <header className="flex items-center justify-between gap-4 border-b border-violet-200 bg-white px-4 py-3 md:px-5">
+                  <div className="min-w-0">
+                    <h2 id="tower-game-title" className="text-base font-black text-zinc-950">Башня надёжности</h2>
+                    <p className="truncate text-xs text-zinc-600">{statusText}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[10px] font-bold text-zinc-500">Результат</div>
+                      <div className="text-xl font-black tabular-nums text-violet-800">{score}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-300 bg-white text-lg text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                      aria-label="Закрыть игру"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </header>
+
+                <div className="relative min-h-0 flex-1 overflow-hidden">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_50%_100%,rgba(139,92,246,0.16),transparent_70%)]" />
+                  <div
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center text-[clamp(120px,28vw,360px)] font-black leading-none tabular-nums text-violet-700/[0.07]"
+                    aria-hidden
+                  >
+                    {score}
+                  </div>
+                  <div ref={gameRef} className="absolute inset-0 cursor-pointer touch-manipulation" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+                    <span className="rounded-full bg-zinc-950/86 px-4 py-2 text-center text-xs font-semibold text-white shadow-sm">
+                      {statusText}
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

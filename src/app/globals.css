@@ -201,24 +201,6 @@ tbody tr:hover {
   border-right: 1px solid #242423;
 }
 
-.home-stack-game-layer {
-  position: fixed;
-  right: 0;
-  bottom: -38px;
-  left: var(--app-sidebar-width);
-  height: 36vh;
-  min-height: 240px;
-  max-height: 400px;
-}
-
-.home-stack-game-layer--score {
-  z-index: calc(var(--z-background-game) - 1);
-}
-
-.home-stack-game-layer--scene {
-  z-index: var(--z-background-game);
-}
-
 .app-brand {
   position: relative;
   display: grid;
@@ -796,10 +778,6 @@ tbody tr:hover {
 @media (max-width: 1023px) {
   .app-shell {
     display: block;
-  }
-
-  .home-stack-game-layer {
-    left: 0;
   }
 
   .app-sidebar {

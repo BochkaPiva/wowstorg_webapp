@@ -80,10 +80,16 @@ function dinoPhrase(score: number) {
 
 type GreenwichRatingSnapshot = {
   score: number;
+  level?: {
+    name: string;
+    minScore: number;
+    discountPercent: number;
+    next: { name: string; minScore: number; discountPercent: number; pointsNeeded: number } | null;
+  };
   breakdown?: { activeEventDelta: number; recovering: number };
   recentEvents?: Array<{
     id: string;
-    type: "CONFIRMATION_REPEAT_MISSED" | "CONFIRMATION_FINAL_MISSED" | "ADMIN_ADJUSTMENT";
+    type: "CONFIRMATION_RESPONDED" | "CONFIRMATION_REPEAT_MISSED" | "CONFIRMATION_FINAL_MISSED" | "ADMIN_ADJUSTMENT";
     delta: number;
     originalDelta: number;
     reason: string;
@@ -212,6 +218,23 @@ function GreenwichRatingCard() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-zinc-800">{phrase}</div>
+          {snapshot?.level ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="border border-violet-200 bg-violet-50 px-2 py-1 font-semibold text-violet-800">
+                {snapshot.level.name}
+              </span>
+              <span className="font-semibold text-zinc-800">
+                Ваша скидка {snapshot.level.discountPercent}%
+              </span>
+              {snapshot.level.next ? (
+                <span className="text-zinc-500">
+                  Ещё {snapshot.level.next.pointsNeeded} б. до {snapshot.level.next.discountPercent}%
+                </span>
+              ) : (
+                <span className="text-emerald-700">Максимальный уровень</span>
+              )}
+            </div>
+          ) : null}
 
           <div className="mt-3 relative">
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-violet-50 border border-violet-100">

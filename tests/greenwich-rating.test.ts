@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { effectiveRatingEventDelta } from "@/server/ratings/greenwich-rating";
+import {
+  computeGreenwichIncidentsDelta,
+  computeGreenwichOverdueDelta,
+  effectiveRatingEventDelta,
+} from "@/server/ratings/greenwich-rating";
 
 describe("recoverable Greenwich rating events", () => {
   const recoveryStartsAt = new Date("2026-09-01T00:00:00.000Z");
@@ -40,5 +44,42 @@ describe("recoverable Greenwich rating events", () => {
         new Date("2030-01-01T00:00:00.000Z"),
       ),
     ).toBe(-7);
+  });
+});
+
+describe("Greenwich rating policy limits", () => {
+  it("caps a long return delay instead of destroying the score", () => {
+    expect(
+      computeGreenwichOverdueDelta(
+        new Date("2026-08-01T00:00:00.000Z"),
+        new Date("2026-08-20T06:00:00.000Z"),
+        { overduePenaltyPerDay: -5, overduePenaltyCap: -25 },
+      ),
+    ).toBe(-25);
+  });
+
+  it("rewards a clean return and ignores consumables", () => {
+    expect(
+      computeGreenwichIncidentsDelta([
+        { condition: "OK", qty: 2, itemType: "RENTAL" },
+        { condition: "MISSING", qty: 20, itemType: "CONSUMABLE" },
+      ]),
+    ).toBe(5);
+  });
+
+  it("weights missing items stronger but applies an incident cap", () => {
+    expect(
+      computeGreenwichIncidentsDelta(
+        [
+          { condition: "NEEDS_REPAIR", qty: 8, itemType: "RENTAL" },
+          { condition: "MISSING", qty: 8, itemType: "RENTAL" },
+        ],
+        {
+          repairPenaltyPerUnit: -1,
+          lostPenaltyPerUnit: -3,
+          incidentPenaltyCap: -20,
+        },
+      ),
+    ).toBe(-20);
   });
 });

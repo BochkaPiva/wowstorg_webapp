@@ -8,6 +8,10 @@ import { notifyWarehouseOrderInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import {
+  addGreenwichRatingEvent,
+  ensureGreenwichRatingPolicy,
+} from "@/server/ratings/greenwich-rating";
+import {
   greenwichCancellationKeyboard,
   greenwichConfirmationKeyboard,
   parseGreenwichConfirmationCallback,
@@ -291,13 +295,34 @@ async function handleGreenwichConfirmationCallback(
 
   if (parsedCallback.action === "ok" || parsedCallback.action === "chg") {
     const response = parsedCallback.action === "ok" ? "CONFIRMED" : "CHANGES_PENDING";
-    const updated = await prisma.greenwichOrderReminder.updateMany({
-      where: { id: reminder.id, response: null },
-      data: {
-        response,
-        respondedAt: new Date(),
-        respondedByTelegramId: telegramUserId,
-      },
+    const respondedAt = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.greenwichOrderReminder.updateMany({
+        where: { id: reminder.id, response: null },
+        data: {
+          response,
+          respondedAt,
+          respondedByTelegramId: telegramUserId,
+        },
+      });
+      if (result.count > 0 && reminder.order.greenwichUserId) {
+        const policy = await ensureGreenwichRatingPolicy(tx);
+        await addGreenwichRatingEvent(tx, {
+          userId: reminder.order.greenwichUserId,
+          type: "CONFIRMATION_RESPONDED",
+          delta: policy.confirmationResponseReward,
+          reason:
+            parsedCallback.action === "ok"
+              ? `Вовремя подтверждена заявка «${reminder.order.eventName?.trim() || reminder.order.customer.name}»`
+              : `Вовремя заявлены будущие изменения по заявке «${reminder.order.eventName?.trim() || reminder.order.customer.name}»`,
+          sourceKey: `greenwich-confirmation:${reminder.id}:responded`,
+          orderId: reminder.order.id,
+          reminderId: reminder.id,
+          recoverable: false,
+          now: respondedAt,
+        });
+      }
+      return result;
     });
     if (updated.count === 0) {
       await acknowledgeCallback({ callbackQueryId: callback.id, text: "Ответ уже сохранён" });
@@ -352,7 +377,7 @@ async function handleGreenwichConfirmationCallback(
       },
       data: { status: "CANCELLED" },
     });
-    await tx.greenwichOrderReminder.updateMany({
+    const reminderUpdate = await tx.greenwichOrderReminder.updateMany({
       where: { id: reminder.id, response: null },
       data: {
         response: "CANCELLED",
@@ -360,6 +385,19 @@ async function handleGreenwichConfirmationCallback(
         respondedByTelegramId: telegramUserId,
       },
     });
+    if (reminderUpdate.count > 0 && freshOrder.greenwichUserId) {
+      const policy = await ensureGreenwichRatingPolicy(tx);
+      await addGreenwichRatingEvent(tx, {
+        userId: freshOrder.greenwichUserId,
+        type: "CONFIRMATION_RESPONDED",
+        delta: policy.confirmationResponseReward,
+        reason: `Вовремя отменена неактуальная заявка «${reminder.order.eventName?.trim() || reminder.order.customer.name}»`,
+        sourceKey: `greenwich-confirmation:${reminder.id}:responded`,
+        orderId: freshOrder.id,
+        reminderId: reminder.id,
+        recoverable: false,
+      });
+    }
     if (freshOrder.projectId && freshOrder.greenwichUserId) {
       await appendProjectActivityLog(tx, {
         projectId: freshOrder.projectId,

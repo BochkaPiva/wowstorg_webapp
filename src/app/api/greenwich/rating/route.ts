@@ -4,7 +4,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { getOrSetRuntimeCache } from "@/server/runtime-cache";
 import {
   effectiveRatingEventDelta,
-  recomputeGreenwichRatingScore,
+  getGreenwichRatingBenefit,
 } from "@/server/ratings/greenwich-rating";
 
 export async function GET() {
@@ -16,8 +16,8 @@ export async function GET() {
 
   const data = await getOrSetRuntimeCache(`greenwich:rating:${auth.user.id}`, 15_000, async () => {
     const now = new Date();
-    const score = await prisma.$transaction((tx) =>
-      recomputeGreenwichRatingScore(tx, auth.user.id, now),
+    const benefit = await prisma.$transaction((tx) =>
+      getGreenwichRatingBenefit(tx, auth.user.id, now),
     );
     const events = await prisma.greenwichRatingEvent.findMany({
       where: { userId: auth.user.id },
@@ -45,7 +45,13 @@ export async function GET() {
     ).length;
 
     return {
-      score,
+      score: benefit.score,
+      level: {
+        name: benefit.tier.name,
+        minScore: benefit.tier.minScore,
+        discountPercent: benefit.tier.discountPercent,
+        next: benefit.nextTier,
+      },
       breakdown: { activeEventDelta, recovering },
       recentEvents: events.slice(0, 6).map((event) => ({
         id: event.id,

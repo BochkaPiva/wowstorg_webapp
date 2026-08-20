@@ -8,6 +8,7 @@ import { notifyOrderStatusChangedInApp } from "@/server/notifications/in-app";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import {
   computeGreenwichIncidentsDelta,
+  ensureGreenwichRatingPolicy,
   recomputeGreenwichRatingScore,
 } from "@/server/ratings/greenwich-rating";
 import { recomputeGreenwichAchievements } from "@/server/achievements/service";
@@ -242,8 +243,11 @@ export async function POST(
       await tx.returnSplit.createMany({ data: checkedInSplitRows });
     }
 
-    const incidentsDelta = order.greenwichUserId
-      ? computeGreenwichIncidentsDelta(ratingRows)
+    const ratingPolicy = order.greenwichUserId
+      ? await ensureGreenwichRatingPolicy(tx)
+      : null;
+    const incidentsDelta = ratingPolicy
+      ? computeGreenwichIncidentsDelta(ratingRows, ratingPolicy)
       : 0;
 
     await tx.order.update({

@@ -49,6 +49,7 @@ enum GreenwichReminderResponse {
 }
 
 enum GreenwichRatingEventType {
+  CONFIRMATION_RESPONDED
   CONFIRMATION_REPEAT_MISSED
   CONFIRMATION_FINAL_MISSED
   ADMIN_ADJUSTMENT
@@ -296,12 +297,37 @@ model GreenwichRatingEvent {
 
 /// Политика будущих штрафов. Изменение не переписывает уже созданные события.
 model GreenwichRatingPolicy {
-  id                   String   @id @default("default")
-  repeatMissedPenalty  Int      @default(-1)
-  finalMissedPenalty   Int      @default(-2)
-  recoveryGraceDays    Int      @default(14)
-  recoveryDurationDays Int      @default(60)
-  updatedAt            DateTime @updatedAt
+  id                         String   @id @default("default")
+  confirmationResponseReward Int      @default(1)
+  repeatMissedPenalty        Int      @default(-1)
+  finalMissedPenalty         Int      @default(-2)
+  overduePenaltyPerDay       Int      @default(-5)
+  overduePenaltyCap          Int      @default(-25)
+  perfectReturnReward        Int      @default(5)
+  repairPenaltyPerUnit       Int      @default(-1)
+  lostPenaltyPerUnit         Int      @default(-3)
+  incidentPenaltyCap         Int      @default(-20)
+  recoveryGraceDays          Int      @default(14)
+  recoveryDurationDays       Int      @default(60)
+  updatedAt                  DateTime @updatedAt
+
+  tiers GreenwichRatingTier[]
+}
+
+/// Управляемые уровни доверия: рейтинг определяет скидку на новые заявки Greenwich.
+model GreenwichRatingTier {
+  id              String                @id @default(cuid())
+  policyId        String
+  policy          GreenwichRatingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  name            String
+  minScore        Int
+  discountPercent Decimal               @db.Decimal(5, 2)
+  sortOrder       Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([policyId, minScore])
+  @@index([policyId, sortOrder])
 }
 
 model Session {
@@ -958,7 +984,7 @@ model Item {
   type        ItemType
   isActive    Boolean  @default(true)
 
-  /// Полная цена/сутки. Для Greenwich применяется коэффициент 0.76 на уровне заказа/сметы.
+  /// Полная цена/сутки. Для Greenwich применяется коэффициент текущего рейтингового уровня.
   pricePerDay          Decimal  @db.Decimal(12, 2)
   /// Закупочная цена за 1 единицу (опционально, для расчета рентабельности).
   purchasePricePerUnit Decimal? @db.Decimal(12, 2)
@@ -1130,8 +1156,8 @@ model Order {
   montageInternalPaymentMethod   OrderServicePaymentMethod @default(NON_CASH)
   demontageInternalPaymentMethod OrderServicePaymentMethod @default(NON_CASH)
 
-  /// Для Greenwich фиксированный коэффициент 0.76, но сохраняем на заказ,
-  /// чтобы изменения правил не ломали историю.
+  /// Для Greenwich это снимок скидки рейтингового уровня в момент оформления.
+  /// Сохраняем на заказ, чтобы будущая смена уровня не переписывала историю.
   payMultiplier Decimal @db.Decimal(5, 4)
 
   /// Способ оплаты клиентом. Для наличной оплаты клиентский налог не начисляется.

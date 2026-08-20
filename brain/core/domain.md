@@ -13,7 +13,7 @@
 
 ## Источники заявки (`Order.source`)
 
-- **`GREENWICH_INTERNAL`** — внутренняя заявка Greenwich; аренда реквизита считается с коэффициентом **`payMultiplier`** (по умолчанию **0.70** — константа `PAY_MULTIPLIER_GREENWICH` в `src/lib/constants.ts`). Налог **6%** добавляется отдельной строкой ко всему чеку заявки.
+- **`GREENWICH_INTERNAL`** — внутренняя заявка Greenwich; аренда реквизита считается с динамическим `payMultiplier` из текущего уровня рейтинга сотрудника. Уровни и скидки задаются в `GreenwichRatingTier`, а сервер фиксирует ценовой снимок при оформлении. Налог **6%** добавляется отдельной строкой ко всему чеку заявки.
 - При оформлении со склада (`WOWSTORG`) способ оплаты клиента хранится в `Order.clientPaymentMethod`: `NON_CASH` оставляет клиентский налог 6%, `CASH` не начисляет его. Для Greenwich выбор скрыт и принудительно используется `NON_CASH`.
 - **`WOWSTORG_EXTERNAL`** — заявка склада для внешнего клиента; отдельный флоу (сразу «согласована», смета и т.д., см. `docs/EXTERNAL_ORDER_FLOW_WAREHOUSE.md`).
 
@@ -38,7 +38,7 @@
 ## Ачивки и рейтинг (Greenwich)
 
 - Прогресс/разблокировки: модели **`AchievementProgress`**, **`AchievementUnlock`**; логика в `src/server/achievements/`.
-- Рейтинг: **`GreenwichRating`**; пересчёт при ключевых событиях заявки (см. `docs/PLAN_DASHBOARD_RATING_NOTIFICATIONS.md`).
+- Рейтинг: **`GreenwichRating`** + журнал **`GreenwichRatingEvent`**; пересчёт при ключевых событиях заявки и ответах на подтверждения. Рейтинг восстанавливается по политике и определяет уровень скидки (см. `brain/features/greenwich-rating-loyalty.md`).
 
 ## Инвентарный аудит
 

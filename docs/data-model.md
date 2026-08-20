@@ -25,7 +25,7 @@
 
 ## Важные инварианты (реализуются в коде, не только в БД)
 - **date-only**: `readyByDate <= startDate < endDate`, нормализация к полуночи, ввод только `YYYY-MM-DD`.
-- **Скидка Greenwich**: по умолчанию `payMultiplier = 0.76` для `GREENWICH_INTERNAL`, хранится на заказ.
+- **Скидка Greenwich**: `payMultiplier` вычисляется по текущему рейтинговому уровню для `GREENWICH_INTERNAL` и хранится на заказ как ценовой снимок.
 - **Дифф сметы**: сравнение строк по `(itemId, sourceKitId)` с суммированием qty, а не по `orderLineId`.
 - **Приёмка**: сумма `ReturnSplit.qty` по одной строке заказа и одной phase должна равняться “базовому количеству” (обычно `issuedQty ?? approvedQty ?? requestedQty`).
 - **Транзакции**: все мутации статусов/выдачи/приёмки/складских ведер — внутри `prisma.$transaction`.

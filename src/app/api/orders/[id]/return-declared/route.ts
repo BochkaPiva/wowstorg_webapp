@@ -6,6 +6,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import {
   computeGreenwichOverdueDelta,
+  ensureGreenwichRatingPolicy,
   recomputeGreenwichRatingScore,
 } from "@/server/ratings/greenwich-rating";
 
@@ -116,10 +117,12 @@ export async function POST(
         await tx.returnSplit.createMany({ data: declaredSplitRows });
       }
 
-      const overdueDelta =
-        order.greenwichUserId != null
-          ? computeGreenwichOverdueDelta(order.endDate, declaredAt)
-          : 0;
+      const ratingPolicy = order.greenwichUserId
+        ? await ensureGreenwichRatingPolicy(tx)
+        : null;
+      const overdueDelta = ratingPolicy
+        ? computeGreenwichOverdueDelta(order.endDate, declaredAt, ratingPolicy)
+        : 0;
 
       await tx.order.update({
         where: { id },

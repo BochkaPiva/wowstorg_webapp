@@ -42,10 +42,18 @@ type LiveReminder = {
   };
 };
 type RatingPolicy = {
+  confirmationResponseReward: number;
   repeatMissedPenalty: number;
   finalMissedPenalty: number;
+  overduePenaltyPerDay: number;
+  overduePenaltyCap: number;
+  perfectReturnReward: number;
+  repairPenaltyPerUnit: number;
+  lostPenaltyPerUnit: number;
+  incidentPenaltyCap: number;
   recoveryGraceDays: number;
   recoveryDurationDays: number;
+  tiers: Array<{ id: string; name: string; minScore: number; discountPercent: number; sortOrder: number }>;
   updatedAt: string;
 };
 type TelegramStatus = {
@@ -202,10 +210,20 @@ export default function AdminTelegramPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          confirmationResponseReward: policyDraft.confirmationResponseReward,
           repeatMissedPenalty: policyDraft.repeatMissedPenalty,
           finalMissedPenalty: policyDraft.finalMissedPenalty,
+          overduePenaltyPerDay: policyDraft.overduePenaltyPerDay,
+          overduePenaltyCap: policyDraft.overduePenaltyCap,
+          perfectReturnReward: policyDraft.perfectReturnReward,
+          repairPenaltyPerUnit: policyDraft.repairPenaltyPerUnit,
+          lostPenaltyPerUnit: policyDraft.lostPenaltyPerUnit,
+          incidentPenaltyCap: policyDraft.incidentPenaltyCap,
           recoveryGraceDays: policyDraft.recoveryGraceDays,
           recoveryDurationDays: policyDraft.recoveryDurationDays,
+          tiers: policyDraft.tiers.map(({ name, minScore, discountPercent, sortOrder }) => ({
+            name, minScore, discountPercent, sortOrder,
+          })),
         }),
       });
       const data = (await response.json()) as { ratingPolicy?: RatingPolicy; error?: { message?: string } };
@@ -214,7 +232,7 @@ export default function AdminTelegramPage() {
       }
       setPolicyDraft(data.ratingPolicy);
       setStatus((current) => current ? { ...current, ratingPolicy: data.ratingPolicy as RatingPolicy } : current);
-      setPolicyMessage("Правила сохранены. Они применятся к следующим пропущенным подтверждениям.");
+      setPolicyMessage("Правила сохранены. Новые скидки и события рейтинга применяются автоматически.");
     } catch (cause) {
       setPolicyMessage(cause instanceof Error ? cause.message : "Не удалось сохранить правила рейтинга");
     } finally {
@@ -370,20 +388,40 @@ export default function AdminTelegramPage() {
       {!loading && policyDraft ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-[#6426cf] bg-white">
         <div className="grid gap-5 border-b border-zinc-200 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6426cf]">Рейтинг Greenwich · политика реакции</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-zinc-950 md:text-3xl">Штраф не вечный — дисциплина восстанавливает баллы</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Первое сообщение не штрафует. Баллы снимаются только перед повторным и финальным касанием, а затем автоматически возвращаются после периода стабильной работы.</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6426cf]">Рейтинг Greenwich · мотивация и лояльность</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-zinc-950 md:text-3xl">Понятные действия → рейтинг → персональная скидка</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Сотрудник видит причину каждого изменения, путь восстановления и следующий уровень. Один инцидент ограничен лимитом и не может обрушить рейтинг целиком.</p>
           </div>
           <div className="border-l-2 border-[#ffd21f] pl-4 text-xs leading-5 text-zinc-600">
             <strong className="block text-zinc-950">Цепочка ограничена тремя сообщениями</strong>
             Основное → через 3 часа повтор → ещё через 1 час финальное.
           </div>
         </div>
-        <div className="grid gap-px bg-zinc-200 md:grid-cols-2 xl:grid-cols-4">
+        <div className="border-b border-zinc-200 bg-zinc-50 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500 lg:px-8">Ответы и подтверждения</div>
+        <div className="grid gap-px bg-zinc-200 md:grid-cols-2 xl:grid-cols-3">
+          <PolicyField label="Ответ вовремя" hint="баллов" value={policyDraft.confirmationResponseReward} min={0} max={10} onChange={(value) => setPolicyDraft((current) => current ? { ...current, confirmationResponseReward: value } : current)} />
           <PolicyField label="После 3 часов" hint="баллов" value={policyDraft.repeatMissedPenalty} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, repeatMissedPenalty: value } : current)} />
           <PolicyField label="После финального" hint="баллов" value={policyDraft.finalMissedPenalty} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, finalMissedPenalty: value } : current)} />
+        </div>
+        <div className="border-y border-zinc-200 bg-zinc-50 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-500 lg:px-8">Возврат и сохранность</div>
+        <div className="grid gap-px bg-zinc-200 md:grid-cols-2 xl:grid-cols-4">
+          <PolicyField label="Просрочка за день" hint="баллов" value={policyDraft.overduePenaltyPerDay} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, overduePenaltyPerDay: value } : current)} />
+          <PolicyField label="Лимит просрочки" hint="баллов" value={policyDraft.overduePenaltyCap} min={-100} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, overduePenaltyCap: value } : current)} />
+          <PolicyField label="Идеальный возврат" hint="баллов" value={policyDraft.perfectReturnReward} min={0} max={20} onChange={(value) => setPolicyDraft((current) => current ? { ...current, perfectReturnReward: value } : current)} />
+          <PolicyField label="Ремонт за единицу" hint="баллов" value={policyDraft.repairPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, repairPenaltyPerUnit: value } : current)} />
+          <PolicyField label="Потеря за единицу" hint="баллов" value={policyDraft.lostPenaltyPerUnit} min={-20} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, lostPenaltyPerUnit: value } : current)} />
+          <PolicyField label="Лимит инцидента" hint="баллов" value={policyDraft.incidentPenaltyCap} min={-100} max={0} onChange={(value) => setPolicyDraft((current) => current ? { ...current, incidentPenaltyCap: value } : current)} />
           <PolicyField label="Пауза до возврата" hint="дней" value={policyDraft.recoveryGraceDays} min={0} max={365} onChange={(value) => setPolicyDraft((current) => current ? { ...current, recoveryGraceDays: value } : current)} />
           <PolicyField label="Срок восстановления" hint="дней" value={policyDraft.recoveryDurationDays} min={1} max={730} onChange={(value) => setPolicyDraft((current) => current ? { ...current, recoveryDurationDays: value } : current)} />
+        </div>
+        <div className="border-t border-zinc-200 px-6 py-6 lg:px-8">
+          <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6426cf]">Уровни и скидки</p><h3 className="mt-1 text-xl font-black text-zinc-950">Каталог сам применяет уровень сотрудника</h3></div><p className="text-xs text-zinc-500">Порог 0 обязателен · скидка 0–60%</p></div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+            {policyDraft.tiers.map((tier, index) => <div key={tier.id || index} className="border border-zinc-300 bg-zinc-50 p-4">
+              <input aria-label="Название уровня" value={tier.name} onChange={(event) => setPolicyDraft((current) => current ? { ...current, tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) } : current)} className="h-10 w-full border-b border-zinc-300 bg-transparent text-base font-black outline-none focus:border-[#6426cf]" />
+              <div className="mt-4 grid grid-cols-2 gap-3"><label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">От рейтинга<input type="number" min={0} max={100} value={tier.minScore} onChange={(event) => setPolicyDraft((current) => current ? { ...current, tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, minScore: Number(event.target.value) } : item) } : current)} className="mt-1 h-11 w-full border border-zinc-300 bg-white px-3 text-lg font-black outline-none focus:border-[#6426cf]" /></label><label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Скидка, %<input type="number" min={0} max={60} step={0.5} value={tier.discountPercent} onChange={(event) => setPolicyDraft((current) => current ? { ...current, tiers: current.tiers.map((item, itemIndex) => itemIndex === index ? { ...item, discountPercent: Number(event.target.value) } : item) } : current)} className="mt-1 h-11 w-full border border-zinc-300 bg-white px-3 text-lg font-black outline-none focus:border-[#6426cf]" /></label></div>
+            </div>)}
+          </div>
         </div>
         <div className="flex flex-col gap-3 border-t border-zinc-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <p className={`text-sm ${policyMessage?.startsWith("Правила") ? "text-emerald-700" : "text-rose-700"}`}>{policyMessage ?? "Ручная корректировка сотрудника остаётся динамической: автоматический расчёт не отключается."}</p>

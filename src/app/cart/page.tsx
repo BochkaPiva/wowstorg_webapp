@@ -18,7 +18,7 @@ import {
 import { useAuth } from "@/app/providers";
 import { loadCart, saveCart, clearCart, type CartLine } from "@/lib/cart";
 import { addDays, catalogDatesFromStorage, todayDateOnly } from "@/lib/catalogDates";
-import { ORDER_TAX_RATE, PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
+import { ORDER_TAX_RATE } from "@/lib/constants";
 import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-costs";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./cart.css";
@@ -75,7 +75,14 @@ function Toggle({
 }
 
 type Customer = { id: string; name: string };
-type GreenwichUser = { id: string; displayName: string };
+type GreenwichUser = {
+  id: string;
+  displayName: string;
+  ratingScore: number;
+  tierName: string;
+  discountPercent: number;
+  payMultiplier: number;
+};
 type DraftOrderResponse = {
   draftOrder?: {
     id: string;
@@ -648,8 +655,9 @@ export default function CartPage() {
 
   // У склада при выборе «выдача Greenwich» корзина считается со скидкой; для 3-х лиц — полная цена.
   // Greenwich получает из каталога уже цены со скидкой, поэтому multiplier для них не применяем.
+  const selectedGreenwichUser = greenwichUsers.find((user) => user.id === greenwichUserId);
   const displayMultiplier =
-    isWarehouse && orderType === "greenwich" ? PAY_MULTIPLIER_GREENWICH : 1;
+    isWarehouse && orderType === "greenwich" ? (selectedGreenwichUser?.payMultiplier ?? 1) : 1;
 
   const totalPerDay = lines.reduce((sum, { line, item }) => {
     const basePrice = Number(item.pricePerDay) || 0;
@@ -1323,12 +1331,16 @@ export default function CartPage() {
                         <option value="">Выберите сотрудника</option>
                         {greenwichUsers.map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.displayName}
+                            {u.displayName} · {u.ratingScore} б. · скидка {u.discountPercent}%
                           </option>
                         ))}
                       </select>
                       {greenwichUsers.length === 0 ? (
                         <div className="co-help">Нет активных сотрудников Grinvich.</div>
+                      ) : selectedGreenwichUser ? (
+                        <div className="co-help">
+                          Уровень «{selectedGreenwichUser.tierName}»: цены каталога снижены на {selectedGreenwichUser.discountPercent}%.
+                        </div>
                       ) : null}
                     </label>
                   ) : null}

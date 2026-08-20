@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonOk } from "@/server/http";
+import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
 
 /**
  * Список сотрудников Greenwich для выбора «заявка на кого» при создании заказа складом.
@@ -16,5 +17,16 @@ export async function GET() {
     select: { id: true, displayName: true },
   });
 
-  return jsonOk({ users });
+  const enriched = await Promise.all(users.map(async (user) => {
+    const benefit = await prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, user.id));
+    return {
+      ...user,
+      ratingScore: benefit.score,
+      tierName: benefit.tier.name,
+      discountPercent: benefit.tier.discountPercent,
+      payMultiplier: benefit.payMultiplier,
+    };
+  }));
+
+  return jsonOk({ users: enriched });
 }

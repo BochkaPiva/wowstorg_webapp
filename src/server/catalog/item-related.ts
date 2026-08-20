@@ -1,7 +1,6 @@
 import type { ItemRelationKind, PrismaClient, Role } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
-import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import type { RentalPartOfDay } from "@/lib/rental-days";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
@@ -116,6 +115,7 @@ export async function getCatalogRelatedSuggestions(args: {
   rentalStartPartOfDay?: RentalPartOfDay;
   rentalEndPartOfDay?: RentalPartOfDay;
   excludeOrderId?: string;
+  priceMultiplier?: number;
 }): Promise<{ groups: CatalogRelatedGroup[]; flat: CatalogRelatedSuggestion[] }> {
   const cartLines = args.cartLines.filter((l) => l.qty > 0 && l.itemId.trim());
   if (cartLines.length === 0) {
@@ -264,7 +264,7 @@ export async function getCatalogRelatedSuggestions(args: {
     relatedItemById.set(rel.relatedItem.id, rel.relatedItem);
   }
 
-  const priceMultiplier = isGreenwich ? PAY_MULTIPLIER_GREENWICH : 1;
+  const priceMultiplier = isGreenwich ? (args.priceMultiplier ?? 1) : 1;
   const enrich = (s: CatalogRelatedSuggestion): CatalogRelatedSuggestion => {
     const itemRow = relatedItemById.get(s.relatedItemId);
     const availableNow = itemRow ? usableStockUnits(itemRow) : s.availability.availableNow;

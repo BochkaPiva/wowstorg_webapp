@@ -8,6 +8,20 @@ import type {
 /** Рабочий день и сравнение «календарных дней» — по Омску. */
 const OMSK_TZ = "Asia/Omsk";
 
+export const DEFAULT_GREENWICH_RATING_TIERS = [
+  { name: "Старт", minScore: 0, discountPercent: 10, sortOrder: 0 },
+  { name: "Стабильный", minScore: 60, discountPercent: 20, sortOrder: 1 },
+  { name: "Надёжный", minScore: 75, discountPercent: 25, sortOrder: 2 },
+  { name: "Премиум", minScore: 90, discountPercent: 30, sortOrder: 3 },
+] as const;
+
+export type GreenwichRatingBenefit = {
+  score: number;
+  tier: { id: string; name: string; minScore: number; discountPercent: number };
+  nextTier: { id: string; name: string; minScore: number; discountPercent: number; pointsNeeded: number } | null;
+  payMultiplier: number;
+};
+
 function utcDateOnlyToYmd(d: Date): string {
   const y = d.getUTCFullYear();
   const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -40,18 +54,30 @@ function ymdDiffDays(a: string, b: string): number {
 /**
  * Просрочка: дедлайн включительно = endDate + 1 календарный день (как в заявке, UTC date-only).
  * Дата отправки на приёмку — календарный день в Омске на момент `declaredAt`.
- * Штраф: −7 за каждый полный день после дедлайна.
+ * Штраф за день и общий потолок задаются политикой рейтинга.
  */
-export function computeGreenwichOverdueDelta(endDate: Date, declaredAt: Date): number {
+export function computeGreenwichOverdueDelta(
+  endDate: Date,
+  declaredAt: Date,
+  policy: { overduePenaltyPerDay?: number; overduePenaltyCap?: number } = {},
+): number {
   const endYmd = utcDateOnlyToYmd(endDate);
   const deadlineInclusiveYmd = addCalendarDaysUtcYmd(endYmd, 1);
   const declaredYmd = dateTimeToYmdInTimeZone(declaredAt, OMSK_TZ);
   const overdueDays = Math.max(0, ymdDiffDays(declaredYmd, deadlineInclusiveYmd));
-  return -7 * overdueDays;
+  const perDay = Math.min(0, policy.overduePenaltyPerDay ?? -5);
+  const cap = Math.min(0, policy.overduePenaltyCap ?? -25);
+  return Math.max(cap, perDay * overdueDays);
 }
 
 export function computeGreenwichIncidentsDelta(
   rows: Array<{ condition: Condition; qty: number; itemType: ItemType }>,
+  policy: {
+    perfectReturnReward?: number;
+    repairPenaltyPerUnit?: number;
+    lostPenaltyPerUnit?: number;
+    incidentPenaltyCap?: number;
+  } = {},
 ): number {
   let broken = 0;
   let lost = 0;
@@ -63,7 +89,60 @@ export function computeGreenwichIncidentsDelta(
       lost += row.qty;
     }
   }
-  return 10 - broken - 3 * lost;
+  const reward = Math.max(0, policy.perfectReturnReward ?? 5);
+  const repairPenalty = Math.min(0, policy.repairPenaltyPerUnit ?? -1);
+  const lostPenalty = Math.min(0, policy.lostPenaltyPerUnit ?? -3);
+  const cap = Math.min(0, policy.incidentPenaltyCap ?? -20);
+  if (broken === 0 && lost === 0) return reward;
+  return Math.max(cap, repairPenalty * broken + lostPenalty * lost);
+}
+
+export async function ensureGreenwichRatingPolicy(tx: Prisma.TransactionClient) {
+  const policy = await tx.greenwichRatingPolicy.upsert({
+    where: { id: "default" },
+    update: {},
+    create: { id: "default" },
+    include: { tiers: { orderBy: [{ minScore: "asc" }] } },
+  });
+  if (policy.tiers.length > 0) return policy;
+  await tx.greenwichRatingTier.createMany({
+    data: DEFAULT_GREENWICH_RATING_TIERS.map((tier) => ({
+      policyId: policy.id,
+      ...tier,
+    })),
+    skipDuplicates: true,
+  });
+  return tx.greenwichRatingPolicy.findUniqueOrThrow({
+    where: { id: policy.id },
+    include: { tiers: { orderBy: [{ minScore: "asc" }] } },
+  });
+}
+
+export async function getGreenwichRatingBenefit(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  now = new Date(),
+): Promise<GreenwichRatingBenefit> {
+  // Interactive Prisma transactions execute sequentially. Keeping these calls
+  // explicit also guarantees that default tiers exist before we choose one.
+  const score = await recomputeGreenwichRatingScore(tx, userId, now);
+  const policy = await ensureGreenwichRatingPolicy(tx);
+  const tiers = policy.tiers.map((tier) => ({
+    id: tier.id,
+    name: tier.name,
+    minScore: tier.minScore,
+    discountPercent: Number(tier.discountPercent),
+  }));
+  const tier = [...tiers].reverse().find((entry) => score >= entry.minScore) ?? tiers[0];
+  if (!tier) throw new Error("GREENWICH_RATING_TIERS_NOT_CONFIGURED");
+  const next = tiers.find((entry) => entry.minScore > score) ?? null;
+  const discountPercent = Math.max(0, Math.min(100, tier.discountPercent));
+  return {
+    score,
+    tier,
+    nextTier: next ? { ...next, pointsNeeded: next.minScore - score } : null,
+    payMultiplier: Math.round((1 - discountPercent / 100) * 10_000) / 10_000,
+  };
 }
 
 export function effectiveRatingEventDelta(
@@ -94,11 +173,7 @@ export async function addGreenwichRatingEvent(
   },
 ): Promise<boolean> {
   const now = args.now ?? new Date();
-  const policy = await tx.greenwichRatingPolicy.upsert({
-    where: { id: "default" },
-    update: {},
-    create: { id: "default" },
-  });
+  const policy = await ensureGreenwichRatingPolicy(tx);
   const recoveryStartsAt = args.recoverable
     ? new Date(now.getTime() + policy.recoveryGraceDays * 86_400_000)
     : null;
@@ -128,7 +203,7 @@ export async function recomputeGreenwichRatingScore(
   tx: Prisma.TransactionClient,
   userId: string,
   now = new Date(),
-): Promise<void> {
+): Promise<number> {
   const [orders, events] = await Promise.all([tx.order.findMany({
     where: { greenwichUserId: userId },
     select: {
@@ -155,4 +230,5 @@ export async function recomputeGreenwichRatingScore(
         "manualLocked" = false,
         "updatedAt" = NOW()
   `;
+  return score;
 }

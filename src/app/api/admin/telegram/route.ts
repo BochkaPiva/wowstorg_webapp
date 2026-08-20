@@ -24,6 +24,19 @@ import {
   TELEGRAM_TEST_SCENARIO_IDS,
   TELEGRAM_TEST_SCENARIOS,
 } from "@/server/telegram-test-scenarios";
+import { ensureGreenwichRatingPolicy } from "@/server/ratings/greenwich-rating";
+
+function serializeRatingPolicy<
+  T extends { tiers: Array<{ discountPercent: unknown }> },
+>(policy: T) {
+  return {
+    ...policy,
+    tiers: policy.tiers.map((tier) => ({
+      ...tier,
+      discountPercent: Number(tier.discountPercent),
+    })),
+  };
+}
 
 export async function GET() {
   const auth = await requireRole("WOWSTORG");
@@ -104,18 +117,7 @@ export async function GET() {
           },
         },
       }),
-      prisma.greenwichRatingPolicy.upsert({
-        where: { id: "default" },
-        create: { id: "default" },
-        update: {},
-        select: {
-          repeatMissedPenalty: true,
-          finalMissedPenalty: true,
-          recoveryGraceDays: true,
-          recoveryDurationDays: true,
-          updatedAt: true,
-        },
-      }),
+      prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx)),
     ]);
 
   return jsonOk({
@@ -182,7 +184,7 @@ export async function GET() {
         },
       })),
     },
-    ratingPolicy,
+    ratingPolicy: serializeRatingPolicy(ratingPolicy),
     scenarios: TELEGRAM_TEST_SCENARIOS.map((scenario) => ({
       ...scenario,
       preview: buildTelegramTestScenario(scenario.id).text,
@@ -191,10 +193,31 @@ export async function GET() {
 }
 
 const RatingPolicySchema = z.object({
+  confirmationResponseReward: z.number().int().min(0).max(10),
   repeatMissedPenalty: z.number().int().min(-20).max(0),
   finalMissedPenalty: z.number().int().min(-20).max(0),
+  overduePenaltyPerDay: z.number().int().min(-20).max(0),
+  overduePenaltyCap: z.number().int().min(-100).max(0),
+  perfectReturnReward: z.number().int().min(0).max(20),
+  repairPenaltyPerUnit: z.number().int().min(-20).max(0),
+  lostPenaltyPerUnit: z.number().int().min(-20).max(0),
+  incidentPenaltyCap: z.number().int().min(-100).max(0),
   recoveryGraceDays: z.number().int().min(0).max(365),
   recoveryDurationDays: z.number().int().min(1).max(730),
+  tiers: z.array(z.object({
+    name: z.string().trim().min(1).max(40),
+    minScore: z.number().int().min(0).max(100),
+    discountPercent: z.number().min(0).max(60),
+    sortOrder: z.number().int().min(0).max(20),
+  })).min(2).max(8),
+}).superRefine((value, ctx) => {
+  const thresholds = value.tiers.map((tier) => tier.minScore);
+  if (!thresholds.includes(0)) {
+    ctx.addIssue({ code: "custom", path: ["tiers"], message: "Нужен базовый уровень с рейтингом 0" });
+  }
+  if (new Set(thresholds).size !== thresholds.length) {
+    ctx.addIssue({ code: "custom", path: ["tiers"], message: "Порог рейтинга не должен повторяться" });
+  }
 });
 
 export async function PATCH(req: Request) {
@@ -210,19 +233,25 @@ export async function PATCH(req: Request) {
   const parsed = RatingPolicySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
-  const ratingPolicy = await prisma.greenwichRatingPolicy.upsert({
-    where: { id: "default" },
-    create: { id: "default", ...parsed.data },
-    update: parsed.data,
-    select: {
-      repeatMissedPenalty: true,
-      finalMissedPenalty: true,
-      recoveryGraceDays: true,
-      recoveryDurationDays: true,
-      updatedAt: true,
-    },
+  const { tiers, ...policyData } = parsed.data;
+  const ratingPolicy = await prisma.$transaction(async (tx) => {
+    const current = await ensureGreenwichRatingPolicy(tx);
+    await tx.greenwichRatingPolicy.update({
+      where: { id: current.id },
+      data: policyData,
+    });
+    await tx.greenwichRatingTier.deleteMany({ where: { policyId: current.id } });
+    await tx.greenwichRatingTier.createMany({
+      data: [...tiers]
+        .sort((a, b) => a.minScore - b.minScore)
+        .map((tier, index) => ({ ...tier, sortOrder: index, policyId: current.id })),
+    });
+    return tx.greenwichRatingPolicy.findUniqueOrThrow({
+      where: { id: current.id },
+      include: { tiers: { orderBy: [{ minScore: "asc" }] } },
+    });
   });
-  return jsonOk({ ratingPolicy });
+  return jsonOk({ ratingPolicy: serializeRatingPolicy(ratingPolicy) });
 }
 
 const PostSchema = z.object({

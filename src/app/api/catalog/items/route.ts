@@ -6,9 +6,9 @@ import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
-import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import type { RentalPartOfDay } from "@/lib/rental-days";
+import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
 
 const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
@@ -145,7 +145,9 @@ export async function GET(req: Request) {
   }
 
   const isGreenwich = auth.user.role === "GREENWICH";
-  const priceMultiplier = isGreenwich ? PAY_MULTIPLIER_GREENWICH : 1;
+  const priceMultiplier = isGreenwich
+    ? (await prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, auth.user.id))).payMultiplier
+    : 1;
   const mappedItems = items.map((i) => {
     const availableNow = usableStockUnits(i);
     const reserved = reservedByItemId.get(i.id) ?? 0;

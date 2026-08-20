@@ -1,0 +1,28 @@
+name: Hourly reminders
+
+on:
+  schedule:
+    - cron: "15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: hourly-reminders
+  cancel-in-progress: false
+
+jobs:
+  run-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run production reminder worker
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          REMINDERS_URL: https://wowstorgwebapp.vercel.app/api/reminders/run
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Repository secret CRON_SECRET is required"
+            exit 1
+          fi
+          curl --fail --silent --show-error --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -X POST "$REMINDERS_URL"

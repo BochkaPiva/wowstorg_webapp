@@ -1,6 +1,5 @@
 import { Prisma, ProjectActivityKind, type OrderSource, type Role } from "@prisma/client";
 
-import { PAY_MULTIPLIER_GREENWICH } from "@/lib/constants";
 import { validateRentalPartCombo, type RentalPartOfDay } from "@/lib/rental-days";
 import { utcTodayDateOnlyString } from "@/server/dates";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
@@ -9,6 +8,7 @@ import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-cos
 import { getReservedQtyByItemId } from "@/server/orders/reserve";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { seedProjectEstimateFromOrder } from "@/server/projects/seed-estimate-from-order";
+import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
 
 type InputLine = {
   itemId: string;
@@ -200,7 +200,7 @@ export async function createOrderInTransaction(
         throw new CreateOrderError("GREENWICH_USER_REQUIRED");
       }
       greenwichUserId = input.greenwichUserId.trim();
-      payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
+      payMultiplier = String((await getGreenwichRatingBenefit(tx, greenwichUserId)).payMultiplier);
     } else {
       greenwichUserId = null;
       payMultiplier = "1";
@@ -208,7 +208,7 @@ export async function createOrderInTransaction(
   } else {
     source = "GREENWICH_INTERNAL";
     greenwichUserId = input.actorUserId;
-    payMultiplier = String(PAY_MULTIPLIER_GREENWICH);
+    payMultiplier = String((await getGreenwichRatingBenefit(tx, greenwichUserId)).payMultiplier);
   }
 
   if (hasProjectId) {

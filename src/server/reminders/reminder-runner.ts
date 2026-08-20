@@ -1,4 +1,4 @@
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { prisma } from "@/server/db";
@@ -17,12 +17,17 @@ import {
 import { sendWorkTaskDeadlineReminder } from "@/server/work-task-notifications";
 import {
   addGreenwichRatingEvent,
+  ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
 
 const OMSK_TZ = "Asia/Omsk";
 
 type ReminderType =
   | "WAREHOUSE_PREP"
+  | "WAREHOUSE_STAGE_PICKING"
+  | "WAREHOUSE_STAGE_ISSUE"
+  | "WAREHOUSE_STAGE_RETURN"
+  | "WAREHOUSE_STAGE_CHECKIN"
   | "GREENWICH_RETURN"
   | "GREENWICH_CONFIRMATION_FALLBACK"
   | "WORK_TASK_DUE_24H";
@@ -111,6 +116,7 @@ function warehouseTopicOptions(topicId: string | undefined) {
 
 export async function runDailyReminders(now = new Date()): Promise<{
   warehousePrepSent: number;
+  warehouseStageSent: number;
   greenwichConfirmationSent: number;
   greenwichConfirmationRepeatSent: number;
   greenwichConfirmationFallbackSent: number;
@@ -121,6 +127,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   if (!isTelegramConfigured()) {
     return {
       warehousePrepSent: 0,
+      warehouseStageSent: 0,
       greenwichConfirmationSent: 0,
       greenwichConfirmationRepeatSent: 0,
       greenwichConfirmationFallbackSent: 0,
@@ -134,6 +141,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   if (!warehouseChatId) {
     return {
       warehousePrepSent: 0,
+      warehouseStageSent: 0,
       greenwichConfirmationSent: 0,
       greenwichConfirmationRepeatSent: 0,
       greenwichConfirmationFallbackSent: 0,
@@ -216,6 +224,92 @@ export async function runDailyReminders(now = new Date()): Promise<{
       receiverChatId: warehouseChatId,
     });
     warehousePrepSent += 1;
+  }
+
+  // 1.1) Склад: контроль фактического прохождения этапов.
+  // Один сигнал на заявку и этап в календарный день: почасовой runner не спамит,
+  // но на следующий день незакрытый этап снова останется видимым.
+  const stageCandidates: Array<{
+    type: ReminderType;
+    status: OrderStatus;
+    title: string;
+    action: string;
+    where: Prisma.OrderWhereInput;
+  }> = [
+    {
+      type: "WAREHOUSE_STAGE_PICKING",
+      status: "APPROVED_BY_GREENWICH",
+      title: "Пора начать сборку",
+      action: "Заявка уже должна быть в подготовке. Проверьте состав и отметьте начало сборки.",
+      where: { readyByDate: { lt: tomorrowStartForReturnUtc } },
+    },
+    {
+      type: "WAREHOUSE_STAGE_ISSUE",
+      status: "PICKING",
+      title: "Проверьте выдачу",
+      action: "Период аренды уже начался. Если реквизит передан, отметьте заявку как выданную.",
+      where: { startDate: { lt: tomorrowStartForReturnUtc } },
+    },
+    {
+      type: "WAREHOUSE_STAGE_RETURN",
+      status: "ISSUED",
+      title: "Ожидается возврат",
+      action: "Период аренды завершился. Проверьте возврат и переведите заявку на приёмку.",
+      where: { endDate: { lt: todayStartUtc } },
+    },
+    {
+      type: "WAREHOUSE_STAGE_CHECKIN",
+      status: "RETURN_DECLARED",
+      title: "Завершите приёмку",
+      action: "Greenwich уже заявил возврат. Проверьте состояние и завершите складскую приёмку.",
+      where: { updatedAt: { lte: new Date(now.getTime() - 4 * 3_600_000) } },
+    },
+  ];
+
+  let warehouseStageSent = 0;
+  for (const candidate of stageCandidates) {
+    const orders = await prisma.order.findMany({
+      where: {
+        status: candidate.status,
+        ...candidate.where,
+      },
+      select: {
+        id: true,
+        parentOrderId: true,
+        eventName: true,
+        customer: { select: { name: true } },
+      },
+      orderBy: [{ updatedAt: "asc" }],
+    });
+
+    for (const order of orders) {
+      const receiverKey = `warehouse:stage:${candidate.status}`;
+      if (await alreadySent({
+        type: candidate.type,
+        orderId: order.id,
+        ymd: omskTodayYmd,
+        receiverKey,
+      })) continue;
+
+      const label = order.eventName?.trim() || order.customer.name;
+      const message =
+        `🟡 <b>${escapeTelegramHtml(candidate.title)}</b>\n\n` +
+        quickSupplementBlock(order.parentOrderId) +
+        `<b>${escapeTelegramHtml(label)}</b> · ${escapeTelegramHtml(order.customer.name)}\n` +
+        `${escapeTelegramHtml(candidate.action)}\n\n` +
+        link(`/orders/${order.id}`, "Открыть и выполнить");
+      const sent = await sendTelegramMessage(warehouseChatId, message, warehouseOpts);
+      if (!sent) continue;
+
+      await markSent({
+        type: candidate.type,
+        orderId: order.id,
+        ymd: omskTodayYmd,
+        receiverKey,
+        receiverChatId: warehouseChatId,
+      });
+      warehouseStageSent += 1;
+    }
   }
 
   // 2) Greenwich: подтверждение актуальности за 30 / 7 / 3 дня до начала аренды.
@@ -416,9 +510,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
       },
     },
   });
-  const ratingPolicy = await prisma.greenwichRatingPolicy.upsert({
-    where: { id: "default" }, update: {}, create: { id: "default" },
-  });
+  const ratingPolicy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
   for (const reminder of repeatDue) {
     if (!reminder.lastSentAt || !reminder.order.greenwichUserId) continue;
     const waitMs = reminder.sendCount === 1 ? 3 * 3_600_000 : 3_600_000;
@@ -690,6 +782,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
 
   return {
     warehousePrepSent,
+    warehouseStageSent,
     greenwichConfirmationSent,
     greenwichConfirmationFallbackSent,
     greenwichConfirmationRepeatSent,

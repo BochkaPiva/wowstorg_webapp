@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { getCatalogRelatedSuggestions } from "@/server/catalog/item-related";
+import { getGreenwichRatingBenefit } from "@/server/ratings/greenwich-rating";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,9 @@ export async function GET(req: Request) {
     return jsonError(400, "Слишком много позиций в запросе");
   }
 
+  const priceMultiplier = auth.user.role === "GREENWICH"
+    ? (await prisma.$transaction((tx) => getGreenwichRatingBenefit(tx, auth.user.id))).payMultiplier
+    : 1;
   const result = await getCatalogRelatedSuggestions({
     db: prisma,
     role: auth.user.role,
@@ -63,6 +67,7 @@ export async function GET(req: Request) {
     rentalStartPartOfDay: parsed.data.rentalStartPartOfDay,
     rentalEndPartOfDay: parsed.data.rentalEndPartOfDay,
     excludeOrderId: parsed.data.excludeOrderId,
+    priceMultiplier,
   });
 
   return jsonOk(result);

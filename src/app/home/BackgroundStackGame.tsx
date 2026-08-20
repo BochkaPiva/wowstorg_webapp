@@ -44,12 +44,15 @@ class Stage {
   camera: THREE.OrthographicCamera;
   renderer: THREE.WebGLRenderer;
   container: HTMLDivElement;
+  foundation: THREE.Group;
   viewSize: number;
   reducedMotion: boolean;
 
   constructor(container: HTMLDivElement) {
     this.container = container;
     this.scene = new THREE.Scene();
+    this.foundation = new THREE.Group();
+    this.scene.add(this.foundation);
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -99,7 +102,7 @@ class Stage {
     lowerBase.position.set(BLOCK_SIZE / 2, -0.65, BLOCK_SIZE / 2);
     lowerBase.castShadow = true;
     lowerBase.receiveShadow = true;
-    this.scene.add(lowerBase);
+    this.foundation.add(lowerBase);
 
     const upperBase = new THREE.Mesh(
       new RoundedBoxGeometry(BLOCK_SIZE + 1.25, 0.48, BLOCK_SIZE + 1.25, 5, 0.18),
@@ -114,7 +117,7 @@ class Stage {
     upperBase.position.set(BLOCK_SIZE / 2, -0.24, BLOCK_SIZE / 2);
     upperBase.castShadow = true;
     upperBase.receiveShadow = true;
-    this.scene.add(upperBase);
+    this.foundation.add(upperBase);
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(45, 45),
@@ -369,6 +372,7 @@ export function BackgroundStackGame() {
       gsap.to(newBlocks.position, { y: -sink, duration, ease: "power2.out" });
       gsap.to(placedBlocks.position, { y: -sink, duration, ease: "power2.out" });
       gsap.to(choppedBlocks.position, { y: -sink, duration, ease: "power2.out" });
+      gsap.to(stage.foundation.position, { y: -sink, duration, ease: "power2.out" });
     };
 
     const showFeedback = (quality: PlacementQuality) => {
@@ -536,6 +540,7 @@ export function BackgroundStackGame() {
         newBlocks.position,
         placedBlocks.position,
         choppedBlocks.position,
+        stage.foundation.position,
       ]);
       stage.destroy();
     };

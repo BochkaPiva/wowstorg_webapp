@@ -285,12 +285,7 @@ export function CatalogRentalPeriodPicker({
               <RentalPartOfDayToggle compact edge="end" id="catalog-rental-end" value={rentalEndPartOfDay} onChange={onEndPartChange} />
             </>
           ) : (
-            <span
-              className="mk-partDay-chip"
-              style={{ cursor: "default" }}
-            >
-              Целый день
-            </span>
+            <span className="mk-partDay-chip" style={{ cursor: "default" }}>Целый день</span>
           )}
         </div>
       </div>

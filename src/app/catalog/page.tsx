@@ -977,7 +977,7 @@ export default function CatalogPage() {
                   ? "Дополнить текущую выдачу"
                   : isProjectDemoCatalog
                     ? "Соберите предварительную смету"
-                    : "Каталог реквизита"}
+                    : "Подберите реквизит"}
               </div>
               <div className="mk-subtitle">
                 {isQuickSupplement
@@ -1022,11 +1022,8 @@ export default function CatalogPage() {
             <>
               <div className="mk-dateSectionIntro">
                 <div className="mk-dateSectionCopy">
-                  <h2>Сначала выберите даты</h2>
-                  <p>
-                    Каталог сразу пересчитает цену
-                    {isGreenwich ? " и покажет складу, к какому дню подготовить заказ." : " и доступность позиций."}
-                  </p>
+                  <h2>Даты аренды</h2>
+                  <p>{isGreenwich ? "Укажите период и срок подготовки." : "Цена и доступность пересчитаются сразу."}</p>
                 </div>
                 <div className="mk-catalogDateSummary">
                   <span className="mk-dateBillInline">

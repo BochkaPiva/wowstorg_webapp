@@ -320,8 +320,10 @@ model User {
   taskColumnsCreated             WorkTaskColumn[]             @relation("task_column_created_by")
   tasksCreated                   WorkTask[]                   @relation("task_created_by")
   tasksAssigned                  WorkTask[]                   @relation("task_assigned_to")
+  taskAssignments                WorkTaskAssignee[]
   taskChecklistItemsCreated      WorkTaskChecklistItem[]      @relation("task_checklist_created_by")
   taskChecklistItemsAssigned     WorkTaskChecklistItem[]      @relation("task_checklist_assigned_to")
+  taskChecklistAssignments       WorkTaskChecklistAssignee[]
   taskActivities                 WorkTaskActivity[]           @relation("task_activity_actor")
   orderServiceFeedbacks          OrderServiceFeedback[]       @relation("order_service_feedback_author")
 
@@ -793,6 +795,7 @@ model WorkTask {
   updatedAt DateTime @updatedAt
 
   checklistItems WorkTaskChecklistItem[]
+  assignees      WorkTaskAssignee[]
   activities     WorkTaskActivity[]
 
   @@index([boardId, columnId, sortOrder])
@@ -840,9 +843,37 @@ model WorkTaskChecklistItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  assignees WorkTaskChecklistAssignee[]
+
   @@index([taskId, parentId, sortOrder])
   @@index([assigneeUserId, dueDate])
   @@index([reminderAt])
+}
+
+model WorkTaskAssignee {
+  taskId String
+  task   WorkTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([taskId, userId])
+  @@index([userId, taskId])
+}
+
+model WorkTaskChecklistAssignee {
+  checklistItemId String
+  checklistItem   WorkTaskChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([checklistItemId, userId])
+  @@index([userId, checklistItemId])
 }
 
 /// Append-only журнал задачи: системные изменения и короткие рабочие заметки.

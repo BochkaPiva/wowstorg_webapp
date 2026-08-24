@@ -6,6 +6,7 @@ import { requireRole } from "@/server/auth/require";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendWorkTaskActivity } from "@/server/work-task-activity";
+import { normalizeAssigneeUserIds } from "@/server/work-task-assignees";
 import { dateOnlyOrNull, nextChecklistSortOrder, parseTimeToMinutes, timeMinutesOrNull } from "@/server/work-tasks";
 
 const CreateChecklistItemSchema = z
@@ -14,6 +15,7 @@ const CreateChecklistItemSchema = z
     parentId: z.string().trim().min(1).optional().nullable(),
     description: z.string().trim().max(3000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
+    assigneeUserIds: z.array(z.string().trim().min(1)).max(20).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).optional().nullable(),
@@ -46,6 +48,7 @@ export async function POST(
   if (!task) return jsonError(404, "Задача не найдена");
 
   const parentId = parsed.data.parentId || null;
+  const assigneeUserIds = normalizeAssigneeUserIds(parsed.data) ?? [];
   if (parentId) {
     const parent = await prisma.workTaskChecklistItem.findFirst({
       where: { id: parentId, taskId },
@@ -61,7 +64,10 @@ export async function POST(
         parentId,
         title: parsed.data.title,
         description: parsed.data.description || null,
-        assigneeUserId: parsed.data.assigneeUserId || null,
+        assigneeUserId: assigneeUserIds[0] ?? null,
+        assignees: assigneeUserIds.length > 0
+          ? { create: assigneeUserIds.map((userId) => ({ userId })) }
+          : undefined,
         startDate: parsed.data.startDate ? parseDateOnlyToUtcMidnight(parsed.data.startDate) : null,
         dueDate: parsed.data.dueDate ? parseDateOnlyToUtcMidnight(parsed.data.dueDate) : null,
         dueTimeMinutes: parseTimeToMinutes(parsed.data.dueTime),
@@ -72,7 +78,7 @@ export async function POST(
         priorityStickerConfigured: Boolean(parsed.data.priority),
         deadlineStickerEnabled: Boolean(parsed.data.startDate || parsed.data.dueDate || parsed.data.dueTime),
         reminderStickerEnabled: Boolean(parsed.data.reminderAt || parsed.data.reminderText),
-        assigneeStickerEnabled: Boolean(parsed.data.assigneeUserId),
+        assigneeStickerEnabled: assigneeUserIds.length > 0,
         color: parsed.data.color || null,
         sortOrder: await nextChecklistSortOrder(tx, taskId, parentId),
         createdById: auth.user.id,
@@ -99,6 +105,10 @@ export async function POST(
         completedAt: true,
         updatedAt: true,
         assignee: { select: { id: true, displayName: true } },
+        assignees: {
+          orderBy: { assignedAt: "asc" },
+          select: { user: { select: { id: true, displayName: true } } },
+        },
       },
     });
     await appendWorkTaskActivity(tx, {
@@ -114,6 +124,9 @@ export async function POST(
   return jsonOk({
     item: {
       ...item,
+      assignees: item.assignees.length > 0
+        ? item.assignees.map((assignment) => assignment.user)
+        : item.assignee ? [item.assignee] : [],
       startDate: dateOnlyOrNull(item.startDate),
       dueDate: dateOnlyOrNull(item.dueDate),
       dueTime: timeMinutesOrNull(item.dueTimeMinutes),

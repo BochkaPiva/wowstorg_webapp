@@ -54,6 +54,10 @@ async function taskForNotification(taskId: string) {
       reminderText: true,
       priority: true,
       assignee: { select: { id: true, displayName: true } },
+      assignees: {
+        orderBy: { assignedAt: "asc" },
+        select: { user: { select: { id: true, displayName: true } } },
+      },
       column: { select: { title: true } },
       project: { select: { title: true } },
       order: { select: { eventName: true, customer: { select: { name: true } } } },
@@ -71,7 +75,12 @@ async function actorName(actorUserId: string): Promise<string> {
 
 function taskContextLines(task: NonNullable<Awaited<ReturnType<typeof taskForNotification>>>): string[] {
   const lines = [`Задача: <b>${escapeTelegramHtml(task.title)}</b>`];
-  if (task.assignee) lines.push(`Исполнитель: <b>${escapeTelegramHtml(task.assignee.displayName)}</b>`);
+  const assignees = task.assignees.length > 0
+    ? task.assignees.map((assignment) => assignment.user)
+    : task.assignee ? [task.assignee] : [];
+  if (assignees.length > 0) {
+    lines.push(`Исполнители: <b>${escapeTelegramHtml(assignees.map((assignee) => assignee.displayName).join(", "))}</b>`);
+  }
   if (task.column) lines.push(`Статус: ${escapeTelegramHtml(task.column.title)}`);
   const due = formatDueDate(task.dueDate);
   if (due) {
@@ -94,13 +103,18 @@ export async function notifyWorkTaskAssigned(args: {
 }): Promise<void> {
   try {
     const task = await taskForNotification(args.taskId);
-    if (!task?.assignee || task.assignee.id === args.actorUserId) return;
+    if (!task) return;
+    const assignees = task.assignees.length > 0
+      ? task.assignees.map((assignment) => assignment.user)
+      : task.assignee ? [task.assignee] : [];
+    const recipients = assignees.filter((assignee) => assignee.id !== args.actorUserId);
+    if (recipients.length === 0) return;
 
     const actor = await actorName(args.actorUserId);
     const text = [
       "<b>Новая назначенная задача</b>",
       "",
-      `${escapeTelegramHtml(actor)} назначил задачу для ${escapeTelegramHtml(task.assignee.displayName)}.`,
+      `${escapeTelegramHtml(actor)} назначил задачу для ${escapeTelegramHtml(recipients.map((assignee) => assignee.displayName).join(", "))}.`,
       "",
       ...taskContextLines(task),
       "",
@@ -168,7 +182,15 @@ export async function sendWorkTaskCustomReminder(args: {
   const subtask = args.checklistItemId
     ? await prisma.workTaskChecklistItem.findUnique({
         where: { id: args.checklistItemId },
-        select: { title: true, reminderText: true, assignee: { select: { displayName: true } } },
+        select: {
+          title: true,
+          reminderText: true,
+          assignee: { select: { displayName: true } },
+          assignees: {
+            orderBy: { assignedAt: "asc" },
+            select: { user: { select: { displayName: true } } },
+          },
+        },
       })
     : null;
   const text = [
@@ -176,7 +198,11 @@ export async function sendWorkTaskCustomReminder(args: {
     "",
     ...(subtask ? [
       `Подзадача: <b>${escapeTelegramHtml(subtask.title)}</b>`,
-      ...(subtask.assignee ? [`Исполнитель: <b>${escapeTelegramHtml(subtask.assignee.displayName)}</b>`] : []),
+      ...((subtask.assignees.length > 0 || subtask.assignee) ? [
+        `Исполнители: <b>${escapeTelegramHtml((subtask.assignees.length > 0
+          ? subtask.assignees.map((assignment) => assignment.user.displayName)
+          : [subtask.assignee!.displayName]).join(", "))}</b>`,
+      ] : []),
       ...(subtask.reminderText ? [``, escapeTelegramHtml(subtask.reminderText)] : []),
       "",
     ] : task.reminderText ? [escapeTelegramHtml(task.reminderText), ""] : []),

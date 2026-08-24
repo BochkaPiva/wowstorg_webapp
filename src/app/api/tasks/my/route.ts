@@ -9,7 +9,10 @@ export async function GET() {
 
   const tasks = await prisma.workTask.findMany({
     where: {
-      assigneeUserId: auth.user.id,
+      OR: [
+        { assigneeUserId: auth.user.id },
+        { assignees: { some: { userId: auth.user.id } } },
+      ],
       completedAt: null,
       archivedAt: null,
     },

@@ -191,6 +191,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         archivedAt: null,
         OR: [
           { assigneeUserId: userId },
+          { assignees: { some: { userId } } },
           { dueDate: { gte: todayDate, lte: parseDateOnlyToUtcMidnight(end14) } },
         ],
       },
@@ -202,6 +203,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         priority: true,
         dueDate: true,
         assigneeUserId: true,
+        assignees: { select: { userId: true } },
         projectId: true,
         orderId: true,
         column: { select: { title: true, isDone: true } },
@@ -277,7 +279,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
 
   for (const task of tasks) {
     const due = dateOnly(task.dueDate);
-    const isMine = task.assigneeUserId === userId;
+    const isMine = task.assigneeUserId === userId || task.assignees.some((assignment) => assignment.userId === userId);
     const projectActive =
       task.project == null ||
       (task.project.archivedAt == null && task.project.status !== "COMPLETED" && task.project.status !== "CANCELLED");
@@ -472,7 +474,7 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
   }
 
   const dashboardTasks = tasks
-    .filter((task) => task.assigneeUserId === userId)
+    .filter((task) => task.assigneeUserId === userId || task.assignees.some((assignment) => assignment.userId === userId))
     .map(taskToDashboardTask);
   const myTasks = {
     overdue: dashboardTasks.filter((task) => task.dueDate != null && daysBetween(today, task.dueDate) < 0).slice(0, 8),

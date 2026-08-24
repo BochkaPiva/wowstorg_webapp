@@ -8,6 +8,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { notifyWorkTaskAssigned } from "@/server/work-task-notifications";
 import { appendWorkTaskActivity } from "@/server/work-task-activity";
+import { normalizeAssigneeUserIds } from "@/server/work-task-assignees";
 import { serializeWorkTaskCard, workTaskCardSelect } from "@/server/work-task-data";
 import { nextTaskSortOrder, parseTimeToMinutes } from "@/server/work-tasks";
 
@@ -16,6 +17,7 @@ const CreateTaskSchema = z
     title: z.string().trim().min(1).max(500),
     description: z.string().trim().max(5000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
+    assigneeUserIds: z.array(z.string().trim().min(1)).max(20).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).optional().nullable(),
@@ -52,6 +54,8 @@ export async function POST(
   });
   if (!column) return jsonError(404, "Колонка не найдена");
 
+  const assigneeUserIds = normalizeAssigneeUserIds(parsed.data) ?? [];
+
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.workTask.create({
       data: {
@@ -59,7 +63,10 @@ export async function POST(
         columnId,
         title: parsed.data.title,
         description: parsed.data.description || null,
-        assigneeUserId: parsed.data.assigneeUserId || null,
+        assigneeUserId: assigneeUserIds[0] ?? null,
+        assignees: assigneeUserIds.length > 0
+          ? { create: assigneeUserIds.map((userId) => ({ userId })) }
+          : undefined,
         startDate: parsed.data.startDate ? parseDateOnlyToUtcMidnight(parsed.data.startDate) : null,
         dueDate: parsed.data.dueDate ? parseDateOnlyToUtcMidnight(parsed.data.dueDate) : null,
         dueTimeMinutes: parseTimeToMinutes(parsed.data.dueTime),
@@ -70,7 +77,7 @@ export async function POST(
         priorityStickerConfigured: Boolean(parsed.data.priority && parsed.data.priority !== WorkTaskPriority.NORMAL),
         deadlineStickerEnabled: Boolean(parsed.data.startDate || parsed.data.dueDate || parsed.data.dueTime),
         reminderStickerEnabled: Boolean(parsed.data.reminderAt),
-        assigneeStickerEnabled: Boolean(parsed.data.assigneeUserId),
+        assigneeStickerEnabled: assigneeUserIds.length > 0,
         color: parsed.data.color || null,
         projectId: parsed.data.projectId || null,
         orderId: parsed.data.orderId || null,

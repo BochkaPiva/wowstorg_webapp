@@ -8,6 +8,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { notifyWorkTaskAssigned, notifyWorkTaskStatusChanged } from "@/server/work-task-notifications";
 import { appendWorkTaskActivity, serializeWorkTaskActivity } from "@/server/work-task-activity";
+import { normalizeAssigneeUserIds, syncTaskAssignees } from "@/server/work-task-assignees";
 import { serializeWorkTaskCard, workTaskCardSelect } from "@/server/work-task-data";
 import { nextTaskSortOrder, parseTimeToMinutes } from "@/server/work-tasks";
 
@@ -16,6 +17,7 @@ const PatchTaskSchema = z
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().trim().max(5000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
+    assigneeUserIds: z.array(z.string().trim().min(1)).max(20).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).optional().nullable(),
@@ -92,6 +94,7 @@ export async function PATCH(
       title: true,
       description: true,
       assigneeUserId: true,
+      assignees: { select: { userId: true } },
       startDate: true,
       dueDate: true,
       dueTimeMinutes: true,
@@ -107,6 +110,16 @@ export async function PATCH(
     },
   });
   if (!previousTask) return jsonError(404, "Задача не найдена");
+
+  const requestedAssigneeUserIds = normalizeAssigneeUserIds(parsed.data);
+  const assigneeUserIds = parsed.data.assigneeStickerEnabled === false ? [] : requestedAssigneeUserIds;
+  const previousAssigneeUserIds = previousTask.assignees.map((assignment) => assignment.userId);
+  if (previousAssigneeUserIds.length === 0 && previousTask.assigneeUserId) {
+    previousAssigneeUserIds.push(previousTask.assigneeUserId);
+  }
+  const assigneesChanged = assigneeUserIds !== undefined
+    && (assigneeUserIds.length !== previousAssigneeUserIds.length
+      || assigneeUserIds.some((userId) => !previousAssigneeUserIds.includes(userId)));
 
   let boardId: string | undefined;
   let nextColumnTitle: string | undefined;
@@ -131,9 +144,9 @@ export async function PATCH(
         ...(sortOrder !== undefined ? { sortOrder } : {}),
         ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
         ...(parsed.data.description !== undefined ? { description: parsed.data.description || null } : {}),
-        ...(parsed.data.assigneeUserId !== undefined ? {
-          assigneeUserId: parsed.data.assigneeUserId || null,
-          ...(parsed.data.assigneeUserId ? { assigneeStickerEnabled: true } : {}),
+        ...(assigneeUserIds !== undefined ? {
+          assigneeUserId: assigneeUserIds[0] ?? null,
+          ...(assigneeUserIds.length > 0 ? { assigneeStickerEnabled: true } : {}),
         } : {}),
         ...(parsed.data.startDate !== undefined ? {
           startDate: parsed.data.startDate ? parseDateOnlyToUtcMidnight(parsed.data.startDate) : null,
@@ -174,6 +187,10 @@ export async function PATCH(
       },
     });
 
+    if (assigneeUserIds !== undefined) {
+      await syncTaskAssignees(tx, id, assigneeUserIds);
+    }
+
     if (parsed.data.columnId && parsed.data.columnId !== previousTask.column.id && nextColumnTitle) {
       await appendWorkTaskActivity(tx, {
         taskId: id,
@@ -202,7 +219,7 @@ export async function PATCH(
     const updatedFields = [
       parsed.data.title !== undefined && parsed.data.title !== previousTask.title ? "название" : null,
       parsed.data.description !== undefined && (parsed.data.description || null) !== previousTask.description ? "описание" : null,
-      parsed.data.assigneeUserId !== undefined && (parsed.data.assigneeUserId || null) !== previousTask.assigneeUserId ? "исполнитель" : null,
+      assigneesChanged ? "исполнители" : null,
       parsed.data.startDate !== undefined ? "дата начала" : null,
       parsed.data.dueDate !== undefined ? "дедлайн" : null,
       parsed.data.dueTime !== undefined ? "время дедлайна" : null,
@@ -226,9 +243,7 @@ export async function PATCH(
   });
 
   if (
-    parsed.data.assigneeUserId !== undefined &&
-    parsed.data.assigneeUserId &&
-    parsed.data.assigneeUserId !== previousTask.assigneeUserId
+    assigneesChanged && assigneeUserIds !== undefined && assigneeUserIds.length > 0
   ) {
     scheduleAfterResponse("notifyWorkTaskAssigned", async () => {
       await notifyWorkTaskAssigned({ taskId: task.id, actorUserId: auth.user.id });

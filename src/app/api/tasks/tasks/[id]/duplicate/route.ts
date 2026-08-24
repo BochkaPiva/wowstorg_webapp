@@ -32,6 +32,7 @@ export async function POST(
       reminderStickerEnabled: true,
       assigneeStickerEnabled: true,
       assigneeUserId: true,
+      assignees: { select: { userId: true } },
       projectId: true,
       orderId: true,
       checklistItems: {
@@ -54,6 +55,7 @@ export async function POST(
           reminderStickerEnabled: true,
           assigneeStickerEnabled: true,
           assigneeUserId: true,
+          assignees: { select: { userId: true } },
           sortOrder: true,
         },
       },
@@ -81,6 +83,11 @@ export async function POST(
         reminderStickerEnabled: source.reminderStickerEnabled,
         assigneeStickerEnabled: source.assigneeStickerEnabled,
         assigneeUserId: source.assigneeUserId,
+        assignees: source.assignees.length > 0
+          ? { create: source.assignees.map(({ userId }) => ({ userId })) }
+          : source.assigneeUserId
+            ? { create: [{ userId: source.assigneeUserId }] }
+            : undefined,
         projectId: source.projectId,
         orderId: source.orderId,
         sortOrder: await nextTaskSortOrder(tx, source.columnId),
@@ -113,6 +120,11 @@ export async function POST(
           reminderStickerEnabled: item.reminderStickerEnabled,
           assigneeStickerEnabled: item.assigneeStickerEnabled,
           assigneeUserId: item.assigneeUserId,
+          assignees: item.assignees.length > 0
+            ? { create: item.assignees.map(({ userId }) => ({ userId })) }
+            : item.assigneeUserId
+              ? { create: [{ userId: item.assigneeUserId }] }
+              : undefined,
           sortOrder: item.sortOrder,
           createdById: auth.user.id,
         },

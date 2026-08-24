@@ -24,6 +24,10 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
   createdAt: true,
   updatedAt: true,
   assignee: { select: { id: true, displayName: true } },
+  assignees: {
+    orderBy: { assignedAt: "asc" },
+    select: { user: { select: { id: true, displayName: true } } },
+  },
   project: { select: { id: true, title: true } },
   order: { select: { id: true, eventName: true, customer: { select: { name: true } } } },
   checklistItems: {
@@ -50,6 +54,10 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
       completedAt: true,
       updatedAt: true,
       assignee: { select: { id: true, displayName: true } },
+      assignees: {
+        orderBy: { assignedAt: "asc" },
+        select: { user: { select: { id: true, displayName: true } } },
+      },
     },
   },
   _count: { select: { activities: { where: { kind: "COMMENT" } } } },
@@ -67,8 +75,10 @@ function isoOrNull(value: Date | null | undefined): string | null {
 }
 
 export function serializeWorkTaskCard(task: WorkTaskCardRecord) {
+  const taskAssignees = task.assignees.map((assignment) => assignment.user);
   return {
     ...task,
+    assignees: taskAssignees.length > 0 ? taskAssignees : task.assignee ? [task.assignee] : [],
     startDate: dateOnlyOrNull(task.startDate),
     dueDate: dateOnlyOrNull(task.dueDate),
     dueTime: timeMinutesOrNull(task.dueTimeMinutes),
@@ -78,16 +88,20 @@ export function serializeWorkTaskCard(task: WorkTaskCardRecord) {
     archivedAt: isoOrNull(task.archivedAt),
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
-    checklistItems: task.checklistItems.map((item) => ({
-      ...item,
-      startDate: dateOnlyOrNull(item.startDate),
-      dueDate: dateOnlyOrNull(item.dueDate),
-      dueTime: timeMinutesOrNull(item.dueTimeMinutes),
-      dueTimeMinutes: undefined,
-      reminderAt: isoOrNull(item.reminderAt),
-      completedAt: isoOrNull(item.completedAt),
-      updatedAt: item.updatedAt.toISOString(),
-    })),
+    checklistItems: task.checklistItems.map((item) => {
+      const itemAssignees = item.assignees.map((assignment) => assignment.user);
+      return {
+        ...item,
+        assignees: itemAssignees.length > 0 ? itemAssignees : item.assignee ? [item.assignee] : [],
+        startDate: dateOnlyOrNull(item.startDate),
+        dueDate: dateOnlyOrNull(item.dueDate),
+        dueTime: timeMinutesOrNull(item.dueTimeMinutes),
+        dueTimeMinutes: undefined,
+        reminderAt: isoOrNull(item.reminderAt),
+        completedAt: isoOrNull(item.completedAt),
+        updatedAt: item.updatedAt.toISOString(),
+      };
+    }),
     checklistDone: task.checklistItems.filter((item) => item.isDone).length,
     checklistTotal: task.checklistItems.length,
     commentCount: task._count.activities,

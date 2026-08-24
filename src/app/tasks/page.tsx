@@ -11,6 +11,7 @@ import { TaskActivityDrawer } from "@/app/tasks/TaskActivityDrawer";
 import "./task-board.css";
 
 type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+type TaskPerson = { id: string; displayName: string };
 
 type BoardListItem = {
   id: string;
@@ -41,13 +42,15 @@ type TaskChecklistItem = {
   assigneeStickerEnabled: boolean;
   completedAt: string | null;
   updatedAt: string;
-  assignee: null | { id: string; displayName: string };
+  assignee: TaskPerson | null;
+  assignees: TaskPerson[];
 };
 
 type ChecklistPatchBody = Partial<{
   title: string;
   isDone: boolean;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   startDate: string | null;
   dueDate: string | null;
   dueTime: string | null;
@@ -85,7 +88,8 @@ type BoardTask = {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  assignee: null | { id: string; displayName: string };
+  assignee: TaskPerson | null;
+  assignees: TaskPerson[];
   project: null | { id: string; title: string };
   order: null | { id: string; eventName: string | null; customer: { name: string } };
   checklistItems: TaskChecklistItem[];
@@ -126,6 +130,7 @@ type TaskPatchBody = Partial<{
   title: string;
   description: string | null;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   startDate: string | null;
   dueDate: string | null;
   dueTime: string | null;
@@ -150,6 +155,7 @@ type TaskCreateDraft = {
   title: string;
   description: string | null;
   assigneeUserId: string | null;
+  assigneeUserIds: string[];
   dueDate: string | null;
   reminderAt: string | null;
   priority: Priority;
@@ -180,6 +186,24 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toLocaleUpperCase("ru") ?? "")
     .join("");
+}
+
+function targetAssignees(target: { assignee: TaskPerson | null; assignees: TaskPerson[] }): TaskPerson[] {
+  return target.assignees.length > 0 ? target.assignees : target.assignee ? [target.assignee] : [];
+}
+
+function AssigneeAvatarStack({ people }: { people: TaskPerson[] }) {
+  const visible = people.slice(0, 3);
+  return (
+    <span className="task-assignee-stack" aria-hidden>
+      {visible.map((person, index) => (
+        <span key={person.id} className="task-assignee-stack__avatar" style={{ zIndex: visible.length - index }}>
+          {initials(person.displayName)}
+        </span>
+      ))}
+      {people.length > visible.length ? <span className="task-assignee-stack__more">+{people.length - visible.length}</span> : null}
+    </span>
+  );
 }
 
 function fmtDate(iso: string | null): string {
@@ -321,6 +345,7 @@ type StickerTarget = Pick<
   | "reminderAt"
   | "reminderText"
   | "assignee"
+  | "assignees"
   | "priorityStickerEnabled"
   | "priorityStickerConfigured"
   | "deadlineStickerEnabled"
@@ -452,6 +477,8 @@ function StickerQuickEditor({
   const [reminderTime, setReminderTime] = React.useState(reminderParts.time);
   const [reminderHasTime, setReminderHasTime] = React.useState(Boolean(target.reminderAt));
   const [reminderText, setReminderText] = React.useState(target.reminderText ?? "");
+  const selectedAssignees = targetAssignees(target);
+  const selectedAssigneeIds = new Set(selectedAssignees.map((assignee) => assignee.id));
 
   function attach(nextMode: StickerMode) {
     const flag = `${nextMode === "deadline" ? "deadline" : nextMode}StickerEnabled` as
@@ -528,10 +555,14 @@ function StickerQuickEditor({
       ) : null}
       {mode === "assignee" ? (
         <div className="sticker-editor">
-          <div className="sticker-editor__header"><strong>Стикер «Исполнитель»</strong><button type="button" onClick={() => detach("assigneeStickerEnabled")}>открепить</button></div>
+          <div className="sticker-editor__header"><strong>Стикер «Исполнители»</strong><button type="button" onClick={() => detach("assigneeStickerEnabled")}>открепить</button></div>
           <div className="sticker-editor__search"><input autoFocus value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Поиск по имени" /></div>
+          <div className="sticker-editor__hint">Можно выбрать нескольких · выбрано {selectedAssignees.length}</div>
           <div className="sticker-editor__people">
-            {users.filter((user) => user.displayName.toLocaleLowerCase("ru").includes(userSearch.toLocaleLowerCase("ru"))).map((user) => <button key={user.id} type="button" className={target.assignee?.id === user.id ? "is-selected" : ""} onClick={() => onPatch({ assigneeUserId: user.id, assigneeStickerEnabled: true })}><span className="task-avatar">{initials(user.displayName)}</span><span>{user.displayName}</span>{target.assignee?.id === user.id ? <b aria-hidden>✓</b> : null}</button>)}
+            {users.filter((user) => user.displayName.toLocaleLowerCase("ru").includes(userSearch.toLocaleLowerCase("ru"))).map((user) => {
+              const selected = selectedAssigneeIds.has(user.id);
+              return <button key={user.id} type="button" className={selected ? "is-selected" : ""} onClick={() => onPatch({ assigneeUserIds: selected ? selectedAssignees.filter((assignee) => assignee.id !== user.id).map((assignee) => assignee.id) : [...selectedAssignees.map((assignee) => assignee.id), user.id], assigneeStickerEnabled: true })}><span className="task-avatar">{initials(user.displayName)}</span><span>{user.displayName}</span>{selected ? <b aria-hidden>✓</b> : null}</button>;
+            })}
           </div>
         </div>
       ) : null}
@@ -950,7 +981,16 @@ function ChecklistTreeItem({
               </button>
             </div>
           </div>
-          {node.assigneeStickerEnabled || node.assignee ? <button type="button" className={`task-checklist-row__avatar${node.assignee ? "" : " is-empty"}`} title={node.assignee ? `Исполнитель: ${node.assignee.displayName}` : "Назначить исполнителя"} onClick={(event) => openSticker(event, "assignee")}>{node.assignee ? initials(node.assignee.displayName) : <AssigneeStickerIcon />}</button> : null}
+          {node.assigneeStickerEnabled || targetAssignees(node).length > 0 ? (
+            <button
+              type="button"
+              className={`task-checklist-row__avatar${targetAssignees(node).length > 0 ? "" : " is-empty"}`}
+              title={targetAssignees(node).length > 0 ? `Исполнители: ${targetAssignees(node).map((person) => person.displayName).join(", ")}` : "Назначить исполнителей"}
+              onClick={(event) => openSticker(event, "assignee")}
+            >
+              {targetAssignees(node).length > 0 ? <AssigneeAvatarStack people={targetAssignees(node)} /> : <AssigneeStickerIcon />}
+            </button>
+          ) : null}
         </div>
       </div>
       {node.children.length > 0 || addingParentId === node.id ? (
@@ -1273,9 +1313,9 @@ function TaskCard({
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
           <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}><AssigneeStickerIcon /></button>
           {task.commentCount > 0 ? <span className="task-card-comments" title="В задаче есть заметки">☵ <span>{task.commentCount}</span></span> : null}
-          {task.assigneeStickerEnabled || task.assignee ? (
-            <button type="button" className={`task-card-assignee${task.assignee ? "" : " is-empty"}`} title={task.assignee ? `Исполнитель: ${task.assignee.displayName}` : "Назначить исполнителя"} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("assignee"); }}>
-              {task.assignee ? initials(task.assignee.displayName) : <AssigneeStickerIcon />}
+          {task.assigneeStickerEnabled || targetAssignees(task).length > 0 ? (
+            <button type="button" className={`task-card-assignee${targetAssignees(task).length > 0 ? "" : " is-empty"}`} title={targetAssignees(task).length > 0 ? `Исполнители: ${targetAssignees(task).map((person) => person.displayName).join(", ")}` : "Назначить исполнителей"} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("assignee"); }}>
+              {targetAssignees(task).length > 0 ? <AssigneeAvatarStack people={targetAssignees(task)} /> : <AssigneeStickerIcon />}
             </button>
           ) : null}
         </div>
@@ -1525,7 +1565,7 @@ function TaskEditor({
   const isNew = task == null;
   const [title, setTitle] = React.useState(task?.title ?? "");
   const [description, setDescription] = React.useState(task?.description ?? "");
-  const [assigneeUserId, setAssigneeUserId] = React.useState(task?.assignee?.id ?? "");
+  const [assigneeUserIds, setAssigneeUserIds] = React.useState(() => task ? targetAssignees(task).map((person) => person.id) : []);
   const [dueDate, setDueDate] = React.useState(task?.dueDate ?? "");
   const [reminderAt, setReminderAt] = React.useState(toLocalDateTime(task?.reminderAt ?? null));
   const [priority, setPriority] = React.useState<Priority>(task?.priority ?? "NORMAL");
@@ -1545,7 +1585,7 @@ function TaskEditor({
   React.useEffect(() => {
     setTitle(task?.title ?? "");
     setDescription(task?.description ?? "");
-    setAssigneeUserId(task?.assignee?.id ?? "");
+    setAssigneeUserIds(task ? targetAssignees(task).map((person) => person.id) : []);
     setDueDate(task?.dueDate ?? "");
     setReminderAt(toLocalDateTime(task?.reminderAt ?? null));
     setPriority(task?.priority ?? "NORMAL");
@@ -1573,7 +1613,8 @@ function TaskEditor({
       const body: TaskCreateDraft = {
         title: title.trim(),
         description: description.trim() || null,
-        assigneeUserId: assigneeUserId || null,
+        assigneeUserId: assigneeUserIds[0] ?? null,
+        assigneeUserIds,
         dueDate: dueDate || null,
         reminderAt: fromLocalDateTime(reminderAt),
         priority,
@@ -1728,21 +1769,26 @@ function TaskEditor({
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Исполнитель</span>
-              <select
-                value={assigneeUserId}
-                onChange={(event) => setAssigneeUserId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="">Не назначен</option>
-                {meta?.users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Исполнители</span>
+              <div className="mt-1 grid max-h-40 gap-1 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-sm">
+                {meta?.users.map((user) => {
+                  const selected = assigneeUserIds.includes(user.id);
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      className={`flex min-h-9 items-center gap-2 rounded-lg px-2 text-left text-sm transition ${selected ? "bg-violet-100 text-violet-950" : "text-zinc-700 hover:bg-zinc-50"}`}
+                      onClick={() => setAssigneeUserIds((current) => selected ? current.filter((id) => id !== user.id) : [...current, user.id])}
+                    >
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">{initials(user.displayName)}</span>
+                      <span className="min-w-0 flex-1 truncate">{user.displayName}</span>
+                      <span aria-hidden className="font-bold text-violet-600">{selected ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <label className="block">
               <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Дедлайн</span>
               <input
@@ -1947,6 +1993,7 @@ function TasksPageContent() {
   const [boardTheme, setBoardTheme] = React.useState<TaskBoardTheme>("light");
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
+  const checklistQueueByItemRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const mutationSequenceRef = React.useRef(0);
   const latestMutationByTaskRef = React.useRef<Map<string, number>>(new Map());
   const pendingMutationsRef = React.useRef(0);
@@ -2210,11 +2257,13 @@ function TasksPageContent() {
 
   async function patchChecklistItem(taskId: string, itemId: string, body: ChecklistPatchBody) {
     const previousBoard = boardRef.current;
-    const nextAssignee = body.assigneeUserId === undefined
-      ? undefined
-      : body.assigneeUserId
-        ? meta?.users.find((user) => user.id === body.assigneeUserId) ?? null
-        : null;
+    const nextAssignees = body.assigneeUserIds !== undefined
+      ? body.assigneeUserIds.map((userId) => meta?.users.find((user) => user.id === userId)).filter((user): user is TaskPerson => Boolean(user))
+      : body.assigneeUserId !== undefined
+        ? body.assigneeUserId
+          ? [meta?.users.find((user) => user.id === body.assigneeUserId)].filter((user): user is TaskPerson => Boolean(user))
+          : []
+        : undefined;
     updateBoard((current) => current ? {
       ...current,
       columns: current.columns.map((column) => ({
@@ -2239,25 +2288,38 @@ function TasksPageContent() {
             ...(body.priorityStickerEnabled === false ? { priority: "NORMAL" as Priority, priorityStickerConfigured: false } : {}),
             ...(body.deadlineStickerEnabled === false ? { startDate: null, dueDate: null, dueTime: null } : {}),
             ...(body.reminderStickerEnabled === false ? { reminderAt: null, reminderText: null } : {}),
-            ...(body.assigneeStickerEnabled === false ? { assignee: null } : {}),
+            ...(body.assigneeStickerEnabled === false ? { assignee: null, assignees: [] } : {}),
             ...(body.color !== undefined ? { color: body.color } : {}),
-            ...(nextAssignee !== undefined ? { assignee: nextAssignee } : {}),
+            ...(nextAssignees !== undefined ? { assignee: nextAssignees[0] ?? null, assignees: nextAssignees } : {}),
           } : item);
           return { ...task, checklistItems, checklistDone: checklistItems.filter((item) => item.isDone).length };
         }),
       })),
     } : current);
-    try {
-      await readApi(
-        await fetch(`/api/tasks/checklist/${itemId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-      );
-    } catch (e) {
-      applyBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
+    const sendMutation = async () => {
+      try {
+        const data = await readApi<{ item: TaskChecklistItem }>(
+          await fetch(`/api/tasks/checklist/${itemId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+        );
+        updateTaskInBoard(taskId, (task) => ({
+          ...task,
+          checklistItems: task.checklistItems.map((item) => item.id === itemId ? data.item : item),
+        }));
+      } catch (e) {
+        applyBoard(previousBoard);
+        setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
+      }
+    };
+    const previousMutation = checklistQueueByItemRef.current.get(itemId) ?? Promise.resolve();
+    const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
+    checklistQueueByItemRef.current.set(itemId, queuedMutation);
+    await queuedMutation;
+    if (checklistQueueByItemRef.current.get(itemId) === queuedMutation) {
+      checklistQueueByItemRef.current.delete(itemId);
     }
   }
 
@@ -2330,9 +2392,10 @@ function TasksPageContent() {
     if (!previousBoard || !column) return;
 
     const tempId = `temp-task-${crypto.randomUUID()}`;
-    const assignee = draft.assigneeUserId
-      ? meta?.users.find((user) => user.id === draft.assigneeUserId) ?? null
-      : null;
+    const assignees = draft.assigneeUserIds
+      .map((userId) => meta?.users.find((user) => user.id === userId))
+      .filter((user): user is TaskPerson => Boolean(user));
+    const assignee = assignees[0] ?? null;
     const project = draft.projectId
       ? meta?.projects.find((item) => item.id === draft.projectId) ?? null
       : null;
@@ -2361,6 +2424,7 @@ function TasksPageContent() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       assignee,
+      assignees,
       project: project ? { id: project.id, title: project.title } : null,
       order: orderMeta ? { id: orderMeta.id, eventName: null, customer: { name: orderMeta.label } } : null,
       checklistItems: [],
@@ -2407,11 +2471,13 @@ function TasksPageContent() {
     mutationSequenceRef.current = mutationId;
     latestMutationByTaskRef.current.set(taskId, mutationId);
     pendingMutationsRef.current += 1;
-    const nextAssignee = body.assigneeUserId === undefined
-      ? sourceTask.assignee
-      : body.assigneeUserId
-        ? meta?.users.find((user) => user.id === body.assigneeUserId) ?? null
-        : null;
+    const nextAssignees = body.assigneeUserIds !== undefined
+      ? body.assigneeUserIds.map((userId) => meta?.users.find((user) => user.id === userId)).filter((user): user is TaskPerson => Boolean(user))
+      : body.assigneeUserId !== undefined
+        ? body.assigneeUserId
+          ? [meta?.users.find((user) => user.id === body.assigneeUserId)].filter((user): user is TaskPerson => Boolean(user))
+          : []
+        : sourceTask.assignees;
     const nextProject = body.projectId === undefined
       ? sourceTask.project
       : body.projectId
@@ -2441,11 +2507,13 @@ function TasksPageContent() {
       ...(body.priorityStickerEnabled === false ? { priority: "NORMAL" as Priority, priorityStickerConfigured: false } : {}),
       ...(body.deadlineStickerEnabled === false ? { startDate: null, dueDate: null, dueTime: null } : {}),
       ...(body.reminderStickerEnabled === false ? { reminderAt: null, reminderText: null } : {}),
-      ...(body.assigneeStickerEnabled === false ? { assignee: null } : {}),
+      ...(body.assigneeStickerEnabled === false ? { assignee: null, assignees: [] } : {}),
       ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
       ...(body.completed !== undefined ? { completedAt: body.completed ? (sourceTask.completedAt ?? new Date().toISOString()) : null } : {}),
       ...(body.archived !== undefined ? { archivedAt: body.archived ? new Date().toISOString() : null } : {}),
-      ...(body.assigneeUserId !== undefined ? { assignee: nextAssignee } : {}),
+      ...((body.assigneeUserId !== undefined || body.assigneeUserIds !== undefined)
+        ? { assignee: nextAssignees[0] ?? null, assignees: nextAssignees }
+        : {}),
       ...(body.projectId !== undefined
         ? { project: nextProject ? { id: nextProject.id, title: nextProject.title } : null }
         : {}),
@@ -2537,6 +2605,7 @@ function TasksPageContent() {
           completedAt: null,
           updatedAt: new Date().toISOString(),
           assignee: null,
+          assignees: [],
         },
       ];
       return {
@@ -2847,7 +2916,7 @@ function TasksPageContent() {
       {!loading && board ? (
         <div className="task-board-viewport">
         <div className={`task-board-columns${viewParams.embedded ? " is-embedded" : ""}`}>
-          {board.columns.map((column, columnIndex) => (
+          {board.columns.map((column) => (
             <section
               key={column.id}
               onDragOver={(event) => {
@@ -3049,11 +3118,6 @@ function TasksPageContent() {
                 ))}
                 {dragOverColumnId === column.id && draggingTaskId && column.id !== draggingFromColumnId ? (
                   <div className="task-drop-placeholder" style={{ height: dragPreviewHeight }} />
-                ) : null}
-                {column.tasks.length === 0 ? (
-                  <div className="task-column__empty">
-                    {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
-                  </div>
                 ) : null}
               </div>
             </section>

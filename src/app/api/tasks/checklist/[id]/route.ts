@@ -6,6 +6,7 @@ import { requireRole } from "@/server/auth/require";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendWorkTaskActivity } from "@/server/work-task-activity";
+import { normalizeAssigneeUserIds, syncChecklistAssignees } from "@/server/work-task-assignees";
 import { dateOnlyOrNull, parseTimeToMinutes, timeMinutesOrNull } from "@/server/work-tasks";
 
 const PatchChecklistItemSchema = z
@@ -13,6 +14,7 @@ const PatchChecklistItemSchema = z
     title: z.string().trim().min(1).max(300).optional(),
     description: z.string().trim().max(3000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
+    assigneeUserIds: z.array(z.string().trim().min(1)).max(20).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).optional().nullable(),
@@ -54,15 +56,18 @@ export async function PATCH(
   });
   if (!previous) return jsonError(404, "Подзадача не найдена");
 
+  const requestedAssigneeUserIds = normalizeAssigneeUserIds(parsed.data);
+  const assigneeUserIds = parsed.data.assigneeStickerEnabled === false ? [] : requestedAssigneeUserIds;
+
   const item = await prisma.$transaction(async (tx) => {
     const updated = await tx.workTaskChecklistItem.update({
       where: { id },
       data: {
         ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
         ...(parsed.data.description !== undefined ? { description: parsed.data.description || null } : {}),
-        ...(parsed.data.assigneeUserId !== undefined ? {
-          assigneeUserId: parsed.data.assigneeUserId || null,
-          ...(parsed.data.assigneeUserId ? { assigneeStickerEnabled: true } : {}),
+        ...(assigneeUserIds !== undefined ? {
+          assigneeUserId: assigneeUserIds[0] ?? null,
+          ...(assigneeUserIds.length > 0 ? { assigneeStickerEnabled: true } : {}),
         } : {}),
         ...(parsed.data.startDate !== undefined ? {
           startDate: parsed.data.startDate ? parseDateOnlyToUtcMidnight(parsed.data.startDate) : null,
@@ -123,8 +128,15 @@ export async function PATCH(
         completedAt: true,
         updatedAt: true,
         assignee: { select: { id: true, displayName: true } },
+        assignees: {
+          orderBy: { assignedAt: "asc" },
+          select: { user: { select: { id: true, displayName: true } } },
+        },
       },
     });
+    if (assigneeUserIds !== undefined) {
+      await syncChecklistAssignees(tx, id, assigneeUserIds);
+    }
     const toggled = parsed.data.isDone !== undefined && parsed.data.isDone !== previous.isDone;
     await appendWorkTaskActivity(tx, {
       taskId: previous.taskId,
@@ -137,11 +149,43 @@ export async function PATCH(
         : `Обновлена подзадача «${updated.title}»`,
       metadata: { checklistItemId: updated.id },
     });
-    return updated;
+    return tx.workTaskChecklistItem.findUniqueOrThrow({
+      where: { id },
+      select: {
+        id: true,
+        parentId: true,
+        title: true,
+        description: true,
+        isDone: true,
+        sortOrder: true,
+        priority: true,
+        color: true,
+        startDate: true,
+        dueDate: true,
+        dueTimeMinutes: true,
+        reminderAt: true,
+        reminderText: true,
+        priorityStickerEnabled: true,
+        priorityStickerConfigured: true,
+        deadlineStickerEnabled: true,
+        reminderStickerEnabled: true,
+        assigneeStickerEnabled: true,
+        completedAt: true,
+        updatedAt: true,
+        assignee: { select: { id: true, displayName: true } },
+        assignees: {
+          orderBy: { assignedAt: "asc" },
+          select: { user: { select: { id: true, displayName: true } } },
+        },
+      },
+    });
   });
 
   return jsonOk({ item: {
     ...item,
+    assignees: item.assignees.length > 0
+      ? item.assignees.map((assignment) => assignment.user)
+      : item.assignee ? [item.assignee] : [],
     startDate: dateOnlyOrNull(item.startDate),
     dueDate: dateOnlyOrNull(item.dueDate),
     dueTime: timeMinutesOrNull(item.dueTimeMinutes),

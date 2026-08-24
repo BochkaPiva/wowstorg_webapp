@@ -28,6 +28,7 @@ type Subtask = {
   dueDate: string | null;
   reminderAt: string | null;
   assignee: UserOption | null;
+  assignees: UserOption[];
 };
 
 type TaskDetail = {
@@ -40,6 +41,7 @@ type TaskDetail = {
   reminderAt: string | null;
   completedAt: string | null;
   assignee: UserOption | null;
+  assignees: UserOption[];
   column: ColumnOption;
   checklistItems: Subtask[];
   activities: Activity[];
@@ -56,6 +58,10 @@ const PRIORITIES: Array<{ value: Priority; label: string }> = [
 
 function initials(name: string): string {
   return name.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
+
+function assignedPeople(target: { assignee: UserOption | null; assignees: UserOption[] }): UserOption[] {
+  return target.assignees.length > 0 ? target.assignees : target.assignee ? [target.assignee] : [];
 }
 
 function formatActivityTime(value: string): string {
@@ -290,11 +296,11 @@ export function TaskActivityDrawer({
           <summary>
             <button type="button" className={item.isDone ? "is-done" : ""} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void patchSubtask(item, { isDone: !item.isDone }, (current) => ({ ...current, isDone: !current.isDone })); }}>{item.isDone ? "✓" : ""}</button>
             <span className={item.isDone ? "is-done" : ""}>{item.title}</span>
-            <small>{item.assignee?.displayName ?? "Без исполнителя"}</small>
+            <small>{assignedPeople(item).map((person) => person.displayName).join(", ") || "Без исполнителя"}</small>
           </summary>
           <div className="task-subtask-detail__body">
             <label className="task-drawer__field task-drawer__field--wide"><FieldLabel>Название</FieldLabel><input defaultValue={item.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== item.title) void patchSubtask(item, { title }, (current) => ({ ...current, title })); }} /></label>
-            <label className="task-drawer__field"><FieldLabel>Исполнитель</FieldLabel><select value={item.assignee?.id ?? ""} onChange={(event) => { const id = event.target.value; const assignee = users.find((user) => user.id === id) ?? null; void patchSubtask(item, { assigneeUserId: id || null }, (current) => ({ ...current, assignee })); }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select></label>
+            <div className="task-drawer__field"><FieldLabel>Исполнители</FieldLabel><div className="task-drawer-assignees">{users.map((user) => { const selected = assignedPeople(item).some((person) => person.id === user.id); return <button key={user.id} type="button" className={selected ? "is-selected" : ""} onClick={() => { const assignees = selected ? assignedPeople(item).filter((person) => person.id !== user.id) : [...assignedPeople(item), user]; void patchSubtask(item, { assigneeUserIds: assignees.map((person) => person.id) }, (current) => ({ ...current, assignee: assignees[0] ?? null, assignees })); }}><span>{initials(user.displayName)}</span>{user.displayName}<b aria-hidden>{selected ? "✓" : ""}</b></button>; })}</div></div>
             <label className="task-drawer__field"><FieldLabel>Дедлайн</FieldLabel><input type="date" value={item.dueDate ?? ""} onChange={(event) => { const dueDate = event.target.value || null; void patchSubtask(item, { dueDate }, (current) => ({ ...current, dueDate })); }} /></label>
             <label className="task-drawer__field"><FieldLabel>Приоритет</FieldLabel><select value={item.priority} onChange={(event) => { const priority = event.target.value as Priority; void patchSubtask(item, { priority }, (current) => ({ ...current, priority })); }}>{PRIORITIES.map((row) => <option key={row.value} value={row.value}>{row.label}</option>)}</select></label>
             <label className="task-drawer__field"><FieldLabel>Напоминание</FieldLabel><input type="datetime-local" value={toLocalDateTime(item.reminderAt)} onChange={(event) => { const reminderAt = fromLocalDateTime(event.target.value); void patchSubtask(item, { reminderAt }, (current) => ({ ...current, reminderAt })); }} /></label>
@@ -375,10 +381,7 @@ export function TaskActivityDrawer({
             <label className="task-drawer__field task-drawer__field--wide"><FieldLabel>Описание</FieldLabel><textarea value={task.description ?? ""} rows={5} onChange={(event) => setTask({ ...task, description: event.target.value })} onBlur={(event) => {
               const value = event.target.value.trim(); void patchTask({ description: value || null }, (current) => ({ ...current, description: value || null }));
             }} /></label>
-            <label className="task-drawer__field"><FieldLabel>Исполнитель</FieldLabel><select value={task.assignee?.id ?? ""} onChange={(event) => {
-              const id = event.target.value; const assignee = users.find((user) => user.id === id) ?? null;
-              void patchTask({ assigneeUserId: id || null }, (current) => ({ ...current, assignee }));
-            }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select></label>
+            <div className="task-drawer__field"><FieldLabel>Исполнители</FieldLabel><div className="task-drawer-assignees">{users.map((user) => { const selected = assignedPeople(task).some((person) => person.id === user.id); return <button key={user.id} type="button" className={selected ? "is-selected" : ""} onClick={() => { const assignees = selected ? assignedPeople(task).filter((person) => person.id !== user.id) : [...assignedPeople(task), user]; void patchTask({ assigneeUserIds: assignees.map((person) => person.id) }, (current) => ({ ...current, assignee: assignees[0] ?? null, assignees })); }}><span>{initials(user.displayName)}</span>{user.displayName}<b aria-hidden>{selected ? "✓" : ""}</b></button>; })}</div></div>
             <label className="task-drawer__field"><FieldLabel>Статус</FieldLabel><select value={task.column.id} onChange={(event) => {
               const target = columns.find((column) => column.id === event.target.value); if (!target) return;
               void patchTask({ columnId: target.id, completed: target.isDone }, (current) => ({ ...current, column: target, completedAt: target.isDone ? new Date().toISOString() : null }));

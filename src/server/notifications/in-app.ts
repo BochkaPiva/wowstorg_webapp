@@ -23,6 +23,15 @@ export async function notifyOrderStatusChangedInApp(args: {
 }): Promise<void> {
   if (!args.userId) return;
   const label = statusLabel(args.status);
+  await prisma.inAppNotification.updateMany({
+    where: {
+      userId: args.userId,
+      type: "ORDER_STATUS_CHANGED",
+      isRead: false,
+      payloadJson: { path: ["orderId"], equals: args.orderId },
+    },
+    data: { isRead: true },
+  }).catch((error) => console.error("[in-app] resolve previous order status failed", error));
   await createInAppNotification({
     userId: args.userId,
     type: "ORDER_STATUS_CHANGED",
@@ -46,6 +55,17 @@ export async function createInAppNotification(args: {
 }): Promise<void> {
   if (!args.userId) return;
   try {
+    const recentDuplicate = await prisma.inAppNotification.findFirst({
+      where: {
+        userId: args.userId,
+        type: args.type,
+        title: args.title,
+        body: args.body,
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
+      select: { id: true },
+    });
+    if (recentDuplicate) return;
     const notification = await prisma.inAppNotification.create({
       data: {
         userId: args.userId,
@@ -100,8 +120,21 @@ export async function createInAppNotificationForRole(args: {
       select: { id: true },
     });
     if (users.length === 0) return;
+    const recentDuplicates = await prisma.inAppNotification.findMany({
+      where: {
+        userId: { in: users.map((user) => user.id) },
+        type: args.type,
+        title: args.title,
+        body: args.body,
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
+      select: { userId: true },
+    });
+    const duplicateUserIds = new Set(recentDuplicates.map((row) => row.userId));
+    const recipients = users.filter((user) => !duplicateUserIds.has(user.id));
+    if (recipients.length === 0) return;
     await prisma.inAppNotification.createMany({
-      data: users.map((user) => ({
+      data: recipients.map((user) => ({
         userId: user.id,
         type: args.type,
         title: args.title,
@@ -109,7 +142,7 @@ export async function createInAppNotificationForRole(args: {
         ...(args.payloadJson !== undefined ? { payloadJson: args.payloadJson } : {}),
       })),
     });
-    users.forEach((user) => {
+    recipients.forEach((user) => {
       void sendBrowserPushToUser({
         userId: user.id,
         type: args.type,

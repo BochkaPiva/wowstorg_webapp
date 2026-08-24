@@ -19,10 +19,24 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           REMINDERS_URL: https://wowstorgwebapp.vercel.app/api/reminders/run
         run: |
+          set -euo pipefail
           if [ -z "$CRON_SECRET" ]; then
             echo "Repository secret CRON_SECRET is required"
             exit 1
           fi
-          curl --fail --silent --show-error --retry 3 --retry-all-errors \
+          HTTP_STATUS="$(curl --silent --show-error --retry 3 --retry-all-errors \
+            --output reminder-response.json \
+            --write-out "%{http_code}" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            -X POST "$REMINDERS_URL"
+            -H "Accept: application/json" \
+            -H "User-Agent: wowstorg-hourly-reminders" \
+            -X POST "$REMINDERS_URL")"
+          echo "Reminder endpoint returned HTTP $HTTP_STATUS"
+          if [ -s reminder-response.json ]; then
+            head -c 2000 reminder-response.json
+            echo
+          fi
+          case "$HTTP_STATUS" in
+            2??) ;;
+            *) exit 1 ;;
+          esac

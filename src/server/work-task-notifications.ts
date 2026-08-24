@@ -152,3 +152,33 @@ export async function sendWorkTaskDeadlineReminder(taskId: string): Promise<bool
   return sendTelegramMessage(chatId, text, taskTopicOptions());
 }
 
+export async function sendWorkTaskCustomReminder(args: {
+  taskId: string;
+  checklistItemId?: string;
+}): Promise<boolean> {
+  const task = await taskForNotification(args.taskId);
+  if (!task) return false;
+  const subtask = args.checklistItemId
+    ? await prisma.workTaskChecklistItem.findUnique({
+        where: { id: args.checklistItemId },
+        select: { title: true, assignee: { select: { displayName: true } } },
+      })
+    : null;
+  const text = [
+    subtask ? "<b>Напоминание по подзадаче</b>" : "<b>Напоминание по задаче</b>",
+    "",
+    ...(subtask ? [
+      `Подзадача: <b>${escapeTelegramHtml(subtask.title)}</b>`,
+      ...(subtask.assignee ? [`Исполнитель: <b>${escapeTelegramHtml(subtask.assignee.displayName)}</b>`] : []),
+      "",
+    ] : []),
+    ...taskContextLines(task),
+    "",
+    taskLink("Открыть задачу на доске"),
+  ].join("\n");
+
+  if (!isTelegramConfigured()) return false;
+  const chatId = getWarehouseChatId();
+  if (!chatId) return false;
+  return sendTelegramMessage(chatId, text, taskTopicOptions());
+}

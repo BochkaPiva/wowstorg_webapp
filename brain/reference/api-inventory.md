@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-20T15:44:03.303Z  
-> **Файлов route.ts:** 132  
+> **Сгенерировано:** 2026-08-24T15:07:39.492Z  
+> **Файлов route.ts:** 134  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -123,8 +123,10 @@
 | POST | `/api/tasks/columns/[id]/tasks` | `src/app/api/tasks/columns/[id]/tasks/route.ts` |
 | GET | `/api/tasks/meta` | `src/app/api/tasks/meta/route.ts` |
 | GET | `/api/tasks/my` | `src/app/api/tasks/my/route.ts` |
+| GET, POST | `/api/tasks/tasks/[id]/activity` | `src/app/api/tasks/tasks/[id]/activity/route.ts` |
 | POST | `/api/tasks/tasks/[id]/checklist` | `src/app/api/tasks/tasks/[id]/checklist/route.ts` |
-| PATCH, DELETE | `/api/tasks/tasks/[id]` | `src/app/api/tasks/tasks/[id]/route.ts` |
+| POST | `/api/tasks/tasks/[id]/duplicate` | `src/app/api/tasks/tasks/[id]/duplicate/route.ts` |
+| GET, PATCH, DELETE | `/api/tasks/tasks/[id]` | `src/app/api/tasks/tasks/[id]/route.ts` |
 | POST | `/api/telegram/webhook` | `src/app/api/telegram/webhook/route.ts` |
 | GET | `/api/users/greenwich` | `src/app/api/users/greenwich/route.ts` |
 | GET | `/api/warehouse/archive` | `src/app/api/warehouse/archive/route.ts` |

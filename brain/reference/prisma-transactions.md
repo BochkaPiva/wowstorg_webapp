@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-20 — добавлены атомарные операции центра лояльности, предупреждение → штраф Grinvich и обратная связь по закрытым заявкам.
+> **Дата сверки:** 2026-08-24 — общие атомарные сервисы сайта и Telegram покрывают согласование, возврат и оценку.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -15,7 +15,6 @@
 | `src/app/api/inventory/packages/[id]/route.ts` | нет |
 | `src/app/api/inventory/positions/[id]/route.ts` | нет |
 | `src/app/api/orders/route.ts` | **да** |
-| `src/app/api/orders/[id]/approve/route.ts` | нет |
 | `src/app/api/orders/[id]/cancel/route.ts` | нет (отмена и возврат месячного бонуса атомарны; отдельная транзакция достижений в отложенной задаче) |
 | `src/app/api/orders/[id]/check-in/route.ts` | нет (две отдельные транзакции в файле) |
 | `src/app/api/orders/[id]/dates/route.ts` | **да** (проверка и повторная проверка при применении) |
@@ -32,12 +31,20 @@
 | `src/app/api/standalone-estimates/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |
+| `src/app/api/tasks/checklist/[id]/route.ts` | нет (изменение/удаление подзадачи и запись события в журнал атомарны) |
+| `src/app/api/tasks/columns/[id]/tasks/route.ts` | нет (создание задачи и первая запись журнала атомарны) |
+| `src/app/api/tasks/tasks/[id]/checklist/route.ts` | нет (создание подзадачи и запись события атомарны) |
+| `src/app/api/tasks/tasks/[id]/duplicate/route.ts` | нет (задача, подзадачи и первая запись журнала создаются одним действием) |
+| `src/app/api/tasks/tasks/[id]/route.ts` | нет (изменение задачи и системные записи журнала атомарны) |
 | `src/app/api/telegram/webhook/route.ts` | нет (ответ на напоминание + отмена основной и дочерних заявок + возврат их бонусов) |
 | `src/app/api/warehouse/incidents/[id]/repair/route.ts` | нет |
 | `src/app/api/warehouse/incidents/[id]/utilize/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/found/route.ts` | нет |
 | `src/app/api/warehouse/losses/[id]/write-off/route.ts` | нет |
 | `src/server/ratings/greenwich-bonuses.ts` | нет (идемпотентное начисление, истечение и журнал бонусов) |
+| `src/server/orders/approve-estimate.ts` | нет (атомарный захват допустимого статуса и согласование строк для сайта/Telegram) |
+| `src/server/orders/declare-return.ts` | нет (атомарный перевод `ISSUED → RETURN_DECLARED`, декларация позиций и событие рейтинга для сайта/Telegram) |
+| `src/server/orders/service-feedback.ts` | нет (единая оценка закрытой заявки и подавление старых просьб об оценке) |
 | `src/server/reminders/reminder-runner.ts` | нет (идемпотентное начисление месячного бонуса, событие рейтинга и закрытие предупреждения) |
 
 Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).

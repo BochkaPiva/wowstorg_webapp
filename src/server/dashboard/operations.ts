@@ -2,9 +2,11 @@ import { type OrderStatus } from "@prisma/client";
 
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { prisma } from "@/server/db";
+import { getOrderStageSignal } from "@/server/dashboard/order-stage-signals";
 
 const OMSK_TZ = "Asia/Omsk";
 const PROJECT_SIGNAL_BLOCK_KEY = "dashboard-attention";
+const ORDER_SIGNAL_BLOCK_KEY = "dashboard-order-stale";
 
 const ACTIVE_ORDER_STATUSES = [
   "SUBMITTED",
@@ -65,7 +67,8 @@ export type DashboardSignal = {
     | "TASK_DUE_SOON"
     | "PROJECT_EVENT_SOON_WITHOUT_ESTIMATE"
     | "PROJECT_BLOCKED"
-    | "ORDER_ESTIMATE_REQUIRED";
+    | "ORDER_ESTIMATE_REQUIRED"
+    | "ORDER_STAGE_STALE";
   severity: SignalSeverity;
   title: string;
   reason: string;
@@ -214,6 +217,11 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
           { readyByDate: { gte: todayDate, lte: parseDateOnlyToUtcMidnight(end7) } },
           { startDate: { gte: todayDate, lte: parseDateOnlyToUtcMidnight(end7) } },
           { endDate: { gte: todayDate, lte: parseDateOnlyToUtcMidnight(end7) } },
+          { status: "ESTIMATE_SENT", readyByDate: { lte: parseDateOnlyToUtcMidnight(addDaysYmd(today, 2)) } },
+          { status: "APPROVED_BY_GREENWICH", readyByDate: { lte: todayDate } },
+          { status: "PICKING", startDate: { lte: todayDate } },
+          { status: "ISSUED", endDate: { lt: todayDate } },
+          { status: "RETURN_DECLARED", updatedAt: { lte: new Date(now.getTime() - 4 * 3_600_000) } },
         ],
       },
       orderBy: [{ readyByDate: "asc" }, { updatedAt: "asc" }],
@@ -226,6 +234,11 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
         startDate: true,
         endDate: true,
         updatedAt: true,
+        notificationCooldowns: {
+          where: { blockKey: ORDER_SIGNAL_BLOCK_KEY, muteUntil: { gt: now } },
+          select: { muteUntil: true },
+          take: 1,
+        },
       },
     }),
     prisma.project.findMany({
@@ -379,6 +392,32 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
       });
     }
 
+    if (order.notificationCooldowns.length === 0) {
+      const stageSignal = getOrderStageSignal(
+        {
+          status: order.status,
+          readyByDate: dateOnly(order.readyByDate)!,
+          startDate: dateOnly(order.startDate)!,
+          endDate: dateOnly(order.endDate)!,
+          updatedAt: order.updatedAt,
+        },
+        { todayYmd: today, now },
+      );
+      if (stageSignal) {
+        signals.push({
+          id: `order-stage:${stageSignal.stage}:${order.id}`,
+          type: "ORDER_STAGE_STALE",
+          severity: stageSignal.severity,
+          title: orderTitle,
+          reason: `${stageSignal.title}. ${stageSignal.reason}`,
+          href: `/orders/${order.id}?from=dashboard`,
+          orderId: order.id,
+          entityKind: "order",
+          canSnooze: stageSignal.severity !== "critical",
+        });
+      }
+    }
+
   }
 
   for (const project of projects) {
@@ -465,6 +504,9 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
   const sortedSignals = signals
     .sort((a, b) => signalRank(a) - signalRank(b) || a.title.localeCompare(b.title, "ru"))
     .slice(0, 8);
+  const overdueCount = signals.filter(
+    (signal) => signal.type === "TASK_OVERDUE" || (signal.type === "ORDER_STAGE_STALE" && signal.severity === "critical"),
+  ).length;
 
   return {
     today: todayEvents,
@@ -473,8 +515,8 @@ export async function buildOperationsDashboard(userId: string): Promise<Operatio
     signals: sortedSignals,
     summary: {
       todayCount: todayEvents.length,
-      overdueCount: signals.filter((signal) => signal.type === "TASK_OVERDUE").length,
-      signalCount: sortedSignals.length,
+      overdueCount,
+      signalCount: signals.length,
       nearestOrderTitle: orders[0]?.customer.name ?? null,
     },
   };

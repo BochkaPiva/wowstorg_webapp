@@ -259,6 +259,22 @@ enum WorkTaskPriority {
   URGENT
 }
 
+enum WorkTaskActivityKind {
+  CREATED
+  UPDATED
+  MOVED
+  COMPLETED
+  REOPENED
+  ARCHIVED
+  RESTORED
+  COMMENT
+  SUBTASK_CREATED
+  SUBTASK_UPDATED
+  SUBTASK_COMPLETED
+  SUBTASK_REOPENED
+  SUBTASK_DELETED
+}
+
 model User {
   id              String    @id @default(cuid())
   login           String    @unique
@@ -305,6 +321,8 @@ model User {
   tasksCreated                   WorkTask[]                   @relation("task_created_by")
   tasksAssigned                  WorkTask[]                   @relation("task_assigned_to")
   taskChecklistItemsCreated      WorkTaskChecklistItem[]      @relation("task_checklist_created_by")
+  taskChecklistItemsAssigned     WorkTaskChecklistItem[]      @relation("task_checklist_assigned_to")
+  taskActivities                 WorkTaskActivity[]           @relation("task_activity_actor")
   orderServiceFeedbacks          OrderServiceFeedback[]       @relation("order_service_feedback_author")
 
   @@index([role, isActive])
@@ -747,6 +765,7 @@ model WorkTask {
   color       String?
   sortOrder   Int              @default(0)
   dueDate     DateTime?
+  reminderAt  DateTime?
   completedAt DateTime?
   archivedAt  DateTime?
 
@@ -766,9 +785,11 @@ model WorkTask {
   updatedAt DateTime @updatedAt
 
   checklistItems WorkTaskChecklistItem[]
+  activities     WorkTaskActivity[]
 
   @@index([boardId, columnId, sortOrder])
   @@index([assigneeUserId, dueDate])
+  @@index([reminderAt])
   @@index([projectId])
   @@index([orderId])
   @@index([completedAt])
@@ -781,17 +802,46 @@ model WorkTaskChecklistItem {
   task   WorkTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   title       String
-  isDone      Boolean   @default(false)
-  sortOrder   Int       @default(0)
+  description String?
+  isDone      Boolean          @default(false)
+  sortOrder   Int              @default(0)
+  priority    WorkTaskPriority @default(NORMAL)
+  color       String?
+  dueDate     DateTime?
+  reminderAt  DateTime?
   completedAt DateTime?
 
   createdById String
   createdBy   User   @relation("task_checklist_created_by", fields: [createdById], references: [id], onDelete: Restrict)
 
+  assigneeUserId String?
+  assignee       User?   @relation("task_checklist_assigned_to", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([taskId, sortOrder])
+  @@index([assigneeUserId, dueDate])
+  @@index([reminderAt])
+}
+
+/// Append-only журнал задачи: системные изменения и короткие рабочие заметки.
+model WorkTaskActivity {
+  id     String   @id @default(cuid())
+  taskId String
+  task   WorkTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  actorUserId String
+  actor       User   @relation("task_activity_actor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  kind     WorkTaskActivityKind
+  message  String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 /// Append-only журнал событий по проекту (склад).

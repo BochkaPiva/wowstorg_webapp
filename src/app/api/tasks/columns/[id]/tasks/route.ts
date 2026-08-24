@@ -7,7 +7,9 @@ import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { notifyWorkTaskAssigned } from "@/server/work-task-notifications";
-import { dateOnlyOrNull, nextTaskSortOrder } from "@/server/work-tasks";
+import { appendWorkTaskActivity } from "@/server/work-task-activity";
+import { serializeWorkTaskCard, workTaskCardSelect } from "@/server/work-task-data";
+import { nextTaskSortOrder } from "@/server/work-tasks";
 
 const CreateTaskSchema = z
   .object({
@@ -15,6 +17,7 @@ const CreateTaskSchema = z
     description: z.string().trim().max(5000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
+    reminderAt: z.string().datetime({ offset: true }).optional().nullable(),
     priority: z.nativeEnum(WorkTaskPriority).optional(),
     color: z.string().trim().max(40).optional().nullable(),
     projectId: z.string().trim().min(1).optional().nullable(),
@@ -46,45 +49,32 @@ export async function POST(
   });
   if (!column) return jsonError(404, "Колонка не найдена");
 
-  const task = await prisma.workTask.create({
-    data: {
-      boardId: column.boardId,
-      columnId,
-      title: parsed.data.title,
-      description: parsed.data.description || null,
-      assigneeUserId: parsed.data.assigneeUserId || null,
-      dueDate: parsed.data.dueDate ? parseDateOnlyToUtcMidnight(parsed.data.dueDate) : null,
-      priority: parsed.data.priority ?? WorkTaskPriority.NORMAL,
-      color: parsed.data.color || null,
-      projectId: parsed.data.projectId || null,
-      orderId: parsed.data.orderId || null,
-      sortOrder: await nextTaskSortOrder(prisma, columnId),
-      createdById: auth.user.id,
-    },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      priority: true,
-      color: true,
-      sortOrder: true,
-      dueDate: true,
-      completedAt: true,
-      archivedAt: true,
-      createdAt: true,
-      assignee: { select: { id: true, displayName: true } },
-      project: { select: { id: true, title: true } },
-      order: { select: { id: true, eventName: true, customer: { select: { name: true } } } },
-      checklistItems: {
-        orderBy: { sortOrder: "asc" },
-        select: {
-          id: true,
-          title: true,
-          isDone: true,
-          sortOrder: true,
-        },
+  const task = await prisma.$transaction(async (tx) => {
+    const created = await tx.workTask.create({
+      data: {
+        boardId: column.boardId,
+        columnId,
+        title: parsed.data.title,
+        description: parsed.data.description || null,
+        assigneeUserId: parsed.data.assigneeUserId || null,
+        dueDate: parsed.data.dueDate ? parseDateOnlyToUtcMidnight(parsed.data.dueDate) : null,
+        reminderAt: parsed.data.reminderAt ? new Date(parsed.data.reminderAt) : null,
+        priority: parsed.data.priority ?? WorkTaskPriority.NORMAL,
+        color: parsed.data.color || null,
+        projectId: parsed.data.projectId || null,
+        orderId: parsed.data.orderId || null,
+        sortOrder: await nextTaskSortOrder(tx, columnId),
+        createdById: auth.user.id,
       },
-    },
+      select: workTaskCardSelect,
+    });
+    await appendWorkTaskActivity(tx, {
+      taskId: created.id,
+      actorUserId: auth.user.id,
+      kind: "CREATED",
+      message: "Создана задача",
+    });
+    return tx.workTask.findUniqueOrThrow({ where: { id: created.id }, select: workTaskCardSelect });
   });
 
   scheduleAfterResponse("notifyWorkTaskAssigned", async () => {
@@ -92,14 +82,6 @@ export async function POST(
   });
 
   return jsonOk({
-    task: {
-      ...task,
-      dueDate: dateOnlyOrNull(task.dueDate),
-      createdAt: task.createdAt.toISOString(),
-      completedAt: task.completedAt?.toISOString() ?? null,
-      archivedAt: task.archivedAt?.toISOString() ?? null,
-      checklistDone: task.checklistItems.filter((item) => item.isDone).length,
-      checklistTotal: task.checklistItems.length,
-    },
+    task: serializeWorkTaskCard(task),
   });
 }

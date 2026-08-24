@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
+
+import { mergeNotificationRows, type NotificationCursor } from "@/lib/in-app-notifications";
+import { readJsonSafe } from "@/lib/fetchJson";
 
 type InAppNotificationRow = {
   id: string;
@@ -22,32 +26,17 @@ type NotificationPayload = {
   href?: string;
 };
 
+type NotificationsResponse = {
+  rows?: InAppNotificationRow[];
+  unreadCount?: number;
+  cursor?: NotificationCursor;
+};
+
 type PushState = "loading" | "unsupported" | "not_configured" | "blocked" | "disabled" | "enabled" | "error";
 
-const TOAST_SESSION_KEY = "wowstorg:in-app-notification-toasts-seen";
-const TOAST_SESSION_LIMIT = 200;
-
-function readSeenToastIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = window.sessionStorage.getItem(TOAST_SESSION_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function rememberSeenToastId(id: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const ids = [...readSeenToastIds(), id].slice(-TOAST_SESSION_LIMIT);
-    window.sessionStorage.setItem(TOAST_SESSION_KEY, JSON.stringify([...new Set(ids)]));
-  } catch {
-    // If storage is unavailable, the in-memory ref still prevents repeats until remount.
-  }
-}
+const ACTIVE_LIMIT = 30;
+const HISTORY_LIMIT = 50;
+const POLL_INTERVAL_MS = 15_000;
 
 function achievementImageSrc(code: string, level: "NONE" | "BRONZE" | "SILVER" | "GOLD"): string {
   const key =
@@ -86,16 +75,28 @@ function isAchievement(row: InAppNotificationRow): boolean {
 function formatTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  return date.toLocaleString("ru-RU", sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function BellIcon() {
+function BellIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
   );
+}
+
+function CheckIcon() {
+  return <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m5 12 4 4L19 6" /></svg>;
+}
+
+function SettingsIcon() {
+  return <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.96 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.52-1H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.52V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.52 1H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z" /></svg>;
 }
 
 function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
@@ -109,52 +110,86 @@ function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
 
 export function InAppNotifications({ enabled }: { enabled: boolean }) {
   const [rows, setRows] = React.useState<InAppNotificationRow[]>([]);
+  const [historyRows, setHistoryRows] = React.useState<InAppNotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [panelOpen, setPanelOpen] = React.useState(false);
-  const [activeToast, setActiveToast] = React.useState<InAppNotificationRow | null>(null);
+  const [showHistory, setShowHistory] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [activeToast, setActiveToast] = React.useState<InAppNotificationRow[]>([]);
+  const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [pushState, setPushState] = React.useState<PushState>("loading");
   const [pushBusy, setPushBusy] = React.useState(false);
   const [pushPublicKey, setPushPublicKey] = React.useState<string | null>(null);
-  const seenToastRef = React.useRef<Set<string>>(new Set());
+  const cursorRef = React.useRef<NotificationCursor | null>(null);
+  const initializedRef = React.useRef(false);
+  const panelOpenRef = React.useRef(false);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
-  const load = React.useCallback(async () => {
-    if (!enabled) return;
-    const res = await fetch("/api/me/notifications?limit=30", { cache: "no-store" });
-    if (!res.ok) return;
-    const json = (await res.json()) as { rows?: InAppNotificationRow[]; unreadCount?: number };
-    const nextRows = json.rows ?? [];
-    setRows(nextRows);
-    setUnreadCount(json.unreadCount ?? 0);
+  React.useEffect(() => {
+    panelOpenRef.current = panelOpen;
+  }, [panelOpen]);
 
-    const persistedSeen = readSeenToastIds();
-    for (const id of persistedSeen) seenToastRef.current.add(id);
-    const newestUnread = [...nextRows].reverse().find((row) => !row.isRead && !seenToastRef.current.has(row.id));
-    if (newestUnread) {
-      seenToastRef.current.add(newestUnread.id);
-      rememberSeenToastId(newestUnread.id);
-      setActiveToast((current) => current ?? newestUnread);
+  const loadActive = React.useCallback(async (withLoading = false) => {
+    if (!enabled) return;
+    if (withLoading) setLoading(true);
+    try {
+      const res = await fetch(`/api/me/notifications?view=active&limit=${ACTIVE_LIMIT}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await readJsonSafe<NotificationsResponse>(res);
+      if (!json) return;
+      setRows(json.rows ?? []);
+      setUnreadCount(json.unreadCount ?? 0);
+      if (!initializedRef.current && json.cursor) {
+        cursorRef.current = json.cursor;
+        initializedRef.current = true;
+      }
+    } finally {
+      if (withLoading) setLoading(false);
     }
   }, [enabled]);
 
-  React.useEffect(() => {
-    if (!enabled) return;
-    void load();
-    const timer = window.setInterval(() => void load(), 5000);
-    const onWake = () => void load();
-    window.addEventListener("focus", onWake);
-    document.addEventListener("visibilitychange", onWake);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onWake);
-      document.removeEventListener("visibilitychange", onWake);
-    };
-  }, [enabled, load]);
+  const pollNew = React.useCallback(async () => {
+    if (!enabled || document.visibilityState !== "visible") return;
+    const cursor = cursorRef.current;
+    if (!cursor) {
+      await loadActive();
+      return;
+    }
+    const params = new URLSearchParams({ view: "active", limit: String(ACTIVE_LIMIT), after: cursor.createdAt });
+    if (cursor.id) params.set("afterId", cursor.id);
+    const res = await fetch(`/api/me/notifications?${params.toString()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const json = await readJsonSafe<NotificationsResponse>(res);
+    if (!json) return;
+    if (json.cursor) cursorRef.current = json.cursor;
+    setUnreadCount(json.unreadCount ?? 0);
+    const freshRows = (json.rows ?? []).filter((row) => !row.isRead);
+    if (freshRows.length === 0) return;
+    setRows((current) => mergeNotificationRows(current, freshRows, ACTIVE_LIMIT));
+    if (!panelOpenRef.current) setActiveToast((current) => mergeNotificationRows(current, freshRows, ACTIVE_LIMIT));
+  }, [enabled, loadActive]);
 
   React.useEffect(() => {
-    if (!activeToast) return;
-    const timer = window.setTimeout(() => setActiveToast(null), 7000);
+    if (!enabled) return;
+    void loadActive(true);
+    const timer = window.setInterval(() => void pollNew(), POLL_INTERVAL_MS);
+    const onFocus = () => void pollNew().then(() => loadActive());
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [enabled, loadActive, pollNew]);
+
+  React.useEffect(() => {
+    if (activeToast.length === 0) return;
+    const timer = window.setTimeout(() => setActiveToast([]), 7000);
     return () => window.clearTimeout(timer);
   }, [activeToast]);
 
@@ -163,9 +198,68 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
     const onPointerDown = (event: PointerEvent) => {
       if (panelRef.current && !panelRef.current.contains(event.target as Node)) setPanelOpen(false);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPanelOpen(false);
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [panelOpen]);
+
+  const loadHistory = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/me/notifications?view=history&limit=${HISTORY_LIMIT}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await readJsonSafe<NotificationsResponse>(res);
+      setHistoryRows(json?.rows ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const openHistory = React.useCallback(() => {
+    setShowHistory(true);
+    setSettingsOpen(false);
+    void loadHistory();
+  }, [loadHistory]);
+
+  const markRead = React.useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    setRows((current) => current.filter((row) => !idSet.has(row.id)));
+    setUnreadCount((count) => Math.max(0, count - ids.length));
+    await fetch("/api/me/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch(() => null);
+  }, []);
+
+  const markAllRead = React.useCallback(async () => {
+    if (busy || unreadCount === 0) return;
+    setBusy(true);
+    const previousRows = rows;
+    const previousUnread = unreadCount;
+    setRows([]);
+    setUnreadCount(0);
+    try {
+      const res = await fetch("/api/me/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAll: true }),
+      });
+      if (!res.ok) {
+        setRows(previousRows);
+        setUnreadCount(previousUnread);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, rows, unreadCount]);
 
   const loadPushState = React.useCallback(async () => {
     if (!enabled) return;
@@ -177,14 +271,13 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
       setPushState("blocked");
       return;
     }
-
     const res = await fetch("/api/me/push-subscriptions", { cache: "no-store" }).catch(() => null);
     if (!res?.ok) {
       setPushState("error");
       return;
     }
-    const json = (await res.json()) as { enabled?: boolean; publicKey?: string | null };
-    if (!json.enabled || !json.publicKey) {
+    const json = await readJsonSafe<{ enabled?: boolean; publicKey?: string | null }>(res);
+    if (!json?.enabled || !json.publicKey) {
       setPushState("not_configured");
       setPushPublicKey(null);
       return;
@@ -206,48 +299,6 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
     void loadPushState();
   }, [loadPushState]);
 
-  const markRead = React.useCallback(async (ids: string[]) => {
-    if (ids.length === 0) return;
-    await fetch("/api/me/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    }).catch(() => null);
-    setRows((current) => current.map((row) => (ids.includes(row.id) ? { ...row, isRead: true } : row)));
-    setUnreadCount((count) => Math.max(0, count - ids.length));
-  }, []);
-
-  const markAllRead = React.useCallback(async () => {
-    setBusy(true);
-    try {
-      await fetch("/api/me/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markAll: true }),
-      });
-      setRows((current) => current.map((row) => ({ ...row, isRead: true })));
-      setUnreadCount(0);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const clearAll = React.useCallback(async () => {
-    setBusy(true);
-    try {
-      await fetch("/api/me/notifications", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deleteAll: true }),
-      });
-      setRows([]);
-      setUnreadCount(0);
-      setPanelOpen(false);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   const enableBrowserPush = React.useCallback(async () => {
     if (!pushPublicKey || pushBusy) return;
     setPushBusy(true);
@@ -261,26 +312,18 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
         setPushState("disabled");
         return;
       }
-
       const registration = await navigator.serviceWorker.register("/browser-push-sw.js");
       const existing = await registration.pushManager.getSubscription();
-      const subscription =
-        existing ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToArrayBuffer(pushPublicKey),
-        }));
-
+      const subscription = existing ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToArrayBuffer(pushPublicKey),
+      });
       const res = await fetch("/api/me/push-subscriptions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
       });
-      if (!res.ok) {
-        setPushState("error");
-        return;
-      }
-      setPushState("enabled");
+      setPushState(res.ok ? "enabled" : "error");
     } catch (error) {
       console.error("[browser-push] subscribe failed", error);
       setPushState("error");
@@ -311,223 +354,119 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
   }, [pushBusy]);
 
   if (!enabled) return null;
+  const visibleRows = showHistory ? historyRows : rows;
 
   return (
     <div className="relative" ref={panelRef}>
       <button
         type="button"
         onClick={() => {
-          setPanelOpen((v) => !v);
-          void load();
+          const nextOpen = !panelOpen;
+          setPanelOpen(nextOpen);
+          if (nextOpen) {
+            setShowHistory(false);
+            setSettingsOpen(false);
+            setActiveToast([]);
+            void loadActive();
+          }
         }}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 transition-colors hover:border-zinc-400 hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
         aria-label="Открыть уведомления"
+        aria-expanded={panelOpen}
         title="Уведомления"
       >
         <BellIcon />
-        {unreadCount > 0 ? (
-          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        ) : null}
+        {unreadCount > 0 ? <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{unreadCount > 99 ? "99+" : unreadCount}</span> : null}
       </button>
 
       {panelOpen ? (
-        <div className="absolute right-0 top-11 z-50 w-[min(92vw,420px)] overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl">
-          <div className="border-b border-zinc-100 bg-gradient-to-r from-violet-50 to-amber-50 px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-bold text-zinc-950">Уведомления</div>
-                <div className="text-xs text-zinc-600">Непрочитанных: {unreadCount}</div>
+        <section className="fixed inset-x-3 top-16 z-50 max-h-[calc(100vh-5rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:w-[400px]" aria-label="Центр уведомлений">
+          <header className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                {showHistory ? <button type="button" onClick={() => setShowHistory(false)} className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900" aria-label="Вернуться к актуальным уведомлениям">←</button> : null}
+                <h2 className="text-sm font-bold text-zinc-950">{showHistory ? "История" : "Актуальное"}</h2>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void markAllRead()}
-                  disabled={busy || unreadCount === 0}
-                  className="rounded-lg border border-violet-200 bg-white px-2.5 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-50 disabled:opacity-50"
-                >
-                  Прочитать все
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void clearAll()}
-                  disabled={busy || rows.length === 0}
-                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  Очистить
-                </button>
-              </div>
+              {!showHistory && unreadCount > 0 ? <p className="mt-0.5 text-xs text-zinc-500">{unreadCount} требуют просмотра</p> : null}
             </div>
-            <BrowserPushControl
-              state={pushState}
-              busy={pushBusy}
-              onEnable={enableBrowserPush}
-              onDisable={disableBrowserPush}
-            />
+            {!showHistory ? (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => void markAllRead()} disabled={busy || unreadCount === 0} className="grid h-8 w-8 place-items-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-35" title="Отметить всё прочитанным" aria-label="Отметить всё прочитанным"><CheckIcon /></button>
+                <button type="button" onClick={() => setSettingsOpen((value) => !value)} className="grid h-8 w-8 place-items-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900" title="Настройки уведомлений" aria-label="Настройки уведомлений" aria-expanded={settingsOpen}><SettingsIcon /></button>
+              </div>
+            ) : null}
+          </header>
+
+          {settingsOpen && !showHistory ? <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3"><BrowserPushControl state={pushState} busy={pushBusy} onEnable={enableBrowserPush} onDisable={disableBrowserPush} /></div> : null}
+
+          <div className="max-h-[430px] overflow-y-auto overscroll-contain">
+            {loading && visibleRows.length === 0 ? <NotificationListSkeleton /> : visibleRows.length === 0 ? (
+              <div className="px-6 py-10 text-center">
+                <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-zinc-100 text-zinc-500"><CheckIcon /></div>
+                <p className="mt-3 text-sm font-semibold text-zinc-900">{showHistory ? "История пока пуста" : "Всё просмотрено"}</p>
+                {!showHistory ? <p className="mt-1 text-xs text-zinc-500">Новые события появятся здесь.</p> : null}
+              </div>
+            ) : <div className="divide-y divide-zinc-100">{visibleRows.map((row) => <NotificationListItem key={row.id} row={row} active={!showHistory} onRead={markRead} onClose={() => setPanelOpen(false)} />)}</div>}
           </div>
-          <div className="max-h-[430px] overflow-y-auto p-2">
-            {rows.length === 0 ? (
-              <div className="rounded-xl bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-500">Пока нет уведомлений.</div>
-            ) : (
-              rows.map((row) => <NotificationListItem key={row.id} row={row} onRead={markRead} onClose={() => setPanelOpen(false)} />)
-            )}
-          </div>
-        </div>
+
+          {!showHistory ? <footer className="border-t border-zinc-200 px-4 py-2.5 text-center"><button type="button" onClick={openHistory} className="text-xs font-semibold text-zinc-600 hover:text-zinc-950">Посмотреть историю</button></footer> : null}
+        </section>
       ) : null}
 
-      {activeToast ? <NotificationToast row={activeToast} onClose={() => setActiveToast(null)} /> : null}
+      {activeToast.length > 0 ? <NotificationToast rows={activeToast} onClose={() => setActiveToast([])} onOpenCenter={() => { setActiveToast([]); setShowHistory(false); setPanelOpen(true); }} onRead={markRead} /> : null}
     </div>
   );
 }
 
-function NotificationListItem({
-  row,
-  onRead,
-  onClose,
-}: {
-  row: InAppNotificationRow;
-  onRead: (ids: string[]) => Promise<void>;
-  onClose: () => void;
-}) {
+function NotificationListItem({ row, active, onRead, onClose }: { row: InAppNotificationRow; active: boolean; onRead: (ids: string[]) => Promise<void>; onClose: () => void }) {
   const href = hrefFor(row);
   const content = (
-    <div
-      className={[
-        "flex gap-3 rounded-xl border px-3 py-2.5 transition",
-        row.isRead ? "border-zinc-100 bg-white hover:bg-zinc-50" : "border-violet-100 bg-violet-50/70 hover:bg-violet-50",
-      ].join(" ")}
-    >
+    <div className="flex gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50">
       <NotificationIcon row={row} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <div className="truncate text-sm font-semibold text-zinc-950">{row.title}</div>
-          <div className="shrink-0 text-[11px] text-zinc-500">{formatTime(row.createdAt)}</div>
-        </div>
-        <div className="mt-1 line-clamp-2 text-xs text-zinc-600">{row.body}</div>
+        <div className="flex items-start justify-between gap-3"><div className="line-clamp-1 text-sm font-semibold text-zinc-950">{row.title}</div><div className="shrink-0 text-[11px] text-zinc-500">{formatTime(row.createdAt)}</div></div>
+        <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-600">{row.body}</div>
       </div>
+      {active ? <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-600" aria-label="Непрочитано" /> : null}
     </div>
   );
-
-  if (!href) {
-    return (
-      <button type="button" className="mb-2 block w-full text-left" onClick={() => void onRead([row.id])}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <Link
-      href={href}
-      className="mb-2 block"
-      onClick={() => {
-        void onRead([row.id]);
-        onClose();
-      }}
-    >
-      {content}
-    </Link>
-  );
+  if (!href) return <button type="button" className="block w-full" onClick={() => active && void onRead([row.id])}>{content}</button>;
+  return <Link href={href} className="block" onClick={() => { if (active) void onRead([row.id]); onClose(); }}>{content}</Link>;
 }
 
-function BrowserPushControl({
-  state,
-  busy,
-  onEnable,
-  onDisable,
-}: {
-  state: PushState;
-  busy: boolean;
-  onEnable: () => Promise<void>;
-  onDisable: () => Promise<void>;
-}) {
-  if (state === "loading") {
-    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Проверяем уведомления браузера...</div>;
-  }
-  if (state === "unsupported") {
-    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Этот браузер не поддерживает push-уведомления.</div>;
-  }
-  if (state === "not_configured") {
-    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-500">Push-уведомления будут доступны после добавления VAPID-ключей.</div>;
-  }
-  if (state === "blocked") {
-    return <div className="mt-3 rounded-xl bg-white/65 px-3 py-2 text-xs text-zinc-600">Уведомления заблокированы в настройках браузера.</div>;
-  }
-
+function BrowserPushControl({ state, busy, onEnable, onDisable }: { state: PushState; busy: boolean; onEnable: () => Promise<void>; onDisable: () => Promise<void> }) {
   const enabled = state === "enabled";
-  return (
-    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-violet-100 bg-white/75 px-3 py-2">
-      <div className="min-w-0">
-        <div className="text-xs font-semibold text-zinc-800">Уведомления браузера</div>
-        <div className="text-[11px] text-zinc-500">{enabled ? "Включены на этом устройстве" : state === "error" ? "Не удалось обновить подписку" : "Можно получать уведомления вне вкладки"}</div>
-      </div>
-      <button
-        type="button"
-        onClick={() => void (enabled ? onDisable() : onEnable())}
-        disabled={busy}
-        className={[
-          "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50",
-          enabled ? "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50" : "bg-violet-600 text-white hover:bg-violet-700",
-        ].join(" ")}
-      >
-        {busy ? "..." : enabled ? "Выключить" : "Включить"}
-      </button>
-    </div>
-  );
+  const description = state === "loading" ? "Проверяем состояние…" : state === "unsupported" ? "Этот браузер не поддерживает push-уведомления." : state === "not_configured" ? "Push станет доступен после настройки VAPID-ключей." : state === "blocked" ? "Разрешение заблокировано в настройках браузера." : state === "error" ? "Не удалось обновить подписку." : enabled ? "Включены на этом устройстве." : "Можно получать события вне открытой вкладки.";
+  const canToggle = !["loading", "unsupported", "not_configured", "blocked"].includes(state);
+  return <div className="flex items-center justify-between gap-4"><div className="min-w-0"><div className="text-xs font-semibold text-zinc-900">Уведомления браузера</div><div className="mt-0.5 text-[11px] leading-relaxed text-zinc-500">{description}</div></div>{canToggle ? <button type="button" onClick={() => void (enabled ? onDisable() : onEnable())} disabled={busy} className="shrink-0 rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 hover:border-zinc-500 disabled:opacity-50">{busy ? "…" : enabled ? "Выключить" : "Включить"}</button> : null}</div>;
 }
 
 function NotificationIcon({ row }: { row: InAppNotificationRow }) {
   const payload = payloadOf(row);
-  if (isAchievement(row)) {
-    return (
-      <img
-        src={achievementImageSrc(payload.code ?? "NO_CANCEL_STREAK", payload.level ?? "BRONZE")}
-        alt=""
-        className="h-11 w-11 shrink-0 rounded-xl object-cover"
-      />
-    );
-  }
-  return (
-    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
-      <BellIcon />
-    </div>
-  );
+  if (isAchievement(row)) return <Image src={achievementImageSrc(payload.code ?? "NO_CANCEL_STREAK", payload.level ?? "BRONZE")} alt="" width={36} height={36} className="h-9 w-9 shrink-0 rounded-lg object-cover" />;
+  const tone = row.type === "ORDER_DISCOUNT" ? "bg-amber-100 text-amber-800" : row.type === "PROJECT_UPDATED" ? "bg-sky-100 text-sky-800" : "bg-violet-100 text-violet-700";
+  return <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone}`}><BellIcon className="h-4 w-4" /></div>;
 }
 
-function NotificationToast({ row, onClose }: { row: InAppNotificationRow; onClose: () => void }) {
-  const href = hrefFor(row);
+function NotificationListSkeleton() {
+  return <div className="divide-y divide-zinc-100" aria-label="Загрузка уведомлений">{[0, 1, 2].map((key) => <div key={key} className="flex gap-3 px-4 py-3"><div className="h-9 w-9 animate-pulse rounded-lg bg-zinc-100" /><div className="flex-1"><div className="h-3 w-2/3 animate-pulse rounded bg-zinc-100" /><div className="mt-2 h-3 w-full animate-pulse rounded bg-zinc-100" /></div></div>)}</div>;
+}
+
+function NotificationToast({ rows, onClose, onOpenCenter, onRead }: { rows: InAppNotificationRow[]; onClose: () => void; onOpenCenter: () => void; onRead: (ids: string[]) => Promise<void> }) {
+  const row = rows[0];
+  const batched = rows.length > 1;
+  const href = !batched ? hrefFor(row) : null;
   return (
-    <div className="fixed right-4 top-20 z-[80] w-[min(92vw,360px)]">
-      <div
-        className={[
-          "rounded-2xl border bg-white/95 p-3 shadow-xl backdrop-blur",
-          isAchievement(row) ? "border-amber-200 bg-gradient-to-br from-amber-50/95 via-white to-violet-50/95" : "border-violet-200",
-        ].join(" ")}
-      >
+    <div className="fixed right-4 top-20 z-[60] w-[min(92vw,360px)]" role="status" aria-live="polite">
+      <div className="rounded-xl bg-zinc-950 p-3 text-white shadow-lg">
         <div className="flex items-start gap-3">
-          <NotificationIcon row={row} />
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10 text-white"><BellIcon className="h-4 w-4" /></div>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-violet-700">
-              {isAchievement(row) ? "Достижение получено" : "Новое уведомление"}
-            </div>
-            <div className="mt-0.5 text-sm font-semibold text-zinc-900">{row.title}</div>
-            <div className="mt-1 text-xs text-zinc-600">{row.body}</div>
-            {href ? (
-              <Link
-                href={href}
-                className="mt-2 inline-flex rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-100"
-                onClick={onClose}
-              >
-                Открыть
-              </Link>
-            ) : null}
+            <div className="text-sm font-semibold">{batched ? `${rows.length} новых событий` : row.title}</div>
+            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-300">{batched ? "Откройте центр, чтобы посмотреть актуальные уведомления." : row.body}</div>
+            {href ? <Link href={href} className="mt-2 inline-flex text-xs font-semibold text-amber-300 hover:text-amber-200" onClick={() => { void onRead([row.id]); onClose(); }}>Открыть →</Link> : batched ? <button type="button" className="mt-2 text-xs font-semibold text-amber-300 hover:text-amber-200" onClick={onOpenCenter}>Посмотреть →</button> : null}
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700" aria-label="Закрыть уведомление">
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
-              <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.6l6.3-6.31z" />
-            </svg>
-          </button>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label="Закрыть уведомление">×</button>
         </div>
       </div>
     </div>

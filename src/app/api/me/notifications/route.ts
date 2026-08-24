@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
@@ -5,13 +6,13 @@ import { requireUser } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 
 const QuerySchema = z.object({
-  unreadOnly: z
-    .union([z.literal("true"), z.literal("false")])
-    .optional(),
+  view: z.enum(["active", "history", "all"]).default("active"),
   limit: z
     .string()
     .regex(/^\d+$/)
     .optional(),
+  after: z.string().datetime().optional(),
+  afterId: z.string().optional(),
 });
 
 const MarkReadSchema = z.object({
@@ -30,37 +31,68 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const parsed = QuerySchema.safeParse({
-    unreadOnly: url.searchParams.get("unreadOnly") ?? undefined,
+    view: url.searchParams.get("view") ?? undefined,
     limit: url.searchParams.get("limit") ?? undefined,
+    after: url.searchParams.get("after") ?? undefined,
+    afterId: url.searchParams.get("afterId") ?? undefined,
   });
   if (!parsed.success) return jsonError(400, "Invalid query", parsed.error.flatten());
 
-  const unreadOnly = parsed.data.unreadOnly === "true";
   const limit = parsed.data.limit ? Math.min(100, Number(parsed.data.limit)) : 30;
+  const afterDate = parsed.data.after ? new Date(parsed.data.after) : null;
+  const visibilityWhere: Prisma.InAppNotificationWhereInput =
+    parsed.data.view === "active"
+      ? { isRead: false }
+      : parsed.data.view === "history"
+        ? { isRead: true }
+        : {};
+  const cursorWhere: Prisma.InAppNotificationWhereInput = afterDate
+    ? {
+        OR: [
+          { createdAt: { gt: afterDate } },
+          ...(parsed.data.afterId
+            ? [{ createdAt: afterDate, id: { gt: parsed.data.afterId } } satisfies Prisma.InAppNotificationWhereInput]
+            : []),
+        ],
+      }
+    : {};
 
-  const rows = await prisma.inAppNotification.findMany({
-    where: {
-      userId: auth.user.id,
-      ...(unreadOnly ? { isRead: false } : {}),
-    },
-    orderBy: [{ createdAt: "desc" }],
-    take: limit,
-    select: {
-      id: true,
-      type: true,
-      title: true,
-      body: true,
-      payloadJson: true,
-      isRead: true,
-      createdAt: true,
-    },
+  const [rows, unreadCount, latest] = await Promise.all([
+    prisma.inAppNotification.findMany({
+      where: {
+        userId: auth.user.id,
+        ...visibilityWhere,
+        ...cursorWhere,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        body: true,
+        payloadJson: true,
+        isRead: true,
+        createdAt: true,
+      },
+    }),
+    prisma.inAppNotification.count({
+      where: { userId: auth.user.id, isRead: false },
+    }),
+    prisma.inAppNotification.findFirst({
+      where: { userId: auth.user.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true, createdAt: true },
+    }),
+  ]);
+
+  return jsonOk({
+    rows,
+    unreadCount,
+    cursor: latest
+      ? { id: latest.id, createdAt: latest.createdAt.toISOString() }
+      : { id: "", createdAt: new Date().toISOString() },
   });
-
-  const unreadCount = await prisma.inAppNotification.count({
-    where: { userId: auth.user.id, isRead: false },
-  });
-
-  return jsonOk({ rows, unreadCount });
 }
 
 export async function PATCH(req: Request) {

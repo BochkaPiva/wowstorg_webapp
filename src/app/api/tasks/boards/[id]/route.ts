@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
-import { dateOnlyOrNull } from "@/server/work-tasks";
+import { serializeWorkTaskCard, workTaskCardSelect } from "@/server/work-task-data";
 
 const PatchBoardSchema = z
   .object({
@@ -55,6 +55,7 @@ export async function GET(
       title: true,
       description: true,
       isDefault: true,
+      updatedAt: true,
       columns: {
         orderBy: { sortOrder: "asc" },
         select: {
@@ -63,34 +64,12 @@ export async function GET(
           color: true,
           sortOrder: true,
           isDone: true,
+          updatedAt: true,
           tasks: {
             where: taskWhere,
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
             take: 200,
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              priority: true,
-              color: true,
-              sortOrder: true,
-              dueDate: true,
-              completedAt: true,
-              archivedAt: true,
-              createdAt: true,
-              assignee: { select: { id: true, displayName: true } },
-              project: { select: { id: true, title: true } },
-              order: { select: { id: true, eventName: true, customer: { select: { name: true } } } },
-              checklistItems: {
-                orderBy: { sortOrder: "asc" },
-                select: {
-                  id: true,
-                  title: true,
-                  isDone: true,
-                  sortOrder: true,
-                },
-              },
-            },
+            select: workTaskCardSelect,
           },
         },
       },
@@ -99,19 +78,27 @@ export async function GET(
 
   if (!board) return jsonError(404, "Доска не найдена");
 
+  const syncTime = Math.max(
+    board.updatedAt.getTime(),
+    ...board.columns.flatMap((column) => [
+      column.updatedAt.getTime(),
+      ...column.tasks.flatMap((task) => [
+        task.updatedAt.getTime(),
+        ...task.checklistItems.map((item) => item.updatedAt.getTime()),
+        task.activities[0]?.createdAt.getTime() ?? 0,
+      ]),
+    ]),
+  );
+
   return jsonOk({
     board: {
       ...board,
+      updatedAt: board.updatedAt.toISOString(),
+      syncToken: new Date(syncTime).toISOString(),
       columns: board.columns.map((column) => ({
         ...column,
-        tasks: column.tasks.map((task) => ({
-          ...task,
-          dueDate: dateOnlyOrNull(task.dueDate),
-          archivedAt: task.archivedAt?.toISOString() ?? null,
-          createdAt: task.createdAt.toISOString(),
-          checklistDone: task.checklistItems.filter((item) => item.isDone).length,
-          checklistTotal: task.checklistItems.length,
-        })),
+        updatedAt: column.updatedAt.toISOString(),
+        tasks: column.tasks.map(serializeWorkTaskCard),
       })),
     },
   });

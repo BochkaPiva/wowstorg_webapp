@@ -32,12 +32,22 @@ function isCronAuthorized(req: Request): { ok: true } | { ok: false; message: st
 }
 
 async function handleRun() {
+  const runId = crypto.randomUUID();
+  const startedAt = Date.now();
   try {
     const result = await runDailyReminders(new Date());
-    return jsonOk({ ok: true, ...result });
+    return jsonOk(
+      { ok: true, runId, durationMs: Date.now() - startedAt, ...result },
+      { headers: { "x-reminder-run-id": runId } },
+    );
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Ошибка выполнения напоминаний";
-    return jsonError(500, message);
+    console.error(`[reminders-run:${runId}] failed`, e);
+    return jsonError(
+      500,
+      "Не удалось выполнить напоминания",
+      { runId, durationMs: Date.now() - startedAt },
+      { headers: { "x-reminder-run-id": runId } },
+    );
   }
 }
 

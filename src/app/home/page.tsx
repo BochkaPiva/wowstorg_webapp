@@ -11,6 +11,7 @@ import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import { PendingOrderFeedbackCard } from "@/app/_ui/OrderServiceFeedback";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { readJsonSafe } from "@/lib/fetchJson";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 import { IssuanceCalendar } from "./IssuanceCalendar";
@@ -851,29 +852,39 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   const [error, setError] = React.useState<string | null>(null);
   const [snoozingSignalId, setSnoozingSignalId] = React.useState<string | null>(null);
 
+  const loadOperations = React.useCallback(async (showLoading = false) => {
+    if (!isWowstorg) return;
+    if (showLoading) setLoading(true);
+    try {
+      const response = await fetch("/api/dashboard/wowstorg/operations", { cache: "no-store" });
+      const json = await readJsonSafe<OperationsDashboardData>(response);
+      if (!response.ok || !json) throw new Error("Не удалось загрузить план");
+      setData(json);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [isWowstorg]);
+
   React.useEffect(() => {
     if (!isWowstorg) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/dashboard/wowstorg/operations", { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error("Не удалось загрузить план");
-        return r.json() as Promise<OperationsDashboardData>;
-      })
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
+    void loadOperations(true);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadOperations();
+    }, 45_000);
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void loadOperations();
     };
-  }, [isWowstorg]);
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
+  }, [isWowstorg, loadOperations]);
 
   const snoozeSignal = React.useCallback(async (signal: OperationsSignal) => {
     if (!signal.canSnooze) return;

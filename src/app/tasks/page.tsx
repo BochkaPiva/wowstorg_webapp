@@ -6,6 +6,9 @@ import { createPortal } from "react-dom";
 import { AppShell } from "@/app/_ui/AppShell";
 import { BoardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import { TaskActivityDrawer } from "@/app/tasks/TaskActivityDrawer";
+
+import "./task-board.css";
 
 type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 
@@ -20,8 +23,16 @@ type BoardListItem = {
 type TaskChecklistItem = {
   id: string;
   title: string;
+  description: string | null;
   isDone: boolean;
   sortOrder: number;
+  priority: Priority;
+  color: string | null;
+  dueDate: string | null;
+  reminderAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+  assignee: null | { id: string; displayName: string };
 };
 
 type BoardTask = {
@@ -32,15 +43,20 @@ type BoardTask = {
   color: string | null;
   sortOrder: number;
   dueDate: string | null;
+  reminderAt: string | null;
   completedAt: string | null;
   archivedAt: string | null;
   createdAt: string;
+  updatedAt: string;
   assignee: null | { id: string; displayName: string };
   project: null | { id: string; title: string };
   order: null | { id: string; eventName: string | null; customer: { name: string } };
   checklistItems: TaskChecklistItem[];
   checklistDone: number;
   checklistTotal: number;
+  commentCount: number;
+  lastActivityAt: string | null;
+  lastActivityKind: string | null;
 };
 
 type BoardColumn = {
@@ -49,6 +65,7 @@ type BoardColumn = {
   color: string | null;
   sortOrder: number;
   isDone: boolean;
+  updatedAt: string;
   tasks: BoardTask[];
 };
 
@@ -57,6 +74,8 @@ type BoardDetail = {
   title: string;
   description: string | null;
   isDefault: boolean;
+  updatedAt: string;
+  syncToken: string;
   columns: BoardColumn[];
 };
 
@@ -71,11 +90,13 @@ type TaskPatchBody = Partial<{
   description: string | null;
   assigneeUserId: string | null;
   dueDate: string | null;
+  reminderAt: string | null;
   priority: Priority;
   color: string | null;
   projectId: string | null;
   orderId: string | null;
   columnId: string;
+  sortOrder: number;
   completed: boolean;
   archived: boolean;
 }>;
@@ -85,6 +106,7 @@ type TaskCreateDraft = {
   description: string | null;
   assigneeUserId: string | null;
   dueDate: string | null;
+  reminderAt: string | null;
   priority: Priority;
   color: string | null;
   projectId: string | null;
@@ -180,6 +202,173 @@ function cardTextColor(color: string | null): string {
   return "text-white";
 }
 
+function toLocalDateTime(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function fromLocalDateTime(value: string): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function AnchoredPopover({
+  anchor,
+  onClose,
+  children,
+}: {
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [host, setHost] = React.useState<HTMLElement | null>(null);
+  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+
+  React.useLayoutEffect(() => {
+    const nextHost = getModalPortalHost();
+    setHost(nextHost);
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const embeddedInParent = nextHost?.ownerDocument !== document;
+    const frameRect = embeddedInParent && window.frameElement instanceof HTMLElement
+      ? window.frameElement.getBoundingClientRect()
+      : null;
+    const offsetLeft = frameRect?.left ?? 0;
+    const offsetTop = frameRect?.top ?? 0;
+    const viewport = embeddedInParent ? window.parent : window;
+    const width = 248;
+    const left = Math.max(10, Math.min(rect.left + offsetLeft, viewport.innerWidth - width - 10));
+    const estimatedHeight = 420;
+    const top = rect.bottom + offsetTop + 6 + estimatedHeight > viewport.innerHeight
+      ? Math.max(10, rect.top + offsetTop - estimatedHeight - 6)
+      : rect.bottom + offsetTop + 6;
+    setPosition({ top, left });
+  }, [anchor]);
+
+  React.useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || anchor?.contains(target)) return;
+      onClose();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const ownerDocument = host?.ownerDocument ?? document;
+    const ownerWindow = ownerDocument.defaultView ?? window;
+    document.addEventListener("pointerdown", closeOutside);
+    if (ownerDocument !== document) ownerDocument.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    if (ownerWindow !== window) ownerWindow.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      if (ownerDocument !== document) ownerDocument.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+      if (ownerWindow !== window) ownerWindow.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [anchor, host, onClose]);
+
+  if (!host || !anchor) return null;
+  return createPortal(
+    <div ref={menuRef} className="task-popover" style={position} onMouseDown={(event) => event.stopPropagation()}>
+      {children}
+    </div>,
+    host,
+  );
+}
+
+function TaskStickerMenu({
+  task,
+  users,
+  anchor,
+  onClose,
+  onPatch,
+}: {
+  task: BoardTask;
+  users: TasksMeta["users"];
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  onPatch: (body: TaskPatchBody) => void;
+}) {
+  return (
+    <AnchoredPopover anchor={anchor} onClose={onClose}>
+      <div className="task-popover__title">Добавить или изменить стикер</div>
+      <div className="task-popover__section">
+        <label className="block text-[10px] font-bold text-white/55">Исполнитель</label>
+        <select className="mt-1" value={task.assignee?.id ?? ""} onChange={(event) => {
+          onPatch({ assigneeUserId: event.target.value || null }); onClose();
+        }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select>
+      </div>
+      <div className="task-popover__section">
+        <label className="block text-[10px] font-bold text-white/55">Дедлайн</label>
+        <input className="mt-1" type="date" value={task.dueDate ?? ""} onChange={(event) => {
+          onPatch({ dueDate: event.target.value || null }); onClose();
+        }} />
+      </div>
+      <div className="task-popover__section">
+        <label className="block text-[10px] font-bold text-white/55">Приоритет</label>
+        <select className="mt-1" value={task.priority} onChange={(event) => {
+          onPatch({ priority: event.target.value as Priority }); onClose();
+        }}>{(Object.keys(PRIORITY_LABEL) as Priority[]).map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}</select>
+      </div>
+      <div className="task-popover__section">
+        <label className="block text-[10px] font-bold text-white/55">Напоминание</label>
+        <input className="mt-1" type="datetime-local" value={toLocalDateTime(task.reminderAt)} onChange={(event) => {
+          onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose();
+        }} />
+      </div>
+    </AnchoredPopover>
+  );
+}
+
+function TaskActionMenu({
+  task,
+  columns,
+  anchor,
+  onClose,
+  onPatch,
+  onEdit,
+  onActivity,
+  onSubtasks,
+  onDuplicate,
+  onDelete,
+}: {
+  task: BoardTask;
+  columns: BoardColumn[];
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  onPatch: (body: TaskPatchBody) => void;
+  onEdit: () => void;
+  onActivity: () => void;
+  onSubtasks: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <AnchoredPopover anchor={anchor} onClose={onClose}>
+      <button type="button" className="task-popover__item" onClick={() => { onSubtasks(); onClose(); }}>＋ Создать подзадачу</button>
+      <button type="button" className="task-popover__item" onClick={() => { onPatch({ completed: !task.completedAt }); onClose(); }}>{task.completedAt ? "↶ Вернуть в работу" : "✓ Отметить выполненной"}</button>
+      <button type="button" className="task-popover__item" onClick={() => { onEdit(); onClose(); }}>✎ Переименовать и настроить</button>
+      <button type="button" className="task-popover__item" onClick={() => { onActivity(); onClose(); }}>☵ История и заметки</button>
+      <div className="task-popover__section">
+        <label className="block text-[10px] font-bold text-white/55">Переместить</label>
+        <select className="mt-1" defaultValue="" onChange={(event) => {
+          const column = columns.find((item) => item.id === event.target.value);
+          if (column) onPatch({ columnId: column.id, completed: column.isDone });
+          onClose();
+        }}><option value="" disabled>Выберите колонку</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.title}</option>)}</select>
+      </div>
+      <button type="button" className="task-popover__item" onClick={() => { onPatch({ archived: true }); onClose(); }}>⌑ Поместить в архив</button>
+      <button type="button" className="task-popover__item" onClick={() => { onDuplicate(); onClose(); }}>⧉ Дублировать</button>
+      <div className="task-popover__section">
+        <div className="mb-2 text-[10px] font-bold text-white/55">Цвет задачи</div>
+        <div className="task-color-row">{TASK_COLORS.map((color) => <button key={color} type="button" aria-label={`Цвет ${color}`} className={`task-color-dot${task.color === color ? " is-active" : ""}`} style={{ backgroundColor: color }} onClick={() => { onPatch({ color }); onClose(); }} />)}</div>
+      </div>
+      <button type="button" className="task-popover__item is-danger" onClick={() => { onDelete(); onClose(); }}>⌫ Удалить</button>
+    </AnchoredPopover>
+  );
+}
+
 function RoundCheckbox({
   checked,
   onChange,
@@ -245,7 +434,7 @@ function ChecklistTreeSection({
   newChecklistTitle,
   onNewChecklistTitleChange,
   onToggleChecklistItem,
-  onDeleteChecklistItem,
+  onEditChecklistItem,
   onAddClick,
   onSubmitNewItem,
   onCancelAdding,
@@ -255,7 +444,7 @@ function ChecklistTreeSection({
   newChecklistTitle: string;
   onNewChecklistTitleChange: (value: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
-  onDeleteChecklistItem: (itemId: string) => void;
+  onEditChecklistItem: (itemId: string) => void;
   onAddClick: (event: React.MouseEvent) => void;
   onSubmitNewItem: () => void;
   onCancelAdding: () => void;
@@ -323,7 +512,10 @@ function ChecklistTreeSection({
           }}
           className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}
         >
-          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-2">
+          <div
+            className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-2"
+            style={item.color ? { backgroundColor: item.color } : undefined}
+          >
             <RoundCheckbox
               size="sm"
               checked={item.isDone}
@@ -337,18 +529,21 @@ function ChecklistTreeSection({
             >
               {item.title}
             </span>
+            {item.dueDate ? <span className="shrink-0 text-[10px] text-white/60">{fmtDate(item.dueDate)}</span> : null}
+            {(item.priority === "HIGH" || item.priority === "URGENT") ? <span className="shrink-0 text-[10px] text-amber-200">!</span> : null}
+            {item.assignee ? <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 text-[8px] font-bold text-white" title={item.assignee.displayName}>{initials(item.assignee.displayName)}</span> : null}
             <div className="group/delete -mr-0.5 flex w-8 shrink-0 items-center justify-end pl-1">
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onDeleteChecklistItem(item.id);
+                  onEditChecklistItem(item.id);
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
                 className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-white/45 opacity-0 transition-opacity duration-150 hover:bg-white/10 hover:text-white group-hover/delete:opacity-100"
-                aria-label="Удалить подзадачу"
+                aria-label="Настроить подзадачу"
               >
-                ×
+                ⋮
               </button>
             </div>
           </div>
@@ -399,7 +594,7 @@ function TaskChecklistPanel({
   newChecklistTitle,
   onToggleExpanded,
   onToggleChecklistItem,
-  onDeleteChecklistItem,
+  onEditChecklistItem,
   onNewChecklistTitleChange,
   onAddChecklistItem,
 }: {
@@ -408,7 +603,7 @@ function TaskChecklistPanel({
   newChecklistTitle: string;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
-  onDeleteChecklistItem: (itemId: string) => void;
+  onEditChecklistItem: (itemId: string) => void;
   onNewChecklistTitleChange: (value: string) => void;
   onAddChecklistItem: (title: string) => void;
 }) {
@@ -481,7 +676,7 @@ function TaskChecklistPanel({
           newChecklistTitle={newChecklistTitle}
           onNewChecklistTitleChange={onNewChecklistTitleChange}
           onToggleChecklistItem={onToggleChecklistItem}
-          onDeleteChecklistItem={onDeleteChecklistItem}
+          onEditChecklistItem={onEditChecklistItem}
           onAddClick={startAdding}
           onSubmitNewItem={submitNewItem}
           onCancelAdding={() => {
@@ -503,12 +698,19 @@ function TaskCard({
   expanded,
   onToggleExpanded,
   onToggleChecklistItem,
-  onDeleteChecklistItem,
   onDragStart,
   onDragEnd,
   onDragOverTask,
   onDropOnTask,
   dropEdge,
+  users,
+  columns,
+  onOpenActivity,
+  onOpenSubtasks,
+  onDuplicate,
+  onDelete,
+  isDragging,
+  dragPreviewHeight,
 }: {
   task: BoardTask;
   column: BoardColumn;
@@ -518,17 +720,26 @@ function TaskCard({
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
-  onDeleteChecklistItem: (itemId: string) => void;
-  onDragStart: (taskId: string, fromColumnId: string) => void;
+  onDragStart: (taskId: string, fromColumnId: string, cardHeight: number) => void;
   onDragEnd: () => void;
   onDragOverTask: (taskId: string, columnId: string, edge: TaskDropEdge) => void;
   onDropOnTask: (taskId: string, targetTaskId: string, targetColumnId: string, edge: TaskDropEdge) => void;
   dropEdge: TaskDropEdge | null;
+  users: TasksMeta["users"];
+  columns: BoardColumn[];
+  onOpenActivity: (taskId: string) => void;
+  onOpenSubtasks: (taskId: string) => void;
+  onDuplicate: (taskId: string) => void;
+  onDelete: (taskId: string) => void;
+  isDragging: boolean;
+  dragPreviewHeight: number;
 }) {
   const [title, setTitle] = React.useState(task.title);
   const [description, setDescription] = React.useState(task.description ?? "");
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
   const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
+  const [openMenu, setOpenMenu] = React.useState<"stickers" | "assignee" | "actions" | null>(null);
+  const [menuAnchor, setMenuAnchor] = React.useState<HTMLButtonElement | null>(null);
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
@@ -583,26 +794,26 @@ function TaskCard({
         if (movedTaskId) onDropOnTask(movedTaskId, task.id, column.id, edge);
       }}
     >
-      {dropEdge ? (
-        <div
-          className={[
-            "pointer-events-none absolute left-2 right-2 z-10 h-1 rounded-full bg-sky-400 shadow-[0_0_0_4px_rgba(14,165,233,0.16)]",
-            dropEdge === "before" ? "-top-2" : "-bottom-2",
-          ].join(" ")}
-        />
-      ) : null}
+      {dropEdge === "before" ? <div className="task-drop-placeholder mb-3" style={{ height: dragPreviewHeight || 76 }} /> : null}
     <article
       data-task-card-id={task.id}
       draggable
       onDragStart={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button,input,textarea,select,a")) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", task.id);
-        onDragStart(task.id, column.id);
+        event.dataTransfer.setData("application/x-wowstorg-task-id", task.id);
+        onDragStart(task.id, column.id, event.currentTarget.getBoundingClientRect().height);
       }}
       onDragEnd={onDragEnd}
       className={[
-        "group overflow-hidden rounded-lg border border-black/15 bg-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.16)]",
-        "cursor-grab transition-[filter,box-shadow] duration-150 hover:brightness-[1.04] hover:shadow-[0_10px_24px_rgba(15,23,42,0.22)] active:cursor-grabbing",
+        "group overflow-hidden rounded-lg border border-black/15 bg-slate-700",
+        "cursor-grab transition-[filter,opacity] duration-150 hover:brightness-[1.04] active:cursor-grabbing",
+        isDragging ? "task-card-dragging" : "",
         textTone,
       ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
@@ -652,12 +863,20 @@ function TaskCard({
           </div>
           <button
             type="button"
-            onClick={() => onOpen(task)}
+            onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "actions" ? null : "actions"); }}
+            onMouseDown={(event) => event.stopPropagation()}
             className="rounded px-1.5 py-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-            title="Открыть полное редактирование"
+            title="Действия с задачей"
+            aria-label="Действия с задачей"
           >
             ⋮
           </button>
+        </div>
+
+        <div className={`task-card-tools${task.commentCount > 0 ? " has-content" : ""}`}>
+          <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
+          <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}>♙</button>
+          <button type="button" className="task-card-comments" onClick={(event) => { event.stopPropagation(); onOpenActivity(task.id); }} onMouseDown={(event) => event.stopPropagation()} title="История и заметки">☵{task.commentCount > 0 ? <span>{task.commentCount}</span> : null}</button>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
@@ -671,6 +890,7 @@ function TaskCard({
               {PRIORITY_LABEL[task.priority]}
             </span>
           ) : null}
+          {task.reminderAt ? <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-white/90">◴ Напоминание</span> : null}
           {task.assignee ? (
             <span className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full bg-pink-600 text-[11px] font-bold text-white">
               {initials(task.assignee.displayName)}
@@ -685,11 +905,21 @@ function TaskCard({
         newChecklistTitle={newChecklistTitle}
         onToggleExpanded={onToggleExpanded}
         onToggleChecklistItem={onToggleChecklistItem}
-        onDeleteChecklistItem={onDeleteChecklistItem}
+        onEditChecklistItem={() => onOpenSubtasks(task.id)}
         onNewChecklistTitleChange={setNewChecklistTitle}
         onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
       />
     </article>
+      {dropEdge === "after" ? <div className="task-drop-placeholder mt-3" style={{ height: dragPreviewHeight || 76 }} /> : null}
+      {openMenu === "stickers" ? <TaskStickerMenu task={task} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
+      {openMenu === "assignee" ? (
+        <AnchoredPopover anchor={menuAnchor} onClose={() => setOpenMenu(null)}>
+          <div className="task-popover__title">Исполнитель</div>
+          <button type="button" className="task-popover__item" onClick={() => { onPatchTask(task.id, { assigneeUserId: null }); setOpenMenu(null); }}>Без исполнителя</button>
+          {users.map((user) => <button key={user.id} type="button" className="task-popover__item" onClick={() => { onPatchTask(task.id, { assigneeUserId: user.id }); setOpenMenu(null); }}><span className="task-avatar !h-6 !w-6">{initials(user.displayName)}</span>{user.displayName}</button>)}
+        </AnchoredPopover>
+      ) : null}
+      {openMenu === "actions" ? <TaskActionMenu task={task} columns={columns} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} onEdit={() => onOpen(task)} onActivity={() => onOpenActivity(task.id)} onSubtasks={() => onOpenSubtasks(task.id)} onDuplicate={() => onDuplicate(task.id)} onDelete={() => onDelete(task.id)} /> : null}
     </div>
   );
 }
@@ -919,6 +1149,7 @@ function TaskEditor({
   const [description, setDescription] = React.useState(task?.description ?? "");
   const [assigneeUserId, setAssigneeUserId] = React.useState(task?.assignee?.id ?? "");
   const [dueDate, setDueDate] = React.useState(task?.dueDate ?? "");
+  const [reminderAt, setReminderAt] = React.useState(toLocalDateTime(task?.reminderAt ?? null));
   const [priority, setPriority] = React.useState<Priority>(task?.priority ?? "NORMAL");
   const [color, setColor] = React.useState(task?.color ?? TASK_COLORS[0]!);
   const [projectId, setProjectId] = React.useState(task?.project?.id ?? defaultProjectId ?? "");
@@ -938,6 +1169,7 @@ function TaskEditor({
     setDescription(task?.description ?? "");
     setAssigneeUserId(task?.assignee?.id ?? "");
     setDueDate(task?.dueDate ?? "");
+    setReminderAt(toLocalDateTime(task?.reminderAt ?? null));
     setPriority(task?.priority ?? "NORMAL");
     setColor(task?.color ?? TASK_COLORS[0]!);
     setProjectId(task?.project?.id ?? defaultProjectId ?? "");
@@ -965,6 +1197,7 @@ function TaskEditor({
         description: description.trim() || null,
         assigneeUserId: assigneeUserId || null,
         dueDate: dueDate || null,
+        reminderAt: fromLocalDateTime(reminderAt),
         priority,
         color,
         projectId: projectId || null,
@@ -1142,6 +1375,15 @@ function TaskEditor({
               />
             </label>
             <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Напоминание</span>
+              <input
+                type="datetime-local"
+                value={reminderAt}
+                onChange={(event) => setReminderAt(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+              />
+            </label>
+            <label className="block">
               <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Приоритет</span>
               <select
                 value={priority}
@@ -1300,7 +1542,12 @@ function TasksPageContent() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [editor, setEditor] = React.useState<{ task: BoardTask | null; columnId: string | null } | null>(null);
+  const [activityDrawer, setActivityDrawer] = React.useState<{
+    taskId: string;
+    tab: "activity" | "details" | "subtasks";
+  } | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
+  const [dragPreviewHeight, setDragPreviewHeight] = React.useState(76);
   const [draggingFromColumnId, setDraggingFromColumnId] = React.useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const [dragOverTask, setDragOverTask] = React.useState<{
@@ -1319,9 +1566,10 @@ function TasksPageContent() {
   const [archiveTasks, setArchiveTasks] = React.useState<Array<BoardTask & { columnTitle: string }>>([]);
   const [archivePortalHost, setArchivePortalHost] = React.useState<HTMLElement | null>(null);
   const boardRef = React.useRef<BoardDetail | null>(null);
-  const moveRequestIdRef = React.useRef(0);
-  const latestMoveByTaskRef = React.useRef<Map<string, number>>(new Map());
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
+  const mutationSequenceRef = React.useRef(0);
+  const latestMutationByTaskRef = React.useRef<Map<string, number>>(new Map());
+  const pendingMutationsRef = React.useRef(0);
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
   React.useEffect(() => {
@@ -1445,6 +1693,38 @@ function TasksPageContent() {
   React.useEffect(() => {
     if (boardId) void loadBoard(boardId);
   }, [boardId, loadBoard]);
+
+  React.useEffect(() => {
+    if (!boardId || !isWowstorg) return;
+    let stopped = false;
+    const sync = async () => {
+      if (
+        stopped ||
+        document.visibilityState !== "visible" ||
+        pendingMutationsRef.current > 0 ||
+        draggingTaskId ||
+        draggingColumnId ||
+        editor ||
+        activityDrawer
+      ) return;
+      try {
+        const nextBoard = await fetchBoardDetail(boardId);
+        if (!stopped && nextBoard && nextBoard.syncToken !== boardRef.current?.syncToken) applyBoard(nextBoard);
+      } catch {
+        // Фоновая синхронизация не должна мешать работе с доской.
+      }
+    };
+    const timer = window.setInterval(() => void sync(), 12_000);
+    const onFocus = () => void sync();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [activityDrawer, applyBoard, boardId, draggingColumnId, draggingTaskId, editor, fetchBoardDetail, isWowstorg]);
 
   async function addColumn() {
     if (!board) return;
@@ -1577,30 +1857,6 @@ function TasksPageContent() {
     }
   }
 
-  async function deleteChecklistItemInline(taskId: string, itemId: string) {
-    const previousBoard = boardRef.current;
-    const isPending = itemId.startsWith("temp-checklist-");
-
-    updateTaskInBoard(taskId, (task) => {
-      const checklistItems = task.checklistItems.filter((item) => item.id !== itemId);
-      return {
-        ...task,
-        checklistItems,
-        checklistTotal: checklistItems.length,
-        checklistDone: checklistItems.filter((item) => item.isDone).length,
-      };
-    });
-
-    if (isPending) return;
-
-    try {
-      await readApi(await fetch(`/api/tasks/checklist/${itemId}`, { method: "DELETE" }));
-    } catch (e) {
-      applyBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
-    }
-  }
-
   function updateTaskInBoard(taskId: string, updater: (task: BoardTask) => BoardTask) {
     updateBoard((current) =>
       current
@@ -1642,15 +1898,20 @@ function TasksPageContent() {
       color: draft.color,
       sortOrder: column.tasks.reduce((max, task) => Math.max(max, task.sortOrder), 0) + 1000,
       dueDate: draft.dueDate,
+      reminderAt: draft.reminderAt,
       completedAt: column.isDone ? new Date().toISOString() : null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       assignee,
       project: project ? { id: project.id, title: project.title } : null,
       order: orderMeta ? { id: orderMeta.id, eventName: null, customer: { name: orderMeta.label } } : null,
       checklistItems: [],
       checklistDone: 0,
       checklistTotal: 0,
+      commentCount: 0,
+      lastActivityAt: null,
+      lastActivityKind: "CREATED",
     };
 
     applyBoard({
@@ -1682,30 +1943,96 @@ function TasksPageContent() {
 
   async function patchTaskInline(taskId: string, body: TaskPatchBody) {
     const previousBoard = boardRef.current;
-    updateTaskInBoard(taskId, (task) => ({
-      ...task,
+    if (!previousBoard) return;
+    const sourceTask = previousBoard.columns.flatMap((column) => column.tasks).find((task) => task.id === taskId);
+    if (!sourceTask) return;
+    const mutationId = mutationSequenceRef.current + 1;
+    mutationSequenceRef.current = mutationId;
+    latestMutationByTaskRef.current.set(taskId, mutationId);
+    pendingMutationsRef.current += 1;
+    const nextAssignee = body.assigneeUserId === undefined
+      ? sourceTask.assignee
+      : body.assigneeUserId
+        ? meta?.users.find((user) => user.id === body.assigneeUserId) ?? null
+        : null;
+    const nextProject = body.projectId === undefined
+      ? sourceTask.project
+      : body.projectId
+        ? meta?.projects.find((project) => project.id === body.projectId) ?? null
+        : null;
+    const nextOrderMeta = body.orderId === undefined
+      ? null
+      : body.orderId
+        ? meta?.orders.find((order) => order.id === body.orderId) ?? null
+        : null;
+    const optimisticTask: BoardTask = {
+      ...sourceTask,
       ...(body.title !== undefined ? { title: body.title } : {}),
       ...(body.description !== undefined ? { description: body.description } : {}),
-      ...(body.completed !== undefined ? { completedAt: body.completed ? new Date().toISOString() : null } : {}),
-    }));
-    try {
-      await readApi(
-        await fetch(`/api/tasks/tasks/${taskId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-      );
-      const needsBoardReload =
-        body.columnId !== undefined ||
-        body.assigneeUserId !== undefined ||
-        body.projectId !== undefined ||
-        body.orderId !== undefined;
-      if (needsBoardReload && boardRef.current) await loadBoard(boardRef.current.id);
-    } catch (e) {
-      applyBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось обновить задачу");
-    }
+      ...(body.priority !== undefined ? { priority: body.priority } : {}),
+      ...(body.color !== undefined ? { color: body.color } : {}),
+      ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+      ...(body.reminderAt !== undefined ? { reminderAt: body.reminderAt } : {}),
+      ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+      ...(body.completed !== undefined ? { completedAt: body.completed ? (sourceTask.completedAt ?? new Date().toISOString()) : null } : {}),
+      ...(body.archived !== undefined ? { archivedAt: body.archived ? new Date().toISOString() : null } : {}),
+      ...(body.assigneeUserId !== undefined ? { assignee: nextAssignee } : {}),
+      ...(body.projectId !== undefined
+        ? { project: nextProject ? { id: nextProject.id, title: nextProject.title } : null }
+        : {}),
+      ...(body.orderId !== undefined
+        ? { order: nextOrderMeta ? { id: nextOrderMeta.id, eventName: null, customer: { name: nextOrderMeta.label } } : null }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    const targetColumnId = body.columnId ?? previousBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId))?.id;
+    updateBoard((current) => current ? {
+      ...current,
+      columns: current.columns.map((column) => {
+        const withoutTask = column.tasks.filter((task) => task.id !== taskId);
+        if (body.archived || column.id !== targetColumnId) return { ...column, tasks: withoutTask };
+        return { ...column, tasks: [...withoutTask, optimisticTask].sort((left, right) => left.sortOrder - right.sortOrder) };
+      }),
+    } : current);
+    const sendMutation = async () => {
+      try {
+        const data = await readApi<{ task: BoardTask }>(
+          await fetch(`/api/tasks/tasks/${taskId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+        );
+        if (latestMutationByTaskRef.current.get(taskId) === mutationId) {
+          if (!body.archived) {
+            updateTaskInBoard(taskId, (currentTask) => ({ ...data.task, sortOrder: currentTask.sortOrder }));
+          }
+          latestMutationByTaskRef.current.delete(taskId);
+        }
+      } catch (e) {
+        if (latestMutationByTaskRef.current.get(taskId) === mutationId) {
+          latestMutationByTaskRef.current.delete(taskId);
+          const originalColumnId = previousBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId))?.id;
+          updateBoard((current) => current ? {
+            ...current,
+            columns: current.columns.map((column) => {
+              const withoutTask = column.tasks.filter((task) => task.id !== taskId);
+              return column.id === originalColumnId
+                ? { ...column, tasks: [...withoutTask, sourceTask].sort((left, right) => left.sortOrder - right.sortOrder) }
+                : { ...column, tasks: withoutTask };
+            }),
+          } : current);
+          setError(e instanceof Error ? e.message : "Не удалось обновить задачу");
+        }
+      } finally {
+        pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+      }
+    };
+    const previousMutation = moveQueueByTaskRef.current.get(taskId) ?? Promise.resolve();
+    const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
+    moveQueueByTaskRef.current.set(taskId, queuedMutation);
+    await queuedMutation;
+    if (moveQueueByTaskRef.current.get(taskId) === queuedMutation) moveQueueByTaskRef.current.delete(taskId);
   }
 
   async function addChecklistItemInline(taskId: string, title: string) {
@@ -1717,7 +2044,20 @@ function TasksPageContent() {
       const nextSortOrder = task.checklistItems.reduce((max, item) => Math.max(max, item.sortOrder), 0) + 1000;
       const checklistItems = [
         ...task.checklistItems,
-        { id: tempId, title, isDone: false, sortOrder: nextSortOrder },
+        {
+          id: tempId,
+          title,
+          description: null,
+          isDone: false,
+          sortOrder: nextSortOrder,
+          priority: "NORMAL" as const,
+          color: null,
+          dueDate: null,
+          reminderAt: null,
+          completedAt: null,
+          updatedAt: new Date().toISOString(),
+          assignee: null,
+        },
       ];
       return {
         ...task,
@@ -1727,8 +2067,9 @@ function TasksPageContent() {
       };
     });
 
+    pendingMutationsRef.current += 1;
     try {
-      const data = await readApi<{ item: { id: string } }>(
+      const data = await readApi<{ item: TaskChecklistItem }>(
         await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1737,9 +2078,7 @@ function TasksPageContent() {
       );
       updateTaskInBoard(taskId, (task) => ({
         ...task,
-        checklistItems: task.checklistItems.map((item) =>
-          item.id === tempId ? { ...item, id: data.item.id } : item,
-        ),
+        checklistItems: task.checklistItems.map((item) => item.id === tempId ? data.item : item),
       }));
     } catch (e) {
       applyBoard(previousBoard);
@@ -1798,11 +2137,11 @@ function TasksPageContent() {
           body: JSON.stringify({ sortOrder: nextSortOrder }),
         }),
       );
-      const freshBoard = await fetchBoardDetail(currentBoard.id);
-      if (freshBoard) applyBoard(freshBoard);
     } catch (e) {
       applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось изменить порядок задач");
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
     }
   }
 
@@ -1846,6 +2185,7 @@ function TasksPageContent() {
       ),
     });
 
+    pendingMutationsRef.current += 1;
     try {
       await readApi(
         await fetch(`/api/tasks/columns/${columnId}`, {
@@ -1854,15 +2194,20 @@ function TasksPageContent() {
           body: JSON.stringify({ sortOrder: nextSortOrder }),
         }),
       );
-      const freshBoard = await fetchBoardDetail(currentBoard.id);
-      if (freshBoard) applyBoard(freshBoard);
     } catch (e) {
       applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось изменить порядок колонок");
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
     }
   }
 
-  async function moveTaskToColumn(taskId: string, targetColumnId: string) {
+  async function moveTaskToColumn(
+    taskId: string,
+    targetColumnId: string,
+    targetTaskId?: string,
+    edge: TaskDropEdge = "after",
+  ) {
     const currentBoard = boardRef.current;
     if (!currentBoard) return;
     const nextColumn = currentBoard.columns.find((column) => column.id === targetColumnId);
@@ -1871,59 +2216,70 @@ function TasksPageContent() {
     if (!sourceColumn || sourceColumn.id === targetColumnId) return;
     const movingTask = sourceColumn.tasks.find((task) => task.id === taskId);
     if (!movingTask) return;
+    const targetTasks = nextColumn.tasks.filter((task) => task.id !== taskId);
+    const rawIndex = targetTaskId ? targetTasks.findIndex((task) => task.id === targetTaskId) : -1;
+    const insertIndex = rawIndex < 0 ? targetTasks.length : edge === "before" ? rawIndex : rawIndex + 1;
+    const previousTask = targetTasks[insertIndex - 1] ?? null;
+    const followingTask = targetTasks[insertIndex] ?? null;
+    const sortOrder = previousTask && followingTask
+      ? Math.floor((previousTask.sortOrder + followingTask.sortOrder) / 2)
+      : previousTask
+        ? previousTask.sortOrder + 1000
+        : followingTask
+          ? followingTask.sortOrder - 1000
+          : 1000;
+    await patchTaskInline(taskId, {
+      columnId: nextColumn.id,
+      completed: nextColumn.isDone,
+      sortOrder,
+    });
+  }
 
-    const previousBoard = currentBoard;
-    const moveRequestId = moveRequestIdRef.current + 1;
-    moveRequestIdRef.current = moveRequestId;
-    latestMoveByTaskRef.current.set(taskId, moveRequestId);
+  async function duplicateTask(taskId: string) {
+    const currentBoard = boardRef.current;
+    if (!currentBoard) return;
+    pendingMutationsRef.current += 1;
     setError(null);
+    try {
+      const data = await readApi<{ task: BoardTask }>(
+        await fetch(`/api/tasks/tasks/${taskId}/duplicate`, { method: "POST" }),
+      );
+      const sourceColumn = currentBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId));
+      if (!sourceColumn) return;
+      updateBoard((boardState) => boardState ? {
+        ...boardState,
+        columns: boardState.columns.map((column) => column.id === sourceColumn.id
+          ? { ...column, tasks: [...column.tasks, data.task].sort((left, right) => left.sortOrder - right.sortOrder) }
+          : column),
+      } : boardState);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось дублировать задачу");
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+    }
+  }
 
-    const movedTask: BoardTask = {
-      ...movingTask,
-      completedAt: nextColumn.isDone ? (movingTask.completedAt ?? new Date().toISOString()) : null,
-    };
+  async function deleteTask(taskId: string) {
+    if (!window.confirm("Удалить задачу вместе с подзадачами и историей?")) return;
+    const previousBoard = boardRef.current;
+    if (!previousBoard) return;
     applyBoard({
-      ...currentBoard,
-      columns: currentBoard.columns.map((column) => {
-        const tasksWithoutMoving = column.tasks.filter((task) => task.id !== taskId);
-        if (column.id === targetColumnId) {
-          return { ...column, tasks: [...tasksWithoutMoving, movedTask] };
-        }
-        return { ...column, tasks: tasksWithoutMoving };
-      }),
+      ...previousBoard,
+      columns: previousBoard.columns.map((column) => ({
+        ...column,
+        tasks: column.tasks.filter((task) => task.id !== taskId),
+      })),
     });
-
-    const sendMove = async () => {
-      try {
-        await readApi(
-          await fetch(`/api/tasks/tasks/${taskId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ columnId: nextColumn.id, completed: nextColumn.isDone }),
-          }),
-        );
-        const freshBoard = await fetchBoardDetail(currentBoard.id);
-        if (latestMoveByTaskRef.current.get(taskId) === moveRequestId) {
-          latestMoveByTaskRef.current.delete(taskId);
-          if (freshBoard) applyBoard(freshBoard);
-        }
-      } catch (e) {
-        if (latestMoveByTaskRef.current.get(taskId) === moveRequestId) {
-          latestMoveByTaskRef.current.delete(taskId);
-          applyBoard(previousBoard);
-          setError(e instanceof Error ? e.message : "Не удалось переместить задачу");
-        }
-      }
-    };
-
-    const previousMove = moveQueueByTaskRef.current.get(taskId) ?? Promise.resolve();
-    const queuedMove = previousMove.catch(() => undefined).then(sendMove);
-    moveQueueByTaskRef.current.set(taskId, queuedMove);
-    void queuedMove.finally(() => {
-      if (moveQueueByTaskRef.current.get(taskId) === queuedMove) {
-        moveQueueByTaskRef.current.delete(taskId);
-      }
-    });
+    pendingMutationsRef.current += 1;
+    try {
+      await readApi(await fetch(`/api/tasks/tasks/${taskId}`, { method: "DELETE" }));
+      if (activityDrawer?.taskId === taskId) setActivityDrawer(null);
+    } catch (cause) {
+      applyBoard(previousBoard);
+      setError(cause instanceof Error ? cause.message : "Не удалось удалить задачу");
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+    }
   }
 
   function toggleTaskExpanded(taskId: string) {
@@ -2142,16 +2498,22 @@ function TasksPageContent() {
                     key={task.id}
                     task={task}
                     column={column}
+                    users={meta?.users ?? []}
+                    columns={board.columns}
                     onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}
+                    onOpenActivity={(taskId) => setActivityDrawer({ taskId, tab: "activity" })}
+                    onOpenSubtasks={(taskId) => setActivityDrawer({ taskId, tab: "subtasks" })}
+                    onDuplicate={(taskId) => void duplicateTask(taskId)}
+                    onDelete={(taskId) => void deleteTask(taskId)}
                     onPatchTask={(taskId, body) => void patchTaskInline(taskId, body)}
                     onAddChecklistItem={(taskId, title) => void addChecklistItemInline(taskId, title)}
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
                     onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(task.id, itemId, { isDone })}
-                    onDeleteChecklistItem={(itemId) => void deleteChecklistItemInline(task.id, itemId)}
-                    onDragStart={(taskId, fromColumnId) => {
+                    onDragStart={(taskId, fromColumnId, cardHeight) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);
+                      setDragPreviewHeight(cardHeight);
                       setDraggingColumnId(null);
                       setDragOverColumn(null);
                     }}
@@ -2177,7 +2539,7 @@ function TasksPageContent() {
                       if (targetColumnId === draggingFromColumnId) {
                         void reorderTaskWithinColumn(taskId, targetTaskId, targetColumnId, edge);
                       } else {
-                        void moveTaskToColumn(taskId, targetColumnId);
+                        void moveTaskToColumn(taskId, targetColumnId, targetTaskId, edge);
                       }
                     }}
                     dropEdge={
@@ -2185,8 +2547,13 @@ function TasksPageContent() {
                         ? dragOverTask.edge
                         : null
                     }
+                    isDragging={draggingTaskId === task.id}
+                    dragPreviewHeight={dragPreviewHeight}
                   />
                 ))}
+                {dragOverColumnId === column.id && draggingTaskId && column.id !== draggingFromColumnId ? (
+                  <div className="task-drop-placeholder" style={{ height: dragPreviewHeight }} />
+                ) : null}
                 {column.tasks.length === 0 ? (
                   <div className="rounded-md border border-dashed border-zinc-300 bg-white/70 px-3 py-4 text-sm font-semibold text-zinc-500">
                     {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
@@ -2259,6 +2626,23 @@ function TasksPageContent() {
           onSaved={() => void refresh()}
           onCreatedOptimistic={addTaskOptimistically}
           onDeleted={() => void refresh()}
+        />
+      ) : null}
+      {activityDrawer ? (
+        <TaskActivityDrawer
+          key={`${activityDrawer.taskId}:${activityDrawer.tab}`}
+          taskId={activityDrawer.taskId}
+          users={meta?.users ?? []}
+          columns={(board?.columns ?? []).map((column) => ({
+            id: column.id,
+            title: column.title,
+            isDone: column.isDone,
+          }))}
+          initialTab={activityDrawer.tab}
+          onClose={() => setActivityDrawer(null)}
+          onChanged={() => {
+            if (boardRef.current) void loadBoard(boardRef.current.id);
+          }}
         />
       ) : null}
     </div>

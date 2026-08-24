@@ -12,11 +12,17 @@ import {
   escapeTelegramHtml,
   getWarehouseChatId,
   getWarehouseTopicId,
+  type TelegramInlineKeyboardMarkup,
 } from "@/server/telegram";
 import { isTelegramConfigured } from "@/server/telegram";
 import { prisma } from "@/server/db";
 import { formatRentalPeriodRangeFromUtcDatesRu } from "@/lib/rental-days";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
+import {
+  estimateApprovalKeyboard,
+  returnDeclarationKeyboard,
+  serviceRatingKeyboard,
+} from "@/server/telegram-order-actions";
 
 /** Пишет строку в notification-debug.log в корне проекта (можно открыть файл и посмотреть после теста). */
 function notifyDebugLog(msg: string): void {
@@ -446,6 +452,7 @@ async function sendToOrderGreenwichUser(
   order: Pick<OrderForNotify, "id" | "greenwichUserId">,
   text: string,
   estimateFile?: { buffer: Buffer; fileName: string },
+  options?: { replyMarkup?: TelegramInlineKeyboardMarkup },
 ): Promise<number> {
   try {
     const row = await prisma.order.findUnique({
@@ -478,7 +485,7 @@ async function sendToOrderGreenwichUser(
       return 0;
     }
 
-    const ok = await sendTelegramMessage(chatId, text);
+    const ok = await sendTelegramMessage(chatId, text, options);
     if (!ok) {
       notifyDebugLog(`[sendToOrderGreenwichUser] text not sent order=${order.id} user=${row.greenwichUserId}`);
       return 0;
@@ -645,8 +652,10 @@ export async function notifyEstimateSent(
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
 
     const bodyGrinvich =
-      bodyWarehouse +
-      `\n\n⚠️ Проверьте все позиции — склад мог внести правки. Согласуйте смету или запросите изменения.`;
+      `📄 <b>Смета готова — проверьте и согласуйте</b>\n\n` +
+      `${orderHeader(order)}\n\n` +
+      `${estimateBlock}\n\n` +
+      `Проверьте все позиции: склад мог внести правки. Если всё верно, смету можно согласовать прямо здесь.`;
 
     const warehouseChatId = getWarehouseChatId();
     const topicId = getWarehouseTopicId();
@@ -668,7 +677,12 @@ export async function notifyEstimateSent(
     }
 
     if (shouldNotifyGreenwich(order)) {
-      await sendToOrderGreenwichUser(order, bodyGrinvich, estimateFile);
+      await sendToOrderGreenwichUser(order, bodyGrinvich, estimateFile, {
+        replyMarkup: estimateApprovalKeyboard({
+          orderId: order.id,
+          orderUrl: `${SITE_LINK}/orders/${order.id}?from=telegram`,
+        }),
+      });
       notifyDebugLog(`[notifyEstimateSent] sent to warehouse and Grinvich for order ${order.id}`);
     } else {
       notifyDebugLog(`[notifyEstimateSent] external order: warehouse-only for order ${order.id}`);
@@ -726,21 +740,12 @@ export async function notifyEstimateApproved(order: OrderForNotify): Promise<voi
   }
 }
 
-type LineDiff = {
-  name: string;
-  oldQty?: number;
-  newQty?: number;
-  added?: boolean;
-  removed?: boolean;
-  comment?: string | null;
-};
-
 /** Склад начал сборку → Grinvich */
 export async function notifyStartPicking(order: OrderForNotify): Promise<void> {
   try {
     if (!shouldNotifyGreenwich(order)) return;
     const text =
-      `📦 <b>Начата сборка</b>\n\n` +
+      `📦 <b>Склад начал сборку — от вас ничего не требуется</b>\n\n` +
       `${orderHeader(order)}\n\n` +
       `${buildLinesBlock(order)}\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
@@ -755,12 +760,17 @@ export async function notifyIssued(order: OrderForNotify): Promise<void> {
   try {
     if (!shouldNotifyGreenwich(order)) return;
     const text =
-      `✅ <b>Заказ выдан</b>\n\n` +
+      `✅ <b>Реквизит выдан — заявка в работе</b>\n\n` +
       `${orderHeader(order)}\n\n` +
       `${buildLinesBlock(order)}\n\n` +
       `Можно отправить на приёмку после возврата.\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToOrderGreenwichUser(order, text);
+    await sendToOrderGreenwichUser(order, text, undefined, {
+      replyMarkup: returnDeclarationKeyboard({
+        orderId: order.id,
+        orderUrl: `${SITE_LINK}/orders/${order.id}`,
+      }),
+    });
   } catch (e) {
     console.error("[notifyIssued] unexpected error:", e);
   }
@@ -781,7 +791,7 @@ export async function notifyReturnDeclared(order: OrderForNotify): Promise<void>
       link(`/orders/${order.id}`, "Открыть заявку"),
     ].filter(Boolean);
     const text =
-      `📥 <b>Ожидает приёмки</b>\n\n` + blocks.join("\n\n");
+      `📥 <b>Возврат отправлен — нужна складская приёмка</b>\n\n` + blocks.join("\n\n");
     await sendTelegramMessage(chatId, text, {
       messageThreadId: topicId ? parseInt(topicId, 10) : undefined,
     });
@@ -840,13 +850,18 @@ export async function notifyCheckInClosed(
     }
 
     const text =
-      `🔒 <b>Приёмка завершена</b>\n\n` +
+      `🔒 <b>Приёмка завершена — заявка закрыта</b>\n\n` +
       `${orderHeader(order)}\n\n` +
       `${buildLinesBlock(order)}` +
       statusBlock +
-      `\n\nЗаявка закрыта.\n\n` +
+      `\n\nЗаявка закрыта. Оцените работу Wowstorg — это займёт одно нажатие.\n\n` +
       `${link(`/orders/${order.id}`, "Открыть заявку")}`;
-    await sendToOrderGreenwichUser(order, text);
+    await sendToOrderGreenwichUser(order, text, undefined, {
+      replyMarkup: serviceRatingKeyboard({
+        orderId: order.id,
+        orderUrl: `${SITE_LINK}/orders?feedback=${order.id}`,
+      }),
+    });
   } catch (e) {
     console.error("[notifyCheckInClosed] unexpected error:", e);
   }

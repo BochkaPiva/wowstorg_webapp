@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
+import { saveGreenwichServiceFeedback } from "@/server/orders/service-feedback";
 
 export const dynamic = "force-dynamic";
 
@@ -91,50 +92,14 @@ export async function POST(req: Request) {
     return jsonOk({ skipped: true });
   }
 
-  const input = parsed.data;
-  if (input.rating <= 3 && input.comment.trim().length < 3) {
-    return jsonError(400, "Для оценки от 1 до 3 звёзд расскажите, что можно улучшить");
-  }
-
-  const feedback = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.findFirst({
-      where: eligibleOrderWhere(auth.user.id, input.orderId),
-      select: { id: true, closedAt: true, updatedAt: true },
-    });
-    if (!order) return null;
-
-    const saved = await tx.orderServiceFeedback.upsert({
-      where: { orderId: order.id },
-      create: {
-        orderId: order.id,
-        authorId: auth.user.id,
-        rating: input.rating,
-        comment: input.comment.trim() || null,
-      },
-      update: {
-        authorId: auth.user.id,
-        rating: input.rating,
-        comment: input.comment.trim() || null,
-      },
-      select: { id: true, orderId: true, rating: true, comment: true, updatedAt: true },
-    });
-    await tx.order.update({
-      where: { id: order.id },
-      data: { serviceFeedbackPromptDismissedAt: null },
-    });
-    await tx.order.updateMany({
-      where: {
-        ...eligibleOrderWhere(auth.user.id),
-        id: { not: order.id },
-        closedAt: { lte: order.closedAt ?? order.updatedAt },
-        serviceFeedback: { is: null },
-        serviceFeedbackPromptDismissedAt: null,
-      },
-      data: { serviceFeedbackPromptDismissedAt: new Date() },
-    });
-    return saved;
+  const result = await saveGreenwichServiceFeedback({
+    orderId: parsed.data.orderId,
+    greenwichUserId: auth.user.id,
+    rating: parsed.data.rating,
+    comment: parsed.data.comment,
   });
-
-  if (!feedback) return jsonError(404, "Оценить можно только свою основную закрытую заявку");
-  return jsonOk({ feedback });
+  if (!result.ok) {
+    return jsonError(result.code === "NOT_FOUND" ? 404 : 400, result.message);
+  }
+  return jsonOk({ feedback: result.feedback });
 }

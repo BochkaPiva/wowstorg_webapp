@@ -12,6 +12,9 @@ import {
   ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
 import { restoreGreenwichMonthlyBonusForCancelledOrder } from "@/server/ratings/greenwich-bonuses";
+import { approveGreenwichEstimate } from "@/server/orders/approve-estimate";
+import { declareOrderReturn } from "@/server/orders/declare-return";
+import { saveGreenwichServiceFeedback } from "@/server/orders/service-feedback";
 import {
   greenwichCancellationKeyboard,
   greenwichConfirmationKeyboard,
@@ -28,6 +31,10 @@ import {
   sendTelegramMessageDetailed,
 } from "@/server/telegram";
 import { TELEGRAM_TEST_CALLBACK_PREFIX } from "@/server/telegram-test-scenarios";
+import {
+  parseGreenwichOrderActionCallback,
+  type GreenwichOrderAction,
+} from "@/server/telegram-order-actions";
 
 const UpdateSchema = z.object({
   message: z
@@ -126,6 +133,132 @@ async function acknowledgeCallback(args: {
   showAlert?: boolean;
 }): Promise<void> {
   await answerTelegramCallbackQuery(args);
+}
+
+async function handleGreenwichOrderActionCallback(
+  callback: NonNullable<z.infer<typeof UpdateSchema>["callback_query"]>,
+  action: GreenwichOrderAction,
+) {
+  const message = callback.message;
+  if (!message) return jsonOk({ ok: true, ignored: "callback_without_message" });
+  const chatId = chatIdToString(message.chat.id);
+  const telegramUserId = chatIdToString(callback.from.id);
+  const linkedUser = await prisma.user.findFirst({
+    where: {
+      role: "GREENWICH",
+      isActive: true,
+      telegramChatId: chatId,
+    },
+    select: { id: true },
+  });
+  if (!linkedUser || telegramUserId !== chatId) {
+    await acknowledgeCallback({
+      callbackQueryId: callback.id,
+      text: "Эта заявка привязана к другому аккаунту",
+      showAlert: true,
+    });
+    return jsonOk({ ok: true, ignored: "callback_owner_mismatch" });
+  }
+
+  if (action.action === "approve-estimate") {
+    const result = await approveGreenwichEstimate({
+      orderId: action.orderId,
+      greenwichUserId: linkedUser.id,
+    });
+    if (!result.ok) {
+      if (result.code === "INVALID_STATUS" || result.code === "CONFLICT") {
+        await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+      }
+      await acknowledgeCallback({
+        callbackQueryId: callback.id,
+        text: result.message,
+        showAlert: result.code !== "INVALID_STATUS",
+      });
+      return jsonOk({ ok: true, approved: false, reason: result.code });
+    }
+
+    await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+    await acknowledgeCallback({ callbackQueryId: callback.id, text: "Смета согласована" });
+    const fullOrder = result.order;
+    type NotifyApproved = typeof import("@/server/notifications/order-notifications").notifyEstimateApproved;
+    const payload = fullOrder as Parameters<NotifyApproved>[0];
+    scheduleAfterResponse("notifyEstimateApprovedFromTelegram", async () => {
+      const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
+      await notifyEstimateApproved(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Смета согласована в Telegram",
+        body: `Заказчик: ${fullOrder.customer.name}`,
+      });
+    });
+    return jsonOk({ ok: true, approved: true });
+  }
+
+  if (action.action === "declare-return-ok") {
+    const result = await declareOrderReturn({
+      orderId: action.orderId,
+      actor: { userId: linkedUser.id, role: "GREENWICH" },
+    });
+    if (!result.ok) {
+      if (result.code === "INVALID_STATUS" || result.code === "CONFLICT") {
+        await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+      }
+      await acknowledgeCallback({
+        callbackQueryId: callback.id,
+        text: result.message,
+        showAlert: result.code !== "INVALID_STATUS" && result.code !== "CONFLICT",
+      });
+      return jsonOk({ ok: true, returnDeclared: false, reason: result.code });
+    }
+
+    await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+    await acknowledgeCallback({ callbackQueryId: callback.id, text: "Возврат отправлен на приёмку" });
+    const fullOrder = result.order;
+    type NotifyReturn = typeof import("@/server/notifications/order-notifications").notifyReturnDeclared;
+    const payload = fullOrder as Parameters<NotifyReturn>[0];
+    scheduleAfterResponse("notifyReturnDeclaredFromTelegram", async () => {
+      const { notifyReturnDeclared } = await import("@/server/notifications/order-notifications");
+      await notifyReturnDeclared(payload);
+      await notifyWarehouseOrderInApp({
+        orderId: fullOrder.id,
+        title: "Возврат отправлен из Telegram",
+        body: `${fullOrder.customer.name}: все позиции отмечены «В норме»`,
+      });
+    });
+    return jsonOk({ ok: true, returnDeclared: true });
+  }
+
+  if (action.action === "rate-service") {
+    const result = await saveGreenwichServiceFeedback({
+      orderId: action.orderId,
+      greenwichUserId: linkedUser.id,
+      rating: action.rating,
+    });
+    if (!result.ok) {
+      if (result.code === "NOT_FOUND") {
+        await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+      }
+      await acknowledgeCallback({
+        callbackQueryId: callback.id,
+        text: result.message,
+        showAlert: true,
+      });
+      return jsonOk({ ok: true, rated: false, reason: result.code });
+    }
+
+    await editTelegramMessageReplyMarkup({ chatId, messageId: message.message_id });
+    await acknowledgeCallback({ callbackQueryId: callback.id, text: `Спасибо! Оценка ${action.rating}★ сохранена` });
+    scheduleAfterResponse("notifyServiceFeedbackFromTelegram", async () => {
+      await notifyWarehouseOrderInApp({
+        orderId: action.orderId,
+        title: `Новая оценка заявки: ${action.rating} из 5`,
+        body: "Оценка оставлена сотрудником Grinvich в Telegram",
+      });
+    });
+    return jsonOk({ ok: true, rated: true });
+  }
+
+  return jsonOk({ ok: true, ignored: "unsupported_order_action" });
 }
 
 async function notifyWarehouseAboutUpcomingChanges(args: {
@@ -520,6 +653,10 @@ export async function POST(req: Request) {
       });
       return jsonOk({ ok: true, testCallback: action });
     }
+    const orderAction = update.callback_query.data
+      ? parseGreenwichOrderActionCallback(update.callback_query.data)
+      : null;
+    if (orderAction) return handleGreenwichOrderActionCallback(update.callback_query, orderAction);
     return handleGreenwichConfirmationCallback(update.callback_query);
   }
   const text = update.message?.text?.trim() ?? "";

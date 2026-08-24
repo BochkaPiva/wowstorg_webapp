@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { approveGreenwichEstimate } from "@/server/orders/approve-estimate";
 
 const BodySchema = z.object({
   lines: z.array(z.object({
@@ -29,75 +29,29 @@ export async function POST(
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: { lines: { select: { id: true, requestedQty: true } } },
+  const result = await approveGreenwichEstimate({
+    orderId: id,
+    greenwichUserId: auth.user.id,
+    lines: parsed.data.lines,
   });
-
-  if (!order) return jsonError(404, "Not found");
-  if (order.greenwichUserId !== auth.user.id) {
-    return jsonError(403, "Согласовать может только сотрудник Grinvich, на которого оформлена заявка");
-  }
-  if (order.status !== "ESTIMATE_SENT" && order.status !== "CHANGES_REQUESTED") {
-    return jsonError(400, "Согласовать смету можно только после отправки сметы складом или после запроса правок");
+  if (!result.ok) {
+    const status = result.code === "NOT_FOUND" ? 404 : result.code === "FORBIDDEN" ? 403 : result.code === "CONFLICT" ? 409 : 400;
+    return jsonError(status, result.message);
   }
 
-  const lineUpdates = parsed.data.lines ?? order.lines.map((l) => ({ orderLineId: l.id, approvedQty: l.requestedQty }));
-  const lineById = new Map(order.lines.map((l) => [l.id, l]));
-
-  for (const { orderLineId } of lineUpdates) {
-    if (!lineById.has(orderLineId)) {
-      return jsonError(400, "Неизвестная строка заявки", { orderLineId });
-    }
-  }
-
-  await prisma.$transaction(async (tx) => {
-    for (const { orderLineId, approvedQty } of lineUpdates) {
-      const line = lineById.get(orderLineId)!;
-      const qty = Math.min(approvedQty, line.requestedQty);
-      await tx.orderLine.update({
-        where: { id: orderLineId },
-        data: { approvedQty: qty },
-      });
-    }
-    await tx.order.update({
-      where: { id },
-      data: {
-        status: "APPROVED_BY_GREENWICH",
-        greenwichConfirmedAt: new Date(),
-        greenwichConfirmedSnapshot: order.lines.map((l) => ({
-          id: l.id,
-          requestedQty: l.requestedQty,
-        })) as unknown as object,
-      },
+  const fullOrder = result.order;
+  type Fn = typeof import("@/server/notifications/order-notifications").notifyEstimateApproved;
+  const payload = fullOrder as Parameters<Fn>[0];
+  scheduleAfterResponse("notifyEstimateApproved", async () => {
+    const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
+    const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
+    await notifyEstimateApproved(payload);
+    await notifyWarehouseOrderInApp({
+      orderId: fullOrder.id,
+      title: "Смета согласована",
+      body: `Заказчик: ${fullOrder.customer?.name ?? "—"}`,
     });
   });
-
-  const fullOrder = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      customer: { select: { name: true } },
-      greenwichUser: { select: { displayName: true } },
-      lines: {
-        orderBy: [{ position: "asc" }],
-        include: { item: { select: { name: true } } },
-      },
-    },
-  });
-  if (fullOrder) {
-    type Fn = typeof import("@/server/notifications/order-notifications").notifyEstimateApproved;
-    const payload = fullOrder as Parameters<Fn>[0];
-    scheduleAfterResponse("notifyEstimateApproved", async () => {
-      const { notifyEstimateApproved } = await import("@/server/notifications/order-notifications");
-      const { notifyWarehouseOrderInApp } = await import("@/server/notifications/in-app");
-      await notifyEstimateApproved(payload);
-      await notifyWarehouseOrderInApp({
-        orderId: fullOrder.id,
-        title: "Смета согласована",
-        body: `Заказчик: ${fullOrder.customer?.name ?? "—"}`,
-      });
-    });
-  }
 
   return jsonOk({ ok: true });
 }

@@ -14,7 +14,11 @@ import {
   greenwichConfirmationKeyboard,
   greenwichConfirmationMessage,
 } from "@/server/reminders/greenwich-confirmation";
-import { sendWorkTaskDeadlineReminder } from "@/server/work-task-notifications";
+import { returnDeclarationKeyboard } from "@/server/telegram-order-actions";
+import {
+  sendWorkTaskCustomReminder,
+  sendWorkTaskDeadlineReminder,
+} from "@/server/work-task-notifications";
 import {
   addGreenwichRatingEvent,
   ensureGreenwichRatingPolicy,
@@ -35,7 +39,9 @@ type ReminderType =
   | "WAREHOUSE_STAGE_CHECKIN"
   | "GREENWICH_RETURN"
   | "GREENWICH_CONFIRMATION_FALLBACK"
-  | "WORK_TASK_DUE_24H";
+  | "WORK_TASK_DUE_24H"
+  | "WORK_TASK_CUSTOM"
+  | "WORK_SUBTASK_CUSTOM";
 
 /** Подготовка: всё, кроме отмены и закрытых (страховка от «застряла в смете»). */
 const WAREHOUSE_PREP_EXCLUDED_STATUSES: OrderStatus[] = ["CANCELLED", "CLOSED"];
@@ -287,6 +293,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   greenwichReturnSent: number;
   warehouseReturnSent: number;
   workTaskDeadlineSent: number;
+  workTaskCustomReminderSent: number;
   approvalWarningSent: number;
   approvalPenaltyApplied: number;
 }> {
@@ -306,6 +313,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
       workTaskDeadlineSent: 0,
+      workTaskCustomReminderSent: 0,
       approvalWarningSent: 0,
       approvalPenaltyApplied: 0,
     };
@@ -323,6 +331,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
       greenwichReturnSent: 0,
       warehouseReturnSent: 0,
       workTaskDeadlineSent: 0,
+      workTaskCustomReminderSent: 0,
       approvalWarningSent: 0,
       approvalPenaltyApplied: 0,
     };
@@ -489,6 +498,11 @@ export async function runDailyReminders(now = new Date()): Promise<{
         ymd: omskTodayYmd,
         receiverKey,
         receiverChatId: warehouseChatId,
+      });
+      await notifyWarehouseOrderInApp({
+        orderId: order.id,
+        title: candidate.title,
+        body: `${label}: ${candidate.action}`,
       });
       warehouseStageSent += 1;
     }
@@ -839,7 +853,12 @@ export async function runDailyReminders(now = new Date()): Promise<{
           `${friendlyWarning}\n` +
           orderLink;
 
-        const ok = await sendTelegramMessage(personalChatId, msg);
+        const ok = await sendTelegramMessage(personalChatId, msg, {
+          replyMarkup: returnDeclarationKeyboard({
+            orderId: o.id,
+            orderUrl: `${SITE_LINK()}/orders/${o.id}`,
+          }),
+        });
         if (!ok) continue;
 
         await markSent({
@@ -848,6 +867,13 @@ export async function runDailyReminders(now = new Date()): Promise<{
           ymd,
           receiverKey,
           receiverChatId: personalChatId,
+        });
+        await createInAppNotification({
+          userId: receiverKey,
+          type: "ORDER_UPDATED",
+          title: "Сегодня нужно вернуть реквизит",
+          body: `${o.customer.name}: отправьте заявку на приёмку после возврата.`,
+          payloadJson: { kind: "RETURN_DUE", orderId: o.id, href: `/orders/${o.id}` },
         });
         greenwichReturnSent += 1;
         continue;
@@ -962,6 +988,57 @@ export async function runDailyReminders(now = new Date()): Promise<{
     workTaskDeadlineSent += 1;
   }
 
+  const reminderWindowStart = new Date(now.getTime() - 48 * 3_600_000);
+  const [customTaskReminders, customSubtaskReminders] = await Promise.all([
+    prisma.workTask.findMany({
+      where: {
+        completedAt: null,
+        archivedAt: null,
+        reminderAt: { gt: reminderWindowStart, lte: now },
+      },
+      select: { id: true, reminderAt: true },
+      orderBy: { reminderAt: "asc" },
+    }),
+    prisma.workTaskChecklistItem.findMany({
+      where: {
+        isDone: false,
+        reminderAt: { gt: reminderWindowStart, lte: now },
+        task: { is: { completedAt: null, archivedAt: null } },
+      },
+      select: { id: true, taskId: true, reminderAt: true },
+      orderBy: { reminderAt: "asc" },
+    }),
+  ]);
+  let workTaskCustomReminderSent = 0;
+  for (const reminder of customTaskReminders) {
+    if (!reminder.reminderAt) continue;
+    const receiverKey = `tasks-topic:${reminder.reminderAt.toISOString()}`;
+    if (await alreadySent({ type: "WORK_TASK_CUSTOM", orderId: reminder.id, ymd: omskTodayYmd, receiverKey })) continue;
+    if (!await sendWorkTaskCustomReminder({ taskId: reminder.id })) continue;
+    await markSent({
+      type: "WORK_TASK_CUSTOM",
+      orderId: reminder.id,
+      ymd: omskTodayYmd,
+      receiverKey,
+      receiverChatId: warehouseChatId,
+    });
+    workTaskCustomReminderSent += 1;
+  }
+  for (const reminder of customSubtaskReminders) {
+    if (!reminder.reminderAt) continue;
+    const receiverKey = `tasks-topic:${reminder.reminderAt.toISOString()}`;
+    if (await alreadySent({ type: "WORK_SUBTASK_CUSTOM", orderId: reminder.id, ymd: omskTodayYmd, receiverKey })) continue;
+    if (!await sendWorkTaskCustomReminder({ taskId: reminder.taskId, checklistItemId: reminder.id })) continue;
+    await markSent({
+      type: "WORK_SUBTASK_CUSTOM",
+      orderId: reminder.id,
+      ymd: omskTodayYmd,
+      receiverKey,
+      receiverChatId: warehouseChatId,
+    });
+    workTaskCustomReminderSent += 1;
+  }
+
   return {
     greenwichMonthlyBonusAwarded,
     warehousePrepSent,
@@ -972,6 +1049,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     greenwichReturnSent,
     warehouseReturnSent,
     workTaskDeadlineSent,
+    workTaskCustomReminderSent,
     approvalWarningSent: approval.warningSent,
     approvalPenaltyApplied: approval.penaltyApplied,
   };

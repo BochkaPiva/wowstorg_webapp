@@ -20,6 +20,10 @@ import {
   sendWorkTaskDeadlineReminder,
 } from "@/server/work-task-notifications";
 import {
+  isCalendarReminderWindowOpen,
+  isReturnReminderDue,
+} from "@/server/reminders/time-window";
+import {
   addGreenwichRatingEvent,
   ensureGreenwichRatingPolicy,
 } from "@/server/ratings/greenwich-rating";
@@ -129,11 +133,12 @@ async function runApprovalStageReminders(args: {
   now: Date;
   warehouseChatId: string;
   warehouseOptions?: { messageThreadId: number };
+  calendarWindowOpen: boolean;
 }): Promise<{ warningSent: number; penaltyApplied: number }> {
-  const policy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
-  if (getOmskHour(args.now) < policy.reminderHourOmsk) {
+  if (!args.calendarWindowOpen) {
     return { warningSent: 0, penaltyApplied: 0 };
   }
+  const policy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
 
   const todayYmd = getOmskYmd(args.now);
   const warningLimitYmd = addDaysToYmd(todayYmd, policy.approvalWarningDays);
@@ -338,10 +343,13 @@ export async function runDailyReminders(now = new Date()): Promise<{
   }
   const topicId = getWarehouseTopicId();
   const warehouseOpts = warehouseTopicOptions(topicId);
+  const reminderPolicy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
+  const calendarWindowOpen = isCalendarReminderWindowOpen(now, reminderPolicy.reminderHourOmsk);
   const approval = await runApprovalStageReminders({
     now,
     warehouseChatId,
     warehouseOptions: warehouseOpts,
+    calendarWindowOpen,
   });
 
   const omskTodayYmd = getOmskYmd(now);
@@ -352,10 +360,11 @@ export async function runDailyReminders(now = new Date()): Promise<{
   const dayAfterTomorrowStartUtc = parseDateOnlyToUtcMidnight(omskDayAfterTomorrowYmd);
 
   const todayStartUtc = parseDateOnlyToUtcMidnight(omskTodayYmd);
+  const yesterdayStartUtc = parseDateOnlyToUtcMidnight(addDaysToYmd(omskTodayYmd, -1));
   const tomorrowStartForReturnUtc = parseDateOnlyToUtcMidnight(omskTomorrowYmd);
 
   // 1) Склад: за 1 календарный день до readyByDate (cron в 11:00 Омск → «завтра» по Омску).
-  const warehouseOrders = await prisma.order.findMany({
+  const warehouseOrders = calendarWindowOpen ? await prisma.order.findMany({
     where: {
       status: { notIn: WAREHOUSE_PREP_EXCLUDED_STATUSES },
       readyByDate: { gte: tomorrowStartUtc, lt: dayAfterTomorrowStartUtc },
@@ -367,7 +376,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
       customer: { select: { name: true } },
     },
     orderBy: [{ readyByDate: "asc" }, { createdAt: "desc" }],
-  });
+  }) : [];
 
   let warehousePrepSent = 0;
   for (const o of warehouseOrders) {
@@ -458,7 +467,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   ];
 
   let warehouseStageSent = 0;
-  for (const candidate of stageCandidates) {
+  for (const candidate of calendarWindowOpen ? stageCandidates : []) {
     const orders = await prisma.order.findMany({
       where: {
         status: candidate.status,
@@ -513,7 +522,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   // попытка останется в outbox и будет повторена следующим ежедневным запуском.
   let greenwichConfirmationSent = 0;
   let greenwichConfirmationFallbackSent = 0;
-  for (const checkpoint of GREENWICH_CONFIRMATION_CHECKPOINTS) {
+  for (const checkpoint of calendarWindowOpen ? GREENWICH_CONFIRMATION_CHECKPOINTS : []) {
     const targetYmd = addDaysToYmd(omskTodayYmd, checkpoint.daysBefore);
     const targetNextYmd = addDaysToYmd(targetYmd, 1);
     const targetStart = parseDateOnlyToUtcMidnight(targetYmd);
@@ -670,7 +679,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
   // 2.1) Неотвеченные подтверждения: один повтор через 3 часа и финальный через час.
   // Состояние хранится в БД, поэтому почасовой cron безопасен и никогда не зацикливается.
   let greenwichConfirmationRepeatSent = 0;
-  const repeatDue = await prisma.greenwichOrderReminder.findMany({
+  const repeatDue = calendarWindowOpen ? await prisma.greenwichOrderReminder.findMany({
     where: {
       response: null,
       sendCount: { in: [1, 2] },
@@ -705,8 +714,8 @@ export async function runDailyReminders(now = new Date()): Promise<{
         },
       },
     },
-  });
-  const ratingPolicy = await prisma.$transaction((tx) => ensureGreenwichRatingPolicy(tx));
+  }) : [];
+  const ratingPolicy = reminderPolicy;
   for (const reminder of repeatDue) {
     if (!reminder.lastSentAt || !reminder.order.greenwichUserId) continue;
     const waitMs = reminder.sendCount === 1 ? 3 * 3_600_000 : 3_600_000;
@@ -784,30 +793,43 @@ export async function runDailyReminders(now = new Date()): Promise<{
   }
 
   // 3) Возврат: в день endDate, только ISSUED.
-  const returnOrders = await prisma.order.findMany({
+  const returnOrders = calendarWindowOpen ? await prisma.order.findMany({
     where: {
       status: RETURN_REMINDER_STATUS,
-      endDate: { gte: todayStartUtc, lt: tomorrowStartForReturnUtc },
+      endDate: { gte: yesterdayStartUtc, lt: tomorrowStartForReturnUtc },
     },
     select: {
       id: true,
       endDate: true,
+      rentalEndPartOfDay: true,
       parentOrderId: true,
       customer: { select: { name: true } },
       greenwichUserId: true,
       greenwichUser: { select: { telegramChatId: true, isActive: true, displayName: true } },
     },
     orderBy: [{ endDate: "asc" }, { createdAt: "desc" }],
-  });
+  }) : [];
 
   let greenwichReturnSent = 0;
   let warehouseReturnSent = 0;
 
   for (const o of returnOrders) {
-    const ymd = omskTodayYmd;
+    const endYmd = o.endDate.toISOString().slice(0, 10);
+    if (!isReturnReminderDue({
+      now,
+      todayYmd: omskTodayYmd,
+      endYmd,
+      rentalEndPartOfDay: o.rentalEndPartOfDay,
+      morningHourOmsk: reminderPolicy.reminderHourOmsk,
+    })) continue;
+
+    // Стабильный ключ по дате окончания не даст повторить вечернее сообщение
+    // утром следующего дня, но позволит догнать полностью пропущенное окно.
+    const ymd = endYmd;
+    const overdue = endYmd < omskTodayYmd;
     const supplementBlock = quickSupplementBlock(o.parentOrderId);
     const customerLine = `Клиент: <b>${escapeTelegramHtml(o.customer.name)}</b>\n`;
-    const dateLine = `Ориентир: <b>${escapeTelegramHtml(formatDateRu(o.endDate))}</b>\n\n`;
+    const dateLine = `Срок возврата: <b>${escapeTelegramHtml(formatDateRu(o.endDate))} · ${o.rentalEndPartOfDay === "EVENING" ? "вечер" : "утро"}</b>\n\n`;
     const orderLink = link(`/orders/${o.id}`, "Открыть заявку");
 
     const receiverIsGreenwich = Boolean(o.greenwichUserId);
@@ -833,11 +855,13 @@ export async function runDailyReminders(now = new Date()): Promise<{
         }
 
         const dinoWord = pickRandom(["динозаврик", "дракончик", "диня", "динозаврик-тренер"]);
-        const header = pickRandom([
-          "🦖 <b>День возврата!</b>",
-          "⚡ <b>Сегодня дедлайн</b>",
-          "🌟 <b>Возврат по заявке</b>",
-        ]);
+        const header = overdue
+          ? "⚠️ <b>Возврат ещё не оформлен</b>"
+          : pickRandom([
+              "🦖 <b>День возврата!</b>",
+              "⚡ <b>Сегодня дедлайн</b>",
+              "🌟 <b>Возврат по заявке</b>",
+            ]);
         const friendlyWarning = pickRandom([
           `Если опоздаешь — ${escapeTelegramHtml(dinoWord)} пересчитает рейтинг в сторону минуса.`,
           `Почти всё решает “вовремя”: если задержаться, ${escapeTelegramHtml(dinoWord)} будет строгим.`,
@@ -847,7 +871,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
         const msg =
           `${header}\n\n` +
           supplementBlock +
-          `Сегодня нужно вернуть реквизит по заявке.\n` +
+          `${overdue ? "Срок возврата уже наступил" : "Сегодня нужно вернуть реквизит"} по заявке.\n` +
           customerLine +
           dateLine +
           `${friendlyWarning}\n` +
@@ -871,7 +895,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
         await createInAppNotification({
           userId: receiverKey,
           type: "ORDER_UPDATED",
-          title: "Сегодня нужно вернуть реквизит",
+          title: overdue ? "Возврат ещё не оформлен" : "Сегодня нужно вернуть реквизит",
           body: `${o.customer.name}: отправьте заявку на приёмку после возврата.`,
           payloadJson: { kind: "RETURN_DUE", orderId: o.id, href: `/orders/${o.id}` },
         });
@@ -896,7 +920,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
         `⚠️ <b>Напоминание складу (fallback)</b>\n\n` +
         `У ${escapeTelegramHtml(displayName)} не привязан Telegram — напоминание о возврате ушло сюда.\n\n` +
         supplementBlock +
-        `Сегодня последний день аренды, нужен возврат на приёмку.\n` +
+        `${overdue ? "Срок аренды уже завершён" : "Сегодня последний день аренды"}, нужен возврат на приёмку.\n` +
         customerLine +
         dateLine +
         `Свяжитесь с ${escapeTelegramHtml(displayName)} и проверьте заявку.\n` +
@@ -932,7 +956,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     const msg =
       `📦 <b>Напоминание складу: возврат</b>\n\n` +
       supplementBlock +
-      `Сегодня последний день аренды по <b>внешней заявке</b> — ожидается возврат на приёмку.\n` +
+      `${overdue ? "Срок аренды по <b>внешней заявке</b> уже завершён" : "Сегодня последний день аренды по <b>внешней заявке</b>"} — ожидается возврат на приёмку.\n` +
       customerLine +
       dateLine +
       orderLink;
@@ -950,7 +974,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     warehouseReturnSent += 1;
   }
 
-  const workTasksDueTomorrow = await prisma.workTask.findMany({
+  const workTasksDueTomorrow = calendarWindowOpen ? await prisma.workTask.findMany({
     where: {
       completedAt: null,
       archivedAt: null,
@@ -958,7 +982,7 @@ export async function runDailyReminders(now = new Date()): Promise<{
     },
     select: { id: true, dueDate: true },
     orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
-  });
+  }) : [];
 
   let workTaskDeadlineSent = 0;
   for (const task of workTasksDueTomorrow) {
@@ -1053,14 +1077,6 @@ export async function runDailyReminders(now = new Date()): Promise<{
     approvalWarningSent: approval.warningSent,
     approvalPenaltyApplied: approval.penaltyApplied,
   };
-}
-
-function getOmskHour(now: Date): number {
-  return Number(new Intl.DateTimeFormat("en-US", {
-    timeZone: OMSK_TZ,
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).format(now));
 }
 
 function omskWorkdayUtc(ymd: string, hour: number): Date {

@@ -129,10 +129,11 @@ type TaskCreateDraft = {
 type TaskDropEdge = "before" | "after";
 type ColumnDropEdge = "before" | "after";
 type TaskBoardTheme = "light" | "dark";
+type StickerMode = "priority" | "deadline" | "reminder" | "assignee";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
-  LOW: "Низкий",
-  NORMAL: "Обычный",
+  LOW: "Не важно",
+  NORMAL: "Нормально",
   HIGH: "Важно",
   URGENT: "Срочно",
 };
@@ -227,6 +228,85 @@ function fromLocalDateTime(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
 }
 
+function CalendarStickerIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M5.5 2.8v2.3M14.5 2.8v2.3M3.1 7.2h13.8M4.7 4.2h10.6c.9 0 1.6.7 1.6 1.6v9c0 .9-.7 1.6-1.6 1.6H4.7c-.9 0-1.6-.7-1.6-1.6v-9c0-.9.7-1.6 1.6-1.6Z" /></svg>;
+}
+
+function PriorityStickerIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M4.2 15.8V10M10 15.8V6.8M15.8 15.8V3.8" /></svg>;
+}
+
+function ReminderStickerIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M6.2 8.3a3.8 3.8 0 0 1 7.6 0c0 4.3 1.8 4.5 1.8 4.5H4.4s1.8-.2 1.8-4.5ZM8.3 15.1a1.9 1.9 0 0 0 3.4 0" /></svg>;
+}
+
+function AssigneeStickerIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M10 10.1a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6ZM4.3 16.5c.5-2.7 2.4-4.2 5.7-4.2s5.2 1.5 5.7 4.2" /></svg>;
+}
+
+function SubtaskStickerIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M4 4v7.2c0 1.7 1.3 3 3 3h2.2M4 7.5h5.2M9.2 14.2h6.8M12.7 10.9l3.3 3.3-3.3 3.3" /></svg>;
+}
+
+function StickerQuickEditor({
+  target,
+  mode,
+  users,
+  anchor,
+  onClose,
+  onPatch,
+}: {
+  target: Pick<TaskChecklistItem, "priority" | "dueDate" | "reminderAt" | "assignee">;
+  mode: StickerMode;
+  users: TasksMeta["users"];
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  onPatch: (body: ChecklistPatchBody) => void;
+}) {
+  return (
+    <AnchoredPopover anchor={anchor} onClose={onClose}>
+      {mode === "priority" ? (
+        <div className="sticker-editor">
+          <div className="sticker-editor__header"><strong>Стикер «Приоритет»</strong><button type="button" onClick={() => { onPatch({ priority: "NORMAL" }); onClose(); }}>открепить</button></div>
+          <div className="sticker-editor__options">
+            {([
+              ["URGENT", "Срочно", "urgent"],
+              ["HIGH", "Важно", "high"],
+              ["NORMAL", "Нормально", "normal"],
+              ["LOW", "Не важно", "low"],
+            ] as const).map(([value, label, tone]) => (
+              <button key={value} type="button" className={`sticker-editor__option is-${tone}${target.priority === value ? " is-selected" : ""}`} onClick={() => { onPatch({ priority: value }); onClose(); }}>
+                <span className="sticker-editor__preview"><PriorityStickerIcon />{label}</span>
+                {target.priority === value ? <span aria-hidden>✓</span> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {mode === "deadline" ? (
+        <div className="sticker-editor">
+          <div className="sticker-editor__header"><strong>Дедлайн</strong>{target.dueDate ? <button type="button" onClick={() => { onPatch({ dueDate: null }); onClose(); }}>открепить</button> : null}</div>
+          <label className="sticker-editor__field"><span>Дата выполнения</span><input autoFocus type="date" value={target.dueDate ?? ""} onChange={(event) => { onPatch({ dueDate: event.target.value || null }); onClose(); }} /></label>
+        </div>
+      ) : null}
+      {mode === "reminder" ? (
+        <div className="sticker-editor">
+          <div className="sticker-editor__header"><strong>Напоминание</strong>{target.reminderAt ? <button type="button" onClick={() => { onPatch({ reminderAt: null }); onClose(); }}>открепить</button> : null}</div>
+          <label className="sticker-editor__field"><span>Дата и время</span><input autoFocus type="datetime-local" value={toLocalDateTime(target.reminderAt)} onChange={(event) => { onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose(); }} /></label>
+        </div>
+      ) : null}
+      {mode === "assignee" ? (
+        <div className="sticker-editor">
+          <div className="sticker-editor__header"><strong>Исполнитель</strong>{target.assignee ? <button type="button" onClick={() => { onPatch({ assigneeUserId: null }); onClose(); }}>открепить</button> : null}</div>
+          <div className="sticker-editor__people">
+            {users.map((user) => <button key={user.id} type="button" className={target.assignee?.id === user.id ? "is-selected" : ""} onClick={() => { onPatch({ assigneeUserId: user.id }); onClose(); }}><span className="task-avatar">{initials(user.displayName)}</span><span>{user.displayName}</span>{target.assignee?.id === user.id ? <b aria-hidden>✓</b> : null}</button>)}
+          </div>
+        </div>
+      ) : null}
+    </AnchoredPopover>
+  );
+}
+
 function buildChecklistTree(items: TaskChecklistItem[]): ChecklistTreeNode[] {
   const nodes = new Map<string, ChecklistTreeNode>();
   const roots: ChecklistTreeNode[] = [];
@@ -272,7 +352,7 @@ function AnchoredPopover({
     const offsetLeft = frameRect?.left ?? 0;
     const offsetTop = frameRect?.top ?? 0;
     const viewport = embeddedInParent ? window.parent : window;
-    const width = 248;
+    const width = 304;
     const left = Math.max(10, Math.min(rect.left + offsetLeft, viewport.innerWidth - width - 10));
     const estimatedHeight = 420;
     const top = rect.bottom + offsetTop + 6 + estimatedHeight > viewport.innerHeight
@@ -548,25 +628,38 @@ function ChecklistTreeItem({
   onCancelAdding: () => void;
 }) {
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const urgent = node.priority === "HIGH" || node.priority === "URGENT";
+  const [menuMode, setMenuMode] = React.useState<"all" | StickerMode | null>(null);
+  const hasPriority = node.priority !== "NORMAL";
+
+  function openSticker(event: React.MouseEvent<HTMLElement>, mode: "all" | StickerMode) {
+    event.stopPropagation();
+    setMenuAnchor(event.currentTarget);
+    setMenuMode(mode);
+  }
 
   return (
     <div className="task-checklist-node" style={{ "--task-tree-depth": depth } as React.CSSProperties}>
-      <div className="task-checklist-row" style={node.color ? { backgroundColor: node.color } : undefined}>
+      <div
+        className="task-checklist-row"
+        style={node.color ? { backgroundColor: node.color } : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!(event.target as HTMLElement).closest("button,input,select,a")) onEdit(node.id);
+        }}
+      >
         <div className="task-checklist-row__main">
           <RoundCheckbox size="sm" checked={node.isDone} onChange={(checked) => onPatch(node.id, { isDone: checked })} />
           <span className={`task-checklist-row__title${node.isDone ? " is-done" : ""}`}>{node.title}</span>
           <button type="button" className="task-checklist-row__menu" aria-label="Настроить подзадачу" onClick={(event) => { event.stopPropagation(); onEdit(node.id); }}>⋮</button>
         </div>
         <div className="task-checklist-row__stickers">
-          {urgent ? <span className="task-subtask-sticker is-priority">≡ {PRIORITY_LABEL[node.priority]}</span> : null}
-          {node.dueDate ? <span className="task-subtask-sticker">▣ {fmtDate(node.dueDate)}</span> : null}
-          {node.reminderAt ? <span className="task-subtask-sticker" title="Есть напоминание">◴</span> : null}
-          {node.assignee ? <span className="task-checklist-row__avatar" title={node.assignee.displayName}>{initials(node.assignee.displayName)}</span> : null}
+          {hasPriority ? <button type="button" className={`task-subtask-sticker is-priority is-${node.priority.toLowerCase()}`} onClick={(event) => openSticker(event, "priority")}><PriorityStickerIcon />{PRIORITY_LABEL[node.priority]}</button> : null}
+          {node.dueDate ? <button type="button" className="task-subtask-sticker" onClick={(event) => openSticker(event, "deadline")}><CalendarStickerIcon />{fmtDate(node.dueDate)}</button> : null}
+          {node.reminderAt ? <button type="button" className="task-subtask-sticker" title="Изменить напоминание" onClick={(event) => openSticker(event, "reminder")}><ReminderStickerIcon /></button> : null}
+          {node.assignee ? <button type="button" className="task-checklist-row__avatar" title={`Исполнитель: ${node.assignee.displayName}`} onClick={(event) => openSticker(event, "assignee")}>{initials(node.assignee.displayName)}</button> : null}
           <div className="task-checklist-row__quick">
-            <button type="button" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setMenuOpen(true); }}>＋ Стикер</button>
-            <button type="button" title="Создать вложенную подзадачу" aria-label="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}>＋</button>
+            <button type="button" onClick={(event) => openSticker(event, "all")}>＋ Стикер</button>
+            <button type="button" className="task-checklist-row__add-child" title="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}><SubtaskStickerIcon />Подзадача</button>
           </div>
         </div>
       </div>
@@ -591,7 +684,8 @@ function ChecklistTreeItem({
           {addingParentId === node.id ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
         </div>
       ) : null}
-      {menuOpen ? <ChecklistStickerMenu item={node} users={users} anchor={menuAnchor} onClose={() => setMenuOpen(false)} onPatch={(body) => onPatch(node.id, body)} /> : null}
+      {menuMode === "all" ? <ChecklistStickerMenu item={node} users={users} anchor={menuAnchor} onClose={() => setMenuMode(null)} onPatch={(body) => onPatch(node.id, body)} /> : null}
+      {menuMode && menuMode !== "all" ? <StickerQuickEditor target={node} mode={menuMode} users={users} anchor={menuAnchor} onClose={() => setMenuMode(null)} onPatch={(body) => onPatch(node.id, body)} /> : null}
     </div>
   );
 }
@@ -622,11 +716,13 @@ function ChecklistTreeSection({
   const tree = React.useMemo(() => buildChecklistTree(items), [items]);
   return (
     <div className="task-checklist-tree">
-      {tree.map((node) => (
-        <ChecklistTreeItem key={node.id} node={node} depth={0} users={users} addingParentId={addingParentId} newChecklistTitle={newChecklistTitle} onNewChecklistTitleChange={onNewChecklistTitleChange} onPatch={onPatchChecklistItem} onEdit={onEditChecklistItem} onStartAdding={onStartAdding} onSubmitNewItem={onSubmitNewItem} onCancelAdding={onCancelAdding} />
-      ))}
-      {addingParentId === null ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
-      {addingParentId === undefined ? <button type="button" className="task-checklist-tree__add-root" onClick={(event) => { event.stopPropagation(); onStartAdding(null); }}>＋ Создать подзадачу</button> : null}
+      <div className="task-checklist-root-branch">
+        {tree.map((node) => (
+          <ChecklistTreeItem key={node.id} node={node} depth={0} users={users} addingParentId={addingParentId} newChecklistTitle={newChecklistTitle} onNewChecklistTitleChange={onNewChecklistTitleChange} onPatch={onPatchChecklistItem} onEdit={onEditChecklistItem} onStartAdding={onStartAdding} onSubmitNewItem={onSubmitNewItem} onCancelAdding={onCancelAdding} />
+        ))}
+        {addingParentId === null ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
+        {addingParentId === undefined ? <button type="button" className="task-checklist-tree__add-root" onClick={(event) => { event.stopPropagation(); onStartAdding(null); }}><SubtaskStickerIcon />Создать подзадачу</button> : null}
+      </div>
     </div>
   );
 }
@@ -773,7 +869,7 @@ function TaskCard({
   users: TasksMeta["users"];
   columns: BoardColumn[];
   onOpenActivity: (taskId: string) => void;
-  onOpenSubtasks: (taskId: string) => void;
+  onOpenSubtasks: (taskId: string, itemId?: string) => void;
   onDuplicate: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   isDragging: boolean;
@@ -782,9 +878,9 @@ function TaskCard({
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
   const cardRef = React.useRef<HTMLElement>(null);
   const draggedRef = React.useRef(false);
-  const [openMenu, setOpenMenu] = React.useState<"stickers" | "assignee" | "actions" | null>(null);
-  const [menuAnchor, setMenuAnchor] = React.useState<HTMLButtonElement | null>(null);
-  const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
+  const [openMenu, setOpenMenu] = React.useState<"stickers" | "actions" | StickerMode | null>(null);
+  const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+  const hasPriority = task.priority !== "NORMAL";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
 
@@ -873,16 +969,16 @@ function TaskCard({
         </div>
 
         <div className="task-card-tools">
-          {isUrgent ? <span className="task-card-sticker task-card-sticker--priority">≡ {PRIORITY_LABEL[task.priority]}</span> : null}
-          {task.dueDate ? <span className="task-card-sticker">▣ {fmtDate(task.dueDate)}</span> : null}
-          {task.reminderAt ? <span className="task-card-sticker" title="Есть напоминание">◴</span> : null}
+          {hasPriority ? <button type="button" className={`task-card-sticker task-card-sticker--priority is-${task.priority.toLowerCase()}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("priority"); }}><PriorityStickerIcon />{PRIORITY_LABEL[task.priority]}</button> : null}
+          {task.dueDate ? <button type="button" className="task-card-sticker" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("deadline"); }}><CalendarStickerIcon />{fmtDate(task.dueDate)}</button> : null}
+          {task.reminderAt ? <button type="button" className="task-card-sticker" title="Изменить напоминание" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("reminder"); }}><ReminderStickerIcon /></button> : null}
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
-          <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}>♙</button>
+          <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}><AssigneeStickerIcon /></button>
           {task.commentCount > 0 ? <span className="task-card-comments" title="В задаче есть заметки">☵ <span>{task.commentCount}</span></span> : null}
           {task.assignee ? (
-            <span className="task-card-assignee" title={task.assignee.displayName}>
+            <button type="button" className="task-card-assignee" title={`Исполнитель: ${task.assignee.displayName}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("assignee"); }}>
               {initials(task.assignee.displayName)}
-            </span>
+            </button>
           ) : null}
         </div>
       </div>
@@ -893,7 +989,7 @@ function TaskCard({
         newChecklistTitle={newChecklistTitle}
         onToggleExpanded={onToggleExpanded}
         onPatchChecklistItem={onPatchChecklistItem}
-        onEditChecklistItem={() => onOpenSubtasks(task.id)}
+        onEditChecklistItem={(itemId) => onOpenSubtasks(task.id, itemId)}
         onNewChecklistTitleChange={setNewChecklistTitle}
         onAddChecklistItem={(title, parentId) => onAddChecklistItem(task.id, title, parentId)}
         users={users}
@@ -901,13 +997,7 @@ function TaskCard({
     </article>
       {dropEdge === "after" ? <div className="task-drop-placeholder" style={{ height: dragPreviewHeight || 76 }} /> : null}
       {openMenu === "stickers" ? <TaskStickerMenu task={task} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
-      {openMenu === "assignee" ? (
-        <AnchoredPopover anchor={menuAnchor} onClose={() => setOpenMenu(null)}>
-          <div className="task-popover__title">Исполнитель</div>
-          <button type="button" className="task-popover__item" onClick={() => { onPatchTask(task.id, { assigneeUserId: null }); setOpenMenu(null); }}>Без исполнителя</button>
-          {users.map((user) => <button key={user.id} type="button" className="task-popover__item" onClick={() => { onPatchTask(task.id, { assigneeUserId: user.id }); setOpenMenu(null); }}><span className="task-avatar !h-6 !w-6">{initials(user.displayName)}</span>{user.displayName}</button>)}
-        </AnchoredPopover>
-      ) : null}
+      {openMenu === "priority" || openMenu === "deadline" || openMenu === "reminder" || openMenu === "assignee" ? <StickerQuickEditor target={task} mode={openMenu} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
       {openMenu === "actions" ? <TaskActionMenu task={task} columns={columns} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} onEdit={() => onOpen(task)} onActivity={() => onOpenActivity(task.id)} onSubtasks={() => onOpenSubtasks(task.id)} onDuplicate={() => onDuplicate(task.id)} onDelete={() => onDelete(task.id)} /> : null}
     </div>
   );
@@ -1534,6 +1624,7 @@ function TasksPageContent() {
   const [activityDrawer, setActivityDrawer] = React.useState<{
     taskId: string;
     tab: "activity" | "details" | "subtasks";
+    focusSubtaskId?: string;
   } | null>(null);
   const [draggingTaskId, setDraggingTaskId] = React.useState<string | null>(null);
   const [dragPreviewHeight, setDragPreviewHeight] = React.useState(76);
@@ -2518,7 +2609,7 @@ function TasksPageContent() {
                     columns={board.columns}
                     onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}
                     onOpenActivity={(taskId) => setActivityDrawer({ taskId, tab: "activity" })}
-                    onOpenSubtasks={(taskId) => setActivityDrawer({ taskId, tab: "subtasks" })}
+                    onOpenSubtasks={(taskId, focusSubtaskId) => setActivityDrawer({ taskId, tab: "subtasks", focusSubtaskId })}
                     onDuplicate={(taskId) => void duplicateTask(taskId)}
                     onDelete={(taskId) => void deleteTask(taskId)}
                     onPatchTask={(taskId, body) => void patchTaskInline(taskId, body)}
@@ -2650,7 +2741,7 @@ function TasksPageContent() {
       ) : null}
       {activityDrawer ? (
         <TaskActivityDrawer
-          key={`${activityDrawer.taskId}:${activityDrawer.tab}`}
+          key={`${activityDrawer.taskId}:${activityDrawer.tab}:${activityDrawer.focusSubtaskId ?? ""}`}
           taskId={activityDrawer.taskId}
           users={meta?.users ?? []}
           columns={(board?.columns ?? []).map((column) => ({
@@ -2659,6 +2750,7 @@ function TasksPageContent() {
             isDone: column.isDone,
           }))}
           initialTab={activityDrawer.tab}
+          initialFocusSubtaskId={activityDrawer.focusSubtaskId}
           onClose={() => setActivityDrawer(null)}
           onChanged={() => {
             if (boardRef.current) void loadBoard(boardRef.current.id);

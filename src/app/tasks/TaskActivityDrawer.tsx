@@ -99,6 +99,7 @@ export function TaskActivityDrawer({
   users,
   columns,
   initialTab = "activity",
+  initialFocusSubtaskId,
   onClose,
   onChanged,
 }: {
@@ -106,6 +107,7 @@ export function TaskActivityDrawer({
   users: UserOption[];
   columns: ColumnOption[];
   initialTab?: Tab;
+  initialFocusSubtaskId?: string;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -141,6 +143,16 @@ export function TaskActivityDrawer({
   }, [taskId]);
 
   React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    if (!task || !initialFocusSubtaskId || tab !== "subtasks") return;
+    const timer = window.setTimeout(() => {
+      const node = (host?.ownerDocument ?? document).querySelector<HTMLElement>(`[data-subtask-id="${CSS.escape(initialFocusSubtaskId)}"]`);
+      const detail = node?.querySelector<HTMLDetailsElement>("details");
+      if (detail) detail.open = true;
+      node?.scrollIntoView({ block: "center" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [host, initialFocusSubtaskId, tab, task]);
   React.useEffect(() => {
     const refresh = () => { if (!busy && document.visibilityState === "visible") void load(true); };
     const timer = window.setInterval(refresh, 12_000);
@@ -273,7 +285,7 @@ export function TaskActivityDrawer({
 
   function renderSubtask(item: Subtask & { children?: Subtask[] }, depth = 0): React.ReactNode {
     return (
-      <div key={item.id} className="task-drawer-subtask-node" style={{ "--subtask-depth": depth } as React.CSSProperties}>
+      <div key={item.id} data-subtask-id={item.id} className="task-drawer-subtask-node" style={{ "--subtask-depth": depth } as React.CSSProperties}>
         <details className="task-subtask-detail">
           <summary>
             <button type="button" className={item.isDone ? "is-done" : ""} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void patchSubtask(item, { isDone: !item.isDone }, (current) => ({ ...current, isDone: !current.isDone })); }}>{item.isDone ? "✓" : ""}</button>

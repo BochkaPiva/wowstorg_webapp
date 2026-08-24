@@ -22,6 +22,7 @@ type BoardListItem = {
 
 type TaskChecklistItem = {
   id: string;
+  parentId: string | null;
   title: string;
   description: string | null;
   isDone: boolean;
@@ -34,6 +35,18 @@ type TaskChecklistItem = {
   updatedAt: string;
   assignee: null | { id: string; displayName: string };
 };
+
+type ChecklistPatchBody = Partial<{
+  title: string;
+  isDone: boolean;
+  assigneeUserId: string | null;
+  dueDate: string | null;
+  reminderAt: string | null;
+  priority: Priority;
+  color: string | null;
+}>;
+
+type ChecklistTreeNode = TaskChecklistItem & { children: ChecklistTreeNode[] };
 
 type BoardTask = {
   id: string;
@@ -115,6 +128,7 @@ type TaskCreateDraft = {
 
 type TaskDropEdge = "before" | "after";
 type ColumnDropEdge = "before" | "after";
+type TaskBoardTheme = "light" | "dark";
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   LOW: "Низкий",
@@ -211,6 +225,26 @@ function toLocalDateTime(value: string | null): string {
 
 function fromLocalDateTime(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
+}
+
+function buildChecklistTree(items: TaskChecklistItem[]): ChecklistTreeNode[] {
+  const nodes = new Map<string, ChecklistTreeNode>();
+  const roots: ChecklistTreeNode[] = [];
+
+  for (const item of items) nodes.set(item.id, { ...item, children: [] });
+  for (const item of items) {
+    const node = nodes.get(item.id)!;
+    const parent = item.parentId ? nodes.get(item.parentId) : null;
+    if (parent && parent.id !== item.id) parent.children.push(node);
+    else roots.push(node);
+  }
+
+  const sort = (list: ChecklistTreeNode[]) => {
+    list.sort((left, right) => left.sortOrder - right.sortOrder);
+    for (const node of list) sort(node.children);
+  };
+  sort(roots);
+  return roots;
 }
 
 function AnchoredPopover({
@@ -401,189 +435,198 @@ function RoundCheckbox({
       aria-pressed={checked}
       aria-label={checked ? "Отметить невыполненной" : "Отметить выполненной"}
     >
-      ✓
+      {checked ? (
+        <svg aria-hidden viewBox="0 0 16 16" className="h-[70%] w-[70%]" fill="none">
+          <path d="m3.2 8.1 3 3.1 6.6-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
     </button>
   );
 }
 
-const CHECKLIST_TREE_TRUNK_X = 11.5;
-const CHECKLIST_TREE_BRANCH_END_X = 28;
-const CHECKLIST_TREE_ACTION_BRANCH_END_X = 17;
-const CHECKLIST_TREE_CORNER_R = 7;
+function ChecklistStickerMenu({
+  item,
+  users,
+  anchor,
+  onClose,
+  onPatch,
+}: {
+  item: TaskChecklistItem;
+  users: TasksMeta["users"];
+  anchor: HTMLElement | null;
+  onClose: () => void;
+  onPatch: (body: ChecklistPatchBody) => void;
+}) {
+  return (
+    <AnchoredPopover anchor={anchor} onClose={onClose}>
+      <div className="task-popover__title">Стикеры подзадачи</div>
+      <div className="task-popover__section">
+        <label>Исполнитель</label>
+        <select value={item.assignee?.id ?? ""} onChange={(event) => { onPatch({ assigneeUserId: event.target.value || null }); onClose(); }}>
+          <option value="">Не назначен</option>
+          {users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+        </select>
+      </div>
+      <div className="task-popover__section">
+        <label>Дедлайн</label>
+        <input type="date" value={item.dueDate ?? ""} onChange={(event) => { onPatch({ dueDate: event.target.value || null }); onClose(); }} />
+      </div>
+      <div className="task-popover__section">
+        <label>Приоритет</label>
+        <select value={item.priority} onChange={(event) => { onPatch({ priority: event.target.value as Priority }); onClose(); }}>
+          {(Object.keys(PRIORITY_LABEL) as Priority[]).map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}
+        </select>
+      </div>
+      <div className="task-popover__section">
+        <label>Напоминание</label>
+        <input type="datetime-local" value={toLocalDateTime(item.reminderAt)} onChange={(event) => { onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose(); }} />
+      </div>
+      <div className="task-popover__section">
+        <div className="task-popover__label">Цвет</div>
+        <div className="task-color-row">
+          <button type="button" className={`task-color-dot is-reset${item.color ? "" : " is-active"}`} onClick={() => { onPatch({ color: null }); onClose(); }} aria-label="Без цвета">×</button>
+          {TASK_COLORS.map((color) => <button key={color} type="button" aria-label={`Цвет ${color}`} className={`task-color-dot${item.color === color ? " is-active" : ""}`} style={{ backgroundColor: color }} onClick={() => { onPatch({ color }); onClose(); }} />)}
+        </div>
+      </div>
+    </AnchoredPopover>
+  );
+}
 
-function buildChecklistTreePath(centers: number[]): string {
-  if (centers.length === 0) return "";
+function ChecklistCreateRow({
+  title,
+  onTitleChange,
+  onSubmit,
+  onCancel,
+}: {
+  title: string;
+  onTitleChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="task-checklist-create-row">
+      <span aria-hidden className="task-checklist-create-row__icon">＋</span>
+      <input
+        autoFocus
+        value={title}
+        onChange={(event) => onTitleChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") onSubmit();
+          if (event.key === "Escape") onCancel();
+        }}
+        onBlur={() => { if (title.trim()) onSubmit(); else onCancel(); }}
+        onMouseDown={(event) => event.stopPropagation()}
+        placeholder="Название подзадачи"
+      />
+    </div>
+  );
+}
 
-  const parts: string[] = [];
-  for (let i = 0; i < centers.length; i++) {
-    const y = centers[i]!;
-    const startY = i === 0 ? 0 : centers[i - 1]!;
-    const branchEndX =
-      i === centers.length - 1 ? CHECKLIST_TREE_ACTION_BRANCH_END_X : CHECKLIST_TREE_BRANCH_END_X;
-    parts.push(`M ${CHECKLIST_TREE_TRUNK_X} ${startY} V ${y - CHECKLIST_TREE_CORNER_R}`);
-    parts.push(
-      `Q ${CHECKLIST_TREE_TRUNK_X} ${y} ${CHECKLIST_TREE_TRUNK_X + CHECKLIST_TREE_CORNER_R} ${y} H ${branchEndX}`,
-    );
-  }
-  return parts.join(" ");
+function ChecklistTreeItem({
+  node,
+  depth,
+  users,
+  addingParentId,
+  newChecklistTitle,
+  onNewChecklistTitleChange,
+  onPatch,
+  onEdit,
+  onStartAdding,
+  onSubmitNewItem,
+  onCancelAdding,
+}: {
+  node: ChecklistTreeNode;
+  depth: number;
+  users: TasksMeta["users"];
+  addingParentId: string | null | undefined;
+  newChecklistTitle: string;
+  onNewChecklistTitleChange: (value: string) => void;
+  onPatch: (itemId: string, body: ChecklistPatchBody) => void;
+  onEdit: (itemId: string) => void;
+  onStartAdding: (parentId: string | null) => void;
+  onSubmitNewItem: () => void;
+  onCancelAdding: () => void;
+}) {
+  const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const urgent = node.priority === "HIGH" || node.priority === "URGENT";
+
+  return (
+    <div className="task-checklist-node" style={{ "--task-tree-depth": depth } as React.CSSProperties}>
+      <div className="task-checklist-row" style={node.color ? { backgroundColor: node.color } : undefined}>
+        <div className="task-checklist-row__main">
+          <RoundCheckbox size="sm" checked={node.isDone} onChange={(checked) => onPatch(node.id, { isDone: checked })} />
+          <span className={`task-checklist-row__title${node.isDone ? " is-done" : ""}`}>{node.title}</span>
+          <button type="button" className="task-checklist-row__menu" aria-label="Настроить подзадачу" onClick={(event) => { event.stopPropagation(); onEdit(node.id); }}>⋮</button>
+        </div>
+        <div className="task-checklist-row__stickers">
+          {urgent ? <span className="task-subtask-sticker is-priority">≡ {PRIORITY_LABEL[node.priority]}</span> : null}
+          {node.dueDate ? <span className="task-subtask-sticker">▣ {fmtDate(node.dueDate)}</span> : null}
+          {node.reminderAt ? <span className="task-subtask-sticker" title="Есть напоминание">◴</span> : null}
+          {node.assignee ? <span className="task-checklist-row__avatar" title={node.assignee.displayName}>{initials(node.assignee.displayName)}</span> : null}
+          <div className="task-checklist-row__quick">
+            <button type="button" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setMenuOpen(true); }}>＋ Стикер</button>
+            <button type="button" title="Создать вложенную подзадачу" aria-label="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}>＋</button>
+          </div>
+        </div>
+      </div>
+      {node.children.length > 0 || addingParentId === node.id ? (
+        <div className="task-checklist-children">
+          {node.children.map((child) => (
+            <ChecklistTreeItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              users={users}
+              addingParentId={addingParentId}
+              newChecklistTitle={newChecklistTitle}
+              onNewChecklistTitleChange={onNewChecklistTitleChange}
+              onPatch={onPatch}
+              onEdit={onEdit}
+              onStartAdding={onStartAdding}
+              onSubmitNewItem={onSubmitNewItem}
+              onCancelAdding={onCancelAdding}
+            />
+          ))}
+          {addingParentId === node.id ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
+        </div>
+      ) : null}
+      {menuOpen ? <ChecklistStickerMenu item={node} users={users} anchor={menuAnchor} onClose={() => setMenuOpen(false)} onPatch={(body) => onPatch(node.id, body)} /> : null}
+    </div>
+  );
 }
 
 function ChecklistTreeSection({
   items,
-  adding,
+  users,
+  addingParentId,
   newChecklistTitle,
   onNewChecklistTitleChange,
-  onToggleChecklistItem,
+  onPatchChecklistItem,
   onEditChecklistItem,
-  onAddClick,
+  onStartAdding,
   onSubmitNewItem,
   onCancelAdding,
 }: {
   items: TaskChecklistItem[];
-  adding: boolean;
+  users: TasksMeta["users"];
+  addingParentId: string | null | undefined;
   newChecklistTitle: string;
   onNewChecklistTitleChange: (value: string) => void;
-  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
   onEditChecklistItem: (itemId: string) => void;
-  onAddClick: (event: React.MouseEvent) => void;
+  onStartAdding: (parentId: string | null) => void;
   onSubmitNewItem: () => void;
   onCancelAdding: () => void;
 }) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const rowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
-  const [treePath, setTreePath] = React.useState("");
-
-  const syncTreePath = React.useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const containerTop = container.getBoundingClientRect().top;
-    const centers = rowRefs.current
-      .filter((row): row is HTMLDivElement => row != null)
-      .map((row) => {
-        const rect = row.getBoundingClientRect();
-        return rect.top - containerTop + rect.height / 2;
-      });
-
-    setTreePath(buildChecklistTreePath(centers));
-  }, []);
-
-  React.useLayoutEffect(() => {
-    rowRefs.current.length = items.length + 1;
-    syncTreePath();
-  }, [adding, items, newChecklistTitle, syncTreePath]);
-
-  React.useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const observer = new ResizeObserver(() => syncTreePath());
-    observer.observe(container);
-    window.addEventListener("resize", syncTreePath);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", syncTreePath);
-    };
-  }, [syncTreePath]);
-
+  const tree = React.useMemo(() => buildChecklistTree(items), [items]);
   return (
-    <div ref={containerRef} className="task-checklist-tree">
-      {treePath ? (
-        <svg
-          aria-hidden
-          className="pointer-events-none absolute inset-0 h-full w-full overflow-visible text-sky-500/75"
-        >
-          <path
-            d={treePath}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : null}
-
-      {items.map((item, index) => (
-        <div
-          key={item.id}
-          ref={(node) => {
-            rowRefs.current[index] = node;
-          }}
-          className={`task-checklist-tree__slot${index > 0 ? " has-gap" : ""}`}
-        >
-          <div
-            className="task-checklist-row"
-            style={item.color ? { backgroundColor: item.color } : undefined}
-          >
-            <RoundCheckbox
-              size="sm"
-              checked={item.isDone}
-              onChange={(checked) => onToggleChecklistItem(item.id, checked)}
-            />
-            <span
-              className={[
-                "task-checklist-row__title",
-                item.isDone ? "text-white/50 line-through" : "text-white/90",
-              ].join(" ")}
-            >
-              {item.title}
-            </span>
-            {item.dueDate ? <span className="task-checklist-row__date">{fmtDate(item.dueDate)}</span> : null}
-            {(item.priority === "HIGH" || item.priority === "URGENT") ? <span className="task-checklist-row__priority">!</span> : null}
-            {item.assignee ? <span className="task-checklist-row__avatar" title={item.assignee.displayName}>{initials(item.assignee.displayName)}</span> : null}
-            <div className="group/delete -mr-0.5 flex w-8 shrink-0 items-center justify-end pl-1">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onEditChecklistItem(item.id);
-                }}
-                onMouseDown={(event) => event.stopPropagation()}
-                className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-white/45 opacity-0 transition-opacity duration-150 hover:bg-white/10 hover:text-white group-hover/delete:opacity-100"
-                aria-label="Настроить подзадачу"
-              >
-                ⋮
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="task-checklist-tree">
+      {tree.map((node) => (
+        <ChecklistTreeItem key={node.id} node={node} depth={0} users={users} addingParentId={addingParentId} newChecklistTitle={newChecklistTitle} onNewChecklistTitleChange={onNewChecklistTitleChange} onPatch={onPatchChecklistItem} onEdit={onEditChecklistItem} onStartAdding={onStartAdding} onSubmitNewItem={onSubmitNewItem} onCancelAdding={onCancelAdding} />
       ))}
-
-      <div
-        ref={(node) => {
-          rowRefs.current[items.length] = node;
-        }}
-        className={`task-checklist-tree__create${items.length > 0 ? " has-gap" : ""}`}
-      >
-        {adding ? (
-          <input
-            autoFocus
-            value={newChecklistTitle}
-            onChange={(event) => onNewChecklistTitleChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onSubmitNewItem();
-              if (event.key === "Escape") onCancelAdding();
-            }}
-            onBlur={() => {
-              if (newChecklistTitle.trim()) onSubmitNewItem();
-              else onCancelAdding();
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-            placeholder="Название подзадачи"
-            className="w-full rounded-md border border-white/20 !bg-[#202733] px-2.5 py-2 text-xs !text-white caret-white outline-none placeholder:!text-white/40 focus:border-white/55"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={onAddClick}
-            onMouseDown={(event) => event.stopPropagation()}
-            className="py-0.5 text-xs font-semibold text-sky-300 transition-colors hover:text-white"
-          >
-            + Создать подзадачу
-          </button>
-        )}
-      </div>
+      {addingParentId === null ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
+      {addingParentId === undefined ? <button type="button" className="task-checklist-tree__add-root" onClick={(event) => { event.stopPropagation(); onStartAdding(null); }}>＋ Создать подзадачу</button> : null}
     </div>
   );
 }
@@ -593,21 +636,23 @@ function TaskChecklistPanel({
   expanded,
   newChecklistTitle,
   onToggleExpanded,
-  onToggleChecklistItem,
+  onPatchChecklistItem,
   onEditChecklistItem,
   onNewChecklistTitleChange,
   onAddChecklistItem,
+  users,
 }: {
   task: BoardTask;
   expanded: boolean;
   newChecklistTitle: string;
   onToggleExpanded: (taskId: string) => void;
-  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
   onEditChecklistItem: (itemId: string) => void;
   onNewChecklistTitleChange: (value: string) => void;
-  onAddChecklistItem: (title: string) => void;
+  onAddChecklistItem: (title: string, parentId: string | null) => void;
+  users: TasksMeta["users"];
 }) {
-  const [adding, setAdding] = React.useState(false);
+  const [addingParentId, setAddingParentId] = React.useState<string | null | undefined>(undefined);
   const progressPct = task.checklistTotal > 0 ? Math.round((task.checklistDone / task.checklistTotal) * 100) : 0;
   const hasChecklist = task.checklistTotal > 0;
   const showTree = expanded || !hasChecklist;
@@ -615,23 +660,22 @@ function TaskChecklistPanel({
   function submitNewItem() {
     const next = newChecklistTitle.trim();
     if (!next) return;
-    onAddChecklistItem(next);
+    onAddChecklistItem(next, addingParentId ?? null);
     onNewChecklistTitleChange("");
-    setAdding(false);
+    setAddingParentId(undefined);
   }
 
-  function startAdding(event: React.MouseEvent) {
-    event.stopPropagation();
+  function startAdding(parentId: string | null) {
     if (hasChecklist && !expanded) onToggleExpanded(task.id);
-    setAdding(true);
+    setAddingParentId(parentId);
   }
 
-  if (!hasChecklist && !adding) {
+  if (!hasChecklist && addingParentId === undefined) {
     return (
       <div className="task-checklist-footer task-checklist-footer--empty">
         <button
           type="button"
-          onClick={startAdding}
+          onClick={(event) => { event.stopPropagation(); startAdding(null); }}
           onMouseDown={(event) => event.stopPropagation()}
           className="task-checklist-create"
         >
@@ -672,16 +716,17 @@ function TaskChecklistPanel({
       {showTree ? (
         <ChecklistTreeSection
           items={task.checklistItems}
-          adding={adding}
+          users={users}
+          addingParentId={addingParentId}
           newChecklistTitle={newChecklistTitle}
           onNewChecklistTitleChange={onNewChecklistTitleChange}
-          onToggleChecklistItem={onToggleChecklistItem}
+          onPatchChecklistItem={onPatchChecklistItem}
           onEditChecklistItem={onEditChecklistItem}
-          onAddClick={startAdding}
+          onStartAdding={startAdding}
           onSubmitNewItem={submitNewItem}
           onCancelAdding={() => {
             onNewChecklistTitleChange("");
-            setAdding(false);
+            setAddingParentId(undefined);
           }}
         />
       ) : null}
@@ -697,7 +742,7 @@ function TaskCard({
   onAddChecklistItem,
   expanded,
   onToggleExpanded,
-  onToggleChecklistItem,
+  onPatchChecklistItem,
   onDragStart,
   onDragEnd,
   onDragOverTask,
@@ -716,10 +761,10 @@ function TaskCard({
   column: BoardColumn;
   onOpen: (task: BoardTask) => void;
   onPatchTask: (taskId: string, body: TaskPatchBody) => void;
-  onAddChecklistItem: (taskId: string, title: string) => void;
+  onAddChecklistItem: (taskId: string, title: string, parentId: string | null) => void;
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
-  onToggleChecklistItem: (itemId: string, isDone: boolean) => void;
+  onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
   onDragStart: (taskId: string, fromColumnId: string, cardHeight: number) => void;
   onDragEnd: () => void;
   onDragOverTask: (taskId: string, columnId: string, edge: TaskDropEdge) => void;
@@ -828,25 +873,14 @@ function TaskCard({
         </div>
 
         <div className="task-card-tools">
+          {isUrgent ? <span className="task-card-sticker task-card-sticker--priority">≡ {PRIORITY_LABEL[task.priority]}</span> : null}
+          {task.dueDate ? <span className="task-card-sticker">▣ {fmtDate(task.dueDate)}</span> : null}
+          {task.reminderAt ? <span className="task-card-sticker" title="Есть напоминание">◴</span> : null}
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
           <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}>♙</button>
           {task.commentCount > 0 ? <span className="task-card-comments" title="В задаче есть заметки">☵ <span>{task.commentCount}</span></span> : null}
-        </div>
-
-        <div className="task-card__meta">
-          {task.dueDate ? (
-            <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-white/90">
-              {fmtDate(task.dueDate)}
-            </span>
-          ) : null}
-          {isUrgent ? (
-            <span className="rounded border border-amber-200/50 bg-amber-300/20 px-2 py-0.5 text-[11px] text-amber-50">
-              {PRIORITY_LABEL[task.priority]}
-            </span>
-          ) : null}
-          {task.reminderAt ? <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-white/90">◴ Напоминание</span> : null}
           {task.assignee ? (
-            <span className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full bg-pink-600 text-[11px] font-bold text-white">
+            <span className="task-card-assignee" title={task.assignee.displayName}>
               {initials(task.assignee.displayName)}
             </span>
           ) : null}
@@ -858,10 +892,11 @@ function TaskCard({
         expanded={expanded}
         newChecklistTitle={newChecklistTitle}
         onToggleExpanded={onToggleExpanded}
-        onToggleChecklistItem={onToggleChecklistItem}
+        onPatchChecklistItem={onPatchChecklistItem}
         onEditChecklistItem={() => onOpenSubtasks(task.id)}
         onNewChecklistTitleChange={setNewChecklistTitle}
-        onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
+        onAddChecklistItem={(title, parentId) => onAddChecklistItem(task.id, title, parentId)}
+        users={users}
       />
     </article>
       {dropEdge === "after" ? <div className="task-drop-placeholder" style={{ height: dragPreviewHeight || 76 }} /> : null}
@@ -1519,6 +1554,7 @@ function TasksPageContent() {
   const [archiveLoading, setArchiveLoading] = React.useState(false);
   const [archiveTasks, setArchiveTasks] = React.useState<Array<BoardTask & { columnTitle: string }>>([]);
   const [archivePortalHost, setArchivePortalHost] = React.useState<HTMLElement | null>(null);
+  const [boardTheme, setBoardTheme] = React.useState<TaskBoardTheme>("light");
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const mutationSequenceRef = React.useRef(0);
@@ -1528,7 +1564,17 @@ function TasksPageContent() {
 
   React.useEffect(() => {
     setArchivePortalHost(getModalPortalHost());
+    const savedTheme = window.localStorage.getItem("wowstorg-task-board-theme");
+    if (savedTheme === "dark" || savedTheme === "light") setBoardTheme(savedTheme);
   }, []);
+
+  function toggleBoardTheme() {
+    setBoardTheme((current) => {
+      const next = current === "light" ? "dark" : "light";
+      window.localStorage.setItem("wowstorg-task-board-theme", next);
+      return next;
+    });
+  }
 
   const applyBoard = React.useCallback((nextBoard: BoardDetail | null) => {
     boardRef.current = nextBoard;
@@ -1772,31 +1818,33 @@ function TasksPageContent() {
     }
   }
 
-  async function patchChecklistItem(taskId: string, itemId: string, body: { isDone?: boolean; title?: string }) {
+  async function patchChecklistItem(taskId: string, itemId: string, body: ChecklistPatchBody) {
     const previousBoard = boardRef.current;
-    if (body.isDone !== undefined) {
-      updateBoard((current) =>
-        current
-          ? {
-              ...current,
-              columns: current.columns.map((column) => ({
-                ...column,
-                tasks: column.tasks.map((task) => {
-                  if (task.id !== taskId) return task;
-                  const checklistItems = task.checklistItems.map((item) =>
-                    item.id === itemId ? { ...item, isDone: body.isDone! } : item,
-                  );
-                  return {
-                    ...task,
-                    checklistItems,
-                    checklistDone: checklistItems.filter((item) => item.isDone).length,
-                  };
-                }),
-              })),
-            }
-          : current,
-      );
-    }
+    const nextAssignee = body.assigneeUserId === undefined
+      ? undefined
+      : body.assigneeUserId
+        ? meta?.users.find((user) => user.id === body.assigneeUserId) ?? null
+        : null;
+    updateBoard((current) => current ? {
+      ...current,
+      columns: current.columns.map((column) => ({
+        ...column,
+        tasks: column.tasks.map((task) => {
+          if (task.id !== taskId) return task;
+          const checklistItems = task.checklistItems.map((item) => item.id === itemId ? {
+            ...item,
+            ...(body.title !== undefined ? { title: body.title } : {}),
+            ...(body.isDone !== undefined ? { isDone: body.isDone } : {}),
+            ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+            ...(body.reminderAt !== undefined ? { reminderAt: body.reminderAt } : {}),
+            ...(body.priority !== undefined ? { priority: body.priority } : {}),
+            ...(body.color !== undefined ? { color: body.color } : {}),
+            ...(nextAssignee !== undefined ? { assignee: nextAssignee } : {}),
+          } : item);
+          return { ...task, checklistItems, checklistDone: checklistItems.filter((item) => item.isDone).length };
+        }),
+      })),
+    } : current);
     try {
       await readApi(
         await fetch(`/api/tasks/checklist/${itemId}`, {
@@ -1989,17 +2037,20 @@ function TasksPageContent() {
     if (moveQueueByTaskRef.current.get(taskId) === queuedMutation) moveQueueByTaskRef.current.delete(taskId);
   }
 
-  async function addChecklistItemInline(taskId: string, title: string) {
+  async function addChecklistItemInline(taskId: string, title: string, parentId: string | null = null) {
     const previousBoard = boardRef.current;
     const tempId = `temp-checklist-${crypto.randomUUID()}`;
     setExpandedTaskIds((current) => new Set(current).add(taskId));
 
     updateTaskInBoard(taskId, (task) => {
-      const nextSortOrder = task.checklistItems.reduce((max, item) => Math.max(max, item.sortOrder), 0) + 1000;
+      const nextSortOrder = task.checklistItems
+        .filter((item) => item.parentId === parentId)
+        .reduce((max, item) => Math.max(max, item.sortOrder), 0) + 1000;
       const checklistItems = [
         ...task.checklistItems,
         {
           id: tempId,
+          parentId,
           title,
           description: null,
           isDone: false,
@@ -2027,7 +2078,7 @@ function TasksPageContent() {
         await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title }),
+          body: JSON.stringify({ title, parentId }),
         }),
       );
       updateTaskInBoard(taskId, (task) => ({
@@ -2253,6 +2304,7 @@ function TasksPageContent() {
     <div
       className={[
         "task-board-shell",
+        `theme-${boardTheme}`,
         viewParams.embedded ? "is-embedded" : "",
       ].join(" ")}
     >
@@ -2283,6 +2335,16 @@ function TasksPageContent() {
           )}
         </div>
         <div className="task-board-toolbar__actions">
+          <button
+            type="button"
+            onClick={toggleBoardTheme}
+            className="task-board-button task-board-button--quiet task-board-theme-toggle"
+            aria-pressed={boardTheme === "dark"}
+            title={boardTheme === "light" ? "Включить тёмную тему" : "Включить светлую тему"}
+          >
+            <span aria-hidden>{boardTheme === "light" ? "☾" : "☀"}</span>
+            {boardTheme === "light" ? "Тёмная" : "Светлая"}
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -2460,10 +2522,10 @@ function TasksPageContent() {
                     onDuplicate={(taskId) => void duplicateTask(taskId)}
                     onDelete={(taskId) => void deleteTask(taskId)}
                     onPatchTask={(taskId, body) => void patchTaskInline(taskId, body)}
-                    onAddChecklistItem={(taskId, title) => void addChecklistItemInline(taskId, title)}
+                    onAddChecklistItem={(taskId, title, parentId) => void addChecklistItemInline(taskId, title, parentId)}
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
-                    onToggleChecklistItem={(itemId, isDone) => void patchChecklistItem(task.id, itemId, { isDone })}
+                    onPatchChecklistItem={(itemId, body) => void patchChecklistItem(task.id, itemId, body)}
                     onDragStart={(taskId, fromColumnId, cardHeight) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);

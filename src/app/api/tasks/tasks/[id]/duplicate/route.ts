@@ -29,6 +29,8 @@ export async function POST(
       checklistItems: {
         orderBy: { sortOrder: "asc" },
         select: {
+          id: true,
+          parentId: true,
           title: true,
           description: true,
           priority: true,
@@ -59,22 +61,33 @@ export async function POST(
         orderId: source.orderId,
         sortOrder: await nextTaskSortOrder(tx, source.columnId),
         createdById: auth.user.id,
-        checklistItems: {
-          create: source.checklistItems.map((item) => ({
-            title: item.title,
-            description: item.description,
-            priority: item.priority,
-            color: item.color,
-            dueDate: item.dueDate,
-            reminderAt: item.reminderAt,
-            assigneeUserId: item.assigneeUserId,
-            sortOrder: item.sortOrder,
-            createdById: auth.user.id,
-          })),
-        },
       },
       select: { id: true },
     });
+    const copiedIds = new Map<string, string>();
+    const pending = [...source.checklistItems];
+    while (pending.length > 0) {
+      const index = pending.findIndex((item) => !item.parentId || copiedIds.has(item.parentId));
+      if (index < 0) throw new Error("Некорректное дерево подзадач");
+      const [item] = pending.splice(index, 1);
+      const copied = await tx.workTaskChecklistItem.create({
+        data: {
+          taskId: created.id,
+          parentId: item.parentId ? copiedIds.get(item.parentId) ?? null : null,
+          title: item.title,
+          description: item.description,
+          priority: item.priority,
+          color: item.color,
+          dueDate: item.dueDate,
+          reminderAt: item.reminderAt,
+          assigneeUserId: item.assigneeUserId,
+          sortOrder: item.sortOrder,
+          createdById: auth.user.id,
+        },
+        select: { id: true },
+      });
+      copiedIds.set(item.id, copied.id);
+    }
     await appendWorkTaskActivity(tx, {
       taskId: created.id,
       actorUserId: auth.user.id,

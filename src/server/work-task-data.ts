@@ -22,6 +22,7 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
     orderBy: { sortOrder: "asc" },
     select: {
       id: true,
+      parentId: true,
       title: true,
       description: true,
       isDone: true,

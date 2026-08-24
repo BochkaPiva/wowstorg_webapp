@@ -19,6 +19,7 @@ type Activity = {
 
 type Subtask = {
   id: string;
+  parentId: string | null;
   title: string;
   description: string | null;
   isDone: boolean;
@@ -115,6 +116,7 @@ export function TaskActivityDrawer({
   const [error, setError] = React.useState<string | null>(null);
   const [comment, setComment] = React.useState("");
   const [newSubtask, setNewSubtask] = React.useState("");
+  const [newSubtaskParentId, setNewSubtaskParentId] = React.useState<string | null>(null);
   const [host, setHost] = React.useState<HTMLElement | null>(null);
 
   React.useEffect(() => {
@@ -228,9 +230,10 @@ export function TaskActivityDrawer({
       await api(`/api/tasks/tasks/${taskId}/checklist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, parentId: newSubtaskParentId }),
       });
       setNewSubtask("");
+      setNewSubtaskParentId(null);
       await load(true);
       onChanged();
     } catch (cause) {
@@ -252,6 +255,48 @@ export function TaskActivityDrawer({
     } finally {
       setBusy(false);
     }
+  }
+
+  const subtaskTree = React.useMemo(() => {
+    if (!task) return [] as Array<Subtask & { children: Subtask[] }>;
+    const nodes = new Map<string, Subtask & { children: Subtask[] }>();
+    const roots: Array<Subtask & { children: Subtask[] }> = [];
+    for (const item of task.checklistItems) nodes.set(item.id, { ...item, children: [] });
+    for (const item of task.checklistItems) {
+      const node = nodes.get(item.id)!;
+      const parent = item.parentId ? nodes.get(item.parentId) : null;
+      if (parent && parent.id !== item.id) parent.children.push(node);
+      else roots.push(node);
+    }
+    return roots;
+  }, [task]);
+
+  function renderSubtask(item: Subtask & { children?: Subtask[] }, depth = 0): React.ReactNode {
+    return (
+      <div key={item.id} className="task-drawer-subtask-node" style={{ "--subtask-depth": depth } as React.CSSProperties}>
+        <details className="task-subtask-detail">
+          <summary>
+            <button type="button" className={item.isDone ? "is-done" : ""} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void patchSubtask(item, { isDone: !item.isDone }, (current) => ({ ...current, isDone: !current.isDone })); }}>{item.isDone ? "✓" : ""}</button>
+            <span className={item.isDone ? "is-done" : ""}>{item.title}</span>
+            <small>{item.assignee?.displayName ?? "Без исполнителя"}</small>
+          </summary>
+          <div className="task-subtask-detail__body">
+            <label className="task-drawer__field task-drawer__field--wide"><FieldLabel>Название</FieldLabel><input defaultValue={item.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== item.title) void patchSubtask(item, { title }, (current) => ({ ...current, title })); }} /></label>
+            <label className="task-drawer__field"><FieldLabel>Исполнитель</FieldLabel><select value={item.assignee?.id ?? ""} onChange={(event) => { const id = event.target.value; const assignee = users.find((user) => user.id === id) ?? null; void patchSubtask(item, { assigneeUserId: id || null }, (current) => ({ ...current, assignee })); }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select></label>
+            <label className="task-drawer__field"><FieldLabel>Дедлайн</FieldLabel><input type="date" value={item.dueDate ?? ""} onChange={(event) => { const dueDate = event.target.value || null; void patchSubtask(item, { dueDate }, (current) => ({ ...current, dueDate })); }} /></label>
+            <label className="task-drawer__field"><FieldLabel>Приоритет</FieldLabel><select value={item.priority} onChange={(event) => { const priority = event.target.value as Priority; void patchSubtask(item, { priority }, (current) => ({ ...current, priority })); }}>{PRIORITIES.map((row) => <option key={row.value} value={row.value}>{row.label}</option>)}</select></label>
+            <label className="task-drawer__field"><FieldLabel>Напоминание</FieldLabel><input type="datetime-local" value={toLocalDateTime(item.reminderAt)} onChange={(event) => { const reminderAt = fromLocalDateTime(event.target.value); void patchSubtask(item, { reminderAt }, (current) => ({ ...current, reminderAt })); }} /></label>
+            <div className="task-drawer__field task-drawer__field--wide"><FieldLabel>Цвет подзадачи</FieldLabel><div className="task-drawer-colors">{["#334155", "#365a83", "#6d3b7d", "#7b6b2e", "#315f2f", "#7f2f5f"].map((color) => <button key={color} type="button" className={item.color === color ? "is-active" : ""} style={{ backgroundColor: color }} aria-label={`Выбрать цвет ${color}`} onClick={() => void patchSubtask(item, { color }, (current) => ({ ...current, color }))} />)}</div></div>
+            <div className="task-subtask-detail__actions">
+              <button type="button" onClick={() => { setNewSubtask(""); setNewSubtaskParentId(item.id); }}>＋ Вложенная подзадача</button>
+              <button type="button" className="task-subtask-delete" onClick={() => void deleteSubtask(item)}>Удалить</button>
+            </div>
+          </div>
+        </details>
+        {newSubtaskParentId === item.id ? <div className="task-subtask-create is-nested"><input autoFocus value={newSubtask} onChange={(event) => setNewSubtask(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSubtask(); if (event.key === "Escape") { setNewSubtask(""); setNewSubtaskParentId(null); } }} placeholder="Название вложенной подзадачи" /><button type="button" onClick={() => void createSubtask()} disabled={!newSubtask.trim() || busy}>Добавить</button></div> : null}
+        {item.children?.length ? <div className="task-drawer-subtask-children">{item.children.map((child) => renderSubtask(child, depth + 1))}</div> : null}
+      </div>
+    );
   }
 
   if (!host) return null;
@@ -341,22 +386,8 @@ export function TaskActivityDrawer({
 
         {!loading && task && tab === "subtasks" ? (
           <div className="task-drawer__subtasks">
-            <div className="task-subtask-create"><input value={newSubtask} onChange={(event) => setNewSubtask(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSubtask(); }} placeholder="Новая подзадача" /><button type="button" onClick={() => void createSubtask()} disabled={!newSubtask.trim() || busy}>Добавить</button></div>
-            {task.checklistItems.map((item) => (
-              <details key={item.id} className="task-subtask-detail">
-                <summary><button type="button" className={item.isDone ? "is-done" : ""} onClick={(event) => { event.preventDefault(); void patchSubtask(item, { isDone: !item.isDone }, (current) => ({ ...current, isDone: !current.isDone })); }}>{item.isDone ? "✓" : ""}</button><span className={item.isDone ? "is-done" : ""}>{item.title}</span><small>{item.assignee?.displayName ?? "Без исполнителя"}</small></summary>
-                <div className="task-subtask-detail__body">
-                  <label className="task-drawer__field task-drawer__field--wide"><FieldLabel>Название</FieldLabel><input defaultValue={item.title} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== item.title) void patchSubtask(item, { title }, (current) => ({ ...current, title })); }} /></label>
-                  <label className="task-drawer__field task-drawer__field--wide"><FieldLabel>Описание / заметка</FieldLabel><textarea defaultValue={item.description ?? ""} rows={3} onBlur={(event) => { const description = event.target.value.trim() || null; if (description !== item.description) void patchSubtask(item, { description }, (current) => ({ ...current, description })); }} /></label>
-                  <label className="task-drawer__field"><FieldLabel>Исполнитель</FieldLabel><select value={item.assignee?.id ?? ""} onChange={(event) => { const id = event.target.value; const assignee = users.find((user) => user.id === id) ?? null; void patchSubtask(item, { assigneeUserId: id || null }, (current) => ({ ...current, assignee })); }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select></label>
-                  <label className="task-drawer__field"><FieldLabel>Дедлайн</FieldLabel><input type="date" value={item.dueDate ?? ""} onChange={(event) => { const dueDate = event.target.value || null; void patchSubtask(item, { dueDate }, (current) => ({ ...current, dueDate })); }} /></label>
-                  <label className="task-drawer__field"><FieldLabel>Приоритет</FieldLabel><select value={item.priority} onChange={(event) => { const priority = event.target.value as Priority; void patchSubtask(item, { priority }, (current) => ({ ...current, priority })); }}>{PRIORITIES.map((row) => <option key={row.value} value={row.value}>{row.label}</option>)}</select></label>
-                  <label className="task-drawer__field"><FieldLabel>Напоминание</FieldLabel><input type="datetime-local" value={toLocalDateTime(item.reminderAt)} onChange={(event) => { const reminderAt = fromLocalDateTime(event.target.value); void patchSubtask(item, { reminderAt }, (current) => ({ ...current, reminderAt })); }} /></label>
-                  <div className="task-drawer__field task-drawer__field--wide"><FieldLabel>Цвет подзадачи</FieldLabel><div className="task-drawer-colors">{["#334155", "#365a83", "#6d3b7d", "#7b6b2e", "#315f2f", "#7f2f5f"].map((color) => <button key={color} type="button" className={item.color === color ? "is-active" : ""} style={{ backgroundColor: color }} aria-label={`Выбрать цвет ${color}`} onClick={() => void patchSubtask(item, { color }, (current) => ({ ...current, color }))} />)}</div></div>
-                  <button type="button" className="task-subtask-delete" onClick={() => void deleteSubtask(item)}>Удалить подзадачу</button>
-                </div>
-              </details>
-            ))}
+            <div className="task-subtask-create"><input value={newSubtaskParentId === null ? newSubtask : ""} onFocus={() => { setNewSubtask(""); setNewSubtaskParentId(null); }} onChange={(event) => setNewSubtask(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createSubtask(); }} placeholder="Новая подзадача" /><button type="button" onClick={() => void createSubtask()} disabled={newSubtaskParentId !== null || !newSubtask.trim() || busy}>Добавить</button></div>
+            {subtaskTree.map((item) => renderSubtask(item))}
             {task.checklistItems.length === 0 ? <div className="task-activity-empty"><strong>Подзадач пока нет</strong><span>Разбейте задачу на небольшие самостоятельные шаги.</span></div> : null}
           </div>
         ) : null}

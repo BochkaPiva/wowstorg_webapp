@@ -59,12 +59,15 @@ export async function nextTaskSortOrder(db: Db, columnId: string): Promise<numbe
   return (last?.sortOrder ?? 0) + 1000;
 }
 
-export async function nextChecklistSortOrder(db: Db, taskId: string): Promise<number> {
+export async function nextChecklistSortOrder(
+  db: Db,
+  taskId: string,
+  parentId: string | null = null,
+): Promise<number> {
   const last = await db.workTaskChecklistItem.findFirst({
-    where: { taskId },
+    where: { taskId, parentId },
     orderBy: { sortOrder: "desc" },
     select: { sortOrder: true },
   });
   return (last?.sortOrder ?? 0) + 1000;
 }
-

@@ -64,6 +64,7 @@ export async function PATCH(
       },
       select: {
         id: true,
+        parentId: true,
         title: true,
         description: true,
         isDone: true,

@@ -12,6 +12,7 @@ import { nextChecklistSortOrder } from "@/server/work-tasks";
 const CreateChecklistItemSchema = z
   .object({
     title: z.string().trim().min(1).max(300),
+    parentId: z.string().trim().min(1).optional().nullable(),
     description: z.string().trim().max(3000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
@@ -42,10 +43,20 @@ export async function POST(
   const task = await prisma.workTask.findUnique({ where: { id: taskId }, select: { id: true } });
   if (!task) return jsonError(404, "Задача не найдена");
 
+  const parentId = parsed.data.parentId || null;
+  if (parentId) {
+    const parent = await prisma.workTaskChecklistItem.findFirst({
+      where: { id: parentId, taskId },
+      select: { id: true },
+    });
+    if (!parent) return jsonError(404, "Родительская подзадача не найдена");
+  }
+
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.workTaskChecklistItem.create({
       data: {
         taskId,
+        parentId,
         title: parsed.data.title,
         description: parsed.data.description || null,
         assigneeUserId: parsed.data.assigneeUserId || null,
@@ -53,11 +64,12 @@ export async function POST(
         reminderAt: parsed.data.reminderAt ? new Date(parsed.data.reminderAt) : null,
         priority: parsed.data.priority ?? WorkTaskPriority.NORMAL,
         color: parsed.data.color || null,
-        sortOrder: await nextChecklistSortOrder(tx, taskId),
+        sortOrder: await nextChecklistSortOrder(tx, taskId, parentId),
         createdById: auth.user.id,
       },
       select: {
         id: true,
+        parentId: true,
         title: true,
         description: true,
         isDone: true,

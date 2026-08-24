@@ -308,6 +308,10 @@ function SubtaskStickerIcon() {
   return <svg aria-hidden viewBox="0 0 20 20"><path d="M4 4v7.2c0 1.7 1.3 3 3 3h2.2M4 7.5h5.2M9.2 14.2h6.8M12.7 10.9l3.3 3.3-3.3 3.3" /></svg>;
 }
 
+function DeleteSubtaskIcon() {
+  return <svg aria-hidden viewBox="0 0 20 20"><path d="M4.5 5.7h11M8 3.5h4M6.2 5.7l.7 10.1h6.2l.7-10.1M8.4 8.4v4.8M11.6 8.4v4.8" /></svg>;
+}
+
 type StickerTarget = Pick<
   TaskChecklistItem,
   | "priority"
@@ -828,6 +832,7 @@ function ChecklistTreeItem({
   newChecklistTitle,
   onNewChecklistTitleChange,
   onPatch,
+  onDelete,
   onEdit,
   onStartAdding,
   onSubmitNewItem,
@@ -840,6 +845,7 @@ function ChecklistTreeItem({
   newChecklistTitle: string;
   onNewChecklistTitleChange: (value: string) => void;
   onPatch: (itemId: string, body: ChecklistPatchBody) => void;
+  onDelete: (itemId: string, hasChildren: boolean) => void;
   onEdit: (itemId: string) => void;
   onStartAdding: (parentId: string | null) => void;
   onSubmitNewItem: () => void;
@@ -847,7 +853,23 @@ function ChecklistTreeItem({
 }) {
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
   const [menuMode, setMenuMode] = React.useState<"all" | StickerMode | null>(null);
+  const [editingTitle, setEditingTitle] = React.useState(false);
+  const [titleDraft, setTitleDraft] = React.useState(node.title);
   const hasPriority = node.priorityStickerEnabled || node.priority !== "NORMAL";
+
+  React.useEffect(() => {
+    if (!editingTitle) setTitleDraft(node.title);
+  }, [editingTitle, node.title]);
+
+  function finishTitleEdit() {
+    const nextTitle = titleDraft.trim();
+    setEditingTitle(false);
+    if (!nextTitle) {
+      setTitleDraft(node.title);
+      return;
+    }
+    if (nextTitle !== node.title) onPatch(node.id, { title: nextTitle });
+  }
 
   function openSticker(event: React.MouseEvent<HTMLElement>, mode: "all" | StickerMode) {
     event.stopPropagation();
@@ -867,7 +889,43 @@ function ChecklistTreeItem({
       >
         <div className="task-checklist-row__main">
           <RoundCheckbox size="sm" checked={node.isDone} onChange={(checked) => onPatch(node.id, { isDone: checked })} />
-          <span className={`task-checklist-row__title${node.isDone ? " is-done" : ""}`}>{node.title}</span>
+          {editingTitle ? (
+            <input
+              autoFocus
+              className="task-checklist-row__title-input"
+              value={titleDraft}
+              aria-label="Название подзадачи"
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onBlur={finishTitleEdit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setTitleDraft(node.title);
+                  setEditingTitle(false);
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="task-checklist-row__title-button"
+              title="Нажмите, чтобы переименовать"
+              onClick={(event) => {
+                event.stopPropagation();
+                setTitleDraft(node.title);
+                setEditingTitle(true);
+              }}
+            >
+              <span className={`task-checklist-row__title${node.isDone ? " is-done" : ""}`}>{node.title}</span>
+              <span aria-hidden className="task-checklist-row__edit-icon">✎</span>
+            </button>
+          )}
           <button type="button" className="task-checklist-row__menu" aria-label="Настроить подзадачу" onClick={(event) => { event.stopPropagation(); onEdit(node.id); }}>⋮</button>
         </div>
         <div className="task-checklist-row__stickers">
@@ -878,6 +936,18 @@ function ChecklistTreeItem({
             <div className="task-checklist-row__quick">
               <button type="button" onClick={(event) => openSticker(event, "all")}>＋ Стикер</button>
               <button type="button" className="task-checklist-row__add-child" title="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}><SubtaskStickerIcon />Подзадача</button>
+              <button
+                type="button"
+                className="task-checklist-row__delete"
+                title="Удалить подзадачу"
+                aria-label={`Удалить подзадачу «${node.title}»`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(node.id, node.children.length > 0);
+                }}
+              >
+                <DeleteSubtaskIcon />
+              </button>
             </div>
           </div>
           {node.assigneeStickerEnabled || node.assignee ? <button type="button" className={`task-checklist-row__avatar${node.assignee ? "" : " is-empty"}`} title={node.assignee ? `Исполнитель: ${node.assignee.displayName}` : "Назначить исполнителя"} onClick={(event) => openSticker(event, "assignee")}>{node.assignee ? initials(node.assignee.displayName) : <AssigneeStickerIcon />}</button> : null}
@@ -895,6 +965,7 @@ function ChecklistTreeItem({
               newChecklistTitle={newChecklistTitle}
               onNewChecklistTitleChange={onNewChecklistTitleChange}
               onPatch={onPatch}
+              onDelete={onDelete}
               onEdit={onEdit}
               onStartAdding={onStartAdding}
               onSubmitNewItem={onSubmitNewItem}
@@ -917,6 +988,7 @@ function ChecklistTreeSection({
   newChecklistTitle,
   onNewChecklistTitleChange,
   onPatchChecklistItem,
+  onDeleteChecklistItem,
   onEditChecklistItem,
   onStartAdding,
   onSubmitNewItem,
@@ -928,6 +1000,7 @@ function ChecklistTreeSection({
   newChecklistTitle: string;
   onNewChecklistTitleChange: (value: string) => void;
   onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
+  onDeleteChecklistItem: (itemId: string, hasChildren: boolean) => void;
   onEditChecklistItem: (itemId: string) => void;
   onStartAdding: (parentId: string | null) => void;
   onSubmitNewItem: () => void;
@@ -938,7 +1011,7 @@ function ChecklistTreeSection({
     <div className="task-checklist-tree">
       <div className="task-checklist-root-branch">
         {tree.map((node) => (
-          <ChecklistTreeItem key={node.id} node={node} depth={0} users={users} addingParentId={addingParentId} newChecklistTitle={newChecklistTitle} onNewChecklistTitleChange={onNewChecklistTitleChange} onPatch={onPatchChecklistItem} onEdit={onEditChecklistItem} onStartAdding={onStartAdding} onSubmitNewItem={onSubmitNewItem} onCancelAdding={onCancelAdding} />
+          <ChecklistTreeItem key={node.id} node={node} depth={0} users={users} addingParentId={addingParentId} newChecklistTitle={newChecklistTitle} onNewChecklistTitleChange={onNewChecklistTitleChange} onPatch={onPatchChecklistItem} onDelete={onDeleteChecklistItem} onEdit={onEditChecklistItem} onStartAdding={onStartAdding} onSubmitNewItem={onSubmitNewItem} onCancelAdding={onCancelAdding} />
         ))}
         {addingParentId === null ? <ChecklistCreateRow title={newChecklistTitle} onTitleChange={onNewChecklistTitleChange} onSubmit={onSubmitNewItem} onCancel={onCancelAdding} /> : null}
         {addingParentId === undefined ? <button type="button" className="task-checklist-tree__add-root" onClick={(event) => { event.stopPropagation(); onStartAdding(null); }}><SubtaskStickerIcon />Создать подзадачу</button> : null}
@@ -953,6 +1026,7 @@ function TaskChecklistPanel({
   newChecklistTitle,
   onToggleExpanded,
   onPatchChecklistItem,
+  onDeleteChecklistItem,
   onEditChecklistItem,
   onNewChecklistTitleChange,
   onAddChecklistItem,
@@ -963,6 +1037,7 @@ function TaskChecklistPanel({
   newChecklistTitle: string;
   onToggleExpanded: (taskId: string) => void;
   onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
+  onDeleteChecklistItem: (itemId: string, hasChildren: boolean) => void;
   onEditChecklistItem: (itemId: string) => void;
   onNewChecklistTitleChange: (value: string) => void;
   onAddChecklistItem: (title: string, parentId: string | null) => void;
@@ -1037,6 +1112,7 @@ function TaskChecklistPanel({
           newChecklistTitle={newChecklistTitle}
           onNewChecklistTitleChange={onNewChecklistTitleChange}
           onPatchChecklistItem={onPatchChecklistItem}
+          onDeleteChecklistItem={onDeleteChecklistItem}
           onEditChecklistItem={onEditChecklistItem}
           onStartAdding={startAdding}
           onSubmitNewItem={submitNewItem}
@@ -1059,6 +1135,7 @@ function TaskCard({
   expanded,
   onToggleExpanded,
   onPatchChecklistItem,
+  onDeleteChecklistItem,
   onDragStart,
   onDragEnd,
   onDragOverTask,
@@ -1081,6 +1158,7 @@ function TaskCard({
   expanded: boolean;
   onToggleExpanded: (taskId: string) => void;
   onPatchChecklistItem: (itemId: string, body: ChecklistPatchBody) => void;
+  onDeleteChecklistItem: (itemId: string, hasChildren: boolean) => void;
   onDragStart: (taskId: string, fromColumnId: string, cardHeight: number) => void;
   onDragEnd: () => void;
   onDragOverTask: (taskId: string, columnId: string, edge: TaskDropEdge) => void;
@@ -1209,6 +1287,7 @@ function TaskCard({
         newChecklistTitle={newChecklistTitle}
         onToggleExpanded={onToggleExpanded}
         onPatchChecklistItem={onPatchChecklistItem}
+        onDeleteChecklistItem={onDeleteChecklistItem}
         onEditChecklistItem={(itemId) => onOpenSubtasks(task.id, itemId)}
         onNewChecklistTitleChange={setNewChecklistTitle}
         onAddChecklistItem={(title, parentId) => onAddChecklistItem(task.id, title, parentId)}
@@ -2182,6 +2261,51 @@ function TasksPageContent() {
     }
   }
 
+  async function deleteChecklistItemInline(taskId: string, itemId: string, hasChildren: boolean) {
+    const confirmation = hasChildren
+      ? "Удалить подзадачу вместе со всеми вложенными подзадачами?"
+      : "Удалить подзадачу?";
+    if (!window.confirm(confirmation)) return;
+
+    const previousBoard = boardRef.current;
+    updateBoard((current) => current ? {
+      ...current,
+      columns: current.columns.map((column) => ({
+        ...column,
+        tasks: column.tasks.map((task) => {
+          if (task.id !== taskId) return task;
+
+          const removedIds = new Set([itemId]);
+          let foundDescendant = true;
+          while (foundDescendant) {
+            foundDescendant = false;
+            for (const item of task.checklistItems) {
+              if (item.parentId && removedIds.has(item.parentId) && !removedIds.has(item.id)) {
+                removedIds.add(item.id);
+                foundDescendant = true;
+              }
+            }
+          }
+
+          const checklistItems = task.checklistItems.filter((item) => !removedIds.has(item.id));
+          return {
+            ...task,
+            checklistItems,
+            checklistDone: checklistItems.filter((item) => item.isDone).length,
+            checklistTotal: checklistItems.length,
+          };
+        }),
+      })),
+    } : current);
+
+    try {
+      await readApi(await fetch(`/api/tasks/checklist/${itemId}`, { method: "DELETE" }));
+    } catch (e) {
+      applyBoard(previousBoard);
+      setError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
+    }
+  }
+
   function updateTaskInBoard(taskId: string, updater: (task: BoardTask) => BoardTask) {
     updateBoard((current) =>
       current
@@ -2877,6 +3001,7 @@ function TasksPageContent() {
                     expanded={expandedTaskIds.has(task.id)}
                     onToggleExpanded={toggleTaskExpanded}
                     onPatchChecklistItem={(itemId, body) => void patchChecklistItem(task.id, itemId, body)}
+                    onDeleteChecklistItem={(itemId, hasChildren) => void deleteChecklistItemInline(task.id, itemId, hasChildren)}
                     onDragStart={(taskId, fromColumnId, cardHeight) => {
                       setDraggingTaskId(taskId);
                       setDraggingFromColumnId(fromColumnId);

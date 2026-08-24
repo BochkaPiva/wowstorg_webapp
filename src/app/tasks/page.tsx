@@ -368,6 +368,63 @@ function MonthCalendar({ value, onChange }: { value: string | null; onChange: (v
   );
 }
 
+function StickerToggle({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`sticker-toggle${checked ? " is-checked" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span />
+    </button>
+  );
+}
+
+function StickerTimeInput({ value, onChange, label = "Время" }: { value: string; onChange: (value: string) => void; label?: string }) {
+  const [hours, setHours] = React.useState(value.slice(0, 2) || "13");
+  const [minutes, setMinutes] = React.useState(value.slice(3, 5) || "00");
+
+  React.useEffect(() => {
+    setHours(value.slice(0, 2) || "13");
+    setMinutes(value.slice(3, 5) || "00");
+  }, [value]);
+
+  function commit(nextHours = hours, nextMinutes = minutes) {
+    const normalizedHours = String(Math.min(23, Math.max(0, Number(nextHours) || 0))).padStart(2, "0");
+    const normalizedMinutes = String(Math.min(59, Math.max(0, Number(nextMinutes) || 0))).padStart(2, "0");
+    setHours(normalizedHours);
+    setMinutes(normalizedMinutes);
+    onChange(`${normalizedHours}:${normalizedMinutes}`);
+  }
+
+  return (
+    <div className="sticker-time" aria-label={label}>
+      <input
+        aria-label="Часы"
+        inputMode="numeric"
+        maxLength={2}
+        value={hours}
+        onChange={(event) => setHours(event.target.value.replace(/\D/gu, "").slice(0, 2))}
+        onBlur={() => commit()}
+        onKeyDown={(event) => { if (event.key === "Enter") commit(); }}
+      />
+      <span aria-hidden>:</span>
+      <input
+        aria-label="Минуты"
+        inputMode="numeric"
+        maxLength={2}
+        value={minutes}
+        onChange={(event) => setMinutes(event.target.value.replace(/\D/gu, "").slice(0, 2))}
+        onBlur={() => commit()}
+        onKeyDown={(event) => { if (event.key === "Enter") commit(); }}
+      />
+    </div>
+  );
+}
+
 function StickerQuickEditor({
   target,
   initialMode,
@@ -442,12 +499,12 @@ function StickerQuickEditor({
           <div className="sticker-date-tabs">
             {target.startDate ? <button type="button" className={deadlineField === "start" ? "is-active" : ""} onClick={() => setDeadlineField("start")}><span>Начало</span><strong>{fmtDate(target.startDate)}</strong></button> : null}
             <button type="button" className={deadlineField === "due" ? "is-active" : ""} onClick={() => setDeadlineField("due")}><span>Дедлайн</span><strong>{target.dueDate ? fmtDate(target.dueDate) : "Выберите дату"}</strong></button>
-            {target.dueTime ? <label className="sticker-time-input"><span>Время</span><input type="time" value={target.dueTime} onChange={(event) => onPatch({ dueTime: event.target.value || null })} /></label> : null}
+            {target.dueTime ? <div className="sticker-time-input"><span>Время</span><StickerTimeInput value={target.dueTime} onChange={(value) => onPatch({ dueTime: value })} /></div> : null}
           </div>
           <MonthCalendar value={deadlineField === "start" ? target.startDate : target.dueDate} onChange={(value) => onPatch(deadlineField === "start" ? { startDate: value, deadlineStickerEnabled: true } : { dueDate: value, deadlineStickerEnabled: true })} />
           <div className="sticker-switches">
-            <label><span>Добавить время</span><input type="checkbox" checked={Boolean(target.dueTime)} onChange={(event) => onPatch({ dueTime: event.target.checked ? "13:00" : null })} /></label>
-            <label><span>Добавить дату начала</span><input type="checkbox" checked={Boolean(target.startDate)} onChange={(event) => { onPatch({ startDate: event.target.checked ? (target.dueDate ?? todayDateOnly()) : null }); if (event.target.checked) setDeadlineField("start"); }} /></label>
+            <div><span>Добавить время</span><StickerToggle label="Добавить время" checked={Boolean(target.dueTime)} onChange={(checked) => onPatch({ dueTime: checked ? "13:00" : null })} /></div>
+            <div><span>Добавить дату начала</span><StickerToggle label="Добавить дату начала" checked={Boolean(target.startDate)} onChange={(checked) => { onPatch({ startDate: checked ? (target.dueDate ?? todayDateOnly()) : null }); if (checked) setDeadlineField("start"); }} /></div>
             <button type="button" onClick={() => attach("reminder")}><span>Добавить напоминание</span><ReminderStickerIcon /></button>
           </div>
         </div>
@@ -457,10 +514,10 @@ function StickerQuickEditor({
           <div className="sticker-editor__header"><strong>Стикер «Напоминание»</strong><button type="button" onClick={() => detach("reminderStickerEnabled")}>открепить</button></div>
           <div className="sticker-reminder-fields">
             <div><span>Дата</span><strong>{reminderDate ? fmtDate(reminderDate) : "Выберите"}</strong></div>
-            {reminderHasTime ? <label><span>Время</span><input type="time" value={reminderTime} onChange={(event) => setReminderTime(event.target.value)} /></label> : null}
+            {reminderHasTime ? <div><span>Время</span><StickerTimeInput value={reminderTime} onChange={setReminderTime} /></div> : null}
           </div>
           <MonthCalendar value={reminderDate || null} onChange={setReminderDate} />
-          <label className="sticker-switch sticker-switch--single"><span>Указать точное время</span><input type="checkbox" checked={reminderHasTime} onChange={(event) => setReminderHasTime(event.target.checked)} /></label>
+          <div className="sticker-switch sticker-switch--single"><span>Указать точное время</span><StickerToggle label="Указать точное время" checked={reminderHasTime} onChange={setReminderHasTime} /></div>
           <textarea className="sticker-reminder-text" value={reminderText} onChange={(event) => setReminderText(event.target.value)} placeholder="Текст напоминания" />
           <button className="sticker-editor__save" type="button" disabled={!reminderDate} onClick={() => { onPatch({ reminderAt: omskDateTimeToIso(reminderDate, reminderHasTime ? reminderTime : "13:00"), reminderText: reminderText || null, reminderStickerEnabled: true }); onClose(); }}>Сохранить напоминание</button>
         </div>
@@ -509,28 +566,73 @@ function AnchoredPopover({
 }) {
   const menuRef = React.useRef<HTMLDivElement>(null);
   const [host, setHost] = React.useState<HTMLElement | null>(null);
-  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+  const [position, setPosition] = React.useState({ top: 0, left: 0, maxHeight: 480, placement: "below" as "above" | "below" });
 
   React.useLayoutEffect(() => {
-    const nextHost = getModalPortalHost();
-    setHost(nextHost);
-    if (!anchor) return;
+    setHost(getModalPortalHost());
+  }, []);
+
+  const updatePosition = React.useCallback(() => {
+    if (!anchor || !host) return;
     const rect = anchor.getBoundingClientRect();
-    const embeddedInParent = nextHost?.ownerDocument !== document;
+    const embeddedInParent = host.ownerDocument !== document;
     const frameRect = embeddedInParent && window.frameElement instanceof HTMLElement
       ? window.frameElement.getBoundingClientRect()
       : null;
     const offsetLeft = frameRect?.left ?? 0;
     const offsetTop = frameRect?.top ?? 0;
-    const viewport = embeddedInParent ? window.parent : window;
-    const width = 304;
-    const left = Math.max(10, Math.min(rect.left + offsetLeft, viewport.innerWidth - width - 10));
-    const estimatedHeight = 420;
-    const top = rect.bottom + offsetTop + 6 + estimatedHeight > viewport.innerHeight
-      ? Math.max(10, rect.top + offsetTop - estimatedHeight - 6)
-      : rect.bottom + offsetTop + 6;
-    setPosition({ top, left });
-  }, [anchor]);
+    const viewport = host.ownerDocument.defaultView ?? window;
+    const anchorTop = rect.top + offsetTop;
+    const anchorBottom = rect.bottom + offsetTop;
+    if (anchorBottom < 0 || anchorTop > viewport.innerHeight) {
+      onClose();
+      return;
+    }
+
+    const gap = 7;
+    const inset = 10;
+    const menuWidth = menuRef.current?.offsetWidth ?? 320;
+    const measuredHeight = menuRef.current?.scrollHeight ?? 280;
+    const maxHeight = Math.max(180, viewport.innerHeight - inset * 2);
+    const menuHeight = Math.min(measuredHeight, maxHeight);
+    const spaceBelow = viewport.innerHeight - anchorBottom - gap - inset;
+    const spaceAbove = anchorTop - gap - inset;
+    const placement = spaceBelow >= menuHeight || spaceBelow >= spaceAbove ? "below" : "above";
+    const desiredTop = placement === "below" ? anchorBottom + gap : anchorTop - menuHeight - gap;
+    const top = Math.max(inset, Math.min(desiredTop, viewport.innerHeight - menuHeight - inset));
+    const left = Math.max(inset, Math.min(rect.left + offsetLeft, viewport.innerWidth - menuWidth - inset));
+    setPosition({ top, left, maxHeight, placement });
+  }, [anchor, host, onClose]);
+
+  React.useLayoutEffect(() => {
+    if (!anchor || !host) return;
+    let frame = 0;
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updatePosition);
+    };
+    const ownerWindow = host.ownerDocument.defaultView ?? window;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleUpdate);
+    observer?.observe(anchor);
+    if (menuRef.current) observer?.observe(menuRef.current);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    window.addEventListener("resize", scheduleUpdate);
+    if (ownerWindow !== window) {
+      ownerWindow.addEventListener("scroll", scheduleUpdate, true);
+      ownerWindow.addEventListener("resize", scheduleUpdate);
+    }
+    scheduleUpdate();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("resize", scheduleUpdate);
+      if (ownerWindow !== window) {
+        ownerWindow.removeEventListener("scroll", scheduleUpdate, true);
+        ownerWindow.removeEventListener("resize", scheduleUpdate);
+      }
+    };
+  }, [anchor, host, updatePosition]);
 
   React.useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -555,7 +657,12 @@ function AnchoredPopover({
 
   if (!host || !anchor) return null;
   return createPortal(
-    <div ref={menuRef} className="task-popover" style={position} onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      ref={menuRef}
+      className={`task-popover is-${position.placement}`}
+      style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       {children}
     </div>,
     host,

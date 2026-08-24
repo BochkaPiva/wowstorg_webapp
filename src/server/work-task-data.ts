@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { dateOnlyOrNull } from "@/server/work-tasks";
+import { dateOnlyOrNull, timeMinutesOrNull } from "@/server/work-tasks";
 
 export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
   id: true,
@@ -9,8 +9,16 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
   priority: true,
   color: true,
   sortOrder: true,
+  startDate: true,
   dueDate: true,
+  dueTimeMinutes: true,
   reminderAt: true,
+  reminderText: true,
+  priorityStickerEnabled: true,
+  priorityStickerConfigured: true,
+  deadlineStickerEnabled: true,
+  reminderStickerEnabled: true,
+  assigneeStickerEnabled: true,
   completedAt: true,
   archivedAt: true,
   createdAt: true,
@@ -29,8 +37,16 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
       sortOrder: true,
       priority: true,
       color: true,
+      startDate: true,
       dueDate: true,
+      dueTimeMinutes: true,
       reminderAt: true,
+      reminderText: true,
+      priorityStickerEnabled: true,
+      priorityStickerConfigured: true,
+      deadlineStickerEnabled: true,
+      reminderStickerEnabled: true,
+      assigneeStickerEnabled: true,
       completedAt: true,
       updatedAt: true,
       assignee: { select: { id: true, displayName: true } },
@@ -53,7 +69,10 @@ function isoOrNull(value: Date | null | undefined): string | null {
 export function serializeWorkTaskCard(task: WorkTaskCardRecord) {
   return {
     ...task,
+    startDate: dateOnlyOrNull(task.startDate),
     dueDate: dateOnlyOrNull(task.dueDate),
+    dueTime: timeMinutesOrNull(task.dueTimeMinutes),
+    dueTimeMinutes: undefined,
     reminderAt: isoOrNull(task.reminderAt),
     completedAt: isoOrNull(task.completedAt),
     archivedAt: isoOrNull(task.archivedAt),
@@ -61,7 +80,10 @@ export function serializeWorkTaskCard(task: WorkTaskCardRecord) {
     updatedAt: task.updatedAt.toISOString(),
     checklistItems: task.checklistItems.map((item) => ({
       ...item,
+      startDate: dateOnlyOrNull(item.startDate),
       dueDate: dateOnlyOrNull(item.dueDate),
+      dueTime: timeMinutesOrNull(item.dueTimeMinutes),
+      dueTimeMinutes: undefined,
       reminderAt: isoOrNull(item.reminderAt),
       completedAt: isoOrNull(item.completedAt),
       updatedAt: item.updatedAt.toISOString(),

@@ -13,6 +13,23 @@ export function dateOnlyOrNull(date: Date | null | undefined): string | null {
   return date ? date.toISOString().slice(0, 10) : null;
 }
 
+export function parseTimeToMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{2}):(\d{2})$/u.exec(value);
+  if (!match) throw new Error("Invalid time");
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) throw new Error("Invalid time");
+  return hours * 60 + minutes;
+}
+
+export function timeMinutesOrNull(value: number | null | undefined): string | null {
+  if (value == null) return null;
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 export async function ensureDefaultTaskBoard(db: Db, actorUserId: string) {
   const existing = await db.workTaskBoard.findFirst({
     where: { isDefault: true, archivedAt: null },

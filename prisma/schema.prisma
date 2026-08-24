@@ -759,15 +759,23 @@ model WorkTask {
   columnId String
   column   WorkTaskColumn @relation(fields: [columnId], references: [id], onDelete: Restrict)
 
-  title       String
-  description String?
-  priority    WorkTaskPriority @default(NORMAL)
-  color       String?
-  sortOrder   Int              @default(0)
-  dueDate     DateTime?
-  reminderAt  DateTime?
-  completedAt DateTime?
-  archivedAt  DateTime?
+  title                     String
+  description               String?
+  priority                  WorkTaskPriority @default(NORMAL)
+  color                     String?
+  sortOrder                 Int              @default(0)
+  startDate                 DateTime?
+  dueDate                   DateTime?
+  dueTimeMinutes            Int?
+  reminderAt                DateTime?
+  reminderText              String?
+  priorityStickerEnabled    Boolean          @default(false)
+  priorityStickerConfigured Boolean          @default(false)
+  deadlineStickerEnabled    Boolean          @default(false)
+  reminderStickerEnabled    Boolean          @default(false)
+  assigneeStickerEnabled    Boolean          @default(false)
+  completedAt               DateTime?
+  archivedAt                DateTime?
 
   createdById String
   createdBy   User   @relation("task_created_by", fields: [createdById], references: [id], onDelete: Restrict)
@@ -805,15 +813,23 @@ model WorkTaskChecklistItem {
   parent   WorkTaskChecklistItem?  @relation("work_task_checklist_tree", fields: [parentId], references: [id], onDelete: Cascade)
   children WorkTaskChecklistItem[] @relation("work_task_checklist_tree")
 
-  title       String
-  description String?
-  isDone      Boolean          @default(false)
-  sortOrder   Int              @default(0)
-  priority    WorkTaskPriority @default(NORMAL)
-  color       String?
-  dueDate     DateTime?
-  reminderAt  DateTime?
-  completedAt DateTime?
+  title                     String
+  description               String?
+  isDone                    Boolean          @default(false)
+  sortOrder                 Int              @default(0)
+  priority                  WorkTaskPriority @default(NORMAL)
+  color                     String?
+  startDate                 DateTime?
+  dueDate                   DateTime?
+  dueTimeMinutes            Int?
+  reminderAt                DateTime?
+  reminderText              String?
+  priorityStickerEnabled    Boolean          @default(false)
+  priorityStickerConfigured Boolean          @default(false)
+  deadlineStickerEnabled    Boolean          @default(false)
+  reminderStickerEnabled    Boolean          @default(false)
+  assigneeStickerEnabled    Boolean          @default(false)
+  completedAt               DateTime?
 
   createdById String
   createdBy   User   @relation("task_checklist_created_by", fields: [createdById], references: [id], onDelete: Restrict)

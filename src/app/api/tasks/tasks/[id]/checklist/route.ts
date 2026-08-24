@@ -6,8 +6,7 @@ import { requireRole } from "@/server/auth/require";
 import { parseDateOnlyToUtcMidnight } from "@/server/dates";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendWorkTaskActivity } from "@/server/work-task-activity";
-import { dateOnlyOrNull } from "@/server/work-tasks";
-import { nextChecklistSortOrder } from "@/server/work-tasks";
+import { dateOnlyOrNull, nextChecklistSortOrder, parseTimeToMinutes, timeMinutesOrNull } from "@/server/work-tasks";
 
 const CreateChecklistItemSchema = z
   .object({
@@ -15,8 +14,11 @@ const CreateChecklistItemSchema = z
     parentId: z.string().trim().min(1).optional().nullable(),
     description: z.string().trim().max(3000).optional().nullable(),
     assigneeUserId: z.string().trim().min(1).optional().nullable(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional().nullable(),
+    dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/u).optional().nullable(),
     reminderAt: z.string().datetime({ offset: true }).optional().nullable(),
+    reminderText: z.string().trim().max(1000).optional().nullable(),
     priority: z.nativeEnum(WorkTaskPriority).optional(),
     color: z.string().trim().max(40).optional().nullable(),
   })
@@ -60,9 +62,17 @@ export async function POST(
         title: parsed.data.title,
         description: parsed.data.description || null,
         assigneeUserId: parsed.data.assigneeUserId || null,
+        startDate: parsed.data.startDate ? parseDateOnlyToUtcMidnight(parsed.data.startDate) : null,
         dueDate: parsed.data.dueDate ? parseDateOnlyToUtcMidnight(parsed.data.dueDate) : null,
+        dueTimeMinutes: parseTimeToMinutes(parsed.data.dueTime),
         reminderAt: parsed.data.reminderAt ? new Date(parsed.data.reminderAt) : null,
+        reminderText: parsed.data.reminderText || null,
         priority: parsed.data.priority ?? WorkTaskPriority.NORMAL,
+        priorityStickerEnabled: Boolean(parsed.data.priority && parsed.data.priority !== WorkTaskPriority.NORMAL),
+        priorityStickerConfigured: Boolean(parsed.data.priority),
+        deadlineStickerEnabled: Boolean(parsed.data.startDate || parsed.data.dueDate || parsed.data.dueTime),
+        reminderStickerEnabled: Boolean(parsed.data.reminderAt || parsed.data.reminderText),
+        assigneeStickerEnabled: Boolean(parsed.data.assigneeUserId),
         color: parsed.data.color || null,
         sortOrder: await nextChecklistSortOrder(tx, taskId, parentId),
         createdById: auth.user.id,
@@ -76,8 +86,16 @@ export async function POST(
         sortOrder: true,
         priority: true,
         color: true,
+        startDate: true,
         dueDate: true,
+        dueTimeMinutes: true,
         reminderAt: true,
+        reminderText: true,
+        priorityStickerEnabled: true,
+        priorityStickerConfigured: true,
+        deadlineStickerEnabled: true,
+        reminderStickerEnabled: true,
+        assigneeStickerEnabled: true,
         completedAt: true,
         updatedAt: true,
         assignee: { select: { id: true, displayName: true } },
@@ -96,7 +114,10 @@ export async function POST(
   return jsonOk({
     item: {
       ...item,
+      startDate: dateOnlyOrNull(item.startDate),
       dueDate: dateOnlyOrNull(item.dueDate),
+      dueTime: timeMinutesOrNull(item.dueTimeMinutes),
+      dueTimeMinutes: undefined,
       reminderAt: item.reminderAt?.toISOString() ?? null,
       completedAt: item.completedAt?.toISOString() ?? null,
       updatedAt: item.updatedAt.toISOString(),

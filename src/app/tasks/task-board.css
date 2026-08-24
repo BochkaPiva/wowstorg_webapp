@@ -984,14 +984,15 @@
 .task-checklist-children { position: relative; display: grid; gap: 6px; margin-top: 6px; margin-left: 12px; padding-left: 14px; }
 .task-checklist-children::before { position: absolute; top: -6px; bottom: 13px; left: 0; width: 1.5px; border-radius: 999px; background: #4d9ce9; content: ""; }
 .task-checklist-children > .task-checklist-node::before,
-.task-checklist-children > .task-checklist-create-row::before { position: absolute; top: 19px; left: -14px; width: 13px; height: 10px; border-bottom: 1.5px solid #4d9ce9; border-left: 1.5px solid #4d9ce9; border-radius: 0 0 0 8px; content: ""; }
+.task-checklist-children > .task-checklist-create-row::before { position: absolute; top: 19px; left: -15px; width: 16px; height: 10px; border-bottom: 1.5px solid #4d9ce9; border-left: 1.5px solid #4d9ce9; border-radius: 0 0 0 8px; content: ""; }
 .task-board-shell .task-checklist-row { display: block; min-width: 0; border: 1px solid rgb(255 255 255 / 0.09); border-radius: 10px; background: #303a49; padding: 8px 8px 7px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.13); }
 .task-checklist-row__main { display: flex; min-width: 0; align-items: flex-start; gap: 7px; }
 .task-board-shell .task-checklist-row__title { min-width: 0; flex: 1; color: rgb(255 255 255 / 0.9); font-size: 0.72rem; font-weight: 570; line-height: 1.28; overflow-wrap: anywhere; }
 .task-checklist-row__title.is-done { color: rgb(255 255 255 / 0.43); text-decoration: line-through; }
 .task-checklist-row__menu { display: grid; width: 19px; height: 20px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 5px; background: transparent; color: rgb(255 255 255 / 0.48); line-height: 1; }
 .task-checklist-row__menu:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
-.task-checklist-row__stickers { display: flex; min-height: 24px; flex-wrap: wrap; align-items: center; gap: 5px; padding: 5px 0 0 23px; }
+.task-checklist-row__stickers { display: grid; min-height: 24px; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 7px; padding: 5px 0 0 23px; }
+.task-checklist-row__sticker-list { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 5px; }
 .task-subtask-sticker { display: inline-flex; min-height: 20px; align-items: center; border: 1px solid rgb(255 255 255 / 0.28); border-radius: 6px; background: rgb(255 255 255 / 0.08); padding: 1px 6px; color: rgb(255 255 255 / 0.82); font-size: 0.58rem; font-weight: 650; }
 .task-subtask-sticker.is-priority { border-color: rgb(247 212 109 / 0.7); color: #ffeaa6; }
 .task-checklist-row__quick { display: flex; min-height: 20px; align-items: center; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
@@ -999,7 +1000,10 @@
 .task-checklist-row:focus-within .task-checklist-row__quick { opacity: 1; pointer-events: auto; }
 .task-checklist-row__quick button { min-height: 20px; border: 1px dashed rgb(255 255 255 / 0.34); border-radius: 6px; background: transparent; padding: 1px 6px; color: rgb(255 255 255 / 0.62); font-size: 0.58rem; font-weight: 650; }
 .task-checklist-row__quick button:hover { border-color: rgb(255 255 255 / 0.65); color: #fff; }
-.task-checklist-row__avatar { margin-left: auto; }
+.task-checklist-row__avatar { align-self: end; margin-left: 0; }
+.task-checklist-row__avatar.is-empty,
+.task-card-assignee.is-empty { border: 1px dashed rgb(255 255 255 / 0.42); background: transparent; color: rgb(255 255 255 / 0.64); }
+.task-checklist-row__avatar svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .task-checklist-create-row { position: relative; display: flex; min-width: 0; height: 34px; align-items: center; gap: 6px; border: 1px solid #8765dd; border-radius: 9px; background: #242d3a; padding: 0 8px; box-shadow: 0 0 0 2px rgb(135 101 221 / 0.22); }
 .task-checklist-create-row__icon { color: #9d83e6; font-size: 0.72rem; }
 .task-checklist-create-row input { min-width: 0; width: 100%; border: 0 !important; background: transparent !important; padding: 0 !important; color: #fff !important; font-size: 0.69rem; outline: none; }
@@ -1081,8 +1085,8 @@
 .task-checklist-root-branch > .task-checklist-tree__add-root::before {
   position: absolute;
   top: 19px;
-  left: -16px;
-  width: 16px;
+  left: -17px;
+  width: 18px;
   height: 10px;
   border-bottom: 1.5px solid #4d9ce9;
   border-left: 1.5px solid #4d9ce9;
@@ -1106,7 +1110,13 @@
 .task-checklist-row__add-child { display: inline-flex; align-items: center; gap: 4px; }
 .task-checklist-row { cursor: pointer; }
 
-.task-popover:has(.sticker-editor) { width: 304px; }
+.task-popover:has(.sticker-editor),
+.task-popover:has(.sticker-chooser) { width: 320px; }
+.sticker-chooser { display: grid; gap: 2px; padding: 3px 0 7px; }
+.sticker-chooser .task-popover__title { color: #f7f4fa; font-size: 0.82rem; }
+.sticker-chooser > button { display: flex; min-height: 43px; align-items: center; gap: 11px; border: 0; background: transparent; padding: 8px 14px; color: #c9c3ce; font-size: 0.78rem; text-align: left; }
+.sticker-chooser > button:hover { background: #39323f; color: #fff; }
+.sticker-chooser > button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .sticker-editor { padding: 5px 0 8px; }
 .sticker-editor__header {
   display: flex;
@@ -1165,6 +1175,46 @@
 .sticker-editor__field { display: grid; gap: 7px; padding: 12px; }
 .sticker-editor__field > span { color: #aaa3b1; font-size: 0.68rem; font-weight: 700; }
 .sticker-editor__field input { min-height: 38px; }
+.sticker-editor__search { padding: 10px 10px 2px; }
+.sticker-editor__search input { min-height: 36px; }
+.sticker-date-tabs,
+.sticker-reminder-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 10px 10px 2px; }
+.sticker-date-tabs > button,
+.sticker-date-tabs > label,
+.sticker-reminder-fields > div,
+.sticker-reminder-fields > label { display: grid; min-width: 0; gap: 2px; border: 1px solid #51485a; border-radius: 8px; background: #302a37; padding: 7px 9px; color: #f4eff7; text-align: left; }
+.sticker-date-tabs > button.is-active { border-color: #579df7; box-shadow: inset 0 0 0 1px rgb(87 157 247 / 0.28); }
+.sticker-date-tabs span,
+.sticker-reminder-fields span { color: #9e96a6; font-size: 0.56rem; font-weight: 760; text-transform: uppercase; }
+.sticker-date-tabs strong,
+.sticker-reminder-fields strong { overflow: hidden; font-size: 0.71rem; text-overflow: ellipsis; white-space: nowrap; }
+.sticker-time-input input,
+.sticker-reminder-fields input { min-height: 20px !important; border: 0 !important; background: transparent !important; padding: 0 !important; font-size: 0.71rem !important; }
+.sticker-calendar { padding: 9px 10px; }
+.sticker-calendar__nav { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; margin-bottom: 7px; }
+.sticker-calendar__nav strong { color: #d2ccd7; font-size: 0.72rem; text-align: center; text-transform: capitalize; }
+.sticker-calendar__nav button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #9fa9b7; font-size: 1.3rem; }
+.sticker-calendar__nav button:hover { background: #39323f; color: #fff; }
+.sticker-calendar__weekdays,
+.sticker-calendar__grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.sticker-calendar__weekdays span { padding: 3px 0 5px; color: #77707f; font-size: 0.53rem; text-align: center; }
+.sticker-calendar__grid button { display: grid; aspect-ratio: 1; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #c6bfca; font-size: 0.66rem; }
+.sticker-calendar__grid button:hover { background: #3c3543; color: #fff; }
+.sticker-calendar__grid button.is-outside { color: #696370; }
+.sticker-calendar__grid button.is-today { box-shadow: inset 0 0 0 1px #568bd1; }
+.sticker-calendar__grid button.is-selected { background: #4d94f3; color: #fff; box-shadow: none; }
+.sticker-switches { display: grid; border-top: 1px solid #403948; padding: 6px 10px 2px; }
+.sticker-switches > label,
+.sticker-switches > button,
+.sticker-switch { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; border: 0; background: transparent; color: #bdb6c3; font-size: 0.71rem; text-align: left; }
+.sticker-switches svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.sticker-switches input,
+.sticker-switch input { width: 34px !important; min-height: 19px !important; accent-color: #579df7; }
+.sticker-switch--single { margin: 0 10px; padding: 0; border-top: 1px solid #403948; }
+.sticker-reminder-text { display: block; width: calc(100% - 20px); min-height: 70px; margin: 7px 10px 10px; resize: vertical; border: 1px solid #51485a; border-radius: 8px; background: #302a37; padding: 9px; color: #fff; font-size: 0.72rem; outline: none; }
+.sticker-reminder-text:focus { border-color: #579df7; }
+.sticker-editor__save { width: calc(100% - 20px); min-height: 38px; margin: 0 10px; border: 0; border-radius: 8px; background: #4d94f3; color: #fff; font-size: 0.72rem; font-weight: 750; }
+.sticker-editor__save:disabled { cursor: not-allowed; background: #3a4050; color: #777f90; }
 
 @media (hover: none) {
   .task-checklist-row__quick { opacity: 1; }

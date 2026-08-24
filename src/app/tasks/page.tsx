@@ -29,8 +29,16 @@ type TaskChecklistItem = {
   sortOrder: number;
   priority: Priority;
   color: string | null;
+  startDate: string | null;
   dueDate: string | null;
+  dueTime: string | null;
   reminderAt: string | null;
+  reminderText: string | null;
+  priorityStickerEnabled: boolean;
+  priorityStickerConfigured: boolean;
+  deadlineStickerEnabled: boolean;
+  reminderStickerEnabled: boolean;
+  assigneeStickerEnabled: boolean;
   completedAt: string | null;
   updatedAt: string;
   assignee: null | { id: string; displayName: string };
@@ -40,9 +48,17 @@ type ChecklistPatchBody = Partial<{
   title: string;
   isDone: boolean;
   assigneeUserId: string | null;
+  startDate: string | null;
   dueDate: string | null;
+  dueTime: string | null;
   reminderAt: string | null;
+  reminderText: string | null;
   priority: Priority;
+  priorityStickerEnabled: boolean;
+  priorityStickerConfigured: boolean;
+  deadlineStickerEnabled: boolean;
+  reminderStickerEnabled: boolean;
+  assigneeStickerEnabled: boolean;
   color: string | null;
 }>;
 
@@ -55,8 +71,16 @@ type BoardTask = {
   priority: Priority;
   color: string | null;
   sortOrder: number;
+  startDate: string | null;
   dueDate: string | null;
+  dueTime: string | null;
   reminderAt: string | null;
+  reminderText: string | null;
+  priorityStickerEnabled: boolean;
+  priorityStickerConfigured: boolean;
+  deadlineStickerEnabled: boolean;
+  reminderStickerEnabled: boolean;
+  assigneeStickerEnabled: boolean;
   completedAt: string | null;
   archivedAt: string | null;
   createdAt: string;
@@ -102,9 +126,17 @@ type TaskPatchBody = Partial<{
   title: string;
   description: string | null;
   assigneeUserId: string | null;
+  startDate: string | null;
   dueDate: string | null;
+  dueTime: string | null;
   reminderAt: string | null;
+  reminderText: string | null;
   priority: Priority;
+  priorityStickerEnabled: boolean;
+  priorityStickerConfigured: boolean;
+  deadlineStickerEnabled: boolean;
+  reminderStickerEnabled: boolean;
+  assigneeStickerEnabled: boolean;
   color: string | null;
   projectId: string | null;
   orderId: string | null;
@@ -228,6 +260,34 @@ function fromLocalDateTime(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
 }
 
+function dateTimeInOmsk(value: string | null): { date: string; time: string } {
+  if (!value) return { date: "", time: "13:00" };
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Omsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
+}
+
+function omskDateTimeToIso(date: string, time = "13:00"): string | null {
+  return date ? new Date(`${date}T${time}:00+06:00`).toISOString() : null;
+}
+
+function todayDateOnly(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Omsk",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 function CalendarStickerIcon() {
   return <svg aria-hidden viewBox="0 0 20 20"><path d="M5.5 2.8v2.3M14.5 2.8v2.3M3.1 7.2h13.8M4.7 4.2h10.6c.9 0 1.6.7 1.6 1.6v9c0 .9-.7 1.6-1.6 1.6H4.7c-.9 0-1.6-.7-1.6-1.6v-9c0-.9.7-1.6 1.6-1.6Z" /></svg>;
 }
@@ -248,26 +308,119 @@ function SubtaskStickerIcon() {
   return <svg aria-hidden viewBox="0 0 20 20"><path d="M4 4v7.2c0 1.7 1.3 3 3 3h2.2M4 7.5h5.2M9.2 14.2h6.8M12.7 10.9l3.3 3.3-3.3 3.3" /></svg>;
 }
 
+type StickerTarget = Pick<
+  TaskChecklistItem,
+  | "priority"
+  | "startDate"
+  | "dueDate"
+  | "dueTime"
+  | "reminderAt"
+  | "reminderText"
+  | "assignee"
+  | "priorityStickerEnabled"
+  | "priorityStickerConfigured"
+  | "deadlineStickerEnabled"
+  | "reminderStickerEnabled"
+  | "assigneeStickerEnabled"
+>;
+
+function MonthCalendar({ value, onChange }: { value: string | null; onChange: (value: string) => void }) {
+  const initial = value || todayDateOnly();
+  const [visibleMonth, setVisibleMonth] = React.useState(() => initial.slice(0, 7));
+  const [year, month] = visibleMonth.split("-").map(Number);
+  const firstDay = new Date(Date.UTC(year, month - 1, 1));
+  const offset = (firstDay.getUTCDay() + 6) % 7;
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 1, index - offset + 1));
+    return {
+      value: date.toISOString().slice(0, 10),
+      day: date.getUTCDate(),
+      outside: date.getUTCMonth() !== month - 1,
+    };
+  });
+  const monthLabel = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(firstDay);
+  const moveMonth = (delta: number) => {
+    const next = new Date(Date.UTC(year, month - 1 + delta, 1));
+    setVisibleMonth(next.toISOString().slice(0, 7));
+  };
+
+  return (
+    <div className="sticker-calendar">
+      <div className="sticker-calendar__nav">
+        <button type="button" aria-label="Предыдущий месяц" onClick={() => moveMonth(-1)}>‹</button>
+        <strong>{monthLabel}</strong>
+        <button type="button" aria-label="Следующий месяц" onClick={() => moveMonth(1)}>›</button>
+      </div>
+      <div className="sticker-calendar__weekdays">{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="sticker-calendar__grid">
+        {cells.map((cell) => (
+          <button
+            key={cell.value}
+            type="button"
+            className={`${cell.outside ? "is-outside " : ""}${cell.value === value ? "is-selected " : ""}${cell.value === todayDateOnly() ? "is-today" : ""}`}
+            onClick={() => { onChange(cell.value); setVisibleMonth(cell.value.slice(0, 7)); }}
+          >
+            {cell.day}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StickerQuickEditor({
   target,
-  mode,
+  initialMode,
   users,
   anchor,
   onClose,
   onPatch,
 }: {
-  target: Pick<TaskChecklistItem, "priority" | "dueDate" | "reminderAt" | "assignee">;
-  mode: StickerMode;
+  target: StickerTarget;
+  initialMode: "all" | StickerMode;
   users: TasksMeta["users"];
   anchor: HTMLElement | null;
   onClose: () => void;
   onPatch: (body: ChecklistPatchBody) => void;
 }) {
+  const [mode, setMode] = React.useState<"all" | StickerMode>(initialMode);
+  const [userSearch, setUserSearch] = React.useState("");
+  const [deadlineField, setDeadlineField] = React.useState<"start" | "due">("due");
+  const reminderParts = React.useMemo(() => dateTimeInOmsk(target.reminderAt), [target.reminderAt]);
+  const [reminderDate, setReminderDate] = React.useState(reminderParts.date);
+  const [reminderTime, setReminderTime] = React.useState(reminderParts.time);
+  const [reminderHasTime, setReminderHasTime] = React.useState(Boolean(target.reminderAt));
+  const [reminderText, setReminderText] = React.useState(target.reminderText ?? "");
+
+  function attach(nextMode: StickerMode) {
+    const flag = `${nextMode === "deadline" ? "deadline" : nextMode}StickerEnabled` as
+      | "priorityStickerEnabled"
+      | "deadlineStickerEnabled"
+      | "reminderStickerEnabled"
+      | "assigneeStickerEnabled";
+    onPatch({ [flag]: true });
+    setMode(nextMode);
+  }
+
+  function detach(flag: keyof Pick<ChecklistPatchBody, "priorityStickerEnabled" | "deadlineStickerEnabled" | "reminderStickerEnabled" | "assigneeStickerEnabled">) {
+    onPatch({ [flag]: false });
+    onClose();
+  }
+
   return (
     <AnchoredPopover anchor={anchor} onClose={onClose}>
+      {mode === "all" ? (
+        <div className="sticker-chooser">
+          <div className="task-popover__title">Добавить стикер</div>
+          <button type="button" onClick={() => attach("assignee")}><AssigneeStickerIcon /><span>Исполнитель</span></button>
+          <button type="button" onClick={() => attach("deadline")}><CalendarStickerIcon /><span>Дедлайн</span></button>
+          <button type="button" onClick={() => attach("priority")}><PriorityStickerIcon /><span>Приоритет</span></button>
+          <button type="button" onClick={() => attach("reminder")}><ReminderStickerIcon /><span>Напоминание</span></button>
+        </div>
+      ) : null}
       {mode === "priority" ? (
         <div className="sticker-editor">
-          <div className="sticker-editor__header"><strong>Стикер «Приоритет»</strong><button type="button" onClick={() => { onPatch({ priority: "NORMAL" }); onClose(); }}>открепить</button></div>
+          <div className="sticker-editor__header"><strong>Стикер «Приоритет»</strong><button type="button" onClick={() => detach("priorityStickerEnabled")}>открепить</button></div>
           <div className="sticker-editor__options">
             {([
               ["URGENT", "Срочно", "urgent"],
@@ -275,9 +428,9 @@ function StickerQuickEditor({
               ["NORMAL", "Нормально", "normal"],
               ["LOW", "Не важно", "low"],
             ] as const).map(([value, label, tone]) => (
-              <button key={value} type="button" className={`sticker-editor__option is-${tone}${target.priority === value ? " is-selected" : ""}`} onClick={() => { onPatch({ priority: value }); onClose(); }}>
+              <button key={value} type="button" className={`sticker-editor__option is-${tone}${target.priorityStickerConfigured && target.priority === value ? " is-selected" : ""}`} onClick={() => onPatch({ priority: value, priorityStickerEnabled: true, priorityStickerConfigured: true })}>
                 <span className="sticker-editor__preview"><PriorityStickerIcon />{label}</span>
-                {target.priority === value ? <span aria-hidden>✓</span> : null}
+                {target.priorityStickerConfigured && target.priority === value ? <span aria-hidden>✓</span> : null}
               </button>
             ))}
           </div>
@@ -285,21 +438,39 @@ function StickerQuickEditor({
       ) : null}
       {mode === "deadline" ? (
         <div className="sticker-editor">
-          <div className="sticker-editor__header"><strong>Дедлайн</strong>{target.dueDate ? <button type="button" onClick={() => { onPatch({ dueDate: null }); onClose(); }}>открепить</button> : null}</div>
-          <label className="sticker-editor__field"><span>Дата выполнения</span><input autoFocus type="date" value={target.dueDate ?? ""} onChange={(event) => { onPatch({ dueDate: event.target.value || null }); onClose(); }} /></label>
+          <div className="sticker-editor__header"><strong>Стикер «Дедлайн»</strong><button type="button" onClick={() => detach("deadlineStickerEnabled")}>открепить</button></div>
+          <div className="sticker-date-tabs">
+            {target.startDate ? <button type="button" className={deadlineField === "start" ? "is-active" : ""} onClick={() => setDeadlineField("start")}><span>Начало</span><strong>{fmtDate(target.startDate)}</strong></button> : null}
+            <button type="button" className={deadlineField === "due" ? "is-active" : ""} onClick={() => setDeadlineField("due")}><span>Дедлайн</span><strong>{target.dueDate ? fmtDate(target.dueDate) : "Выберите дату"}</strong></button>
+            {target.dueTime ? <label className="sticker-time-input"><span>Время</span><input type="time" value={target.dueTime} onChange={(event) => onPatch({ dueTime: event.target.value || null })} /></label> : null}
+          </div>
+          <MonthCalendar value={deadlineField === "start" ? target.startDate : target.dueDate} onChange={(value) => onPatch(deadlineField === "start" ? { startDate: value, deadlineStickerEnabled: true } : { dueDate: value, deadlineStickerEnabled: true })} />
+          <div className="sticker-switches">
+            <label><span>Добавить время</span><input type="checkbox" checked={Boolean(target.dueTime)} onChange={(event) => onPatch({ dueTime: event.target.checked ? "13:00" : null })} /></label>
+            <label><span>Добавить дату начала</span><input type="checkbox" checked={Boolean(target.startDate)} onChange={(event) => { onPatch({ startDate: event.target.checked ? (target.dueDate ?? todayDateOnly()) : null }); if (event.target.checked) setDeadlineField("start"); }} /></label>
+            <button type="button" onClick={() => attach("reminder")}><span>Добавить напоминание</span><ReminderStickerIcon /></button>
+          </div>
         </div>
       ) : null}
       {mode === "reminder" ? (
         <div className="sticker-editor">
-          <div className="sticker-editor__header"><strong>Напоминание</strong>{target.reminderAt ? <button type="button" onClick={() => { onPatch({ reminderAt: null }); onClose(); }}>открепить</button> : null}</div>
-          <label className="sticker-editor__field"><span>Дата и время</span><input autoFocus type="datetime-local" value={toLocalDateTime(target.reminderAt)} onChange={(event) => { onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose(); }} /></label>
+          <div className="sticker-editor__header"><strong>Стикер «Напоминание»</strong><button type="button" onClick={() => detach("reminderStickerEnabled")}>открепить</button></div>
+          <div className="sticker-reminder-fields">
+            <div><span>Дата</span><strong>{reminderDate ? fmtDate(reminderDate) : "Выберите"}</strong></div>
+            {reminderHasTime ? <label><span>Время</span><input type="time" value={reminderTime} onChange={(event) => setReminderTime(event.target.value)} /></label> : null}
+          </div>
+          <MonthCalendar value={reminderDate || null} onChange={setReminderDate} />
+          <label className="sticker-switch sticker-switch--single"><span>Указать точное время</span><input type="checkbox" checked={reminderHasTime} onChange={(event) => setReminderHasTime(event.target.checked)} /></label>
+          <textarea className="sticker-reminder-text" value={reminderText} onChange={(event) => setReminderText(event.target.value)} placeholder="Текст напоминания" />
+          <button className="sticker-editor__save" type="button" disabled={!reminderDate} onClick={() => { onPatch({ reminderAt: omskDateTimeToIso(reminderDate, reminderHasTime ? reminderTime : "13:00"), reminderText: reminderText || null, reminderStickerEnabled: true }); onClose(); }}>Сохранить напоминание</button>
         </div>
       ) : null}
       {mode === "assignee" ? (
         <div className="sticker-editor">
-          <div className="sticker-editor__header"><strong>Исполнитель</strong>{target.assignee ? <button type="button" onClick={() => { onPatch({ assigneeUserId: null }); onClose(); }}>открепить</button> : null}</div>
+          <div className="sticker-editor__header"><strong>Стикер «Исполнитель»</strong><button type="button" onClick={() => detach("assigneeStickerEnabled")}>открепить</button></div>
+          <div className="sticker-editor__search"><input autoFocus value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Поиск по имени" /></div>
           <div className="sticker-editor__people">
-            {users.map((user) => <button key={user.id} type="button" className={target.assignee?.id === user.id ? "is-selected" : ""} onClick={() => { onPatch({ assigneeUserId: user.id }); onClose(); }}><span className="task-avatar">{initials(user.displayName)}</span><span>{user.displayName}</span>{target.assignee?.id === user.id ? <b aria-hidden>✓</b> : null}</button>)}
+            {users.filter((user) => user.displayName.toLocaleLowerCase("ru").includes(userSearch.toLocaleLowerCase("ru"))).map((user) => <button key={user.id} type="button" className={target.assignee?.id === user.id ? "is-selected" : ""} onClick={() => onPatch({ assigneeUserId: user.id, assigneeStickerEnabled: true })}><span className="task-avatar">{initials(user.displayName)}</span><span>{user.displayName}</span>{target.assignee?.id === user.id ? <b aria-hidden>✓</b> : null}</button>)}
           </div>
         </div>
       ) : null}
@@ -404,35 +575,7 @@ function TaskStickerMenu({
   onClose: () => void;
   onPatch: (body: TaskPatchBody) => void;
 }) {
-  return (
-    <AnchoredPopover anchor={anchor} onClose={onClose}>
-      <div className="task-popover__title">Добавить или изменить стикер</div>
-      <div className="task-popover__section">
-        <label className="block text-[10px] font-bold text-white/55">Исполнитель</label>
-        <select className="mt-1" value={task.assignee?.id ?? ""} onChange={(event) => {
-          onPatch({ assigneeUserId: event.target.value || null }); onClose();
-        }}><option value="">Не назначен</option>{users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}</select>
-      </div>
-      <div className="task-popover__section">
-        <label className="block text-[10px] font-bold text-white/55">Дедлайн</label>
-        <input className="mt-1" type="date" value={task.dueDate ?? ""} onChange={(event) => {
-          onPatch({ dueDate: event.target.value || null }); onClose();
-        }} />
-      </div>
-      <div className="task-popover__section">
-        <label className="block text-[10px] font-bold text-white/55">Приоритет</label>
-        <select className="mt-1" value={task.priority} onChange={(event) => {
-          onPatch({ priority: event.target.value as Priority }); onClose();
-        }}>{(Object.keys(PRIORITY_LABEL) as Priority[]).map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}</select>
-      </div>
-      <div className="task-popover__section">
-        <label className="block text-[10px] font-bold text-white/55">Напоминание</label>
-        <input className="mt-1" type="datetime-local" value={toLocalDateTime(task.reminderAt)} onChange={(event) => {
-          onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose();
-        }} />
-      </div>
-    </AnchoredPopover>
-  );
+  return <StickerQuickEditor target={task} initialMode="all" users={users} anchor={anchor} onClose={onClose} onPatch={onPatch} />;
 }
 
 function TaskActionMenu({
@@ -537,39 +680,7 @@ function ChecklistStickerMenu({
   onClose: () => void;
   onPatch: (body: ChecklistPatchBody) => void;
 }) {
-  return (
-    <AnchoredPopover anchor={anchor} onClose={onClose}>
-      <div className="task-popover__title">Стикеры подзадачи</div>
-      <div className="task-popover__section">
-        <label>Исполнитель</label>
-        <select value={item.assignee?.id ?? ""} onChange={(event) => { onPatch({ assigneeUserId: event.target.value || null }); onClose(); }}>
-          <option value="">Не назначен</option>
-          {users.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
-        </select>
-      </div>
-      <div className="task-popover__section">
-        <label>Дедлайн</label>
-        <input type="date" value={item.dueDate ?? ""} onChange={(event) => { onPatch({ dueDate: event.target.value || null }); onClose(); }} />
-      </div>
-      <div className="task-popover__section">
-        <label>Приоритет</label>
-        <select value={item.priority} onChange={(event) => { onPatch({ priority: event.target.value as Priority }); onClose(); }}>
-          {(Object.keys(PRIORITY_LABEL) as Priority[]).map((priority) => <option key={priority} value={priority}>{PRIORITY_LABEL[priority]}</option>)}
-        </select>
-      </div>
-      <div className="task-popover__section">
-        <label>Напоминание</label>
-        <input type="datetime-local" value={toLocalDateTime(item.reminderAt)} onChange={(event) => { onPatch({ reminderAt: fromLocalDateTime(event.target.value) }); onClose(); }} />
-      </div>
-      <div className="task-popover__section">
-        <div className="task-popover__label">Цвет</div>
-        <div className="task-color-row">
-          <button type="button" className={`task-color-dot is-reset${item.color ? "" : " is-active"}`} onClick={() => { onPatch({ color: null }); onClose(); }} aria-label="Без цвета">×</button>
-          {TASK_COLORS.map((color) => <button key={color} type="button" aria-label={`Цвет ${color}`} className={`task-color-dot${item.color === color ? " is-active" : ""}`} style={{ backgroundColor: color }} onClick={() => { onPatch({ color }); onClose(); }} />)}
-        </div>
-      </div>
-    </AnchoredPopover>
-  );
+  return <StickerQuickEditor target={item} initialMode="all" users={users} anchor={anchor} onClose={onClose} onPatch={onPatch} />;
 }
 
 function ChecklistCreateRow({
@@ -629,7 +740,7 @@ function ChecklistTreeItem({
 }) {
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
   const [menuMode, setMenuMode] = React.useState<"all" | StickerMode | null>(null);
-  const hasPriority = node.priority !== "NORMAL";
+  const hasPriority = node.priorityStickerEnabled || node.priority !== "NORMAL";
 
   function openSticker(event: React.MouseEvent<HTMLElement>, mode: "all" | StickerMode) {
     event.stopPropagation();
@@ -653,14 +764,16 @@ function ChecklistTreeItem({
           <button type="button" className="task-checklist-row__menu" aria-label="Настроить подзадачу" onClick={(event) => { event.stopPropagation(); onEdit(node.id); }}>⋮</button>
         </div>
         <div className="task-checklist-row__stickers">
-          {hasPriority ? <button type="button" className={`task-subtask-sticker is-priority is-${node.priority.toLowerCase()}`} onClick={(event) => openSticker(event, "priority")}><PriorityStickerIcon />{PRIORITY_LABEL[node.priority]}</button> : null}
-          {node.dueDate ? <button type="button" className="task-subtask-sticker" onClick={(event) => openSticker(event, "deadline")}><CalendarStickerIcon />{fmtDate(node.dueDate)}</button> : null}
-          {node.reminderAt ? <button type="button" className="task-subtask-sticker" title="Изменить напоминание" onClick={(event) => openSticker(event, "reminder")}><ReminderStickerIcon /></button> : null}
-          {node.assignee ? <button type="button" className="task-checklist-row__avatar" title={`Исполнитель: ${node.assignee.displayName}`} onClick={(event) => openSticker(event, "assignee")}>{initials(node.assignee.displayName)}</button> : null}
-          <div className="task-checklist-row__quick">
-            <button type="button" onClick={(event) => openSticker(event, "all")}>＋ Стикер</button>
-            <button type="button" className="task-checklist-row__add-child" title="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}><SubtaskStickerIcon />Подзадача</button>
+          <div className="task-checklist-row__sticker-list">
+            {hasPriority ? <button type="button" className={`task-subtask-sticker is-priority is-${node.priority.toLowerCase()}`} onClick={(event) => openSticker(event, "priority")}><PriorityStickerIcon />{node.priorityStickerConfigured || node.priority !== "NORMAL" ? PRIORITY_LABEL[node.priority] : "Приоритет"}</button> : null}
+            {node.deadlineStickerEnabled || node.dueDate ? <button type="button" className="task-subtask-sticker" onClick={(event) => openSticker(event, "deadline")}><CalendarStickerIcon />{node.dueDate ? `${fmtDate(node.dueDate)}${node.dueTime ? ` · ${node.dueTime}` : ""}` : "Дедлайн"}</button> : null}
+            {node.reminderStickerEnabled || node.reminderAt ? <button type="button" className="task-subtask-sticker" title="Изменить напоминание" onClick={(event) => openSticker(event, "reminder")}><ReminderStickerIcon />{node.reminderAt ? fmtDate(dateTimeInOmsk(node.reminderAt).date) : "Напоминание"}</button> : null}
+            <div className="task-checklist-row__quick">
+              <button type="button" onClick={(event) => openSticker(event, "all")}>＋ Стикер</button>
+              <button type="button" className="task-checklist-row__add-child" title="Создать вложенную подзадачу" onClick={(event) => { event.stopPropagation(); onStartAdding(node.id); }}><SubtaskStickerIcon />Подзадача</button>
+            </div>
           </div>
+          {node.assigneeStickerEnabled || node.assignee ? <button type="button" className={`task-checklist-row__avatar${node.assignee ? "" : " is-empty"}`} title={node.assignee ? `Исполнитель: ${node.assignee.displayName}` : "Назначить исполнителя"} onClick={(event) => openSticker(event, "assignee")}>{node.assignee ? initials(node.assignee.displayName) : <AssigneeStickerIcon />}</button> : null}
         </div>
       </div>
       {node.children.length > 0 || addingParentId === node.id ? (
@@ -685,7 +798,7 @@ function ChecklistTreeItem({
         </div>
       ) : null}
       {menuMode === "all" ? <ChecklistStickerMenu item={node} users={users} anchor={menuAnchor} onClose={() => setMenuMode(null)} onPatch={(body) => onPatch(node.id, body)} /> : null}
-      {menuMode && menuMode !== "all" ? <StickerQuickEditor target={node} mode={menuMode} users={users} anchor={menuAnchor} onClose={() => setMenuMode(null)} onPatch={(body) => onPatch(node.id, body)} /> : null}
+      {menuMode && menuMode !== "all" ? <StickerQuickEditor target={node} initialMode={menuMode} users={users} anchor={menuAnchor} onClose={() => setMenuMode(null)} onPatch={(body) => onPatch(node.id, body)} /> : null}
     </div>
   );
 }
@@ -880,7 +993,7 @@ function TaskCard({
   const draggedRef = React.useRef(false);
   const [openMenu, setOpenMenu] = React.useState<"stickers" | "actions" | StickerMode | null>(null);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
-  const hasPriority = task.priority !== "NORMAL";
+  const hasPriority = task.priorityStickerEnabled || task.priority !== "NORMAL";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
 
@@ -969,15 +1082,15 @@ function TaskCard({
         </div>
 
         <div className="task-card-tools">
-          {hasPriority ? <button type="button" className={`task-card-sticker task-card-sticker--priority is-${task.priority.toLowerCase()}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("priority"); }}><PriorityStickerIcon />{PRIORITY_LABEL[task.priority]}</button> : null}
-          {task.dueDate ? <button type="button" className="task-card-sticker" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("deadline"); }}><CalendarStickerIcon />{fmtDate(task.dueDate)}</button> : null}
-          {task.reminderAt ? <button type="button" className="task-card-sticker" title="Изменить напоминание" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("reminder"); }}><ReminderStickerIcon /></button> : null}
+          {hasPriority ? <button type="button" className={`task-card-sticker task-card-sticker--priority is-${task.priority.toLowerCase()}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("priority"); }}><PriorityStickerIcon />{task.priorityStickerConfigured || task.priority !== "NORMAL" ? PRIORITY_LABEL[task.priority] : "Приоритет"}</button> : null}
+          {task.deadlineStickerEnabled || task.dueDate ? <button type="button" className="task-card-sticker" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("deadline"); }}><CalendarStickerIcon />{task.dueDate ? `${fmtDate(task.dueDate)}${task.dueTime ? ` · ${task.dueTime}` : ""}` : "Дедлайн"}</button> : null}
+          {task.reminderStickerEnabled || task.reminderAt ? <button type="button" className="task-card-sticker" title="Изменить напоминание" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("reminder"); }}><ReminderStickerIcon />{task.reminderAt ? fmtDate(dateTimeInOmsk(task.reminderAt).date) : "Напоминание"}</button> : null}
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
           <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}><AssigneeStickerIcon /></button>
           {task.commentCount > 0 ? <span className="task-card-comments" title="В задаче есть заметки">☵ <span>{task.commentCount}</span></span> : null}
-          {task.assignee ? (
-            <button type="button" className="task-card-assignee" title={`Исполнитель: ${task.assignee.displayName}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("assignee"); }}>
-              {initials(task.assignee.displayName)}
+          {task.assigneeStickerEnabled || task.assignee ? (
+            <button type="button" className={`task-card-assignee${task.assignee ? "" : " is-empty"}`} title={task.assignee ? `Исполнитель: ${task.assignee.displayName}` : "Назначить исполнителя"} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("assignee"); }}>
+              {task.assignee ? initials(task.assignee.displayName) : <AssigneeStickerIcon />}
             </button>
           ) : null}
         </div>
@@ -997,7 +1110,7 @@ function TaskCard({
     </article>
       {dropEdge === "after" ? <div className="task-drop-placeholder" style={{ height: dragPreviewHeight || 76 }} /> : null}
       {openMenu === "stickers" ? <TaskStickerMenu task={task} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
-      {openMenu === "priority" || openMenu === "deadline" || openMenu === "reminder" || openMenu === "assignee" ? <StickerQuickEditor target={task} mode={openMenu} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
+      {openMenu === "priority" || openMenu === "deadline" || openMenu === "reminder" || openMenu === "assignee" ? <StickerQuickEditor target={task} initialMode={openMenu} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
       {openMenu === "actions" ? <TaskActionMenu task={task} columns={columns} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} onEdit={() => onOpen(task)} onActivity={() => onOpenActivity(task.id)} onSubtasks={() => onOpenSubtasks(task.id)} onDuplicate={() => onDuplicate(task.id)} onDelete={() => onDelete(task.id)} /> : null}
     </div>
   );
@@ -1926,9 +2039,21 @@ function TasksPageContent() {
             ...item,
             ...(body.title !== undefined ? { title: body.title } : {}),
             ...(body.isDone !== undefined ? { isDone: body.isDone } : {}),
+            ...(body.startDate !== undefined ? { startDate: body.startDate } : {}),
             ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+            ...(body.dueTime !== undefined ? { dueTime: body.dueTime } : {}),
             ...(body.reminderAt !== undefined ? { reminderAt: body.reminderAt } : {}),
+            ...(body.reminderText !== undefined ? { reminderText: body.reminderText } : {}),
             ...(body.priority !== undefined ? { priority: body.priority } : {}),
+            ...(body.priorityStickerEnabled !== undefined ? { priorityStickerEnabled: body.priorityStickerEnabled } : {}),
+            ...(body.priorityStickerConfigured !== undefined ? { priorityStickerConfigured: body.priorityStickerConfigured } : {}),
+            ...(body.deadlineStickerEnabled !== undefined ? { deadlineStickerEnabled: body.deadlineStickerEnabled } : {}),
+            ...(body.reminderStickerEnabled !== undefined ? { reminderStickerEnabled: body.reminderStickerEnabled } : {}),
+            ...(body.assigneeStickerEnabled !== undefined ? { assigneeStickerEnabled: body.assigneeStickerEnabled } : {}),
+            ...(body.priorityStickerEnabled === false ? { priority: "NORMAL" as Priority, priorityStickerConfigured: false } : {}),
+            ...(body.deadlineStickerEnabled === false ? { startDate: null, dueDate: null, dueTime: null } : {}),
+            ...(body.reminderStickerEnabled === false ? { reminderAt: null, reminderText: null } : {}),
+            ...(body.assigneeStickerEnabled === false ? { assignee: null } : {}),
             ...(body.color !== undefined ? { color: body.color } : {}),
             ...(nextAssignee !== undefined ? { assignee: nextAssignee } : {}),
           } : item);
@@ -1990,8 +2115,16 @@ function TasksPageContent() {
       priority: draft.priority,
       color: draft.color,
       sortOrder: column.tasks.reduce((max, task) => Math.max(max, task.sortOrder), 0) + 1000,
+      startDate: null,
       dueDate: draft.dueDate,
+      dueTime: null,
       reminderAt: draft.reminderAt,
+      reminderText: null,
+      priorityStickerEnabled: draft.priority !== "NORMAL",
+      priorityStickerConfigured: draft.priority !== "NORMAL",
+      deadlineStickerEnabled: Boolean(draft.dueDate),
+      reminderStickerEnabled: Boolean(draft.reminderAt),
+      assigneeStickerEnabled: Boolean(draft.assigneeUserId),
       completedAt: column.isDone ? new Date().toISOString() : null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
@@ -2064,8 +2197,20 @@ function TasksPageContent() {
       ...(body.description !== undefined ? { description: body.description } : {}),
       ...(body.priority !== undefined ? { priority: body.priority } : {}),
       ...(body.color !== undefined ? { color: body.color } : {}),
+      ...(body.startDate !== undefined ? { startDate: body.startDate } : {}),
       ...(body.dueDate !== undefined ? { dueDate: body.dueDate } : {}),
+      ...(body.dueTime !== undefined ? { dueTime: body.dueTime } : {}),
       ...(body.reminderAt !== undefined ? { reminderAt: body.reminderAt } : {}),
+      ...(body.reminderText !== undefined ? { reminderText: body.reminderText } : {}),
+      ...(body.priorityStickerEnabled !== undefined ? { priorityStickerEnabled: body.priorityStickerEnabled } : {}),
+      ...(body.priorityStickerConfigured !== undefined ? { priorityStickerConfigured: body.priorityStickerConfigured } : {}),
+      ...(body.deadlineStickerEnabled !== undefined ? { deadlineStickerEnabled: body.deadlineStickerEnabled } : {}),
+      ...(body.reminderStickerEnabled !== undefined ? { reminderStickerEnabled: body.reminderStickerEnabled } : {}),
+      ...(body.assigneeStickerEnabled !== undefined ? { assigneeStickerEnabled: body.assigneeStickerEnabled } : {}),
+      ...(body.priorityStickerEnabled === false ? { priority: "NORMAL" as Priority, priorityStickerConfigured: false } : {}),
+      ...(body.deadlineStickerEnabled === false ? { startDate: null, dueDate: null, dueTime: null } : {}),
+      ...(body.reminderStickerEnabled === false ? { reminderAt: null, reminderText: null } : {}),
+      ...(body.assigneeStickerEnabled === false ? { assignee: null } : {}),
       ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
       ...(body.completed !== undefined ? { completedAt: body.completed ? (sourceTask.completedAt ?? new Date().toISOString()) : null } : {}),
       ...(body.archived !== undefined ? { archivedAt: body.archived ? new Date().toISOString() : null } : {}),
@@ -2148,8 +2293,16 @@ function TasksPageContent() {
           sortOrder: nextSortOrder,
           priority: "NORMAL" as const,
           color: null,
+          startDate: null,
           dueDate: null,
+          dueTime: null,
           reminderAt: null,
+          reminderText: null,
+          priorityStickerEnabled: false,
+          priorityStickerConfigured: false,
+          deadlineStickerEnabled: false,
+          reminderStickerEnabled: false,
+          assigneeStickerEnabled: false,
           completedAt: null,
           updatedAt: new Date().toISOString(),
           assignee: null,

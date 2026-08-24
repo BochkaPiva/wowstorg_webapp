@@ -50,6 +50,8 @@ async function taskForNotification(taskId: string) {
       id: true,
       title: true,
       dueDate: true,
+      dueTimeMinutes: true,
+      reminderText: true,
       priority: true,
       assignee: { select: { id: true, displayName: true } },
       column: { select: { title: true } },
@@ -72,7 +74,12 @@ function taskContextLines(task: NonNullable<Awaited<ReturnType<typeof taskForNot
   if (task.assignee) lines.push(`Исполнитель: <b>${escapeTelegramHtml(task.assignee.displayName)}</b>`);
   if (task.column) lines.push(`Статус: ${escapeTelegramHtml(task.column.title)}`);
   const due = formatDueDate(task.dueDate);
-  if (due) lines.push(`Дедлайн: <b>${escapeTelegramHtml(due)}</b>`);
+  if (due) {
+    const time = task.dueTimeMinutes == null
+      ? ""
+      : ` в ${String(Math.floor(task.dueTimeMinutes / 60)).padStart(2, "0")}:${String(task.dueTimeMinutes % 60).padStart(2, "0")}`;
+    lines.push(`Дедлайн: <b>${escapeTelegramHtml(`${due}${time}`)}</b>`);
+  }
   if (task.project) lines.push(`Проект: ${escapeTelegramHtml(task.project.title)}`);
   if (task.order) {
     const orderLabel = task.order.eventName || task.order.customer.name;
@@ -161,7 +168,7 @@ export async function sendWorkTaskCustomReminder(args: {
   const subtask = args.checklistItemId
     ? await prisma.workTaskChecklistItem.findUnique({
         where: { id: args.checklistItemId },
-        select: { title: true, assignee: { select: { displayName: true } } },
+        select: { title: true, reminderText: true, assignee: { select: { displayName: true } } },
       })
     : null;
   const text = [
@@ -170,8 +177,9 @@ export async function sendWorkTaskCustomReminder(args: {
     ...(subtask ? [
       `Подзадача: <b>${escapeTelegramHtml(subtask.title)}</b>`,
       ...(subtask.assignee ? [`Исполнитель: <b>${escapeTelegramHtml(subtask.assignee.displayName)}</b>`] : []),
+      ...(subtask.reminderText ? [``, escapeTelegramHtml(subtask.reminderText)] : []),
       "",
-    ] : []),
+    ] : task.reminderText ? [escapeTelegramHtml(task.reminderText), ""] : []),
     ...taskContextLines(task),
     "",
     taskLink("Открыть задачу на доске"),

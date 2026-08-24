@@ -1994,6 +1994,9 @@ function TasksPageContent() {
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const checklistQueueByItemRef = React.useRef<Map<string, Promise<void>>>(new Map());
+  const checklistIdResolutionRef = React.useRef<Map<string, Promise<string>>>(new Map());
+  const checklistQueueKeyByItemRef = React.useRef<Map<string, string>>(new Map());
+  const transientErrorTimerRef = React.useRef<number | null>(null);
   const mutationSequenceRef = React.useRef(0);
   const latestMutationByTaskRef = React.useRef<Map<string, number>>(new Map());
   const pendingMutationsRef = React.useRef(0);
@@ -2004,6 +2007,23 @@ function TasksPageContent() {
     const savedTheme = window.localStorage.getItem("wowstorg-task-board-theme");
     if (savedTheme === "dark" || savedTheme === "light") setBoardTheme(savedTheme);
   }, []);
+
+  React.useEffect(() => () => {
+    if (transientErrorTimerRef.current !== null) {
+      window.clearTimeout(transientErrorTimerRef.current);
+    }
+  }, []);
+
+  function showTransientError(message: string) {
+    if (transientErrorTimerRef.current !== null) {
+      window.clearTimeout(transientErrorTimerRef.current);
+    }
+    setError(message);
+    transientErrorTimerRef.current = window.setTimeout(() => {
+      setError((current) => current === message ? null : current);
+      transientErrorTimerRef.current = null;
+    }, 7_000);
+  }
 
   function toggleBoardTheme() {
     setBoardTheme((current) => {
@@ -2256,7 +2276,12 @@ function TasksPageContent() {
   }
 
   async function patchChecklistItem(taskId: string, itemId: string, body: ChecklistPatchBody) {
+    setError(null);
     const previousBoard = boardRef.current;
+    const previousItem = previousBoard?.columns
+      .flatMap((column) => column.tasks)
+      .find((task) => task.id === taskId)
+      ?.checklistItems.find((item) => item.id === itemId);
     const nextAssignees = body.assigneeUserIds !== undefined
       ? body.assigneeUserIds.map((userId) => meta?.users.find((user) => user.id === userId)).filter((user): user is TaskPerson => Boolean(user))
       : body.assigneeUserId !== undefined
@@ -2297,9 +2322,11 @@ function TasksPageContent() {
       })),
     } : current);
     const sendMutation = async () => {
+      let persistedItemId = itemId;
       try {
+        persistedItemId = await (checklistIdResolutionRef.current.get(itemId) ?? Promise.resolve(itemId));
         const data = await readApi<{ item: TaskChecklistItem }>(
-          await fetch(`/api/tasks/checklist/${itemId}`, {
+          await fetch(`/api/tasks/checklist/${persistedItemId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
@@ -2307,19 +2334,46 @@ function TasksPageContent() {
         );
         updateTaskInBoard(taskId, (task) => ({
           ...task,
-          checklistItems: task.checklistItems.map((item) => item.id === itemId ? data.item : item),
+          checklistItems: task.checklistItems.map((item) => (
+            item.id === itemId || item.id === persistedItemId ? data.item : item
+          )),
+          checklistDone: task.checklistItems.reduce(
+            (count, item) => count + ((item.id === itemId || item.id === persistedItemId ? data.item : item).isDone ? 1 : 0),
+            0,
+          ),
         }));
       } catch (e) {
-        applyBoard(previousBoard);
-        setError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
+        if (previousItem) {
+          updateTaskInBoard(taskId, (task) => {
+            const checklistItems = task.checklistItems.map((item) => (
+              item.id === itemId || item.id === persistedItemId
+                ? { ...previousItem, id: persistedItemId }
+                : item
+            ));
+            return {
+              ...task,
+              checklistItems,
+              checklistDone: checklistItems.filter((item) => item.isDone).length,
+            };
+          });
+        } else {
+          applyBoard(previousBoard);
+        }
+        showTransientError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
       }
     };
-    const previousMutation = checklistQueueByItemRef.current.get(itemId) ?? Promise.resolve();
+    const queueKey = checklistQueueKeyByItemRef.current.get(itemId) ?? itemId;
+    const previousMutation = checklistQueueByItemRef.current.get(queueKey) ?? Promise.resolve();
     const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
-    checklistQueueByItemRef.current.set(itemId, queuedMutation);
-    await queuedMutation;
-    if (checklistQueueByItemRef.current.get(itemId) === queuedMutation) {
-      checklistQueueByItemRef.current.delete(itemId);
+    checklistQueueByItemRef.current.set(queueKey, queuedMutation);
+    pendingMutationsRef.current += 1;
+    try {
+      await queuedMutation;
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+    }
+    if (checklistQueueByItemRef.current.get(queueKey) === queuedMutation) {
+      checklistQueueByItemRef.current.delete(queueKey);
     }
   }
 
@@ -2573,6 +2627,7 @@ function TasksPageContent() {
   }
 
   async function addChecklistItemInline(taskId: string, title: string, parentId: string | null = null) {
+    setError(null);
     const previousBoard = boardRef.current;
     const tempId = `temp-checklist-${crypto.randomUUID()}`;
     setExpandedTaskIds((current) => new Set(current).add(taskId));
@@ -2617,21 +2672,39 @@ function TasksPageContent() {
     });
 
     pendingMutationsRef.current += 1;
-    try {
-      const data = await readApi<{ item: TaskChecklistItem }>(
+    const createRequest = (async () => {
+      const persistedParentId = parentId
+        ? await (checklistIdResolutionRef.current.get(parentId) ?? Promise.resolve(parentId))
+        : null;
+      return readApi<{ item: TaskChecklistItem }>(
         await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, parentId }),
+          body: JSON.stringify({ title, parentId: persistedParentId }),
         }),
       );
+    })();
+    checklistIdResolutionRef.current.set(tempId, createRequest.then((data) => data.item.id));
+    try {
+      const data = await createRequest;
+      checklistQueueKeyByItemRef.current.set(data.item.id, tempId);
       updateTaskInBoard(taskId, (task) => ({
         ...task,
-        checklistItems: task.checklistItems.map((item) => item.id === tempId ? data.item : item),
+        checklistItems: task.checklistItems.map((item) => item.id === tempId ? {
+          ...data.item,
+          ...item,
+          id: data.item.id,
+          parentId: data.item.parentId,
+          sortOrder: data.item.sortOrder,
+          updatedAt: data.item.updatedAt,
+        } : item),
       }));
     } catch (e) {
+      checklistIdResolutionRef.current.delete(tempId);
       applyBoard(previousBoard);
       setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
     }
   }
 

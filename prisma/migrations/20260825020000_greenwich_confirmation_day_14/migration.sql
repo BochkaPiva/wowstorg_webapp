@@ -1,0 +1,2 @@
+ALTER TYPE "GreenwichReminderCheckpoint"
+ADD VALUE IF NOT EXISTS 'DAYS_14' AFTER 'DAYS_30';

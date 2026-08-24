@@ -11,7 +11,7 @@ type ScenarioAudience = "warehouse" | "greenwich";
 type TargetKind = "warehouse" | "greenwich-user" | "dm";
 type Scenario = { id: string; group: ScenarioGroup; audience: ScenarioAudience; title: string; description: string; hasActions?: boolean; preview: string };
 type GreenwichUser = { id: string; displayName: string; login: string; telegramChatId: string | null; hasTelegramChatId: boolean };
-type LiveCheckpoint = { id: "DAYS_30" | "DAYS_7" | "DAYS_3"; daysBefore: number; label: string };
+type LiveCheckpoint = { id: "DAYS_30" | "DAYS_14" | "DAYS_7" | "DAYS_3"; daysBefore: number; label: string };
 type LiveOrder = {
   id: string;
   eventName: string | null;
@@ -86,7 +86,12 @@ function Icon({ name, className = "h-5 w-5" }: { name: "send" | "refresh" | "shi
 function cleanPreview(value: string) { return value.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&").replaceAll("&quot;", '"'); }
 function audienceLabel(audience: ScenarioAudience) { return audience === "warehouse" ? "Склад" : "Greenwich"; }
 function formatDate(value: string | null | undefined) { return value ? new Date(value).toLocaleDateString("ru-RU") : "—"; }
-function checkpointLabel(value: LiveCheckpoint["id"]) { return value === "DAYS_30" ? "За 30 дней" : value === "DAYS_7" ? "За 7 дней" : "За 3 дня"; }
+function checkpointLabel(value: LiveCheckpoint["id"]) {
+  if (value === "DAYS_30") return "За 30 дней";
+  if (value === "DAYS_14") return "За 14 дней";
+  if (value === "DAYS_7") return "За 7 дней";
+  return "За 3 дня";
+}
 function responseLabel(value: LiveReminder["response"]) { if (value === "CONFIRMED") return "Всё актуально"; if (value === "CHANGES_PENDING") return "Будут изменения"; if (value === "CANCELLED") return "Заявка отменена"; return "Ожидает ответа"; }
 function responseClass(value: LiveReminder["response"]) { if (value === "CONFIRMED") return "bg-emerald-100 text-emerald-800"; if (value === "CHANGES_PENDING") return "bg-amber-100 text-amber-900"; if (value === "CANCELLED") return "bg-rose-100 text-rose-800"; return "bg-zinc-100 text-zinc-700"; }
 

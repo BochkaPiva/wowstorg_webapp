@@ -7,6 +7,7 @@ import { escapeTelegramHtml } from "@/server/telegram";
 
 export const GREENWICH_CONFIRMATION_CHECKPOINTS = [
   { checkpoint: "DAYS_30", daysBefore: 30, callbackValue: "30" },
+  { checkpoint: "DAYS_14", daysBefore: 14, callbackValue: "14" },
   { checkpoint: "DAYS_7", daysBefore: 7, callbackValue: "7" },
   { checkpoint: "DAYS_3", daysBefore: 3, callbackValue: "3" },
 ] as const satisfies ReadonlyArray<{
@@ -106,6 +107,7 @@ export function greenwichCancellationKeyboard(args: {
 
 function checkpointLeadText(daysBefore: number): string {
   if (daysBefore === 30) return "примерно через месяц";
+  if (daysBefore === 14) return "через две недели";
   if (daysBefore === 7) return "через неделю";
   return "через три дня";
 }

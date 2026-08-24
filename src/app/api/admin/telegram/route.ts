@@ -268,7 +268,7 @@ const PostSchema = z.object({
   chatId: z.string().trim().min(1).max(64).optional(), // only for dm
   userId: z.string().trim().min(1).max(64).optional(), // only for greenwich-user
   orderId: z.string().trim().min(1).max(64).optional(),
-  checkpoint: z.enum(["DAYS_30", "DAYS_7", "DAYS_3"]).optional(),
+  checkpoint: z.enum(["DAYS_30", "DAYS_14", "DAYS_7", "DAYS_3"]).optional(),
   scenarioId: z.enum(TELEGRAM_TEST_SCENARIO_IDS).default("connection"),
 });
 

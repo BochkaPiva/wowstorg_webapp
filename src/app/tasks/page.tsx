@@ -150,25 +150,25 @@ function TaskCardContext({ task }: { task: BoardTask }) {
   if (!task.project && !task.order) return null;
 
   return (
-    <div className="mt-1 space-y-0.5">
+    <div className="task-card__context">
       {task.project ? (
         <a
           href={`/projects/${task.project.id}`}
           onClick={(event) => event.stopPropagation()}
-          className="block truncate text-[11px] leading-snug text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
+          className="task-card__context-link"
           title={task.project.title}
         >
-          <span className="font-semibold text-white/50">Проект ·</span> {task.project.title}
+          <span>Проект</span> {task.project.title}
         </a>
       ) : null}
       {task.order ? (
         <a
           href={`/orders/${task.order.id}`}
           onClick={(event) => event.stopPropagation()}
-          className="block truncate text-[11px] leading-snug text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
+          className="task-card__context-link"
           title={orderContextLabel(task.order)}
         >
-          <span className="font-semibold text-white/50">Заявка ·</span> {orderContextLabel(task.order)}
+          <span>Заявка</span> {orderContextLabel(task.order)}
         </a>
       ) : null}
     </div>
@@ -487,7 +487,7 @@ function ChecklistTreeSection({
   }, [syncTreePath]);
 
   return (
-    <div ref={containerRef} className="relative mx-3 mb-2 pb-1">
+    <div ref={containerRef} className="task-checklist-tree">
       {treePath ? (
         <svg
           aria-hidden
@@ -510,10 +510,10 @@ function ChecklistTreeSection({
           ref={(node) => {
             rowRefs.current[index] = node;
           }}
-          className={`relative pl-5 ${index > 0 ? "mt-2" : ""}`}
+          className={`task-checklist-tree__slot${index > 0 ? " has-gap" : ""}`}
         >
           <div
-            className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 px-2.5 py-2"
+            className="task-checklist-row"
             style={item.color ? { backgroundColor: item.color } : undefined}
           >
             <RoundCheckbox
@@ -523,15 +523,15 @@ function ChecklistTreeSection({
             />
             <span
               className={[
-                "min-w-0 flex-1 text-xs leading-snug",
+                "task-checklist-row__title",
                 item.isDone ? "text-white/50 line-through" : "text-white/90",
               ].join(" ")}
             >
               {item.title}
             </span>
-            {item.dueDate ? <span className="shrink-0 text-[10px] text-white/60">{fmtDate(item.dueDate)}</span> : null}
-            {(item.priority === "HIGH" || item.priority === "URGENT") ? <span className="shrink-0 text-[10px] text-amber-200">!</span> : null}
-            {item.assignee ? <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-pink-600 text-[8px] font-bold text-white" title={item.assignee.displayName}>{initials(item.assignee.displayName)}</span> : null}
+            {item.dueDate ? <span className="task-checklist-row__date">{fmtDate(item.dueDate)}</span> : null}
+            {(item.priority === "HIGH" || item.priority === "URGENT") ? <span className="task-checklist-row__priority">!</span> : null}
+            {item.assignee ? <span className="task-checklist-row__avatar" title={item.assignee.displayName}>{initials(item.assignee.displayName)}</span> : null}
             <div className="group/delete -mr-0.5 flex w-8 shrink-0 items-center justify-end pl-1">
               <button
                 type="button"
@@ -554,7 +554,7 @@ function ChecklistTreeSection({
         ref={(node) => {
           rowRefs.current[items.length] = node;
         }}
-        className={`relative pl-6 ${items.length > 0 ? "mt-2" : ""} min-h-[1.5rem]`}
+        className={`task-checklist-tree__create${items.length > 0 ? " has-gap" : ""}`}
       >
         {adding ? (
           <input
@@ -628,12 +628,12 @@ function TaskChecklistPanel({
 
   if (!hasChecklist && !adding) {
     return (
-      <div className="border-t border-black/25 bg-[#283040] px-3 py-2.5">
+      <div className="task-checklist-footer task-checklist-footer--empty">
         <button
           type="button"
           onClick={startAdding}
           onMouseDown={(event) => event.stopPropagation()}
-          className="text-xs font-semibold text-sky-300 transition-colors hover:text-white"
+          className="task-checklist-create"
         >
           + Создать подзадачу
         </button>
@@ -642,7 +642,7 @@ function TaskChecklistPanel({
   }
 
   return (
-    <div className="border-t border-black/25 bg-[#283040]">
+    <div className="task-checklist-footer">
       {hasChecklist ? (
         <button
           type="button"
@@ -651,7 +651,7 @@ function TaskChecklistPanel({
             onToggleExpanded(task.id);
           }}
           onMouseDown={(event) => event.stopPropagation()}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+          className="task-checklist-progress"
         >
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
             <div
@@ -734,54 +734,22 @@ function TaskCard({
   isDragging: boolean;
   dragPreviewHeight: number;
 }) {
-  const [title, setTitle] = React.useState(task.title);
-  const [description, setDescription] = React.useState(task.description ?? "");
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
-  const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
+  const cardRef = React.useRef<HTMLElement>(null);
+  const draggedRef = React.useRef(false);
   const [openMenu, setOpenMenu] = React.useState<"stickers" | "assignee" | "actions" | null>(null);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLButtonElement | null>(null);
   const isUrgent = task.priority === "URGENT" || task.priority === "HIGH";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
 
-  React.useEffect(() => {
-    setTitle(task.title);
-    setDescription(task.description ?? "");
-  }, [task.description, task.title]);
-
-  const syncDescriptionHeight = React.useCallback(() => {
-    const el = descriptionRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, []);
-
-  React.useEffect(() => {
-    syncDescriptionHeight();
-  }, [description, syncDescriptionHeight]);
-
-  function commitTitle() {
-    const next = title.trim();
-    if (!next) {
-      setTitle(task.title);
-      return;
-    }
-    if (next !== task.title) onPatchTask(task.id, { title: next });
-  }
-
-  function commitDescription() {
-    const next = description.trim();
-    const current = task.description ?? "";
-    if (next !== current) onPatchTask(task.id, { description: next || null });
-  }
-
   return (
     <div
-      className="relative"
+      className={`task-card-slot${dropEdge ? ` is-drop-${dropEdge}` : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        const rect = event.currentTarget.getBoundingClientRect();
+        const rect = cardRef.current?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect();
         const edge: TaskDropEdge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
         onDragOverTask(task.id, column.id, edge);
       }}
@@ -789,13 +757,14 @@ function TaskCard({
         event.preventDefault();
         event.stopPropagation();
         const movedTaskId = event.dataTransfer.getData("text/plain");
-        const rect = event.currentTarget.getBoundingClientRect();
+        const rect = cardRef.current?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect();
         const edge: TaskDropEdge = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
         if (movedTaskId) onDropOnTask(movedTaskId, task.id, column.id, edge);
       }}
     >
-      {dropEdge === "before" ? <div className="task-drop-placeholder mb-3" style={{ height: dragPreviewHeight || 76 }} /> : null}
+      {dropEdge === "before" ? <div className="task-drop-placeholder" style={{ height: dragPreviewHeight || 76 }} /> : null}
     <article
+      ref={cardRef}
       data-task-card-id={task.id}
       draggable
       onDragStart={(event) => {
@@ -807,65 +776,50 @@ function TaskCard({
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", task.id);
         event.dataTransfer.setData("application/x-wowstorg-task-id", task.id);
+        draggedRef.current = true;
         onDragStart(task.id, column.id, event.currentTarget.getBoundingClientRect().height);
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={() => {
+        onDragEnd();
+        window.setTimeout(() => { draggedRef.current = false; }, 0);
+      }}
+      onClick={(event) => {
+        if (draggedRef.current) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("button,input,textarea,select,a,summary")) return;
+        onOpenActivity(task.id);
+      }}
       className={[
-        "group overflow-hidden rounded-lg border border-black/15 bg-slate-700",
-        "cursor-grab transition-[filter,opacity] duration-150 hover:brightness-[1.04] active:cursor-grabbing",
+        "task-card group",
         isDragging ? "task-card-dragging" : "",
         textTone,
       ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
     >
-      <div className="px-3 py-3">
-        <div className="flex items-start gap-2">
+      <div className="task-card__body">
+        <div className="task-card__heading">
           <RoundCheckbox checked={taskDone} onChange={() => onPatchTask(task.id, { completed: !taskDone })} />
           <div className="min-w-0 flex-1">
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-                if (event.key === "Escape") {
-                  setTitle(task.title);
-                  event.currentTarget.blur();
-                }
-              }}
-              className={[
-                "block w-full rounded !bg-transparent px-1 py-0.5 text-sm font-semibold leading-snug !text-white caret-white outline-none transition-colors",
-                "hover:!bg-white/5 focus:!bg-black/12 focus:ring-1 focus:ring-white/35",
-                taskDone ? "opacity-60 line-through" : "",
-              ].join(" ")}
-            />
+            <div className="task-card__title-row">
+              <strong className={`task-card__title${taskDone ? " is-done" : ""}`}>{task.title}</strong>
+              <button
+                type="button"
+                className="task-card__edit"
+                onClick={(event) => { event.stopPropagation(); onOpen(task); }}
+                onMouseDown={(event) => event.stopPropagation()}
+                title="Редактировать задачу"
+                aria-label="Редактировать задачу"
+              >
+                ✎
+              </button>
+            </div>
             <TaskCardContext task={task} />
-            <textarea
-              ref={descriptionRef}
-              value={description}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                requestAnimationFrame(syncDescriptionHeight);
-              }}
-              onBlur={commitDescription}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setDescription(task.description ?? "");
-                  event.currentTarget.blur();
-                }
-                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") event.currentTarget.blur();
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-              placeholder="Описание"
-              rows={1}
-              className="mt-1 block w-full resize-none overflow-hidden rounded !bg-transparent px-1 py-0.5 text-xs leading-snug !text-white/80 caret-white outline-none transition-colors placeholder:!text-white/40 hover:!bg-white/5 focus:!bg-black/10 focus:ring-1 focus:ring-white/30"
-            />
           </div>
           <button
             type="button"
             onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "actions" ? null : "actions"); }}
             onMouseDown={(event) => event.stopPropagation()}
-            className="rounded px-1.5 py-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+            className="task-card__menu"
             title="Действия с задачей"
             aria-label="Действия с задачей"
           >
@@ -873,13 +827,13 @@ function TaskCard({
           </button>
         </div>
 
-        <div className={`task-card-tools${task.commentCount > 0 ? " has-content" : ""}`}>
+        <div className="task-card-tools">
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>
           <button type="button" className="task-card-tool task-card-tool--round" title="Назначить исполнителя" aria-label="Назначить исполнителя" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "assignee" ? null : "assignee"); }} onMouseDown={(event) => event.stopPropagation()}>♙</button>
-          <button type="button" className="task-card-comments" onClick={(event) => { event.stopPropagation(); onOpenActivity(task.id); }} onMouseDown={(event) => event.stopPropagation()} title="История и заметки">☵{task.commentCount > 0 ? <span>{task.commentCount}</span> : null}</button>
+          {task.commentCount > 0 ? <span className="task-card-comments" title="В задаче есть заметки">☵ <span>{task.commentCount}</span></span> : null}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
+        <div className="task-card__meta">
           {task.dueDate ? (
             <span className="rounded border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] text-white/90">
               {fmtDate(task.dueDate)}
@@ -910,7 +864,7 @@ function TaskCard({
         onAddChecklistItem={(title) => onAddChecklistItem(task.id, title)}
       />
     </article>
-      {dropEdge === "after" ? <div className="task-drop-placeholder mt-3" style={{ height: dragPreviewHeight || 76 }} /> : null}
+      {dropEdge === "after" ? <div className="task-drop-placeholder" style={{ height: dragPreviewHeight || 76 }} /> : null}
       {openMenu === "stickers" ? <TaskStickerMenu task={task} users={users} anchor={menuAnchor} onClose={() => setOpenMenu(null)} onPatch={(body) => onPatchTask(task.id, body)} /> : null}
       {openMenu === "assignee" ? (
         <AnchoredPopover anchor={menuAnchor} onClose={() => setOpenMenu(null)}>
@@ -2298,14 +2252,14 @@ function TasksPageContent() {
   return (
     <div
       className={[
-        "rounded-lg border border-zinc-300 bg-[#e9e8ed]",
-        viewParams.embedded ? "p-3" : "p-4",
+        "task-board-shell",
+        viewParams.embedded ? "is-embedded" : "",
       ].join(" ")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-300 bg-white px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="task-board-toolbar">
+        <div className="task-board-toolbar__identity">
           {viewParams.projectId ? (
-            <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-800">
+            <span className="task-board-toolbar__scope">
               Проектные задачи
             </span>
           ) : null}
@@ -2313,7 +2267,7 @@ function TasksPageContent() {
             <select
               value={boardId}
               onChange={(event) => setBoardId(event.target.value)}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-bold text-zinc-900 outline-none focus:border-violet-700"
+              className="task-board-toolbar__select"
             >
               {boards.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -2322,27 +2276,30 @@ function TasksPageContent() {
               ))}
             </select>
           ) : (
-            <h1 className="px-1 text-sm font-semibold text-zinc-900">{board?.title ?? boards[0]?.title ?? "Рабочая доска"}</h1>
+            <div>
+              <h1>{board?.title ?? boards[0]?.title ?? "Рабочая доска"}</h1>
+              <span>{board?.columns.reduce((total, column) => total + column.tasks.length, 0) ?? 0} задач</span>
+            </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="task-board-toolbar__actions">
           <button
             type="button"
             onClick={() => {
               setArchiveOpen(true);
               void loadArchive();
             }}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-bold text-zinc-700 hover:border-zinc-950"
+            className="task-board-button task-board-button--quiet"
           >
-            Архив
+            <span aria-hidden>⌑</span> Архив
           </button>
           <button
             type="button"
             onClick={() => void addColumn()}
             disabled={viewParams.readOnly}
-            className="rounded-md border border-zinc-950 bg-zinc-950 px-3 py-2 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950"
+            className="task-board-button task-board-button--primary"
           >
-            + Колонка
+            <span aria-hidden>＋</span> Колонка
           </button>
         </div>
       </div>
@@ -2351,8 +2308,8 @@ function TasksPageContent() {
       {error ? <div className="mx-1 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div> : null}
 
       {!loading && board ? (
-        <div className="mt-4 overflow-x-auto pb-3">
-        <div className={`${viewParams.embedded ? "min-h-[26rem]" : "min-h-[calc(100vh-280px)]"} flex gap-4 px-1 pb-2`}>
+        <div className="task-board-viewport">
+        <div className={`task-board-columns${viewParams.embedded ? " is-embedded" : ""}`}>
           {board.columns.map((column, columnIndex) => (
             <section
               key={column.id}
@@ -2371,10 +2328,6 @@ function TasksPageContent() {
                 }
                 setDragOverColumnId(column.id);
               }}
-              onDragLeave={() => {
-                if (dragOverColumnId === column.id) setDragOverColumnId(null);
-                if (dragOverColumn?.columnId === column.id) setDragOverColumn(null);
-              }}
               onDrop={(event) => {
                 event.preventDefault();
                 const movedColumnId = event.dataTransfer.getData("application/x-wowstorg-column-id") || draggingColumnId;
@@ -2392,16 +2345,17 @@ function TasksPageContent() {
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
-                "relative flex w-[320px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#f5f4f7] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition",
-                dragOverColumnId === column.id ? "border-violet-500 ring-2 ring-violet-200" : "border-zinc-300",
-                draggingColumnId === column.id ? "opacity-60" : "",
+                "task-column",
+                dragOverColumnId === column.id ? "is-task-target" : "",
+                draggingColumnId === column.id ? "is-dragging" : "",
               ].join(" ")}
+              style={{ "--task-column-accent": column.color ?? "#94a3b8" } as React.CSSProperties}
             >
               {dragOverColumn?.columnId === column.id ? (
                 <div
                   className={[
-                    "pointer-events-none absolute bottom-2 top-2 z-20 w-1.5 rounded-full bg-violet-500 shadow-[0_0_0_5px_rgba(139,92,246,0.18)]",
-                    dragOverColumn.edge === "before" ? "-left-2" : "-right-2",
+                    "task-column-drop-edge",
+                    dragOverColumn.edge === "before" ? "is-before" : "is-after",
                   ].join(" ")}
                 />
               ) : null}
@@ -2424,10 +2378,9 @@ function TasksPageContent() {
                   setDraggingColumnId(null);
                   setDragOverColumn(null);
                 }}
-                className="cursor-grab border-b border-black/15 px-3 py-3 text-white active:cursor-grabbing"
-                style={{ backgroundColor: column.color ?? "#334155" }}
+                className="task-column__header"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="task-column__title-row">
                   <input
                     value={column.title}
                     onChange={(event) => {
@@ -2444,26 +2397,27 @@ function TasksPageContent() {
                     onBlur={(event) => void patchColumn(column.id, { title: event.target.value })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="min-w-0 flex-1 !bg-transparent text-base font-bold !text-white caret-white outline-none placeholder:!text-white/45"
+                    className="task-column__title"
                   />
+                  <span className="task-column__count">{column.tasks.length}</span>
                   <button
                     type="button"
                     onClick={() => void patchColumn(column.id, { isDone: !column.isDone })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                    className={`task-column__done${column.isDone ? " is-active" : ""}`}
                     title="Колонка завершения"
                   >
                     {column.isDone ? "✓" : "○"}
                   </button>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="task-column__actions">
                   <button
                     type="button"
                     onClick={() => setEditor({ task: null, columnId: column.id })}
                     disabled={viewParams.readOnly}
                     draggable={false}
-                    className="text-sm font-bold text-white/90 transition-colors hover:text-white"
+                    className="task-column__add"
                   >
                     + Добавить задачу
                   </button>
@@ -2473,7 +2427,7 @@ function TasksPageContent() {
                       onClick={() => void archiveCompletedTasks(column)}
                       disabled={viewParams.readOnly}
                       draggable={false}
-                      className="ml-auto rounded border border-white/30 bg-white/10 px-2 py-1 text-xs font-bold text-white transition-colors hover:bg-white/20 disabled:opacity-45"
+                      className="task-column__archive"
                       title="Убрать выполненные задачи из доски в архив"
                     >
                       Архивировать
@@ -2484,7 +2438,7 @@ function TasksPageContent() {
                       type="button"
                       onClick={() => void deleteColumn(column.id)}
                       draggable={false}
-                    className="ml-auto text-xs font-bold text-white/65 hover:text-white"
+                    className="task-column__delete"
                     >
                       удалить
                     </button>
@@ -2492,7 +2446,7 @@ function TasksPageContent() {
                 </div>
               </div>
 
-              <div className="min-h-[15rem] flex-1 space-y-3 px-3 py-3">
+              <div className="task-column__cards">
                 {column.tasks.map((task) => (
                   <TaskCard
                     key={task.id}
@@ -2530,7 +2484,11 @@ function TasksPageContent() {
                         return;
                       }
                       setDragOverColumnId(null);
-                      setDragOverTask({ taskId, columnId, edge });
+                      setDragOverTask((current) =>
+                        current?.taskId === taskId && current.columnId === columnId && current.edge === edge
+                          ? current
+                          : { taskId, columnId, edge },
+                      );
                     }}
                     onDropOnTask={(taskId, targetTaskId, targetColumnId, edge) => {
                       setDragOverTask(null);
@@ -2555,7 +2513,7 @@ function TasksPageContent() {
                   <div className="task-drop-placeholder" style={{ height: dragPreviewHeight }} />
                 ) : null}
                 {column.tasks.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-zinc-300 bg-white/70 px-3 py-4 text-sm font-semibold text-zinc-500">
+                  <div className="task-column__empty">
                     {columnIndex === 0 ? "Добавьте первую задачу" : "Пусто"}
                   </div>
                 ) : null}

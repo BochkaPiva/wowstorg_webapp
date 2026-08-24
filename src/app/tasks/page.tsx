@@ -780,13 +780,19 @@ function RoundCheckbox({
   className?: string;
 }) {
   const dim = size === "sm" ? "h-4 w-4 text-[9px]" : "h-5 w-5 text-[11px]";
+  const checkedRef = React.useRef(checked);
+  React.useEffect(() => {
+    checkedRef.current = checked;
+  }, [checked]);
 
   return (
     <button
       type="button"
       onClick={(event) => {
         event.stopPropagation();
-        onChange(!checked);
+        const nextChecked = !checkedRef.current;
+        checkedRef.current = nextChecked;
+        onChange(nextChecked);
       }}
       onMouseDown={(event) => event.stopPropagation()}
       className={[
@@ -1277,7 +1283,7 @@ function TaskCard({
     >
       <div className="task-card__body">
         <div className="task-card__heading">
-          <RoundCheckbox checked={taskDone} onChange={() => onPatchTask(task.id, { completed: !taskDone })} />
+          <RoundCheckbox checked={taskDone} onChange={(checked) => onPatchTask(task.id, { completed: checked })} />
           <div className="min-w-0 flex-1">
             <div className="task-card__title-row">
               <strong className={`task-card__title${taskDone ? " is-done" : ""}`}>{task.title}</strong>
@@ -1996,9 +2002,12 @@ function TasksPageContent() {
   const checklistQueueByItemRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const checklistIdResolutionRef = React.useRef<Map<string, Promise<string>>>(new Map());
   const checklistQueueKeyByItemRef = React.useRef<Map<string, string>>(new Map());
+  const taskIdResolutionRef = React.useRef<Map<string, Promise<string>>>(new Map());
+  const taskQueueKeyByIdRef = React.useRef<Map<string, string>>(new Map());
   const transientErrorTimerRef = React.useRef<number | null>(null);
   const mutationSequenceRef = React.useRef(0);
   const latestMutationByTaskRef = React.useRef<Map<string, number>>(new Map());
+  const latestMutationByChecklistItemRef = React.useRef<Map<string, number>>(new Map());
   const pendingMutationsRef = React.useRef(0);
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
@@ -2277,6 +2286,10 @@ function TasksPageContent() {
 
   async function patchChecklistItem(taskId: string, itemId: string, body: ChecklistPatchBody) {
     setError(null);
+    const queueKey = checklistQueueKeyByItemRef.current.get(itemId) ?? itemId;
+    const mutationId = mutationSequenceRef.current + 1;
+    mutationSequenceRef.current = mutationId;
+    latestMutationByChecklistItemRef.current.set(queueKey, mutationId);
     const previousBoard = boardRef.current;
     const previousItem = previousBoard?.columns
       .flatMap((column) => column.tasks)
@@ -2323,8 +2336,10 @@ function TasksPageContent() {
     } : current);
     const sendMutation = async () => {
       let persistedItemId = itemId;
+      let persistedTaskId = taskId;
       try {
         persistedItemId = await (checklistIdResolutionRef.current.get(itemId) ?? Promise.resolve(itemId));
+        persistedTaskId = await (taskIdResolutionRef.current.get(taskId) ?? Promise.resolve(taskId));
         const data = await readApi<{ item: TaskChecklistItem }>(
           await fetch(`/api/tasks/checklist/${persistedItemId}`, {
             method: "PATCH",
@@ -2332,17 +2347,22 @@ function TasksPageContent() {
             body: JSON.stringify(body),
           }),
         );
-        updateTaskInBoard(taskId, (task) => ({
-          ...task,
-          checklistItems: task.checklistItems.map((item) => (
-            item.id === itemId || item.id === persistedItemId ? data.item : item
-          )),
-          checklistDone: task.checklistItems.reduce(
-            (count, item) => count + ((item.id === itemId || item.id === persistedItemId ? data.item : item).isDone ? 1 : 0),
-            0,
-          ),
-        }));
+        if (latestMutationByChecklistItemRef.current.get(queueKey) === mutationId) {
+          updateTaskInBoard(taskId, (task) => {
+            const checklistItems = task.checklistItems.map((item) => (
+              item.id === itemId || item.id === persistedItemId ? data.item : item
+            ));
+            return {
+              ...task,
+              checklistItems,
+              checklistDone: checklistItems.filter((item) => item.isDone).length,
+            };
+          }, persistedTaskId);
+          latestMutationByChecklistItemRef.current.delete(queueKey);
+        }
       } catch (e) {
+        if (latestMutationByChecklistItemRef.current.get(queueKey) !== mutationId) return;
+        latestMutationByChecklistItemRef.current.delete(queueKey);
         if (previousItem) {
           updateTaskInBoard(taskId, (task) => {
             const checklistItems = task.checklistItems.map((item) => (
@@ -2355,14 +2375,13 @@ function TasksPageContent() {
               checklistItems,
               checklistDone: checklistItems.filter((item) => item.isDone).length,
             };
-          });
+          }, persistedTaskId);
         } else {
           applyBoard(previousBoard);
         }
         showTransientError(e instanceof Error ? e.message : "Не удалось обновить подзадачу");
       }
     };
-    const queueKey = checklistQueueKeyByItemRef.current.get(itemId) ?? itemId;
     const previousMutation = checklistQueueByItemRef.current.get(queueKey) ?? Promise.resolve();
     const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
     checklistQueueByItemRef.current.set(queueKey, queuedMutation);
@@ -2422,14 +2441,22 @@ function TasksPageContent() {
     }
   }
 
-  function updateTaskInBoard(taskId: string, updater: (task: BoardTask) => BoardTask) {
+  function updateTaskInBoard(
+    taskId: string,
+    updater: (task: BoardTask) => BoardTask,
+    resolvedTaskId?: string,
+  ) {
     updateBoard((current) =>
       current
         ? {
             ...current,
             columns: current.columns.map((column) => ({
               ...column,
-              tasks: column.tasks.map((task) => (task.id === taskId ? updater(task) : task)),
+              tasks: column.tasks.map((task) => (
+                task.id === taskId || (resolvedTaskId !== undefined && task.id === resolvedTaskId)
+                  ? updater(task)
+                  : task
+              )),
             })),
           }
         : current,
@@ -2446,6 +2473,8 @@ function TasksPageContent() {
     if (!previousBoard || !column) return;
 
     const tempId = `temp-task-${crypto.randomUUID()}`;
+    const idResolution = request.then(({ task }) => task.id);
+    taskIdResolutionRef.current.set(tempId, idResolution);
     const assignees = draft.assigneeUserIds
       .map((userId) => meta?.users.find((user) => user.id === userId))
       .filter((user): user is TaskPerson => Boolean(user));
@@ -2498,19 +2527,26 @@ function TasksPageContent() {
 
     void request
       .then(({ task }) => {
+        taskQueueKeyByIdRef.current.set(task.id, tempId);
         updateBoard((current) =>
           current
             ? {
                 ...current,
                 columns: current.columns.map((item) => ({
                   ...item,
-                  tasks: item.tasks.map((currentTask) => (currentTask.id === tempId ? task : currentTask)),
+                  tasks: item.tasks.map((currentTask) => (currentTask.id === tempId ? {
+                    ...task,
+                    ...currentTask,
+                    id: task.id,
+                    createdAt: task.createdAt,
+                  } : currentTask)),
                 })),
               }
             : current,
         );
       })
       .catch((e) => {
+        taskIdResolutionRef.current.delete(tempId);
         applyBoard(previousBoard);
         setError(e instanceof Error ? e.message : "Не удалось создать задачу");
       });
@@ -2521,9 +2557,10 @@ function TasksPageContent() {
     if (!previousBoard) return;
     const sourceTask = previousBoard.columns.flatMap((column) => column.tasks).find((task) => task.id === taskId);
     if (!sourceTask) return;
+    const queueKey = taskQueueKeyByIdRef.current.get(taskId) ?? taskId;
     const mutationId = mutationSequenceRef.current + 1;
     mutationSequenceRef.current = mutationId;
-    latestMutationByTaskRef.current.set(taskId, mutationId);
+    latestMutationByTaskRef.current.set(queueKey, mutationId);
     pendingMutationsRef.current += 1;
     const nextAssignees = body.assigneeUserIds !== undefined
       ? body.assigneeUserIds.map((userId) => meta?.users.find((user) => user.id === userId)).filter((user): user is TaskPerson => Boolean(user))
@@ -2586,30 +2623,32 @@ function TasksPageContent() {
       }),
     } : current);
     const sendMutation = async () => {
+      let persistedTaskId = taskId;
       try {
+        persistedTaskId = await (taskIdResolutionRef.current.get(taskId) ?? Promise.resolve(taskId));
         const data = await readApi<{ task: BoardTask }>(
-          await fetch(`/api/tasks/tasks/${taskId}`, {
+          await fetch(`/api/tasks/tasks/${persistedTaskId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           }),
         );
-        if (latestMutationByTaskRef.current.get(taskId) === mutationId) {
+        if (latestMutationByTaskRef.current.get(queueKey) === mutationId) {
           if (!body.archived) {
-            updateTaskInBoard(taskId, (currentTask) => ({ ...data.task, sortOrder: currentTask.sortOrder }));
+            updateTaskInBoard(taskId, (currentTask) => ({ ...data.task, sortOrder: currentTask.sortOrder }), persistedTaskId);
           }
-          latestMutationByTaskRef.current.delete(taskId);
+          latestMutationByTaskRef.current.delete(queueKey);
         }
       } catch (e) {
-        if (latestMutationByTaskRef.current.get(taskId) === mutationId) {
-          latestMutationByTaskRef.current.delete(taskId);
+        if (latestMutationByTaskRef.current.get(queueKey) === mutationId) {
+          latestMutationByTaskRef.current.delete(queueKey);
           const originalColumnId = previousBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId))?.id;
           updateBoard((current) => current ? {
             ...current,
             columns: current.columns.map((column) => {
-              const withoutTask = column.tasks.filter((task) => task.id !== taskId);
+              const withoutTask = column.tasks.filter((task) => task.id !== taskId && task.id !== persistedTaskId);
               return column.id === originalColumnId
-                ? { ...column, tasks: [...withoutTask, sourceTask].sort((left, right) => left.sortOrder - right.sortOrder) }
+                ? { ...column, tasks: [...withoutTask, { ...sourceTask, id: persistedTaskId }].sort((left, right) => left.sortOrder - right.sortOrder) }
                 : { ...column, tasks: withoutTask };
             }),
           } : current);
@@ -2619,11 +2658,11 @@ function TasksPageContent() {
         pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
       }
     };
-    const previousMutation = moveQueueByTaskRef.current.get(taskId) ?? Promise.resolve();
+    const previousMutation = moveQueueByTaskRef.current.get(queueKey) ?? Promise.resolve();
     const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
-    moveQueueByTaskRef.current.set(taskId, queuedMutation);
+    moveQueueByTaskRef.current.set(queueKey, queuedMutation);
     await queuedMutation;
-    if (moveQueueByTaskRef.current.get(taskId) === queuedMutation) moveQueueByTaskRef.current.delete(taskId);
+    if (moveQueueByTaskRef.current.get(queueKey) === queuedMutation) moveQueueByTaskRef.current.delete(queueKey);
   }
 
   async function addChecklistItemInline(taskId: string, title: string, parentId: string | null = null) {
@@ -2673,11 +2712,12 @@ function TasksPageContent() {
 
     pendingMutationsRef.current += 1;
     const createRequest = (async () => {
+      const persistedTaskId = await (taskIdResolutionRef.current.get(taskId) ?? Promise.resolve(taskId));
       const persistedParentId = parentId
         ? await (checklistIdResolutionRef.current.get(parentId) ?? Promise.resolve(parentId))
         : null;
       return readApi<{ item: TaskChecklistItem }>(
-        await fetch(`/api/tasks/tasks/${taskId}/checklist`, {
+        await fetch(`/api/tasks/tasks/${persistedTaskId}/checklist`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title, parentId: persistedParentId }),
@@ -2688,6 +2728,7 @@ function TasksPageContent() {
     try {
       const data = await createRequest;
       checklistQueueKeyByItemRef.current.set(data.item.id, tempId);
+      const persistedTaskId = await (taskIdResolutionRef.current.get(taskId) ?? Promise.resolve(taskId));
       updateTaskInBoard(taskId, (task) => ({
         ...task,
         checklistItems: task.checklistItems.map((item) => item.id === tempId ? {
@@ -2698,7 +2739,7 @@ function TasksPageContent() {
           sortOrder: data.item.sortOrder,
           updatedAt: data.item.updatedAt,
         } : item),
-      }));
+      }), persistedTaskId);
     } catch (e) {
       checklistIdResolutionRef.current.delete(tempId);
       applyBoard(previousBoard);

@@ -169,17 +169,44 @@ export function AppWorkspaceSkeleton() {
 }
 
 export function BoardSkeleton() {
+  const columns = [
+    { accent: "#94a3b8", cards: 2 },
+    { accent: "#c084fc", cards: 4 },
+    { accent: "#facc15", cards: 1 },
+    { accent: "#5eead4", cards: 3 },
+  ];
+
   return (
     <LoadingRegion className="ui-boardSkeleton" label="Загрузка доски задач">
-      {Array.from({ length: 4 }, (_, columnIndex) => (
-        <section key={columnIndex}>
-          <div className="ui-boardSkeleton__head"><Skeleton /><Skeleton /></div>
+      {columns.map((column, columnIndex) => (
+        <section
+          key={columnIndex}
+          style={{ "--ui-board-skeleton-accent": column.accent } as React.CSSProperties}
+        >
+          <div className="ui-boardSkeleton__head">
+            <div>
+              <Skeleton className="ui-boardSkeleton__heading" />
+              <Skeleton className="ui-boardSkeleton__add" />
+            </div>
+            <Skeleton className="ui-boardSkeleton__control" />
+          </div>
           <div className="ui-boardSkeleton__cards">
-            {Array.from({ length: columnIndex % 2 === 0 ? 3 : 2 }, (_, cardIndex) => (
+            {Array.from({ length: column.cards }, (_, cardIndex) => (
               <div key={cardIndex}>
-                <Skeleton className="ui-boardSkeleton__title" />
-                <Skeleton className="ui-boardSkeleton__line" />
-                <Skeleton className="ui-boardSkeleton__line ui-boardSkeleton__line--short" />
+                <div className="ui-boardSkeleton__cardHead">
+                  <Skeleton className="ui-boardSkeleton__check" />
+                  <Skeleton className="ui-boardSkeleton__title" />
+                  <Skeleton className="ui-boardSkeleton__more" />
+                </div>
+                {(columnIndex + cardIndex) % 3 !== 0 ? (
+                  <Skeleton className="ui-boardSkeleton__sticker" />
+                ) : null}
+                {(columnIndex + cardIndex) % 2 === 0 ? (
+                  <div className="ui-boardSkeleton__progress">
+                    <Skeleton />
+                    <Skeleton />
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

@@ -14,6 +14,7 @@ const LineSchema = z.object({
   id: z.string().optional(),
   itemId: z.string().min(1),
   requestedQty: z.number().int().min(0),
+  pricePerDaySnapshot: z.number().finite().min(0).optional(),
   warehouseComment: z.string().trim().max(2000).nullable().optional(),
 });
 const HiddenExpenseSchema = z.object({
@@ -399,12 +400,18 @@ export async function PATCH(
           order.lines.map((line) => ({
             itemId: line.itemId,
             requestedQty: line.requestedQty,
+            pricePerDaySnapshot: Number(line.pricePerDaySnapshot ?? 0),
           })),
         );
         const nextClientLineSignature = JSON.stringify(
           editLines.map((line) => ({
             itemId: line.itemId,
             requestedQty: line.requestedQty,
+            pricePerDaySnapshot:
+              line.pricePerDaySnapshot ??
+              (line.id && linePriceById.has(line.id)
+                ? Number(linePriceById.get(line.id) ?? 0)
+                : Number(itemById.get(line.itemId)!.pricePerDay)),
           })),
         );
         const clientFacingChanged =
@@ -459,9 +466,10 @@ export async function PATCH(
             itemId: row.itemId,
             requestedQty: row.requestedQty,
             pricePerDaySnapshot:
-              row.id && linePriceById.has(row.id)
+              row.pricePerDaySnapshot ??
+              (row.id && linePriceById.has(row.id)
                 ? linePriceById.get(row.id)
-                : itemById.get(row.itemId)!.pricePerDay,
+                : itemById.get(row.itemId)!.pricePerDay),
             payMultiplierSnapshot:
               row.id && lineMultiplierById.has(row.id)
                 ? lineMultiplierById.get(row.id)
@@ -481,12 +489,13 @@ export async function PATCH(
 
         let position = 0;
         for (const row of editLines) {
-          const price = itemById.get(row.itemId)!.pricePerDay;
+          const price = row.pricePerDaySnapshot ?? itemById.get(row.itemId)!.pricePerDay;
           if (row.id && existingIds.has(row.id)) {
             await tx.orderLine.update({
               where: { id: row.id },
               data: {
                 requestedQty: row.requestedQty,
+                pricePerDaySnapshot: price,
                 warehouseComment: row.warehouseComment?.trim() || null,
                 position,
               },

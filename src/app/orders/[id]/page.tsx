@@ -7,7 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
-import { getOrderDiscountError, OrderDiscountControl } from "@/app/orders/OrderDiscountControl";
+import { getOrderDiscountError } from "@/app/orders/OrderDiscountControl";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
@@ -218,6 +218,17 @@ function fmtDate(s: string) {
 
 function fmtDateRentPart(dateIso: string, part: RentalPartOfDay) {
   return `${fmtDate(dateIso)} · ${part === "MORNING" ? "утро" : "вечер"}`;
+}
+
+function formatMoney(value: number) {
+  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+}
+
+function formatRentalDays(days: number) {
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  const word = mod10 === 1 && mod100 !== 11 ? "день" : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "дня" : "дней";
+  return `${days} ${word}`;
 }
 
 function orderTotal(order: {
@@ -748,20 +759,20 @@ function ServiceEditRow({
     hideComment && showInternalPrice
       ? "sm:grid-cols-[minmax(8rem,12rem)_minmax(10rem,14rem)]"
       : showPrice && showInternalPrice
-      ? "sm:grid-cols-[1fr_auto_auto_auto]"
+      ? "lg:grid-cols-[minmax(14rem,1fr)_9rem_9rem_9rem]"
       : showPrice
-        ? "sm:grid-cols-[1fr_auto]"
+        ? "sm:grid-cols-[1fr_9rem]"
         : "";
   return (
     <div
       className={[
-        "rounded-[1.35rem] border p-4 shadow-sm transition-colors",
-        enabled ? "border-violet-200/80 bg-violet-50/45" : "border-zinc-200/70 bg-white/65",
+        "border-b border-zinc-200 px-4 py-4 transition-colors last:border-b-0 sm:px-5",
+        enabled ? "bg-white" : "bg-zinc-50/70",
       ].join(" ")}
     >
       <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} disabled={lockEnabled} />
       {enabled && (
-        <div className={`mt-3 grid gap-3 ${gridCols}`}>
+        <div className={`mt-4 grid gap-3 ${gridCols}`}>
           {!hideComment ? (
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
@@ -786,10 +797,10 @@ function ServiceEditRow({
                 value={price === "" ? "" : price}
                 onChange={(e) => onPriceChange(e.target.value === "" ? "" : Number(e.target.value))}
                 placeholder="0"
-                className={`w-full rounded-2xl border px-3 py-2 text-sm text-right tabular-nums outline-none focus:ring-4 ${
+                className={`w-full rounded-md border px-3 py-2.5 text-sm text-right tabular-nums outline-none focus:ring-2 ${
                   priceMissing
-                    ? "border-amber-300 bg-amber-50/50 focus:border-amber-400 focus:ring-amber-200"
-                    : "border-zinc-200/80 bg-white/88 focus:border-violet-300 focus:ring-violet-100"
+                    ? "border-amber-300 bg-amber-50/50 focus:border-amber-400 focus:ring-amber-100"
+                    : "border-zinc-300 bg-white focus:border-violet-700 focus:ring-violet-100"
                 }`}
               />
               {priceMissing && (
@@ -860,7 +871,7 @@ export default function OrderDetailsPage() {
     itemId: string;
     itemName: string;
     itemPhoto1Key?: string | null;
-    pricePerDaySnapshot?: number | null;
+    pricePerDaySnapshot?: number | "" | null;
     payMultiplierSnapshot?: number | null;
     requestedQty: number | string;
     lineComment: string;
@@ -933,7 +944,9 @@ export default function OrderDetailsPage() {
     return calcOrderPricingClient({
       lines: editLines.map((line) => ({
         pricePerDaySnapshot:
-          line.pricePerDaySnapshot ?? catalogItemsById.get(line.itemId)?.pricePerDay ?? 0,
+          line.pricePerDaySnapshot === ""
+            ? 0
+            : line.pricePerDaySnapshot ?? catalogItemsById.get(line.itemId)?.pricePerDay ?? 0,
         payMultiplierSnapshot: line.payMultiplierSnapshot,
         requestedQty: Number(line.requestedQty) || 0,
       })),
@@ -945,13 +958,13 @@ export default function OrderDetailsPage() {
       deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
       montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
       demontagePrice: editDemontageEnabled ? Number(editDemontagePrice || 0) : 0,
-      rentalDiscountType: isWarehouse ? editRentalDiscountType : "NONE",
+      rentalDiscountType: isWarehouse ? editRentalDiscountType : order.rentalDiscountType,
       rentalDiscountPercent: isWarehouse
         ? editRentalDiscountPercent === "" ? null : Number(editRentalDiscountPercent)
-        : null,
+        : order.rentalDiscountPercent,
       rentalDiscountAmount: isWarehouse
         ? editRentalDiscountAmount === "" ? null : Number(editRentalDiscountAmount)
-        : null,
+        : order.rentalDiscountAmount,
       clientPaymentMethod: order.clientPaymentMethod,
     });
   }, [
@@ -968,6 +981,47 @@ export default function OrderDetailsPage() {
     editRentalDiscountType,
     isWarehouse,
     order,
+  ]);
+  const editWarehouseProfitEstimate = React.useMemo(() => {
+    if (!editPricing || !isWarehouse) return null;
+    return calcWarehouseProfitEstimate({
+      clientGrandTotal: editPricing.grandTotal,
+      clientTaxAmount: editPricing.taxAmount,
+      delivery: {
+        enabled: editDeliveryEnabled,
+        internalCost: editDeliveryInternalCost === "" ? null : editDeliveryInternalCost,
+        internalPaymentMethod: editDeliveryInternalPaymentMethod,
+      },
+      montage: {
+        enabled: editMontageEnabled,
+        internalCost: editMontageInternalCost === "" ? null : editMontageInternalCost,
+        internalPaymentMethod: editMontageInternalPaymentMethod,
+      },
+      demontage: {
+        enabled: editDemontageEnabled,
+        internalCost: editDemontageInternalCost === "" ? null : editDemontageInternalCost,
+        internalPaymentMethod: editDemontageInternalPaymentMethod,
+      },
+      hiddenExpenses: editHiddenExpenses.map((expense) => ({
+        title: expense.title,
+        comment: expense.comment || null,
+        cost: expense.cost === "" ? 0 : expense.cost,
+        internalPaymentMethod: expense.internalPaymentMethod,
+      })),
+    });
+  }, [
+    editDeliveryEnabled,
+    editDeliveryInternalCost,
+    editDeliveryInternalPaymentMethod,
+    editDemontageEnabled,
+    editDemontageInternalCost,
+    editDemontageInternalPaymentMethod,
+    editHiddenExpenses,
+    editMontageEnabled,
+    editMontageInternalCost,
+    editMontageInternalPaymentMethod,
+    editPricing,
+    isWarehouse,
   ]);
 
   function notifyProjectParent() {
@@ -1367,6 +1421,14 @@ export default function OrderDetailsPage() {
       setActionError("Укажите количество (не менее 1) для каждой позиции.");
       return;
     }
+    const invalidLinePrice = isWarehouse && editLines.some((line) => {
+      const value = line.pricePerDaySnapshot;
+      return value === "" || value == null || !Number.isFinite(Number(value)) || Number(value) < 0;
+    });
+    if (invalidLinePrice) {
+      setActionError("Укажите стоимость для каждой позиции.");
+      return;
+    }
 
     // Клиентская проверка доступности (для наглядной ошибки до запроса)
     for (const row of editLines) {
@@ -1466,6 +1528,9 @@ export default function OrderDetailsPage() {
             id: l.id,
             itemId: l.itemId,
             requestedQty: Math.max(1, parseInt(String(l.requestedQty), 10) || 1),
+            ...(isWarehouse && l.pricePerDaySnapshot !== "" && l.pricePerDaySnapshot != null
+              ? { pricePerDaySnapshot: Number(l.pricePerDaySnapshot) }
+              : {}),
             ...(isWarehouse
               ? { warehouseComment: l.lineComment.trim() || undefined }
               : { greenwichComment: l.lineComment.trim() || undefined }),
@@ -1552,6 +1617,27 @@ export default function OrderDetailsPage() {
         return next;
       }),
     );
+  }
+
+  function editLineRentalTotal(line: EditLine) {
+    const price = line.pricePerDaySnapshot === "" ? 0 : Number(line.pricePerDaySnapshot ?? 0);
+    const qty = Math.max(0, Number(line.requestedQty) || 0);
+    const days = editPricing?.days ?? 1;
+    const multiplier = Number(line.payMultiplierSnapshot ?? order?.payMultiplier ?? 1);
+    return roundMoney(price * qty * days * multiplier);
+  }
+
+  function updateEditLineRentalTotal(index: number, total: number | "") {
+    if (total === "") {
+      updateEditLine(index, "pricePerDaySnapshot", "");
+      return;
+    }
+    const line = editLines[index];
+    if (!line) return;
+    const qty = Math.max(1, Number(line.requestedQty) || 1);
+    const days = Math.max(1, editPricing?.days ?? 1);
+    const multiplier = Math.max(0.000001, Number(line.payMultiplierSnapshot ?? order?.payMultiplier ?? 1));
+    updateEditLine(index, "pricePerDaySnapshot", roundMoney(total / (qty * days * multiplier)));
   }
 
   function addHiddenExpense() {
@@ -1703,11 +1789,13 @@ export default function OrderDetailsPage() {
             </div>
 
             <div className="flex min-w-[270px] flex-col items-stretch gap-3 lg:items-end">
-              {orderPricing ? (
+              {(isEditing ? editPricing : orderPricing) ? (
                 <div className="text-left lg:text-right">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Итого по заявке</div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                    {isEditing ? "Итого после изменений" : "Итого по заявке"}
+                  </div>
                   <div className="mt-1 whitespace-nowrap text-3xl font-black tracking-[-0.04em] text-zinc-950">
-                    {Math.round(orderPricing.grandTotal).toLocaleString("ru-RU")} ₽
+                    {formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal)}
                   </div>
                 </div>
               ) : null}
@@ -1738,9 +1826,12 @@ export default function OrderDetailsPage() {
             </div>
             <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
               <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Период аренды</div>
-              <div className="mt-1 font-black text-zinc-950">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 font-black text-zinc-950">
                 {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
                 {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">
+                  {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}
+                </span>
               </div>
             </div>
             <div className="px-5 py-4 sm:px-7">
@@ -1753,7 +1844,7 @@ export default function OrderDetailsPage() {
             <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
           </div>
 
-          <div className="space-y-4 p-4 sm:p-6">
+          {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
                 <OrderFinancialSummary
                   pricing={{
@@ -1783,7 +1874,7 @@ export default function OrderDetailsPage() {
                 Внутренняя смета ↓
               </a>
             ) : null}
-          </div>
+          </div> : null}
         </div>
 
         <OrderDateChangeDialog
@@ -1803,7 +1894,7 @@ export default function OrderDetailsPage() {
           }}
         />
 
-        {isWarehouse ? (
+        {isWarehouse && !isEditing ? (
           <div className={orderGlassCardClass + " p-4"}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold text-zinc-800">Внутренний комментарий (только склад)</div>
@@ -1860,50 +1951,9 @@ export default function OrderDetailsPage() {
           </div>
         ) : null}
 
-        {(isEditing || actionError) ? (
-          <div className="sticky top-[76px] z-20 rounded-xl border border-zinc-300 bg-white/95 p-3 shadow-[0_16px_44px_rgba(24,24,27,0.1)] backdrop-blur">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-black text-zinc-900">
-                  {isServiceOnlyEdit || canEditOrderServicesOnly
-                    ? "Дополнительные услуги и затраты"
-                    : "Редактирование заявки"}
-                </div>
-                <div className="mt-0.5 text-xs text-zinc-500">
-                  {isServiceOnlyEdit || canEditOrderServicesOnly
-                    ? "Меняйте цену для клиента, внутреннюю себестоимость и состав услуг без изменения статуса и реквизита."
-                    : "Изменения сохраняются после проверки заявки."}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {isEditing ? (
-                  <>
-                    <button
-                      ref={orderEditSaveRef}
-                      type="button"
-                      disabled={busy}
-                      onClick={saveOrderEdit}
-                      className={orderPrimaryButtonClass}
-                    >
-                      {busy ? "…" : isServiceOnlyEdit ? "Сохранить доп. услуги" : isGreenwich ? "Запросить изменения" : "Сохранить"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => { setIsEditing(false); setActionError(null); }}
-                      className={orderSecondaryButtonClass}
-                    >
-                      Отмена
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </div>
-            {actionError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-                {actionError}
-              </div>
-            ) : null}
+        {actionError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800" role="alert">
+            {actionError}
           </div>
         ) : null}
 
@@ -1915,174 +1965,164 @@ export default function OrderDetailsPage() {
         ) : null}
 
         {isEditing ? (
-          <>
-            {isServiceOnlyEdit ? (
-              <div className="rounded-[1.5rem] border border-emerald-200/80 bg-emerald-50/70 px-5 py-4 text-sm text-emerald-950">
-                Статус, даты и реквизит останутся без изменений. Итог заявки и аналитика пересчитаются по новым ценам дополнительных услуг.
-              </div>
-            ) : (
-            <>
-            <div className={orderGlassCardClass + " overflow-hidden"}>
-              <div className={orderSectionHeaderClass}>
-                <span className="text-sm font-semibold text-zinc-700">Мероприятие и комментарий</span>
-              </div>
-              <div className="p-5 space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1.5">Мероприятие</label>
-                  <input
-                    type="text"
-                    value={editEventName}
-                    onChange={(e) => setEditEventName(e.target.value)}
-                    className={orderInputClass + " w-full"}
-                    placeholder="Название мероприятия"
-                  />
+          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_370px]">
+            <div className="min-w-0 space-y-5">
+              {isServiceOnlyEdit ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                  Даты, статус и реквизит останутся без изменений. Здесь меняются только услуги, расходы и итог заявки.
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1.5">Комментарий (для склада)</label>
-                  <textarea
-                    value={editComment}
-                    onChange={(e) => setEditComment(e.target.value)}
-                    rows={2}
-                    className={orderInputClass + " w-full"}
-                    placeholder="Комментарий к заявке для склада"
-                  />
-                </div>
-              </div>
-            </div>
-            {isWarehouse ? (
-              <OrderDiscountControl
-                type={editRentalDiscountType}
-                percent={editRentalDiscountPercent}
-                amount={editRentalDiscountAmount}
-                rentalSubtotal={editPricing?.rentalBeforeDiscount ?? 0}
-                onTypeChange={setEditRentalDiscountType}
-                onPercentChange={setEditRentalDiscountPercent}
-                onAmountChange={setEditRentalDiscountAmount}
-                title="Скидка на реквизит"
-                description={isInternalGreenwichOrder
-                  ? "Дополнительная ручная скидка применяется к уже рассчитанным ценам Grinvich. Итог и маржа пересчитаются до сохранения."
-                  : "Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."}
-              />
-            ) : (
-              <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50/80 p-5 text-sm text-violet-950">
-                <strong className="block">Единая скидка Greenwich уже применена</strong>
-                <span className="mt-1 block text-violet-800">
-                  Для каждой позиции сохранена одна лучшая цена: уровень рейтинга либо более выгодное персональное предложение.
-                </span>
-              </div>
-            )}
-            <div className={orderGlassCardClass + " overflow-hidden"}>
-              <div className={orderSectionHeaderClass}>
-                <span className="text-sm font-semibold text-zinc-700">Состав заявки</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/70 bg-white/55">
-                      <th className="text-left px-5 py-3 font-semibold text-zinc-700">Позиция</th>
-                      <th className="text-right px-5 py-3 font-semibold text-zinc-700 w-36">Кол-во</th>
-                      <th className="text-left px-5 py-3 font-semibold text-zinc-700">
-                        {isWarehouse ? "Коммент. склада (для Grinvich)" : "Комментарий (для склада)"}
-                      </th>
-                      <th className="w-24 px-5 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editLines.map((line, idx) => (
-                      <tr key={line.id ?? `new-${idx}`} className="border-b border-white/70 hover:bg-white/60">
-                        <td className="px-5 py-3">
-                          <ProductIdentity
-                            itemId={line.itemId}
-                            photo1Key={catalogItemsById.get(line.itemId)?.photo1Key ?? line.itemPhoto1Key}
-                            name={line.itemName}
-                            subtitle={
-                              catalogItemsById.get(line.itemId)?.availableForDates != null ? (
-                                <>
-                                  Доступно:{" "}
-                                  <span className="font-semibold text-zinc-700">
-                                    {catalogItemsById.get(line.itemId)?.availableForDates}
+              ) : (
+                <>
+                  <section className={orderGlassCardClass + " overflow-hidden"}>
+                    <div className={orderSectionHeaderClass}>
+                      <h2 className="text-base font-black text-zinc-950">Основное</h2>
+                      <p className="mt-1 text-xs text-zinc-500">Название мероприятия и полная задача для склада.</p>
+                    </div>
+                    <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Мероприятие</span>
+                        <input
+                          type="text"
+                          value={editEventName}
+                          onChange={(event) => setEditEventName(event.target.value)}
+                          className={orderInputClass + " w-full"}
+                          placeholder="Название мероприятия"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Комментарий для склада</span>
+                        <textarea
+                          value={editComment}
+                          onChange={(event) => setEditComment(event.target.value)}
+                          rows={6}
+                          className={orderInputClass + " min-h-36 w-full resize-y leading-6"}
+                          placeholder="Что важно учесть при подготовке, выдаче и возврате…"
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className={orderGlassCardClass + " overflow-hidden"}>
+                    <div className={orderSectionHeaderClass + " flex flex-wrap items-end justify-between gap-3"}>
+                      <div>
+                        <h2 className="text-base font-black text-zinc-950">Реквизит</h2>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {editLines.length} поз. · {formatRentalDays(editPricing?.days ?? 0)} · сумма строки указана до общей скидки
+                        </p>
+                      </div>
+                      <div className="whitespace-nowrap text-sm font-black tabular-nums text-zinc-950">
+                        {formatMoney(editPricing?.rentalBeforeDiscount ?? 0)}
+                      </div>
+                    </div>
+                    <div className="divide-y divide-zinc-200">
+                      {editLines.map((line, idx) => {
+                        const multiplier = Number(line.payMultiplierSnapshot ?? order.payMultiplier ?? 1);
+                        const dailyRate = Number(line.pricePerDaySnapshot === "" ? 0 : line.pricePerDaySnapshot ?? 0) * multiplier;
+                        const lineTotal = editLineRentalTotal(line);
+                        const discountRatio = editPricing && editPricing.rentalBeforeDiscount > 0
+                          ? editPricing.rentalAfterDiscount / editPricing.rentalBeforeDiscount
+                          : 1;
+                        return (
+                          <article key={line.id ?? `new-${idx}`} className="px-4 py-5 sm:px-5">
+                            <div className="flex items-start justify-between gap-4">
+                              <ProductIdentity
+                                itemId={line.itemId}
+                                photo1Key={catalogItemsById.get(line.itemId)?.photo1Key ?? line.itemPhoto1Key}
+                                name={line.itemName}
+                                subtitle={catalogItemsById.get(line.itemId)?.availableForDates != null
+                                  ? <>Доступно: <strong>{catalogItemsById.get(line.itemId)?.availableForDates}</strong></>
+                                  : undefined}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeEditLine(idx)}
+                                className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                              >
+                                Удалить
+                              </button>
+                            </div>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[140px_1fr_1fr]">
+                              <div>
+                                <div className="mb-1.5 text-xs font-semibold text-zinc-500">Количество</div>
+                                <div className="inline-flex h-11 items-center overflow-hidden rounded-md border border-zinc-300 bg-white">
+                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Уменьшить">−</button>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={line.requestedQty === "" ? "" : String(line.requestedQty)}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      if (value === "" || /^\d+$/.test(value)) updateEditLine(idx, "requestedQty", value === "" ? "" : value);
+                                    }}
+                                    onBlur={() => { if (line.requestedQty === "") updateEditLine(idx, "requestedQty", 1 as never); }}
+                                    className="w-12 border-0 bg-transparent text-center text-sm font-bold tabular-nums outline-none"
+                                  />
+                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", (Number(line.requestedQty) || 1) + 1)} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Увеличить">+</button>
+                                </div>
+                              </div>
+                              <div className="rounded-lg bg-zinc-50 px-3 py-2.5">
+                                <div className="text-xs font-semibold text-zinc-500">Расчёт</div>
+                                <div className="mt-1 whitespace-nowrap text-sm font-bold tabular-nums text-zinc-900">
+                                  {formatMoney(dailyRate)} × {Number(line.requestedQty) || 0} × {editPricing?.days ?? 0}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-zinc-500">ставка × количество × дни</div>
+                              </div>
+                              <label className="block">
+                                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Сумма позиции</span>
+                                {isWarehouse ? (
+                                  <span className="relative block">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={line.pricePerDaySnapshot === "" ? "" : Math.round(lineTotal)}
+                                      onChange={(event) => updateEditLineRentalTotal(idx, event.target.value === "" ? "" : Number(event.target.value))}
+                                      className={orderInputClass + " h-11 w-full pr-9 text-right font-black tabular-nums"}
+                                    />
+                                    <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm font-bold text-zinc-500">₽</span>
                                   </span>
-                                </>
-                              ) : undefined
-                            }
-                          />
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="inline-flex items-center overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/88 shadow-sm">
-                            <button
-                              type="button"
-                              onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))}
-                              className="px-3 py-2 text-zinc-600 hover:bg-zinc-50 font-medium"
-                              aria-label="Уменьшить"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={line.requestedQty === "" ? "" : String(line.requestedQty)}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === "" || /^\d+$/.test(v)) updateEditLine(idx, "requestedQty", v === "" ? "" : v);
-                              }}
-                              onBlur={() => {
-                                if (line.requestedQty === "") updateEditLine(idx, "requestedQty", 1 as never);
-                              }}
-                              className="w-14 border-0 bg-transparent py-2 text-center text-sm font-medium tabular-nums focus:outline-none focus:ring-0"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => updateEditLine(idx, "requestedQty", (Number(line.requestedQty) || 1) + 1)}
-                              className="px-3 py-2 text-zinc-600 hover:bg-zinc-50 font-medium"
-                              aria-label="Увеличить"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          <input
-                            type="text"
-                            value={line.lineComment}
-                            onChange={(e) => updateEditLine(idx, "lineComment", e.target.value)}
-                            className={orderInputClass + " w-full max-w-sm"}
-                            placeholder="Комментарий к позиции"
-                          />
-                        </td>
-                        <td className="px-5 py-3">
-                          <button
-                            type="button"
-                            onClick={() => removeEditLine(idx)}
-                            className={orderDangerButtonClass + " px-3 py-2 text-xs"}
-                          >
-                            Удалить
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className={orderGlassCardClass}>
-              <div className={orderSectionHeaderClass}>
-                <span className="text-sm font-semibold text-zinc-700">Добавить позицию</span>
-              </div>
-              <div className="p-5">
-                <AddLineRow
-                  catalogItems={catalogItems}
-                  existingItemIds={editLines.map((l) => l.itemId)}
-                  onAdd={addEditLine}
-                />
-              </div>
-            </div>
-            </>
-            )}
-            <div className={orderGlassCardClass + " overflow-hidden"}>
-              <div className={orderSectionHeaderClass}>
-                <span className="text-sm font-semibold text-zinc-700">Доп. услуги</span>
-              </div>
-              <div className="p-5 space-y-4">
+                                ) : (
+                                  <div className="flex h-11 items-center justify-end rounded-md border border-zinc-200 bg-zinc-50 px-3 font-black tabular-nums text-zinc-950">{formatMoney(lineTotal)}</div>
+                                )}
+                                {discountRatio < 1 ? (
+                                  <span className="mt-1 block text-right text-[11px] font-semibold text-emerald-700">
+                                    После общей скидки {formatMoney(lineTotal * discountRatio)}
+                                  </span>
+                                ) : null}
+                              </label>
+                            </div>
+                            <label className="mt-3 block">
+                              <span className="sr-only">Комментарий к позиции</span>
+                              <input
+                                type="text"
+                                value={line.lineComment}
+                                onChange={(event) => updateEditLine(idx, "lineComment", event.target.value)}
+                                className={orderInputClass + " w-full"}
+                                placeholder={isWarehouse ? "Комментарий склада для Grinvich" : "Комментарий для склада"}
+                              />
+                            </label>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-zinc-200 bg-zinc-50 p-4 sm:p-5">
+                      <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-zinc-500">Добавить позицию</div>
+                      <AddLineRow
+                        catalogItems={catalogItems}
+                        existingItemIds={editLines.map((line) => line.itemId)}
+                        onAdd={addEditLine}
+                      />
+                    </div>
+                  </section>
+                </>
+              )}
+
+              <section className={orderGlassCardClass + " overflow-hidden"}>
+                <div className={orderSectionHeaderClass}>
+                  <h2 className="text-base font-black text-zinc-950">Услуги и расходы</h2>
+                  <p className="mt-1 text-xs text-zinc-500">Клиентские цены, внутренняя себестоимость и скрытые траты — в одном блоке.</p>
+                </div>
+                <div>
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -2129,7 +2169,7 @@ export default function OrderDetailsPage() {
                   onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
                 {isWarehouse ? (
-                  <div className="rounded-[1.35rem] border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.86),rgba(255,255,255,0.78))] p-4 shadow-sm">
+                  <div className="border-t border-amber-200 bg-amber-50/50 p-4 sm:p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-black text-zinc-900">Скрытые траты</div>
@@ -2154,7 +2194,7 @@ export default function OrderDetailsPage() {
                       {editHiddenExpenses.map((expense, idx) => (
                         <div
                           key={expense.id ?? idx}
-                          className="grid gap-3 rounded-2xl border border-white/80 bg-white/82 p-3 shadow-sm lg:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1.2fr)_8rem_9rem_auto]"
+                          className="grid gap-3 rounded-xl border border-amber-200 bg-white p-3 lg:grid-cols-[minmax(10rem,1fr)_minmax(12rem,1.2fr)_8rem_9rem_auto]"
                         >
                           <input
                             type="text"
@@ -2207,29 +2247,88 @@ export default function OrderDetailsPage() {
                     </div>
                   </div>
                 ) : null}
-              </div>
+                </div>
+              </section>
             </div>
-            {editPricing ? (
-              <div className="rounded-[1.5rem] border border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.9),rgba(255,255,255,0.82))] p-4 text-sm text-violet-950 shadow-[0_18px_45px_rgba(124,58,237,0.08)] backdrop-blur">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span>Сумма до налога</span>
-                  <span className="font-semibold tabular-nums">
-                    {Math.round(editPricing.grandTotalBeforeTax).toLocaleString("ru-RU")} ₽
-                  </span>
+
+            <aside className="space-y-4 xl:sticky xl:top-24">
+              <section className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.08)]">
+                <div className="bg-zinc-950 px-5 py-5 text-white">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Итого после изменений</div>
+                  <div className="mt-2 whitespace-nowrap text-3xl font-black tracking-[-0.04em] tabular-nums">
+                    {formatMoney(editPricing?.grandTotal ?? 0)}
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-400">Пересчитывается сразу, сохраняется одной кнопкой.</div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-                  <span>Налог {Math.round(editPricing.taxRate * 100)}%</span>
-                  <span className="font-semibold tabular-nums">
-                    {editPricing.taxAmount.toLocaleString("ru-RU")} ₽
-                  </span>
+
+                <div className="space-y-3 px-5 py-4 text-sm">
+                  <div className="flex items-center justify-between gap-3 text-zinc-600"><span>Аренда</span><strong className="whitespace-nowrap tabular-nums text-zinc-950">{formatMoney(editPricing?.rentalBeforeDiscount ?? 0)}</strong></div>
+                  {(editPricing?.discountAmount ?? 0) > 0 ? <div className="flex items-center justify-between gap-3 text-emerald-700"><span>Скидка</span><strong className="whitespace-nowrap tabular-nums">− {formatMoney(editPricing?.discountAmount ?? 0)}</strong></div> : null}
+                  <div className="flex items-center justify-between gap-3 text-zinc-600"><span>Услуги</span><strong className="whitespace-nowrap tabular-nums text-zinc-950">{formatMoney(editPricing?.services ?? 0)}</strong></div>
+                  <div className="flex items-center justify-between gap-3 text-zinc-600"><span>До налога</span><strong className="whitespace-nowrap tabular-nums text-zinc-950">{formatMoney(editPricing?.grandTotalBeforeTax ?? 0)}</strong></div>
+                  <div className="flex items-center justify-between gap-3 text-zinc-600"><span>Налог {Math.round((editPricing?.taxRate ?? 0) * 100)}%</span><strong className="whitespace-nowrap tabular-nums text-zinc-950">{formatMoney(editPricing?.taxAmount ?? 0)}</strong></div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base font-bold">
-                  <span>Итого с налогом</span>
-                  <span className="tabular-nums">{editPricing.grandTotal.toLocaleString("ru-RU")} ₽</span>
+
+                {!isServiceOnlyEdit ? (
+                  <div className="border-t border-zinc-200 px-5 py-4">
+                    <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-500">Скидка на реквизит</div>
+                    {isWarehouse ? (
+                      <>
+                        <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1">
+                          {([['NONE', 'Нет'], ['PERCENT', '%'], ['AMOUNT', '₽']] as const).map(([value, label]) => (
+                            <button key={value} type="button" onClick={() => setEditRentalDiscountType(value)} className={["rounded-md px-2 py-2 text-xs font-bold", editRentalDiscountType === value ? "bg-zinc-950 text-white" : "text-zinc-600 hover:bg-white"].join(" ")}>{label}</button>
+                          ))}
+                        </div>
+                        {editRentalDiscountType !== "NONE" ? (
+                          <label className="mt-3 block">
+                            <span className="relative block">
+                              <input
+                                type="number"
+                                min={0}
+                                max={editRentalDiscountType === "PERCENT" ? 100 : editPricing?.rentalBeforeDiscount}
+                                step={editRentalDiscountType === "PERCENT" ? 0.5 : 1}
+                                value={editRentalDiscountType === "PERCENT" ? editRentalDiscountPercent : editRentalDiscountAmount}
+                                onChange={(event) => {
+                                  const value = event.target.value === "" ? "" : Number(event.target.value);
+                                  if (editRentalDiscountType === "PERCENT") setEditRentalDiscountPercent(value);
+                                  else setEditRentalDiscountAmount(value);
+                                }}
+                                className={orderInputClass + " w-full pr-9 text-right font-black tabular-nums"}
+                              />
+                              <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm font-bold text-zinc-500">{editRentalDiscountType === "PERCENT" ? "%" : "₽"}</span>
+                            </span>
+                          </label>
+                        ) : null}
+                        <p className="mt-2 text-[11px] leading-4 text-zinc-500">
+                          {isInternalGreenwichOrder ? "Дополняет уже рассчитанные цены Grinvich." : "Применяется только к аренде реквизита."}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs leading-5 text-zinc-600">Цена каждой позиции уже учитывает лучшую скидку Grinvich.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {editWarehouseProfitEstimate ? (
+                  <div className="grid grid-cols-2 gap-px border-t border-zinc-200 bg-zinc-200">
+                    <div className="bg-emerald-50 px-4 py-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-800">Прибыль</div><div className="mt-1 whitespace-nowrap font-black tabular-nums text-emerald-950">{formatMoney(editWarehouseProfitEstimate.profitEstimate)}</div></div>
+                    <div className="bg-emerald-50 px-4 py-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-800">Рентабельность</div><div className="mt-1 whitespace-nowrap font-black tabular-nums text-emerald-950">{editWarehouseProfitEstimate.profitabilityPct.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}%</div></div>
+                  </div>
+                ) : null}
+
+                <div className="border-t border-zinc-200 p-4">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    {order.estimateFileKey ? <a href={`/api/orders/${order.id}/estimate`} className={orderSecondaryButtonClass + " justify-center text-center"} download>Клиентская смета ↓</a> : null}
+                    {isWarehouse ? <a href={`/api/orders/${order.id}/estimate/internal`} className={orderSecondaryButtonClass + " justify-center text-center"} download>Внутренняя смета ↓</a> : null}
+                  </div>
+                  <button ref={orderEditSaveRef} type="button" disabled={busy} onClick={saveOrderEdit} className={orderPrimaryButtonClass + " mt-3 w-full"}>
+                    {busy ? "Сохраняю…" : isServiceOnlyEdit ? "Сохранить услуги" : isGreenwich ? "Запросить изменения" : "Сохранить заявку"}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => { setIsEditing(false); setActionError(null); }} className="mt-2 w-full rounded-md px-4 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950">Отмена</button>
                 </div>
-              </div>
-            ) : null}
-          </>
+              </section>
+            </aside>
+          </div>
         ) : (
           <>
             <div className={orderGlassCardClass + " overflow-hidden"}>

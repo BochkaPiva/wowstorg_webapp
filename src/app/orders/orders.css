@@ -10,7 +10,9 @@
   overflow: hidden;
   border: 1px solid #33213f;
   border-radius: 16px;
-  background: linear-gradient(112deg, #2a163b 0%, #21102d 52%, #160c1e 100%);
+  background:
+    radial-gradient(ellipse 48% 92% at 84% 58%, rgba(113, 62, 151, .22), transparent 74%),
+    linear-gradient(112deg, #2a163b 0%, #21102d 58%, #160c1e 100%);
   color: #fff;
   box-shadow: 0 18px 42px rgba(34, 14, 48, .16);
 }
@@ -18,7 +20,7 @@
 .my-orders__hero::after {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(107,50,202,.12), transparent 58%);
+  background: linear-gradient(90deg, rgba(107,50,202,.1), rgba(107,50,202,.025) 54%, transparent 76%);
   content: "";
   pointer-events: none;
 }
@@ -43,9 +45,33 @@
 .my-orders__heroMeta span { display: inline-flex; align-items: baseline; gap: 6px; }
 .my-orders__heroMeta strong { color: #fff; font-size: 1rem; }
 
-.my-orders__heroArt { position: absolute; inset: 0 0 0 auto; width: 54%; overflow: hidden; }
-.my-orders__heroArt::before { position: absolute; z-index: 1; inset: 0; background: linear-gradient(90deg, #21102d 0%, rgba(28,14,38,.96) 48%, rgba(22,12,30,.58) 70%, transparent 88%); content: ""; }
-.my-orders__heroArt img { object-fit: contain; object-position: right top; transform: scale(1.34); transform-origin: right top; }
+.my-orders__heroArt {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 58%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.42) 9%, #000 25%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.42) 9%, #000 25%);
+}
+.my-orders__heroArt::before {
+  position: absolute;
+  z-index: 0;
+  right: 5%;
+  bottom: -29%;
+  width: min(78%, 610px);
+  aspect-ratio: 1.38;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 211, 32, .2) 0%, rgba(200, 154, 229, .14) 52%, transparent 74%);
+  content: "";
+}
+.my-orders__heroArt img {
+  z-index: 1;
+  object-fit: contain;
+  object-position: right top;
+  mix-blend-mode: lighten;
+  transform: scale(1.34);
+  transform-origin: right top;
+}
 
 .my-orders__tabs { display: flex; gap: 4px; margin-top: 21px; padding: 4px; border: 1px solid rgba(255,255,255,.15); border-radius: 9px; background: rgba(255,255,255,.07); }
 .my-orders__tabs button { min-height: 34px; padding: 6px 15px; border: 0; border-radius: 6px; background: transparent; color: #d4c7da; font-size: .76rem; font-weight: 720; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
@@ -119,10 +145,13 @@
 .my-order__button--danger-quiet:hover { border-color: transparent; background: #fff0ee; }
 .my-order__button:disabled { cursor: wait; opacity: .55; }
 
-.my-order__summaryButton { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; border: 0; padding: 0 3px 0 8px; background: transparent; color: #5e5b57; font-size: .73rem; font-weight: 750; cursor: pointer; }
+.my-order__summaryButton { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; border: 0; padding: 0 2px 0 8px; border-radius: 8px; background: transparent; color: #5e5b57; font-size: .73rem; font-weight: 750; cursor: pointer; }
 .my-order__summaryButton:hover { color: #111; }
-.my-order__summaryButton i { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #d2d0ca; border-radius: 8px; font-size: 1rem; font-style: normal; transition: transform 170ms ease; }
-.my-order[data-expanded] .my-order__summaryButton i { transform: rotate(180deg); }
+.my-order__summaryButton:focus-visible { outline: 3px solid rgba(107,50,202,.2); outline-offset: 2px; }
+.my-order__summaryIcon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #d2d0ca; border-radius: 8px; background: #fff; color: #6b6762; transition: border-color 170ms ease, background-color 170ms ease, color 170ms ease; }
+.my-order__summaryIcon svg { width: 15px; height: 15px; overflow: visible; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; transition: transform 200ms cubic-bezier(.22,1,.36,1); }
+.my-order__summaryButton:hover .my-order__summaryIcon { border-color: #b9a8ca; background: #f8f4fc; color: #5f2d80; }
+.my-order[data-expanded] .my-order__summaryIcon svg { transform: rotate(180deg); }
 
 .my-order__progress { padding: 15px 22px 14px; background: #fff; }
 .my-order__progress .order-progress { padding: 0; border: 0; background: transparent; }
@@ -189,5 +218,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .my-order__reveal, .my-order__summaryButton i { transition: none; }
+  .my-order__reveal, .my-order__summaryIcon, .my-order__summaryIcon svg { transition: none; }
 }

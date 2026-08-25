@@ -444,7 +444,11 @@ export default function OrdersPage() {
               onClick={() => void toggleSummary(o.id)}
             >
               <span>{isExpanded ? "Свернуть" : "Сводка"}</span>
-              <i aria-hidden="true">⌄</i>
+              <span className="my-order__summaryIcon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none">
+                  <path d="m5.5 7.5 4.5 4.5 4.5-4.5" />
+                </svg>
+              </span>
             </button>
           </div>
         </div>

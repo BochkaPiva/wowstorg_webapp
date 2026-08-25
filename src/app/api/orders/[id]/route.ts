@@ -14,7 +14,7 @@ export async function GET(
   const order = await prisma.order.findUnique({
     where: { id },
     include: {
-      customer: { select: { id: true, name: true } },
+      customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
       createdBy: { select: { id: true, displayName: true } },
       greenwichUser: {
         select: {
@@ -91,6 +91,13 @@ export async function GET(
 
   const serialized: Record<string, unknown> = {
     ...orderBase,
+    customer: {
+      id: order.customer.id,
+      name: order.customer.name,
+      logoUrl: order.customer.logoKey
+        ? `/api/customers/${order.customer.id}/logo?v=${order.customer.logoUpdatedAt?.getTime() ?? 0}`
+        : null,
+    },
     readyByDate: order.readyByDate.toISOString().slice(0, 10),
     startDate: order.startDate.toISOString().slice(0, 10),
     endDate: order.endDate.toISOString().slice(0, 10),

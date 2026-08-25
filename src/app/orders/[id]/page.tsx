@@ -3,6 +3,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -11,7 +12,6 @@ import { getOrderDiscountError } from "@/app/orders/OrderDiscountControl";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
-import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
 import { roundMoney } from "@/lib/money";
@@ -79,7 +79,7 @@ type Order = {
   updatedAt: string;
   eventName: string | null;
   comment: string | null;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string; logoUrl?: string | null };
   createdBy: { id: string; displayName: string };
   greenwichUserId?: string | null;
   greenwichUser: { id: string; displayName: string; ratingScore?: number } | null;
@@ -759,20 +759,50 @@ function ServiceEditRow({
     hideComment && showInternalPrice
       ? "sm:grid-cols-[minmax(8rem,12rem)_minmax(10rem,14rem)]"
       : showPrice && showInternalPrice
-      ? "lg:grid-cols-[minmax(14rem,1fr)_9rem_9rem_9rem]"
+      ? "2xl:grid-cols-[minmax(14rem,1fr)_9rem_9rem_9rem]"
       : showPrice
         ? "sm:grid-cols-[1fr_9rem]"
         : "";
   return (
     <div
       className={[
-        "border-b border-zinc-200 px-4 py-4 transition-colors last:border-b-0 sm:px-5",
-        enabled ? "bg-white" : "bg-zinc-50/70",
+        "border-b border-zinc-200 px-4 py-4 transition-colors duration-150 last:border-b-0 sm:px-5",
+        enabled ? "bg-white" : "bg-zinc-50/60",
       ].join(" ")}
     >
-      <ToggleSwitch checked={enabled} onChange={onEnabledChange} label={label} disabled={lockEnabled} />
+      <div className="flex min-h-11 items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm font-black text-zinc-950">{label}</div>
+          <div className="mt-0.5 text-xs text-zinc-500">
+            {enabled ? "Включено в заявку" : "Не включено"}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`${enabled ? "Отключить" : "Включить"}: ${label}`}
+          disabled={lockEnabled}
+          onClick={() => onEnabledChange(!enabled)}
+          className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span
+            className={[
+              "relative block h-6 w-11 rounded-full transition-colors duration-150",
+              enabled ? "bg-violet-700" : "bg-zinc-300",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150",
+                enabled ? "translate-x-6" : "translate-x-1",
+              ].join(" ")}
+            />
+          </span>
+        </button>
+      </div>
       {enabled && (
-        <div className={`mt-4 grid gap-3 ${gridCols}`}>
+        <div className={`mt-3 grid gap-3 ${gridCols}`}>
           {!hideComment ? (
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
@@ -1732,14 +1762,22 @@ export default function OrderDetailsPage() {
         <div
           className={[
             orderShellClass,
-            "border-t-[5px] border-t-yellow-400",
+            isGreenwich ? "border-zinc-200" : "border-t-[5px] border-t-yellow-400",
             order.status === "CANCELLED"
               ? "border-[#5b0b17]/20"
               : "border-zinc-200",
           ].join(" ")}
         >
           <div className="grid gap-6 border-b border-zinc-200 bg-white px-5 py-6 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-start gap-4">
+              {isGreenwich ? (
+                <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 text-sm font-black text-violet-700">
+                  {order.customer.logoUrl ? (
+                    <Image src={order.customer.logoUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
+                  ) : order.customer.name.slice(0, 2).toUpperCase()}
+                </div>
+              ) : null}
+              <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-700">Заявка</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300" aria-hidden="true" />
@@ -1754,7 +1792,7 @@ export default function OrderDetailsPage() {
                   {statusLabel}
                 </span>
               </div>
-              <h1 className="mt-3 truncate text-3xl font-black tracking-[-0.045em] text-zinc-950 sm:text-4xl">
+              <h1 className="mt-2 truncate text-2xl font-black tracking-[-0.035em] text-zinc-950 sm:text-3xl">
                 {order.eventName || order.customer.name}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-600">
@@ -1786,6 +1824,7 @@ export default function OrderDetailsPage() {
                   </Link>
                 </p>
               ) : null}
+              </div>
             </div>
 
             <div className="flex min-w-[270px] flex-col items-stretch gap-3 lg:items-end">
@@ -1841,29 +1880,53 @@ export default function OrderDetailsPage() {
           </div>
 
           <div className="border-b border-zinc-200 bg-white px-3 py-4 sm:px-6">
-            <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} />
+            <OrderStatusStepper
+              status={order.status}
+              source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"}
+              density={isGreenwich ? "compact" : "regular"}
+              compactWindow={isGreenwich ? 5 : 7}
+            />
           </div>
 
           {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
-                <OrderFinancialSummary
-                  pricing={{
-                    grandTotalBeforeTax: orderPricing.grandTotalBeforeTax,
-                    taxRate: orderPricing.taxRate,
-                    taxAmount: orderPricing.taxAmount,
-                    grandTotal: orderPricing.grandTotal,
-                  }}
-                  warehouse={warehouseProfitEstimate}
-                  discountLabel={
-                    orderPricing.discountAmount > 0
-                      ? formatDiscountLabel(
-                          order.rentalDiscountType,
-                          order.rentalDiscountPercent,
-                          order.rentalDiscountAmount,
-                        )
-                      : null
-                  }
-                />
+                isGreenwich ? (
+                  <div className="grid overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
+                    <div className="bg-white px-4 py-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">До налога</div>
+                      <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
+                    </div>
+                    <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Налог {Math.round(orderPricing.taxRate * 100)}%</div>
+                      <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
+                    </div>
+                    <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Скидка на аренду</div>
+                      <div className="mt-1 font-black tabular-nums text-emerald-700">
+                        {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <OrderFinancialSummary
+                    pricing={{
+                      grandTotalBeforeTax: orderPricing.grandTotalBeforeTax,
+                      taxRate: orderPricing.taxRate,
+                      taxAmount: orderPricing.taxAmount,
+                      grandTotal: orderPricing.grandTotal,
+                    }}
+                    warehouse={warehouseProfitEstimate}
+                    discountLabel={
+                      orderPricing.discountAmount > 0
+                        ? formatDiscountLabel(
+                            order.rentalDiscountType,
+                            order.rentalDiscountPercent,
+                            order.rentalDiscountAmount,
+                          )
+                        : null
+                    }
+                  />
+                )
               ) : null}
             {isWarehouse ? (
               <a
@@ -2023,7 +2086,7 @@ export default function OrderDetailsPage() {
                           ? editPricing.rentalAfterDiscount / editPricing.rentalBeforeDiscount
                           : 1;
                         return (
-                          <article key={line.id ?? `new-${idx}`} className="px-4 py-5 sm:px-5">
+                          <article key={line.id ?? `new-${idx}`} className="px-4 py-4 transition-colors duration-150 hover:bg-zinc-50/60 sm:px-5">
                             <div className="flex items-start justify-between gap-4">
                               <ProductIdentity
                                 itemId={line.itemId}
@@ -2041,10 +2104,10 @@ export default function OrderDetailsPage() {
                                 Удалить
                               </button>
                             </div>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[140px_1fr_1fr]">
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[132px_minmax(180px,0.8fr)_minmax(220px,1.2fr)]">
                               <div>
                                 <div className="mb-1.5 text-xs font-semibold text-zinc-500">Количество</div>
-                                <div className="inline-flex h-11 items-center overflow-hidden rounded-md border border-zinc-300 bg-white">
+                                <div className="flex h-11 w-full items-center justify-between overflow-hidden rounded-md border border-zinc-300 bg-white">
                                   <button type="button" onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Уменьшить">−</button>
                                   <input
                                     type="text"
@@ -2060,15 +2123,18 @@ export default function OrderDetailsPage() {
                                   <button type="button" onClick={() => updateEditLine(idx, "requestedQty", (Number(line.requestedQty) || 1) + 1)} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Увеличить">+</button>
                                 </div>
                               </div>
-                              <div className="rounded-lg bg-zinc-50 px-3 py-2.5">
-                                <div className="text-xs font-semibold text-zinc-500">Расчёт</div>
-                                <div className="mt-1 whitespace-nowrap text-sm font-bold tabular-nums text-zinc-900">
-                                  {formatMoney(dailyRate)} × {Number(line.requestedQty) || 0} × {editPricing?.days ?? 0}
+                              <div>
+                                <div className="mb-1.5 text-xs font-semibold text-zinc-500">Расчёт</div>
+                                <div className="flex h-11 items-center rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm tabular-nums text-zinc-700">
+                                  <strong className="font-black text-zinc-950">{formatMoney(dailyRate)}</strong>
+                                  <span className="mx-1.5 text-zinc-400">×</span>
+                                  <span>{Number(line.requestedQty) || 0} шт.</span>
+                                  <span className="mx-1.5 text-zinc-400">×</span>
+                                  <span>{editPricing?.days ?? 0} дн.</span>
                                 </div>
-                                <div className="mt-0.5 text-[11px] text-zinc-500">ставка × количество × дни</div>
                               </div>
-                              <label className="block">
-                                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Сумма позиции</span>
+                              <label className="block sm:col-span-2 lg:col-span-1">
+                                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Сумма строки</span>
                                 {isWarehouse ? (
                                   <span className="relative block">
                                     <input
@@ -2091,7 +2157,7 @@ export default function OrderDetailsPage() {
                                 ) : null}
                               </label>
                             </div>
-                            <label className="mt-3 block">
+                            <label className="mt-2.5 block">
                               <span className="sr-only">Комментарий к позиции</span>
                               <input
                                 type="text"
@@ -2106,7 +2172,6 @@ export default function OrderDetailsPage() {
                       })}
                     </div>
                     <div className="border-t border-zinc-200 bg-zinc-50 p-4 sm:p-5">
-                      <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-zinc-500">Добавить позицию</div>
                       <AddLineRow
                         catalogItems={catalogItems}
                         existingItemIds={editLines.map((line) => line.itemId)}
@@ -2122,7 +2187,7 @@ export default function OrderDetailsPage() {
                   <h2 className="text-base font-black text-zinc-950">Услуги и расходы</h2>
                   <p className="mt-1 text-xs text-zinc-500">Клиентские цены, внутренняя себестоимость и скрытые траты — в одном блоке.</p>
                 </div>
-                <div>
+                <div className="bg-zinc-50/40">
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -2169,7 +2234,7 @@ export default function OrderDetailsPage() {
                   onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
                 {isWarehouse ? (
-                  <div className="border-t border-amber-200 bg-amber-50/50 p-4 sm:p-5">
+                  <div className="border-t border-zinc-200 bg-zinc-50/70 p-4 sm:p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-black text-zinc-900">Скрытые траты</div>
@@ -2185,56 +2250,36 @@ export default function OrderDetailsPage() {
                         + Трата
                       </button>
                     </div>
-                    <div className="mt-3 space-y-3">
+                    <div className="mt-3">
                       {editHiddenExpenses.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-amber-200 bg-white/65 px-4 py-3 text-sm text-zinc-500">
+                        <div className="border-t border-dashed border-zinc-300 py-3 text-sm text-zinc-500">
                           Скрытых трат пока нет.
                         </div>
                       ) : null}
                       {editHiddenExpenses.map((expense, idx) => (
                         <div
                           key={expense.id ?? idx}
-                          className="grid gap-3 rounded-xl border border-amber-200 bg-white p-3 lg:grid-cols-[minmax(10rem,1fr)_minmax(12rem,1.2fr)_8rem_9rem_auto]"
+                          className="grid gap-3 border-t border-zinc-200 py-3 2xl:grid-cols-[minmax(10rem,1fr)_minmax(12rem,1.2fr)_8rem_9rem_auto] 2xl:items-end"
                         >
-                          <input
-                            type="text"
-                            value={expense.title}
-                            onChange={(e) => updateHiddenExpense(idx, "title", e.target.value)}
-                            placeholder="Название траты"
-                            className={orderInputClass + " w-full"}
-                          />
-                          <input
-                            type="text"
-                            value={expense.comment}
-                            onChange={(e) => updateHiddenExpense(idx, "comment", e.target.value)}
-                            placeholder="Комментарий"
-                            className={orderInputClass + " w-full"}
-                          />
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={expense.cost === "" ? "" : expense.cost}
-                            onChange={(e) =>
-                              updateHiddenExpense(idx, "cost", e.target.value === "" ? "" : Number(e.target.value))
-                            }
-                            placeholder="0"
-                            className={orderInputClass + " w-full text-right tabular-nums"}
-                          />
-                          <select
-                            value={expense.internalPaymentMethod}
-                            onChange={(e) =>
-                              updateHiddenExpense(
-                                idx,
-                                "internalPaymentMethod",
-                                e.target.value as OrderServicePaymentMethod,
-                              )
-                            }
-                            className={orderInputClass + " w-full font-semibold text-zinc-800"}
-                          >
-                            <option value="NON_CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.NON_CASH}</option>
-                            <option value="CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.CASH}</option>
-                          </select>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-zinc-500">Трата</span>
+                            <input type="text" value={expense.title} onChange={(e) => updateHiddenExpense(idx, "title", e.target.value)} placeholder="Название" className={orderInputClass + " w-full"} />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-zinc-500">Комментарий</span>
+                            <input type="text" value={expense.comment} onChange={(e) => updateHiddenExpense(idx, "comment", e.target.value)} placeholder="Для внутреннего учёта" className={orderInputClass + " w-full"} />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-zinc-500">Сумма, ₽</span>
+                            <input type="number" min={0} step={1} value={expense.cost === "" ? "" : expense.cost} onChange={(e) => updateHiddenExpense(idx, "cost", e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" className={orderInputClass + " w-full text-right tabular-nums"} />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-medium text-zinc-500">Оплата</span>
+                            <select value={expense.internalPaymentMethod} onChange={(e) => updateHiddenExpense(idx, "internalPaymentMethod", e.target.value as OrderServicePaymentMethod)} className={orderInputClass + " w-full font-semibold text-zinc-800"}>
+                              <option value="NON_CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.NON_CASH}</option>
+                              <option value="CASH">{ORDER_SERVICE_PAYMENT_METHOD_LABELS.CASH}</option>
+                            </select>
+                          </label>
                           <button
                             type="button"
                             onClick={() => removeHiddenExpense(idx)}
@@ -2799,17 +2844,22 @@ export default function OrderDetailsPage() {
             document.body,
           )}
 
-        {(
+        {!isEditing && (
           sendEstimateBlocked ||
-          (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") && !isEditing) ||
+          (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED")) ||
           (isWarehouse && order.status === "APPROVED_BY_GREENWICH") ||
           (isWarehouse && order.status === "PICKING") ||
-          (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && !isEditing) ||
+          (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser) ||
           (isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id) ||
           (isWarehouse && order.status === "ISSUED") ||
           canCancel
         ) ? (
-        <div className="order-actionbar">
+        <div className={[
+          "order-actionbar",
+          isGreenwich && canCancel && !["ESTIMATE_SENT", "CHANGES_REQUESTED", "ISSUED"].includes(order.status)
+            ? "!static !shadow-none"
+            : "",
+        ].join(" ")}>
           {sendEstimateBlocked ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
               <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
@@ -2936,7 +2986,7 @@ export default function OrderDetailsPage() {
                 type="button"
                 disabled={busy}
                 onClick={saveOrderEdit}
-                className="fixed bottom-5 right-5 z-[70] inline-flex items-center gap-2 rounded-lg border border-yellow-400 bg-yellow-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-lg transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50"
+                className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-lg border border-yellow-400 bg-yellow-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-sm transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50 sm:bottom-5 sm:right-5"
               >
                 {busy
                   ? "Сохраняю…"

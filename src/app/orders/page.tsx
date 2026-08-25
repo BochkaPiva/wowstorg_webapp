@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -9,6 +10,7 @@ import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
 import { OrderFeedbackEditor, type ServiceFeedback } from "@/app/_ui/OrderServiceFeedback";
 
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
+import "./orders.css";
 
 type OrderCard = {
   id: string;
@@ -31,7 +33,7 @@ type OrderCard = {
   rentalStartPartOfDay?: RentalPartOfDay | null;
   rentalEndPartOfDay?: RentalPartOfDay | null;
   createdAt: string;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string; logoUrl?: string | null };
   totalAmount?: number;
   taxAmount?: number;
   discount?: { type: "PERCENT" | "AMOUNT" | "NONE"; percent: number | null; amount: number } | null;
@@ -76,14 +78,6 @@ const SORT_LABEL: Record<SortMode, string> = {
 type ScopeFilter = "ALL" | "ACTIVE" | "DONE";
 
 type KindFilter = "ALL" | "MAIN" | "SUPPLEMENT";
-
-function statusHeaderClass(status: OrderCard["status"]): string {
-  return status === "CANCELLED"
-    ? "bg-zinc-100/90 text-zinc-500"
-    : status === "CLOSED"
-      ? "bg-violet-50/80 text-violet-900"
-      : "bg-white/80";
-}
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -196,6 +190,9 @@ export default function OrdersPage() {
   const [orders, setOrders] = React.useState<OrderCard[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
+  const [actingId, setActingId] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const [search, setSearch] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
@@ -258,6 +255,33 @@ export default function OrdersPage() {
     }
   }
 
+  async function advanceOrder(o: OrderCard) {
+    const approve = o.status === "ESTIMATE_SENT" || o.status === "CHANGES_REQUESTED";
+    const returnOrder = o.status === "ISSUED";
+    if (!approve && !returnOrder) return;
+    if (returnOrder && !confirm("Весь реквизит возвращается в нормальном состоянии? Заявка будет отправлена на приёмку.")) return;
+
+    setActingId(o.id);
+    setNotice(null);
+    setActionError(null);
+    try {
+      const response = await fetch(
+        approve ? `/api/orders/${o.id}/approve` : `/api/orders/${o.id}/return-declared`,
+        approve
+          ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
+          : { method: "POST" },
+      );
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось обновить заявку");
+      setNotice(approve ? "Смета согласована — заявка передана Wowstorg." : "Заявка отправлена на приёмку.");
+      loadOrders();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Не удалось обновить заявку");
+    } finally {
+      setActingId(null);
+    }
+  }
+
   const filteredSorted = React.useMemo(() => {
     const f = applyFilters(orders, debouncedSearch, scopeFilter, kindFilter);
     return sortOrderList(f, sortMode);
@@ -284,313 +308,186 @@ export default function OrdersPage() {
 
   function renderOrderCard(o: OrderCard, kind: "root" | "child") {
     const isCancelled = o.status === "CANCELLED";
-    const isCancelledArchive = scopeFilter === "DONE" && isCancelled;
-    const isArchive = scopeFilter === "DONE";
     const isSupplement = Boolean(o.parentOrderId);
-    const discountLabel = o.discount
-      ? o.discount.type === "PERCENT" && o.discount.percent != null
-        ? `${o.discount.percent}%`
-        : formatMoney(o.discount.amount)
-      : null;
+    const canApprove = o.status === "ESTIMATE_SENT" || o.status === "CHANGES_REQUESTED";
+    const canReturn = o.status === "ISSUED";
+    const initials = o.customer.name.trim().slice(0, 2).toUpperCase();
     return (
-      <div
+      <article
         key={o.id}
-        className={[
-          "overflow-hidden rounded-[1.75rem] border p-0 shadow-[0_18px_52px_rgba(24,24,27,0.08)] transition hover:-translate-y-0.5",
-          isCancelledArchive
-            ? "border-zinc-200/90 bg-[linear-gradient(135deg,rgba(244,244,245,0.96),rgba(250,250,250,0.82))] opacity-80 hover:border-zinc-300 hover:opacity-100"
-            : isSupplement
-              ? "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.92),rgba(255,255,255,0.8))] hover:border-amber-300"
-              : "border-white/75 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(250,250,255,0.86))] hover:border-violet-200 hover:shadow-[0_24px_70px_rgba(109,40,217,0.16)]",
-          kind === "child" ? "ml-8" : "",
-        ].join(" ")}
+        className="my-order"
+        data-child={kind === "child"}
+        data-cancelled={isCancelled}
       >
-        <div className={["px-4 py-5", statusHeaderClass(o.status)].join(" ")}>
-          <OrderStatusStepper status={o.status} source={o.source} />
-        </div>
-        <div className="p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="my-order__main">
+          <div className="my-order__identity">
+            <div className="my-order__logo" aria-hidden="true">
+              {o.customer.logoUrl ? (
+                <Image src={o.customer.logoUrl} alt="" width={42} height={42} unoptimized />
+              ) : initials}
+            </div>
             <div className="min-w-0">
-              <div
-                className={[
-                  "text-xl font-black leading-tight",
-                  isCancelledArchive ? "text-zinc-500" : "text-zinc-950",
-                ].join(" ")}
-              >
-                {o.customer.name}
-              </div>
-              {o.eventName ? (
-                <div className="mt-1 line-clamp-2 text-sm font-semibold text-zinc-500">{o.eventName}</div>
-              ) : null}
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                <span
-                  className={[
-                    "rounded-full border px-2.5 py-1 font-bold",
-                    isSupplement
-                      ? "border-amber-200 bg-amber-50/85 text-amber-900"
-                      : "border-violet-200 bg-violet-50/85 text-violet-800",
-                  ].join(" ")}
-                >
-                  {isSupplement ? `Доп. к ${o.parentOrderId?.slice(0, 8)}` : "Основная"}
-                </span>
-                {isCancelledArchive ? (
-                  <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 font-bold text-zinc-500">
-                    Не учитывается
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="shrink-0 rounded-full border border-zinc-200/70 bg-white/70 px-3 py-1.5 text-xs font-bold text-zinc-500">
-              Создана {fmtDate(o.createdAt)}
+              <strong>{o.eventName || o.customer.name}</strong>
+              <small>
+                {o.customer.name} · {isSupplement ? "дополнительная" : `создана ${fmtDate(o.createdAt)}`}
+              </small>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(9rem,0.75fr)_minmax(16rem,1.35fr)_minmax(9rem,0.9fr)]">
-            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Готовность</div>
-              <div className={["mt-1 text-lg font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                {fmtDate(o.readyByDate)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200/80 bg-[linear-gradient(135deg,rgba(250,250,250,0.95),rgba(255,255,255,0.76))] px-4 py-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Период</div>
-              <div className={["mt-1 text-base font-black", isCancelledArchive ? "text-zinc-500" : "text-zinc-950"].join(" ")}>
-                {periodLineOrders(o)}
-              </div>
-            </div>
-
-            <div
-              className={[
-                "rounded-2xl border px-4 py-3",
-                isCancelledArchive
-                  ? "border-zinc-200/90 bg-white/60"
-                  : "border-violet-200/80 bg-[linear-gradient(135deg,rgba(245,243,255,0.95),rgba(255,255,255,0.78))]",
-              ].join(" ")}
-            >
-              <div
-                className={[
-                  "text-[10px] font-black uppercase tracking-[0.16em]",
-                  isCancelledArchive ? "text-zinc-400" : "text-violet-600",
-                ].join(" ")}
-              >
-                Сумма
-              </div>
-              <div
-                className={[
-                  "mt-1 text-lg font-black",
-                  isCancelledArchive ? "text-zinc-500" : "text-violet-950",
-                ].join(" ")}
-              >
-                {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
-              </div>
-            </div>
+          <div className="my-order__date">
+            <small>Готовность</small>
+            <strong>{fmtDate(o.readyByDate)}</strong>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-            <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
-              ID {o.id.slice(0, 8)}
-            </span>
-            {o.taxAmount != null ? (
-              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
-                Налог {formatMoney(o.taxAmount)}
-              </span>
-            ) : null}
-            {discountLabel ? (
-              <span className="rounded-full border border-emerald-200 bg-emerald-50/85 px-2.5 py-1 text-emerald-800">
-                Скидка {discountLabel}
-              </span>
-            ) : null}
-            {isArchive ? (
-              <span className="rounded-full border border-zinc-200 bg-white/75 px-2.5 py-1 text-zinc-600">
-                Архив
-              </span>
-            ) : null}
-            {isCancelled && !isCancelledArchive ? (
-              <span className="rounded-full border border-zinc-300 bg-white/70 px-2.5 py-1 text-zinc-500">
-                Отменена
-              </span>
-            ) : null}
+          <div className="my-order__period">
+            <small>Период аренды</small>
+            <strong>{periodLineOrders(o)}</strong>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href={`/orders/${o.id}`}
-              className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-black text-violet-800 transition hover:bg-violet-100"
-            >
-              Открыть заявку
-            </Link>
-            {o.status === "ISSUED" && !o.parentOrderId ? (
-              <Link
-                href={`/catalog?quickParentId=${o.id}`}
-                className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-black text-amber-900 transition hover:bg-amber-100"
-              >
-                Быстрая доп.-выдача
-              </Link>
-            ) : null}
-            {CANCELLABLE.includes(o.status) && (
+          <div className="my-order__amount">
+            {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
+          </div>
+
+          <div className="my-order__actions">
+            {canApprove || canReturn ? (
               <button
                 type="button"
+                className="my-order__button my-order__button--primary"
+                disabled={actingId === o.id}
+                onClick={() => advanceOrder(o)}
+              >
+                {actingId === o.id ? "Сохраняем…" : canApprove ? "Согласовать смету" : "На приёмку"}
+              </button>
+            ) : null}
+            <Link href={`/orders/${o.id}`} className="my-order__button">
+              Открыть
+            </Link>
+            {o.status === "ISSUED" && !o.parentOrderId ? (
+              <Link href={`/catalog?quickParentId=${o.id}`} className="my-order__button">
+                Доп.-выдача
+              </Link>
+            ) : null}
+            {CANCELLABLE.includes(o.status) ? (
+              <button
+                type="button"
+                className="my-order__button my-order__button--danger"
                 disabled={cancellingId === o.id}
                 onClick={() => cancelOrder(o.id)}
-                className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm font-black text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
               >
-                {cancellingId === o.id ? "…" : "Отменить заявку"}
+                {cancellingId === o.id ? "…" : "Отменить"}
               </button>
-            )}
+            ) : null}
           </div>
-          {o.status === "CLOSED" && !o.parentOrderId ? (
-            <div className="mt-4 border-t border-zinc-200 pt-4">
-              <OrderFeedbackEditor
-                orderId={o.id}
-                feedback={o.serviceFeedback}
-                onSaved={(feedback) => setOrders((current) => current.map((order) =>
-                  order.id === o.id ? { ...order, serviceFeedback: feedback } : order,
-                ))}
-              />
-            </div>
-          ) : null}
         </div>
-      </div>
+
+        <div className="my-order__progress">
+          <OrderStatusStepper
+            status={o.status}
+            source={o.source}
+            showSummary={false}
+            density="compact"
+            compactWindow={5}
+          />
+        </div>
+
+        {o.status === "CLOSED" && !o.parentOrderId ? (
+          <div className="my-order__feedback">
+            <OrderFeedbackEditor
+              orderId={o.id}
+              feedback={o.serviceFeedback}
+              onSaved={(feedback) => setOrders((current) => current.map((order) =>
+                order.id === o.id ? { ...order, serviceFeedback: feedback } : order,
+              ))}
+            />
+          </div>
+        ) : null}
+      </article>
     );
   }
 
   return (
     <AppShell title="Мои заявки">
-      {loading ? (
-        <ListSkeleton rows={6} />
-      ) : orders.length === 0 ? (
-        <div className="text-sm text-zinc-600">Пока нет заявок.</div>
-      ) : (
-        <div className="space-y-6">
-          <section className="overflow-hidden rounded-[2rem] border border-white/70 bg-[radial-gradient(circle_at_12%_0%,rgba(139,92,246,0.22),transparent_34%),radial-gradient(circle_at_92%_18%,rgba(250,204,21,0.2),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(245,243,255,0.9))] p-5 shadow-[0_24px_80px_rgba(109,40,217,0.14)]">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="text-xs font-black uppercase tracking-[0.26em] text-violet-700">Рабочий центр</div>
-                <h1 className="mt-2 text-4xl font-black leading-none text-zinc-950 sm:text-5xl">Заявки</h1>
-              </div>
-              <div
-                className="inline-flex shrink-0 items-center rounded-2xl border border-white/80 bg-white/65 p-1 shadow-sm"
-                role="group"
-                aria-label="Область заявок"
-              >
-                {(["ACTIVE", "ALL", "DONE"] as const).map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setScopeFilter(key)}
-                    className={[
-                      "rounded-xl px-4 py-3 text-sm font-black transition",
-                      scopeFilter === key
-                        ? "bg-violet-700 text-white shadow-violet-200"
-                        : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
-                    ].join(" ")}
-                  >
-                    {key === "ACTIVE" ? "Активные" : key === "ALL" ? "Все" : "Архив"}
-                  </button>
-                ))}
-              </div>
+      <div className="my-orders">
+        <section className="my-orders__toolbar">
+          <div className="my-orders__toolbarTop">
+            <div>
+              <h1>Мои заявки</h1>
+              <p>{totalLoaded} {totalLoaded === 1 ? "заявка" : "заявок"} · актуальные действия всегда сверху</p>
             </div>
-
-            <div className="mt-5 rounded-[1.5rem] border border-white/70 bg-white/60 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_18px_45px_rgba(24,24,27,0.08)] backdrop-blur">
-              <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(15rem,20rem)_minmax(12rem,16rem)]">
-                <div className="relative min-w-0">
-                  <svg
-                    className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden
-                  >
-                    <circle cx="11" cy="11" r="7" />
-                    <path d="M20 20l-3.2-3.2" />
-                  </svg>
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Найти заявку"
-                    className="h-12 w-full rounded-[1.15rem] border border-transparent bg-white/90 pl-11 pr-4 text-sm font-bold text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                  />
-                </div>
-
-                <div
-                  className="inline-flex h-12 min-w-0 items-center rounded-[1.15rem] bg-white/90 p-1 shadow-sm"
-                  role="group"
-                  aria-label="Тип заявки"
+            <div className="my-orders__tabs" role="tablist" aria-label="Область заявок">
+              {(["ACTIVE", "ALL", "DONE"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={scopeFilter === key}
+                  onClick={() => setScopeFilter(key)}
                 >
-                  {(["ALL", "MAIN", "SUPPLEMENT"] as const).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setKindFilter(key)}
-                      className={[
-                        "h-10 flex-1 rounded-xl px-3 text-sm font-black transition",
-                        kindFilter === key
-                          ? "bg-violet-700 text-white shadow-sm"
-                          : "text-zinc-600 hover:bg-violet-50 hover:text-violet-900",
-                      ].join(" ")}
-                    >
-                      {key === "ALL" ? "Все типы" : key === "MAIN" ? "Основные" : "Доп."}
-                    </button>
-                  ))}
-                </div>
-
-                <select
-                  value={sortMode}
-                  onChange={(e) => setSortMode(e.target.value as SortMode)}
-                  className="h-12 min-w-0 cursor-pointer rounded-[1.15rem] border border-transparent bg-white/90 px-4 text-sm font-bold text-zinc-900 shadow-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                  aria-label="Сортировка"
-                >
-                  {(Object.keys(SORT_LABEL) as SortMode[]).map((m) => (
-                    <option key={m} value={m}>
-                      {SORT_LABEL[m]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-              <span className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-bold tabular-nums text-zinc-500">
-                {filteredCount}/{totalLoaded}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setDebouncedSearch("");
-                  setScopeFilter("ACTIVE");
-                  setKindFilter("ALL");
-                  setSortMode("SMART");
-                }}
-                className="rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-black text-violet-700 transition hover:bg-white hover:text-violet-950"
-              >
-                Сбросить
-              </button>
-            </div>
-          </section>
-
-          {grouped.length === 0 ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-6 text-center text-sm text-zinc-600">
-              Нет заявок по текущим фильтрам. Попробуйте изменить поиск или статус.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {grouped.map(({ root, children }) => (
-                <div key={root.id} className="rounded-[2rem] border border-white/70 bg-white/35 p-2 shadow-[0_18px_52px_rgba(24,24,27,0.06)]">
-                  {renderOrderCard(root, "root")}
-                  {children.length > 0 ? (
-                    <div className="mt-2 space-y-2 border-l-2 border-amber-300/70 pl-2">
-                      {children.map((c) => renderOrderCard(c, "child"))}
-                    </div>
-                  ) : null}
-                </div>
+                  {key === "ACTIVE" ? "Активные" : key === "ALL" ? "Все" : "Архив"}
+                </button>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+
+          <div className="my-orders__filters">
+            <label className="my-orders__search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.2-3.2" />
+              </svg>
+              <span className="sr-only">Найти заявку</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Найти заявку" />
+            </label>
+            <select value={kindFilter} onChange={(event) => setKindFilter(event.target.value as KindFilter)} aria-label="Тип заявки">
+              <option value="ALL">Все типы</option>
+              <option value="MAIN">Основные заявки</option>
+              <option value="SUPPLEMENT">Дополнительные заявки</option>
+            </select>
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} aria-label="Сортировка">
+              {(Object.keys(SORT_LABEL) as SortMode[]).map((mode) => (
+                <option key={mode} value={mode}>{SORT_LABEL[mode]}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="my-orders__reset"
+              onClick={() => {
+                setSearch("");
+                setDebouncedSearch("");
+                setScopeFilter("ACTIVE");
+                setKindFilter("ALL");
+                setSortMode("SMART");
+              }}
+            >
+              Сбросить · {filteredCount}/{totalLoaded}
+            </button>
+          </div>
+        </section>
+
+        {notice ? <div className="my-orders__notice" role="status">{notice}</div> : null}
+        {actionError ? <div className="my-orders__error" role="alert">{actionError}</div> : null}
+
+        {loading ? (
+          <ListSkeleton rows={6} />
+        ) : orders.length === 0 ? (
+          <div className="my-orders__empty">Пока нет заявок.</div>
+        ) : grouped.length === 0 ? (
+          <div className="my-orders__empty">Нет заявок по текущим фильтрам.</div>
+        ) : (
+          <div className="my-orders__list">
+            {grouped.map(({ root, children }) => (
+              <div key={root.id} className="my-orders__family">
+                {renderOrderCard(root, "root")}
+                {children.length > 0 ? (
+                  <div className="my-orders__children">
+                    {children.map((child) => renderOrderCard(child, "child"))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

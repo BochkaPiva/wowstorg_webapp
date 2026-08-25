@@ -34,7 +34,7 @@ export async function GET() {
         rentalDiscountPercent: true,
         rentalDiscountAmount: true,
         clientPaymentMethod: true,
-        customer: { select: { id: true, name: true } },
+        customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
         serviceFeedback: {
           select: { id: true, rating: true, comment: true, updatedAt: true },
         },
@@ -73,7 +73,13 @@ export async function GET() {
         rentalStartPartOfDay: o.rentalStartPartOfDay,
         rentalEndPartOfDay: o.rentalEndPartOfDay,
         createdAt: o.createdAt.toISOString(),
-        customer: o.customer,
+        customer: {
+          id: o.customer.id,
+          name: o.customer.name,
+          logoUrl: o.customer.logoKey
+            ? `/api/customers/${o.customer.id}/logo?v=${o.customer.logoUpdatedAt?.getTime() ?? 0}`
+            : null,
+        },
         totalAmount: pricing.grandTotal,
         taxAmount: pricing.taxAmount,
         discount:

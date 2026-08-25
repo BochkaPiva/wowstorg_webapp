@@ -32,8 +32,8 @@ export const orderStatusLabelRu: Record<OrderStatus, string> = STATUS_LABEL;
 
 const STATUS_DETAIL: Record<OrderStatus, string> = {
   SUBMITTED: "Заявка ожидает обработки складом.",
-  ESTIMATE_SENT: "Смета отправлена, ожидается решение Greenwich.",
-  CHANGES_REQUESTED: "Greenwich запросил изменения в заявке.",
+  ESTIMATE_SENT: "Смета отправлена, ожидается решение Grinvich.",
+  CHANGES_REQUESTED: "Grinvich запросил изменения в заявке.",
   APPROVED_BY_GREENWICH: "Смета согласована, можно начинать сборку.",
   PICKING: "Склад комплектует заявку к выдаче.",
   ISSUED: "Реквизит выдан и находится у клиента.",
@@ -93,7 +93,7 @@ export function OrderStatusStepper({
           <div>
             <strong>{STATUS_LABEL[status]}</strong>
             {owner !== "NONE" ? (
-              <span>Сейчас действует: {owner === "WAREHOUSE" ? "Wowstorg" : "Greenwich"}</span>
+              <span>Сейчас действует: {owner === "WAREHOUSE" ? "Wowstorg" : "Grinvich"}</span>
             ) : null}
           </div>
         </div>

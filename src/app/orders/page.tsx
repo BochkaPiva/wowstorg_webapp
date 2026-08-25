@@ -41,6 +41,22 @@ type OrderCard = {
   serviceFeedback?: ServiceFeedback | null;
 };
 
+type OrderPreview = {
+  id: string;
+  eventName?: string | null;
+  greenwichComment?: string | null;
+  deliveryEnabled?: boolean;
+  montageEnabled?: boolean;
+  demontageEnabled?: boolean;
+  lines: Array<{
+    id: string;
+    requestedQty: number;
+    approvedQty?: number | null;
+    issuedQty?: number | null;
+    item: { name: string };
+  }>;
+};
+
 const CANCELLABLE: OrderCard["status"][] = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"];
 
 /** Чем меньше — тем выше в списке при «умной» сортировке (сначала то, что требует внимания). */
@@ -194,6 +210,9 @@ export default function OrdersPage() {
   const [actingId, setActingId] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(() => new Set());
+  const [previews, setPreviews] = React.useState<Record<string, OrderPreview | null>>({});
+  const [previewLoading, setPreviewLoading] = React.useState<Set<string>>(() => new Set());
 
   const [search, setSearch] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
@@ -283,6 +302,30 @@ export default function OrdersPage() {
     }
   }
 
+  async function toggleSummary(orderId: string) {
+    const opening = !expandedIds.has(orderId);
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+    if (!opening || Object.prototype.hasOwnProperty.call(previews, orderId)) return;
+
+    setPreviewLoading((current) => new Set(current).add(orderId));
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as { order?: OrderPreview } | null;
+      setPreviews((current) => ({ ...current, [orderId]: response.ok ? payload?.order ?? null : null }));
+    } finally {
+      setPreviewLoading((current) => {
+        const next = new Set(current);
+        next.delete(orderId);
+        return next;
+      });
+    }
+  }
+
   const filteredSorted = React.useMemo(() => {
     const f = applyFilters(orders, debouncedSearch, scopeFilter, kindFilter);
     return sortOrderList(f, sortMode);
@@ -316,6 +359,8 @@ export default function OrdersPage() {
     const isSupplement = Boolean(o.parentOrderId);
     const canApprove = o.status === "ESTIMATE_SENT" || o.status === "CHANGES_REQUESTED";
     const canReturn = o.status === "ISSUED";
+    const isExpanded = expandedIds.has(o.id);
+    const preview = previews[o.id];
     return (
       <article
         key={o.id}
@@ -323,6 +368,12 @@ export default function OrdersPage() {
         data-child={kind === "child"}
         data-cancelled={isCancelled}
         data-status={o.status}
+        data-expanded={isExpanded || undefined}
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (target.closest("a, button, input, select, textarea, summary")) return;
+          void toggleSummary(o.id);
+        }}
       >
         <div className="my-order__main">
           <div className="my-order__identity">
@@ -368,7 +419,7 @@ export default function OrdersPage() {
                 {actingId === o.id ? "Сохраняем…" : canApprove ? "Согласовать смету" : "На приёмку"}
               </button>
             ) : null}
-            <Link href={`/orders/${o.id}`} className="my-order__button">
+            <Link href={`/orders/${o.id}`} className="my-order__button my-order__button--dark">
               Открыть
             </Link>
             {o.status === "ISSUED" && !o.parentOrderId ? (
@@ -379,13 +430,22 @@ export default function OrdersPage() {
             {CANCELLABLE.includes(o.status) ? (
               <button
                 type="button"
-                className="my-order__button my-order__button--danger"
+                className="my-order__button my-order__button--danger-quiet"
                 disabled={cancellingId === o.id}
                 onClick={() => cancelOrder(o.id)}
               >
                 {cancellingId === o.id ? "…" : "Отменить"}
               </button>
             ) : null}
+            <button
+              type="button"
+              className="my-order__summaryButton"
+              aria-expanded={isExpanded}
+              onClick={() => void toggleSummary(o.id)}
+            >
+              <span>{isExpanded ? "Свернуть" : "Сводка"}</span>
+              <i aria-hidden="true">⌄</i>
+            </button>
           </div>
         </div>
 
@@ -397,6 +457,45 @@ export default function OrdersPage() {
             density="compact"
             compactWindow={8}
           />
+        </div>
+
+        <div className="my-order__reveal" aria-hidden={!isExpanded}>
+          <div className="my-order__revealInner" onClick={(event) => event.stopPropagation()}>
+            <section className="my-order__contents">
+              <header>
+                <div>
+                  <span>Состав заявки</span>
+                  <strong>{preview?.lines.length ?? 0} {preview?.lines.length === 1 ? "позиция" : "позиций"}</strong>
+                </div>
+                <Link href={`/orders/${o.id}`}>Открыть полностью →</Link>
+              </header>
+              {previewLoading.has(o.id) ? (
+                <div className="my-order__previewLoading">Загружаем состав…</div>
+              ) : preview?.lines.length ? (
+                <ul>
+                  {preview.lines.map((line) => (
+                    <li key={line.id}>
+                      <span>{line.item.name}</span>
+                      <strong>× {line.issuedQty ?? line.approvedQty ?? line.requestedQty}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="my-order__previewLoading">Состав заявки пока не заполнен.</div>
+              )}
+            </section>
+            <aside className="my-order__facts">
+              <div><span>Готовность</span><strong>{fmtDate(o.readyByDate)}</strong></div>
+              <div><span>Аренда</span><strong>{periodLineOrders(o)}</strong></div>
+              <div><span>Создана</span><strong>{fmtDate(o.createdAt)}</strong></div>
+              <div><span>Итого</span><strong>{o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}</strong></div>
+              {preview ? (
+                <p>
+                  {[preview.deliveryEnabled && "доставка", preview.montageEnabled && "монтаж", preview.demontageEnabled && "демонтаж"].filter(Boolean).join(" · ") || "Без дополнительных услуг"}
+                </p>
+              ) : null}
+            </aside>
+          </div>
         </div>
 
         {o.status === "CLOSED" && !o.parentOrderId ? (

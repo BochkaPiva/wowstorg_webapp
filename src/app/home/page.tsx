@@ -26,7 +26,6 @@ const BackgroundStackGame = dynamic(
 
 const DASH_SECTION_SHELL =
   "p-0";
-const DASH_CARD = "rounded-lg border border-zinc-300 bg-white p-4";
 const BTN_PRIMARY =
   "inline-flex items-center rounded-lg border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
 const BTN_WARM =
@@ -827,14 +826,9 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
   return (
     <Link
       href={event.href}
-      className={[
-        "block rounded-md border px-3 py-2.5 transition-colors hover:border-zinc-500",
-        isPersonalTask
-          ? "border-amber-300 bg-amber-50"
-          : event.urgency === "critical" || event.urgency === "overdue"
-            ? "border-rose-300 bg-rose-50"
-            : "border-zinc-200 bg-white",
-      ].join(" ")}
+      className="operation-card"
+      data-urgency={event.urgency}
+      data-personal={isPersonalTask ? "true" : undefined}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -848,7 +842,7 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
           </div>
           {event.subtitle ? <div className="mt-0.5 truncate text-xs text-zinc-500">{event.subtitle}</div> : null}
         </div>
-        <span className={["shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-sm backdrop-blur-md", operationPillClass(event.urgency)].join(" ")}>
+        <span className={["operation-card__kind", operationPillClass(event.urgency)].join(" ")}>
           {operationKindLabel(event.kind)}
         </span>
       </div>
@@ -942,9 +936,9 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   return (
     <div className="ops-dashboard">
       <section className="ops-overview" aria-label="Оперативная сводка">
-        <div className="ops-metric"><span>Сегодня</span><strong>{data?.summary.todayCount ?? 0}</strong></div>
-        <div className="ops-metric"><span>Просрочено</span><strong>{data?.summary.overdueCount ?? 0}</strong></div>
-        <div className="ops-metric"><span>Требуют внимания</span><strong>{data?.summary.signalCount ?? 0}</strong></div>
+        <div className="ops-metric" data-tone="today"><span>Сегодня</span><strong>{data?.summary.todayCount ?? 0}</strong><small>события в рабочем плане</small></div>
+        <div className="ops-metric" data-tone="overdue"><span>Просрочено</span><strong>{data?.summary.overdueCount ?? 0}</strong><small>нужно закрыть в первую очередь</small></div>
+        <div className="ops-metric" data-tone="attention"><span>Требуют внимания</span><strong>{data?.summary.signalCount ?? 0}</strong><small>по заявкам и проектам</small></div>
         {error ? <div className="col-span-full border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
       </section>
 
@@ -961,7 +955,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
           <div className="ops-pane__body">
             {!loading && !error && data?.signals.length === 0 ? <div className="ops-empty"><strong>Всё под контролем.</strong> Критичных сигналов нет.</div> : null}
             {(data?.signals ?? []).slice(0, 5).map((signal) => (
-              <div key={signal.id} className={["rounded-md border px-3 py-2.5 transition-colors hover:border-zinc-500", signalClass(signal.severity)].join(" ")}>
+              <div key={signal.id} className={["ops-signal", signalClass(signal.severity)].join(" ")} data-severity={signal.severity}>
                 <div className="flex items-start justify-between gap-2">
                   <Link href={signal.href} className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="text-[10px] font-black uppercase tracking-wide">{signalEntityLabel(signal.entityKind)}</span><div className="truncate text-sm font-bold">{signal.title}</div></div><div className="mt-0.5 line-clamp-2 text-xs opacity-80">{signal.reason}</div></Link>
                   {signal.canSnooze && (signal.projectId || signal.orderId) ? <button type="button" onClick={() => void snoozeSignal(signal)} disabled={snoozingSignalId === signal.id} className="shrink-0 border border-current/20 bg-white/70 px-2 py-1 text-[10px] font-bold hover:bg-white disabled:opacity-60" title="Отложить на 7 дней">{snoozingSignalId === signal.id ? "…" : "+7д"}</button> : null}
@@ -976,7 +970,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         <div className="ops-timeline__header"><h2>Горизонт на пять дней</h2><Link href="/tasks" className={LINK_SUBTLE}>Все задачи</Link></div>
         <div className="ops-days">
           {(data?.upcomingDays ?? []).map((day) => (
-            <div key={day.date} className="ops-day">
+            <div key={day.date} className="ops-day" data-has-events={day.events.length > 0 ? "true" : "false"}>
               <div className="ops-day__head"><strong>{day.label}</strong><span className="ops-day__meta">{day.events.length} · {fmtDateRu(day.date)}</span></div>
               <div className="ops-day__body">{day.events.length === 0 ? <span className="text-xs text-zinc-500">Без событий</span> : day.events.map((event) => <OperationEventCard key={event.id} event={event} compact />)}</div>
             </div>
@@ -990,7 +984,7 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 function CollapsibleIssuanceCalendar() {
   const [open, setOpen] = React.useState(false);
   return (
-    <div className={DASH_CARD}>
+    <div className="home-calendar-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-zinc-900">Календарь загрузки</div>
@@ -1039,11 +1033,11 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   }, [isWowstorg]);
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-      <div className={`${DASH_CARD} xl:col-span-8`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-2">
-          <div className="text-sm font-semibold text-zinc-900">Заявки</div>
+    <div className="wow-dashboard">
+      <div className="wow-dashboard__grid">
+      <div className="orders-board">
+        <div className="orders-board__header">
+          <div><h2>Заявки</h2><p>Ближайшая работа и активная очередь</p></div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
             <span className={BADGE_PRIMARY}>
               Активных: <span className="inline-block min-w-4">{data ? data.activeCount : <Skeleton className="h-3 w-4" />}</span>
@@ -1062,14 +1056,14 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         ) : null}
 
         {!loading && !error ? (
-          <div className="mt-4">
+          <div className="orders-board__content">
             {data?.nearest ? (
-              <div className="space-y-3">
-                <div className="overflow-hidden border border-zinc-300 bg-white">
-                  <div className="border-b border-zinc-300 bg-zinc-50 px-4 py-4">
+              <div className="orders-board__stack">
+                <div className="orders-focus">
+                  <div className="orders-focus__progress">
                     <OrderStatusStepper status={data.nearest.status} />
                   </div>
-                  <div className="p-4">
+                  <div className="orders-focus__body">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-zinc-900">
                         {data.nearest.customerName}
@@ -1109,17 +1103,17 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
                 </div>
 
                 {data.activeOrders.length > 1 ? (
-                  <div className="border-t border-zinc-300 pt-3">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-600">
+                  <div className="orders-active">
+                    <div className="orders-active__title">
                       Остальные активные заявки
                     </div>
-                    <div className="max-h-56 divide-y divide-zinc-200 overflow-y-auto border border-zinc-200 bg-white">
+                    <div className="orders-active__list">
                       {data.activeOrders
                         .filter((o) => o.id !== data.nearest?.id)
                         .map((o) => (
                           <div
                             key={o.id}
-                            className="flex items-center justify-between gap-3 px-3 py-2.5"
+                            className="orders-active__row"
                           >
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-zinc-900">{o.customerName}</div>
@@ -1154,7 +1148,7 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         ) : null}
       </div>
 
-      <div className="warehouse-board xl:col-span-4">
+      <div className="warehouse-board">
         <div className="warehouse-board__header">
           <div><h2>Склад</h2><div className="mt-1"><InventoryAuditBadge /></div></div>
           <Link href="/inventory/warehouse-items" className={LINK_SUBTLE}>Открыть склад</Link>
@@ -1259,11 +1253,10 @@ export default function HomeDashboardPage() {
         ) : null}
 
         {isWowstorg ? (
-          <div className={DASH_SECTION_SHELL}>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-              <div>
-                <div className="text-sm font-semibold text-zinc-900">Дашборд</div>
-              </div>
+          <div className={`${DASH_SECTION_SHELL} warehouse-home`}>
+            <div className="warehouse-home__heading">
+              <div><span>Рабочий центр</span><h1>Дашборд</h1></div>
+              <p>События, сигналы и состояние склада на одном экране</p>
             </div>
             <div className="space-y-6">
               <OperationsDashboardBlock isWowstorg={isWowstorg} />

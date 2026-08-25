@@ -7,8 +7,9 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { DashboardSkeleton, ListSkeleton, LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
-import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
+import { OrderStatusStepper, orderStatusLabelRu } from "@/app/_ui/OrderStatusStepper";
 import { PendingOrderFeedbackCard } from "@/app/_ui/OrderServiceFeedback";
+import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
@@ -26,7 +27,6 @@ const BackgroundStackGame = dynamic(
 const DASH_SECTION_SHELL =
   "p-0";
 const DASH_CARD = "rounded-lg border border-zinc-300 bg-white p-4";
-const DASH_SUBCARD = "overflow-hidden rounded-lg border border-zinc-300 bg-white";
 const BTN_PRIMARY =
   "inline-flex items-center rounded-lg border border-zinc-950 bg-zinc-950 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950";
 const BTN_WARM =
@@ -509,68 +509,79 @@ function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
   }, [isGreenwich]);
 
   return (
-    <div className={DASH_CARD}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-zinc-900">Заявки</div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
-          <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5">
-            Активных: <span className="inline-block min-w-4 font-semibold text-violet-800">{data ? data.activeCount : <Skeleton className="h-3 w-4" />}</span>
+    <section className="greenwich-orders-panel">
+      <header className="greenwich-orders-panel__header">
+        <div>
+          <h2>Ближайшая заявка</h2>
+          <p>Текущий этап, сроки и следующее действие</p>
+        </div>
+        <div className="greenwich-orders-panel__stats" aria-label="Статистика заявок">
+          <span>
+            <strong>{data ? data.activeCount : <Skeleton className="h-3 w-4" />}</strong>
+            в работе
           </span>
-          <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5">
-            Выполненных: <span className="inline-block min-w-4 font-semibold text-zinc-900">{data ? data.completedCount : <Skeleton className="h-3 w-4" />}</span>
+          <span>
+            <strong>{data ? data.completedCount : <Skeleton className="h-3 w-4" />}</strong>
+            завершено
           </span>
         </div>
-      </div>
+      </header>
 
-      {loading && !data ? <ListSkeleton className="mt-4" rows={3} /> : null}
-      {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div> : null}
+      {loading && !data ? <div className="greenwich-orders-panel__loading"><ListSkeleton rows={3} /></div> : null}
+      {error ? <div className="greenwich-orders-panel__error">{error}</div> : null}
 
       {!loading && !error ? (
-        <div className="mt-4">
-          {data?.nearest ? (
-            <div className={DASH_SUBCARD}>
-              <div className="px-4 py-4 bg-zinc-50">
-                <OrderStatusStepper status={data.nearest.status} />
+        data?.nearest ? (
+          <article className="greenwich-nearest" data-status={data.nearest.status}>
+            <div className="greenwich-nearest__main">
+              <div className="greenwich-nearest__icon" aria-hidden="true">
+                <WorkEntityIcon kind="ORDER" />
               </div>
-              <div className="p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-zinc-900">
-                    {data.nearest.customerName}
-                  </div>
-                  <div className="shrink-0">
-                    <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
-                      {data.nearest.totalAmount.toLocaleString("ru-RU")} ₽
-                    </span>
-                  </div>
+              <div className="greenwich-nearest__identity">
+                <span>{orderStatusLabelRu[data.nearest.status]}</span>
+                <h3>{data.nearest.customerName}</h3>
+                <small>Ближайшая активная заявка</small>
+              </div>
+              <div className="greenwich-nearest__metric">
+                <span>Готовность</span>
+                <strong>{fmtDateRu(data.nearest.readyByDate)}</strong>
+              </div>
+              <div className="greenwich-nearest__metric greenwich-nearest__metric--period">
+                <span>Период аренды</span>
+                <strong>{periodLineHomeDash(data.nearest)}</strong>
+              </div>
+              <div className="greenwich-nearest__actions">
+                <div className="greenwich-nearest__amount">
+                  <span>Итого</span>
+                  <strong>{data.nearest.totalAmount.toLocaleString("ru-RU")} ₽</strong>
                 </div>
-                <div className="mt-2 text-sm text-zinc-600">
-                  Готовность: <span className="font-semibold">{fmtDateRu(data.nearest.readyByDate)}</span> · Период:{" "}
-                  <span className="font-semibold">{periodLineHomeDash(data.nearest)}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Link
-                    href={`/orders/${data.nearest.id}?from=dashboard`}
-                    className={BTN_PRIMARY}
-                  >
-                    Открыть ближайшую
+                <Link href={`/orders/${data.nearest.id}?from=dashboard`} className="greenwich-nearest__open">
+                  Открыть заявку <span aria-hidden="true">→</span>
+                </Link>
+                {data.nearest.status === "ISSUED" && !data.nearest.parentOrderId ? (
+                  <Link href={`/catalog?quickParentId=${data.nearest.id}`} className="greenwich-nearest__quick">
+                    Доп.-выдача
                   </Link>
-                  {data.nearest.status === "ISSUED" && !data.nearest.parentOrderId ? (
-                    <Link
-                      href={`/catalog?quickParentId=${data.nearest.id}`}
-                      className={BTN_WARM}
-                    >
-                      Быстрая доп.-выдача
-                    </Link>
-                  ) : null}
-                </div>
+                ) : null}
               </div>
             </div>
-          ) : (
-            <div className="text-sm text-zinc-600 mt-2">Пока нет активных заявок.</div>
-          )}
-        </div>
+            <div className="greenwich-nearest__progress">
+              <OrderStatusStepper
+                status={data.nearest.status}
+                showSummary={false}
+                density="compact"
+                compactWindow={8}
+              />
+            </div>
+          </article>
+        ) : (
+          <div className="greenwich-orders-panel__empty">
+            <WorkEntityIcon kind="ORDER" />
+            <div><strong>Активных заявок пока нет</strong><span>Новая заявка появится здесь после оформления.</span></div>
+          </div>
+        )
       ) : null}
-    </div>
+    </section>
   );
 }
 

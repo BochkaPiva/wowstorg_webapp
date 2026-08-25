@@ -759,21 +759,26 @@ function ServiceEditRow({
     hideComment && showInternalPrice
       ? "sm:grid-cols-[minmax(8rem,12rem)_minmax(10rem,14rem)]"
       : showPrice && showInternalPrice
-      ? "2xl:grid-cols-[minmax(14rem,1fr)_9rem_9rem_9rem]"
+      ? "lg:grid-cols-[minmax(16rem,1fr)_minmax(8rem,0.42fr)_minmax(8rem,0.42fr)_minmax(9rem,0.46fr)]"
       : showPrice
         ? "sm:grid-cols-[1fr_9rem]"
         : "";
   return (
     <div
       className={[
-        "border-b border-zinc-200 px-4 py-4 transition-colors duration-150 last:border-b-0 sm:px-5",
-        enabled ? "bg-white" : "bg-zinc-50/60",
+        "rounded-xl border px-4 py-3 transition-[background-color,border-color,box-shadow] duration-150 sm:px-4",
+        enabled
+          ? "border-violet-200 bg-white shadow-[0_8px_24px_rgba(76,29,149,0.06)]"
+          : "border-zinc-200 bg-zinc-50/70",
       ].join(" ")}
     >
-      <div className="flex min-h-11 items-center justify-between gap-4">
+      <div className="flex min-h-10 items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-sm font-black text-zinc-950">{label}</div>
-          <div className="mt-0.5 text-xs text-zinc-500">
+          <div className="flex items-center gap-2">
+            <span className={["h-2 w-2 rounded-full", enabled ? "bg-violet-600" : "bg-zinc-300"].join(" ")} />
+            <div className="text-sm font-black text-zinc-950">{label}</div>
+          </div>
+          <div className="mt-0.5 pl-4 text-[11px] font-medium text-zinc-500">
             {enabled ? "Включено в заявку" : "Не включено"}
           </div>
         </div>
@@ -784,17 +789,17 @@ function ServiceEditRow({
           aria-label={`${enabled ? "Отключить" : "Включить"}: ${label}`}
           disabled={lockEnabled}
           onClick={() => onEnabledChange(!enabled)}
-          className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="relative grid h-10 w-14 shrink-0 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span
             className={[
-              "relative block h-6 w-11 rounded-full transition-colors duration-150",
-              enabled ? "bg-violet-700" : "bg-zinc-300",
+              "relative block h-6 w-11 overflow-hidden rounded-full border transition-colors duration-150",
+              enabled ? "border-violet-700 bg-violet-700" : "border-zinc-300 bg-zinc-300",
             ].join(" ")}
           >
             <span
               className={[
-                "absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150",
+                "absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150",
                 enabled ? "translate-x-6" : "translate-x-1",
               ].join(" ")}
             />
@@ -802,7 +807,7 @@ function ServiceEditRow({
         </button>
       </div>
       {enabled && (
-        <div className={`mt-3 grid gap-3 ${gridCols}`}>
+        <div className={`mt-3 grid gap-3 border-t border-zinc-200/80 pt-3 ${gridCols}`}>
           {!hideComment ? (
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
@@ -827,7 +832,7 @@ function ServiceEditRow({
                 value={price === "" ? "" : price}
                 onChange={(e) => onPriceChange(e.target.value === "" ? "" : Number(e.target.value))}
                 placeholder="0"
-                className={`w-full rounded-md border px-3 py-2.5 text-sm text-right tabular-nums outline-none focus:ring-2 ${
+              className={`h-10 w-full rounded-md border px-3 text-sm text-right tabular-nums outline-none focus:ring-2 ${
                   priceMissing
                     ? "border-amber-300 bg-amber-50/50 focus:border-amber-400 focus:ring-amber-100"
                     : "border-zinc-300 bg-white focus:border-violet-700 focus:ring-violet-100"
@@ -2086,29 +2091,22 @@ export default function OrderDetailsPage() {
                           ? editPricing.rentalAfterDiscount / editPricing.rentalBeforeDiscount
                           : 1;
                         return (
-                          <article key={line.id ?? `new-${idx}`} className="px-4 py-4 transition-colors duration-150 hover:bg-zinc-50/60 sm:px-5">
-                            <div className="flex items-start justify-between gap-4">
-                              <ProductIdentity
-                                itemId={line.itemId}
-                                photo1Key={catalogItemsById.get(line.itemId)?.photo1Key ?? line.itemPhoto1Key}
-                                name={line.itemName}
-                                subtitle={catalogItemsById.get(line.itemId)?.availableForDates != null
-                                  ? <>Доступно: <strong>{catalogItemsById.get(line.itemId)?.availableForDates}</strong></>
-                                  : undefined}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeEditLine(idx)}
-                                className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                              >
-                                Удалить
-                              </button>
-                            </div>
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-[132px_minmax(180px,0.8fr)_minmax(220px,1.2fr)]">
+                          <article key={line.id ?? `new-${idx}`} className="px-4 py-3.5 transition-colors duration-150 hover:bg-zinc-50/70 sm:px-5">
+                            <div className="grid items-end gap-x-4 gap-y-3 xl:grid-cols-[minmax(13rem,1.15fr)_8.5rem_minmax(11rem,0.72fr)_minmax(12rem,0.78fr)_2.5rem]">
+                              <div className="self-center">
+                                <ProductIdentity
+                                  itemId={line.itemId}
+                                  photo1Key={catalogItemsById.get(line.itemId)?.photo1Key ?? line.itemPhoto1Key}
+                                  name={line.itemName}
+                                  subtitle={catalogItemsById.get(line.itemId)?.availableForDates != null
+                                    ? <>Доступно: <strong>{catalogItemsById.get(line.itemId)?.availableForDates}</strong></>
+                                    : undefined}
+                                />
+                              </div>
                               <div>
-                                <div className="mb-1.5 text-xs font-semibold text-zinc-500">Количество</div>
-                                <div className="flex h-11 w-full items-center justify-between overflow-hidden rounded-md border border-zinc-300 bg-white">
-                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Уменьшить">−</button>
+                                <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-500">Количество</div>
+                                <div className="flex h-10 w-full items-center justify-between overflow-hidden rounded-md border border-zinc-300 bg-white">
+                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", Math.max(1, (Number(line.requestedQty) || 1) - 1))} className="h-full px-3 text-zinc-600 hover:bg-zinc-100" aria-label="Уменьшить">−</button>
                                   <input
                                     type="text"
                                     inputMode="numeric"
@@ -2118,23 +2116,19 @@ export default function OrderDetailsPage() {
                                       if (value === "" || /^\d+$/.test(value)) updateEditLine(idx, "requestedQty", value === "" ? "" : value);
                                     }}
                                     onBlur={() => { if (line.requestedQty === "") updateEditLine(idx, "requestedQty", 1 as never); }}
-                                    className="w-12 border-0 bg-transparent text-center text-sm font-bold tabular-nums outline-none"
+                                    className="w-10 border-0 bg-transparent text-center text-sm font-black tabular-nums outline-none"
                                   />
-                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", (Number(line.requestedQty) || 1) + 1)} className="h-full px-3 text-zinc-600 hover:bg-zinc-50" aria-label="Увеличить">+</button>
+                                  <button type="button" onClick={() => updateEditLine(idx, "requestedQty", (Number(line.requestedQty) || 1) + 1)} className="h-full px-3 text-zinc-600 hover:bg-zinc-100" aria-label="Увеличить">+</button>
                                 </div>
                               </div>
                               <div>
-                                <div className="mb-1.5 text-xs font-semibold text-zinc-500">Расчёт</div>
-                                <div className="flex h-11 items-center rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm tabular-nums text-zinc-700">
-                                  <strong className="font-black text-zinc-950">{formatMoney(dailyRate)}</strong>
-                                  <span className="mx-1.5 text-zinc-400">×</span>
-                                  <span>{Number(line.requestedQty) || 0} шт.</span>
-                                  <span className="mx-1.5 text-zinc-400">×</span>
-                                  <span>{editPricing?.days ?? 0} дн.</span>
+                                <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-500">Ставка × срок</div>
+                                <div className="flex h-10 items-center whitespace-nowrap rounded-md bg-zinc-100 px-3 text-xs font-semibold tabular-nums text-zinc-700">
+                                  {formatMoney(dailyRate)} <span className="mx-1.5 text-zinc-400">×</span> {Number(line.requestedQty) || 0} <span className="mx-1.5 text-zinc-400">×</span> {editPricing?.days ?? 0} дн.
                                 </div>
                               </div>
-                              <label className="block sm:col-span-2 lg:col-span-1">
-                                <span className="mb-1.5 block text-xs font-semibold text-zinc-600">Сумма строки</span>
+                              <label className="block">
+                                <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.08em] text-zinc-500">Сумма позиции</span>
                                 {isWarehouse ? (
                                   <span className="relative block">
                                     <input
@@ -2143,27 +2137,38 @@ export default function OrderDetailsPage() {
                                       step={1}
                                       value={line.pricePerDaySnapshot === "" ? "" : Math.round(lineTotal)}
                                       onChange={(event) => updateEditLineRentalTotal(idx, event.target.value === "" ? "" : Number(event.target.value))}
-                                      className={orderInputClass + " h-11 w-full pr-9 text-right font-black tabular-nums"}
+                                      className={orderInputClass + " h-10 w-full pr-9 text-right font-black tabular-nums"}
                                     />
                                     <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm font-bold text-zinc-500">₽</span>
                                   </span>
                                 ) : (
-                                  <div className="flex h-11 items-center justify-end rounded-md border border-zinc-200 bg-zinc-50 px-3 font-black tabular-nums text-zinc-950">{formatMoney(lineTotal)}</div>
+                                  <div className="flex h-10 items-center justify-end rounded-md border border-zinc-200 bg-zinc-50 px-3 font-black tabular-nums text-zinc-950">{formatMoney(lineTotal)}</div>
                                 )}
-                                {discountRatio < 1 ? (
-                                  <span className="mt-1 block text-right text-[11px] font-semibold text-emerald-700">
-                                    После общей скидки {formatMoney(lineTotal * discountRatio)}
-                                  </span>
-                                ) : null}
                               </label>
+                              <button
+                                type="button"
+                                onClick={() => removeEditLine(idx)}
+                                className="grid h-10 w-10 place-items-center rounded-md text-lg text-zinc-400 hover:bg-rose-50 hover:text-rose-700"
+                                aria-label={`Удалить позицию ${line.itemName}`}
+                                title="Удалить позицию"
+                              >
+                                ×
+                              </button>
                             </div>
-                            <label className="mt-2.5 block">
+                            <div className="mt-2 flex min-h-5 items-center justify-end">
+                              {discountRatio < 1 ? (
+                                <span className="text-[11px] font-bold text-emerald-700">
+                                  После общей скидки: {formatMoney(lineTotal * discountRatio)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <label className="mt-1 block">
                               <span className="sr-only">Комментарий к позиции</span>
                               <input
                                 type="text"
                                 value={line.lineComment}
                                 onChange={(event) => updateEditLine(idx, "lineComment", event.target.value)}
-                                className={orderInputClass + " w-full"}
+                                className={orderInputClass + " h-10 w-full bg-zinc-50/70"}
                                 placeholder={isWarehouse ? "Комментарий склада для Grinvich" : "Комментарий для склада"}
                               />
                             </label>
@@ -2187,7 +2192,7 @@ export default function OrderDetailsPage() {
                   <h2 className="text-base font-black text-zinc-950">Услуги и расходы</h2>
                   <p className="mt-1 text-xs text-zinc-500">Клиентские цены, внутренняя себестоимость и скрытые траты — в одном блоке.</p>
                 </div>
-                <div className="bg-zinc-50/40">
+                <div className="space-y-2 bg-zinc-50/60 p-3 sm:p-4">
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -2234,7 +2239,7 @@ export default function OrderDetailsPage() {
                   onInternalPaymentMethodChange={setEditDemontageInternalPaymentMethod}
                 />
                 {isWarehouse ? (
-                  <div className="border-t border-zinc-200 bg-zinc-50/70 p-4 sm:p-5">
+                  <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/45 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-black text-zinc-900">Скрытые траты</div>
@@ -2252,7 +2257,7 @@ export default function OrderDetailsPage() {
                     </div>
                     <div className="mt-3">
                       {editHiddenExpenses.length === 0 ? (
-                        <div className="border-t border-dashed border-zinc-300 py-3 text-sm text-zinc-500">
+                        <div className="rounded-lg border border-dashed border-amber-300/80 bg-white/65 px-3 py-3 text-sm text-zinc-500">
                           Скрытых трат пока нет.
                         </div>
                       ) : null}

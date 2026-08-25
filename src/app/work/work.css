@@ -473,6 +473,19 @@
   letter-spacing: -.03em;
 }
 
+.work-customerMark svg {
+  width: 48px;
+  height: 48px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.work-card[data-kind="STANDALONE_ESTIMATE"] .work-customerMark { color: #126f80; }
+.work-card[data-kind="STANDALONE_ORDER"] .work-customerMark { color: #6d5210; }
+.work-card[data-kind="PROJECT"] .work-customerMark { color: #5d2ead; }
+
 .work-card__identity,
 .work-card__state,
 .work-card__numbers {

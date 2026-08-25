@@ -6,8 +6,9 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
-import { OrderStatusStepper } from "@/app/_ui/OrderStatusStepper";
+import { OrderStatusStepper, orderStatusLabelRu } from "@/app/_ui/OrderStatusStepper";
 import { OrderFeedbackEditor, type ServiceFeedback } from "@/app/_ui/OrderServiceFeedback";
+import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 import "./orders.css";
@@ -305,31 +306,38 @@ export default function OrdersPage() {
 
   const totalLoaded = orders.length;
   const filteredCount = filteredSorted.length;
+  const activeCount = orders.filter((order) => order.status !== "CLOSED" && order.status !== "CANCELLED").length;
+  const actionCount = orders.filter((order) =>
+    order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED" || order.status === "ISSUED",
+  ).length;
 
   function renderOrderCard(o: OrderCard, kind: "root" | "child") {
     const isCancelled = o.status === "CANCELLED";
     const isSupplement = Boolean(o.parentOrderId);
     const canApprove = o.status === "ESTIMATE_SENT" || o.status === "CHANGES_REQUESTED";
     const canReturn = o.status === "ISSUED";
-    const initials = o.customer.name.trim().slice(0, 2).toUpperCase();
     return (
       <article
         key={o.id}
         className="my-order"
         data-child={kind === "child"}
         data-cancelled={isCancelled}
+        data-status={o.status}
       >
         <div className="my-order__main">
           <div className="my-order__identity">
             <div className="my-order__logo" aria-hidden="true">
               {o.customer.logoUrl ? (
-                <Image src={o.customer.logoUrl} alt="" width={42} height={42} unoptimized />
-              ) : initials}
+                <Image src={o.customer.logoUrl} alt="" width={96} height={96} unoptimized />
+              ) : <WorkEntityIcon kind="ORDER" />}
             </div>
             <div className="min-w-0">
+              <span className="my-order__overline">
+                {isSupplement ? "Дополнительная заявка" : "Заявка"} · {orderStatusLabelRu[o.status]}
+              </span>
               <strong>{o.eventName || o.customer.name}</strong>
               <small>
-                {o.customer.name} · {isSupplement ? "дополнительная" : `создана ${fmtDate(o.createdAt)}`}
+                {o.customer.name} · создана {fmtDate(o.createdAt)}
               </small>
             </div>
           </div>
@@ -345,7 +353,8 @@ export default function OrdersPage() {
           </div>
 
           <div className="my-order__amount">
-            {o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}
+            <small>Итого</small>
+            <strong>{o.totalAmount != null ? formatMoney(o.totalAmount) : "—"}</strong>
           </div>
 
           <div className="my-order__actions">
@@ -386,7 +395,7 @@ export default function OrdersPage() {
             source={o.source}
             showSummary={false}
             density="compact"
-            compactWindow={5}
+            compactWindow={8}
           />
         </div>
 
@@ -408,11 +417,17 @@ export default function OrdersPage() {
   return (
     <AppShell title="Мои заявки">
       <div className="my-orders">
-        <section className="my-orders__toolbar">
-          <div className="my-orders__toolbarTop">
-            <div>
-              <h1>Мои заявки</h1>
-              <p>{totalLoaded} {totalLoaded === 1 ? "заявка" : "заявок"} · актуальные действия всегда сверху</p>
+        <section className="my-orders__hero">
+          <div className="my-orders__heroArt" aria-hidden="true">
+            <Image src="/brand/dino-orders-hero.png" alt="" fill sizes="(max-width: 800px) 55vw, 640px" priority />
+          </div>
+          <div className="my-orders__heroContent">
+            <span className="my-orders__eyebrow">Рабочий центр Grinvich</span>
+            <h1>Мои заявки</h1>
+            <p>Согласуйте смету, следите за подготовкой и отправляйте реквизит на приёмку без лишних переходов.</p>
+            <div className="my-orders__heroMeta" aria-label="Сводка по заявкам">
+              <span><strong>{activeCount}</strong> в работе</span>
+              <span><strong>{actionCount}</strong> ждут вашего действия</span>
             </div>
             <div className="my-orders__tabs" role="tablist" aria-label="Область заявок">
               {(["ACTIVE", "ALL", "DONE"] as const).map((key) => (
@@ -428,7 +443,9 @@ export default function OrdersPage() {
               ))}
             </div>
           </div>
+        </section>
 
+        <section className="my-orders__toolbar" aria-label="Поиск и фильтры">
           <div className="my-orders__filters">
             <label className="my-orders__search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

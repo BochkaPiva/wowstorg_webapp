@@ -11,6 +11,7 @@ import {
   type OrderStatus,
 } from "@/app/_ui/OrderStatusStepper";
 import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
+import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import { useAuth } from "@/app/providers";
 
 import "./work.css";
@@ -928,7 +929,11 @@ export default function WorkQueuePage() {
                           // The authenticated logo endpoint must receive the current session cookie.
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.customer.logoUrl} alt="" />
-                        ) : <b>{initials(customerName)}</b>}
+                        ) : (
+                          <WorkEntityIcon
+                            kind={item.kind === "STANDALONE_ORDER" ? "ORDER" : item.kind === "STANDALONE_ESTIMATE" ? "ESTIMATE" : "PROJECT"}
+                          />
+                        )}
                       </span>
                       <span className="work-card__identity">
                         <span className="work-card__overline">{KIND_LABEL[item.kind]} · {customerName}</span>

@@ -56,8 +56,12 @@ export function Stepper({
   const safeWindow = Math.max(3, Math.min(8, windowSize));
   const half = Math.floor(safeWindow / 2);
   const wanted = new Set<number>([0, total - 1]);
-  for (let index = currentIdx - half; index <= currentIdx + half; index += 1) {
-    if (index >= 0 && index < total) wanted.add(index);
+  if (safeWindow >= total) {
+    for (let index = 0; index < total; index += 1) wanted.add(index);
+  } else {
+    for (let index = currentIdx - half; index <= currentIdx + half; index += 1) {
+      if (index >= 0 && index < total) wanted.add(index);
+    }
   }
   const sorted = Array.from(wanted).sort((a, b) => a - b);
 

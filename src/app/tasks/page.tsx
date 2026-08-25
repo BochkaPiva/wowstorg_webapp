@@ -967,7 +967,7 @@ function ChecklistTreeItem({
         </div>
         <div className="task-checklist-row__stickers">
           <div className="task-checklist-row__sticker-list">
-            {hasPriority ? <button type="button" className={`task-subtask-sticker is-priority is-${node.priority.toLowerCase()}`} onClick={(event) => openSticker(event, "priority")}><PriorityStickerIcon />{node.priorityStickerConfigured || node.priority !== "NORMAL" ? PRIORITY_LABEL[node.priority] : "Приоритет"}</button> : null}
+            {hasPriority ? <button type="button" className={`task-subtask-sticker is-priority is-${node.priority.toLowerCase()}${node.priorityStickerConfigured || node.priority !== "NORMAL" ? "" : " is-unconfigured"}`} onClick={(event) => openSticker(event, "priority")}><PriorityStickerIcon />{node.priorityStickerConfigured || node.priority !== "NORMAL" ? PRIORITY_LABEL[node.priority] : "Приоритет"}</button> : null}
             {node.deadlineStickerEnabled || node.dueDate ? <button type="button" className="task-subtask-sticker" onClick={(event) => openSticker(event, "deadline")}><CalendarStickerIcon />{node.dueDate ? `${fmtDate(node.dueDate)}${node.dueTime ? ` · ${node.dueTime}` : ""}` : "Дедлайн"}</button> : null}
             {node.reminderStickerEnabled || node.reminderAt ? <button type="button" className="task-subtask-sticker" title="Изменить напоминание" onClick={(event) => openSticker(event, "reminder")}><ReminderStickerIcon />{node.reminderAt ? fmtDate(dateTimeInOmsk(node.reminderAt).date) : "Напоминание"}</button> : null}
             <div className="task-checklist-row__quick">
@@ -1224,9 +1224,25 @@ function TaskCard({
   const draggedRef = React.useRef(false);
   const [openMenu, setOpenMenu] = React.useState<"stickers" | "actions" | StickerMode | null>(null);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
+  const [editingTitle, setEditingTitle] = React.useState(false);
+  const [titleDraft, setTitleDraft] = React.useState(task.title);
   const hasPriority = task.priorityStickerEnabled || task.priority !== "NORMAL";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
+
+  React.useEffect(() => {
+    if (!editingTitle) setTitleDraft(task.title);
+  }, [editingTitle, task.title]);
+
+  function finishTitleEdit() {
+    const nextTitle = titleDraft.trim();
+    setEditingTitle(false);
+    if (!nextTitle) {
+      setTitleDraft(task.title);
+      return;
+    }
+    if (nextTitle !== task.title) onPatchTask(task.id, { title: nextTitle });
+  }
 
   return (
     <div
@@ -1286,17 +1302,47 @@ function TaskCard({
           <RoundCheckbox checked={taskDone} onChange={(checked) => onPatchTask(task.id, { completed: checked })} />
           <div className="min-w-0 flex-1">
             <div className="task-card__title-row">
-              <strong className={`task-card__title${taskDone ? " is-done" : ""}`}>{task.title}</strong>
-              <button
-                type="button"
-                className="task-card__edit"
-                onClick={(event) => { event.stopPropagation(); onOpen(task); }}
-                onMouseDown={(event) => event.stopPropagation()}
-                title="Редактировать задачу"
-                aria-label="Редактировать задачу"
-              >
-                ✎
-              </button>
+              {editingTitle ? (
+                <input
+                  autoFocus
+                  className="task-card__title-input"
+                  value={titleDraft}
+                  aria-label="Название задачи"
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onBlur={finishTitleEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setTitleDraft(task.title);
+                      setEditingTitle(false);
+                    }
+                  }}
+                />
+              ) : (
+                <>
+                  <strong className={`task-card__title${taskDone ? " is-done" : ""}`}>{task.title}</strong>
+                  <button
+                    type="button"
+                    className="task-card__edit"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setTitleDraft(task.title);
+                      setEditingTitle(true);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    title="Быстро переименовать"
+                    aria-label={`Переименовать задачу «${task.title}»`}
+                  >
+                    ✎
+                  </button>
+                </>
+              )}
             </div>
             <TaskCardContext task={task} />
           </div>
@@ -1313,7 +1359,7 @@ function TaskCard({
         </div>
 
         <div className="task-card-tools">
-          {hasPriority ? <button type="button" className={`task-card-sticker task-card-sticker--priority is-${task.priority.toLowerCase()}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("priority"); }}><PriorityStickerIcon />{task.priorityStickerConfigured || task.priority !== "NORMAL" ? PRIORITY_LABEL[task.priority] : "Приоритет"}</button> : null}
+          {hasPriority ? <button type="button" className={`task-card-sticker task-card-sticker--priority is-${task.priority.toLowerCase()}${task.priorityStickerConfigured || task.priority !== "NORMAL" ? "" : " is-unconfigured"}`} onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("priority"); }}><PriorityStickerIcon />{task.priorityStickerConfigured || task.priority !== "NORMAL" ? PRIORITY_LABEL[task.priority] : "Приоритет"}</button> : null}
           {task.deadlineStickerEnabled || task.dueDate ? <button type="button" className="task-card-sticker" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("deadline"); }}><CalendarStickerIcon />{task.dueDate ? `${fmtDate(task.dueDate)}${task.dueTime ? ` · ${task.dueTime}` : ""}` : "Дедлайн"}</button> : null}
           {task.reminderStickerEnabled || task.reminderAt ? <button type="button" className="task-card-sticker" title="Изменить напоминание" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu("reminder"); }}><ReminderStickerIcon />{task.reminderAt ? fmtDate(dateTimeInOmsk(task.reminderAt).date) : "Напоминание"}</button> : null}
           <button type="button" className="task-card-tool" onClick={(event) => { event.stopPropagation(); setMenuAnchor(event.currentTarget); setOpenMenu((current) => current === "stickers" ? null : "stickers"); }} onMouseDown={(event) => event.stopPropagation()}>＋ Стикер</button>

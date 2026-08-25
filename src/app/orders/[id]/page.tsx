@@ -945,11 +945,11 @@ export default function OrderDetailsPage() {
       deliveryPrice: editDeliveryEnabled ? Number(editDeliveryPrice || 0) : 0,
       montagePrice: editMontageEnabled ? Number(editMontagePrice || 0) : 0,
       demontagePrice: editDemontageEnabled ? Number(editDemontagePrice || 0) : 0,
-      rentalDiscountType: isWarehouse && !order.greenwichUserId ? editRentalDiscountType : "NONE",
-      rentalDiscountPercent: isWarehouse && !order.greenwichUserId
+      rentalDiscountType: isWarehouse ? editRentalDiscountType : "NONE",
+      rentalDiscountPercent: isWarehouse
         ? editRentalDiscountPercent === "" ? null : Number(editRentalDiscountPercent)
         : null,
-      rentalDiscountAmount: isWarehouse && !order.greenwichUserId
+      rentalDiscountAmount: isWarehouse
         ? editRentalDiscountAmount === "" ? null : Number(editRentalDiscountAmount)
         : null,
       clientPaymentMethod: order.clientPaymentMethod,
@@ -1376,7 +1376,7 @@ export default function OrderDetailsPage() {
         return;
       }
     }
-    const discountError = isWarehouse && !order.greenwichUserId
+    const discountError = isWarehouse
       ? getOrderDiscountError({
           type: editRentalDiscountType,
           percent: editRentalDiscountPercent,
@@ -1444,7 +1444,7 @@ export default function OrderDetailsPage() {
                 hiddenExpenses: hiddenExpensePayload(),
               }
             : {}),
-          ...(isWarehouse && !order.greenwichUserId
+          ...(isWarehouse
             ? {
                 rentalDiscountType: editRentalDiscountType,
                 rentalDiscountPercent:
@@ -1456,9 +1456,7 @@ export default function OrderDetailsPage() {
                     ? Number(editRentalDiscountAmount)
                     : null,
               }
-            : isWarehouse
-              ? { rentalDiscountType: "NONE", rentalDiscountPercent: null, rentalDiscountAmount: null }
-              : {
+            : {
                   greenwichRequestedDiscountType: "NONE",
                   greenwichRequestedDiscountPercent: null,
                   greenwichRequestedDiscountAmount: null,
@@ -1951,7 +1949,7 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             </div>
-            {isWarehouse && !isInternalGreenwichOrder ? (
+            {isWarehouse ? (
               <OrderDiscountControl
                 type={editRentalDiscountType}
                 percent={editRentalDiscountPercent}
@@ -1961,7 +1959,9 @@ export default function OrderDetailsPage() {
                 onPercentChange={setEditRentalDiscountPercent}
                 onAmountChange={setEditRentalDiscountAmount}
                 title="Скидка на реквизит"
-                description="Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."
+                description={isInternalGreenwichOrder
+                  ? "Дополнительная ручная скидка применяется к уже рассчитанным ценам Grinvich. Итог и маржа пересчитаются до сохранения."
+                  : "Применяется только к аренде реквизита. Итог и маржа пересчитаются до сохранения."}
               />
             ) : (
               <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50/80 p-5 text-sm text-violet-950">

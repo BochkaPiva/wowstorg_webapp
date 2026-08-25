@@ -375,13 +375,7 @@ export async function PATCH(
         const nextDeliveryPrice = data.deliveryPrice ?? order.deliveryPrice;
         const nextMontagePrice = data.montagePrice ?? order.montagePrice;
         const nextDemontagePrice = data.demontagePrice ?? order.demontagePrice;
-        const nextDiscount = order.greenwichUserId
-          ? {
-              rentalDiscountType: "NONE" as const,
-              rentalDiscountPercent: null,
-              rentalDiscountAmount: null,
-            }
-          : {
+        const nextDiscount = {
           rentalDiscountType: data.rentalDiscountType ?? order.rentalDiscountType,
           rentalDiscountPercent:
             (data.rentalDiscountType ?? order.rentalDiscountType) === "PERCENT"

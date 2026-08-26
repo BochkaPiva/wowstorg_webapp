@@ -3,7 +3,7 @@
 import "@/app/catalog/catalog.css";
 import "react-day-picker/style.css";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 import { createPortal } from "react-dom";
 import { format, parse } from "date-fns";
@@ -29,6 +29,7 @@ import {
   projectStatusPickerLabel,
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
+import { projectReturnFallback, safeDetailReturnTo } from "@/lib/detail-return";
 import { ProjectContactsPanel } from "./ProjectContactsPanel";
 import { ProjectEstimatePanel } from "./ProjectEstimatePanel";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
@@ -787,9 +788,12 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = typeof params.id === "string" ? params.id : "";
   const { state } = useAuth();
   const role = state.status === "authenticated" ? state.user.role : null;
+  const returnFallback = projectReturnFallback(searchParams.get("from"));
+  const backHref = safeDetailReturnTo(searchParams.get("returnTo"), returnFallback.href);
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
 
   const [project, setProject] = React.useState<ProjectDetail | null>(null);
@@ -1094,13 +1098,13 @@ export default function ProjectDetailPage() {
   const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
   return (
-    <AppShell title={project?.title ?? "Проект"}>
+    <AppShell title={project?.title ?? "Проект"} backHref={backHref}>
       <div className="mb-4">
         <Link
-          href="/projects"
+          href={backHref}
           className="text-sm font-medium text-violet-700 hover:text-violet-900"
         >
-          ← К списку проектов
+          ← {returnFallback.label}
         </Link>
       </div>
 

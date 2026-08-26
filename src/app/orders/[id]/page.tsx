@@ -10,6 +10,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
 import { getOrderDiscountError } from "@/app/orders/OrderDiscountControl";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
+import { orderReturnFallback, safeDetailReturnTo } from "@/lib/detail-return";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
@@ -952,16 +953,12 @@ export default function OrderDetailsPage() {
   const from = searchParams.get("from");
   /** Встроено в карточку проекта (iframe): без оболочки AppShell и без ухода в очередь после приёмки */
   const embed = searchParams.get("embed") === "1";
-  const warehouseBackHref = from === "warehouse-archive"
-    ? "/warehouse/archive"
-    : from === "admin-quality"
-      ? "/admin/quality"
-      : "/warehouse/queue";
-  const warehouseBackLabel = from === "warehouse-archive"
-    ? "В архив"
-    : from === "admin-quality"
-      ? "К оценкам"
-      : "В очередь";
+  const returnFallback = orderReturnFallback(from, {
+    isWarehouse: Boolean(isWarehouse),
+    projectId: order?.project?.id,
+  });
+  const backHref = safeDetailReturnTo(searchParams.get("returnTo"), returnFallback.href);
+  const backLabel = returnFallback.label;
 
   const [internalNoteDraft, setInternalNoteDraft] = React.useState("");
   const [internalNoteOpen, setInternalNoteOpen] = React.useState(false);
@@ -1724,7 +1721,7 @@ export default function OrderDetailsPage() {
     return embed ? (
       <div className="p-4">{body}</div>
     ) : (
-      <AppShell title="Заявка">{body}</AppShell>
+      <AppShell title="Заявка" backHref={backHref}>{body}</AppShell>
     );
   }
 
@@ -1734,7 +1731,7 @@ export default function OrderDetailsPage() {
         <p className="text-sm text-red-600">{error ?? "Заявка не найдена"}</p>
         {!embed ? (
           <Link
-            href={isWarehouse ? warehouseBackHref : "/orders"}
+            href={backHref}
             className="inline-block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
           >
             ← Назад
@@ -1745,7 +1742,7 @@ export default function OrderDetailsPage() {
     return embed ? (
       <div className="p-4">{body}</div>
     ) : (
-      <AppShell title="Заявка">{body}</AppShell>
+      <AppShell title="Заявка" backHref={backHref}>{body}</AppShell>
     );
   }
 
@@ -1756,10 +1753,10 @@ export default function OrderDetailsPage() {
         {!embed ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
-              href={isWarehouse ? warehouseBackHref : "/orders"}
+              href={backHref}
               className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 transition-colors hover:border-zinc-950 hover:text-zinc-950"
             >
-              ← {isWarehouse ? warehouseBackLabel : "Мои заявки"}
+              ← {backLabel}
             </Link>
           </div>
         ) : null}
@@ -3010,6 +3007,6 @@ export default function OrderDetailsPage() {
   return embed ? (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4">{inner}</div>
   ) : (
-    <AppShell title={`Заявка ${order.id.slice(0, 8)}`}>{inner}</AppShell>
+    <AppShell title={`Заявка ${order.id.slice(0, 8)}`} backHref={backHref}>{inner}</AppShell>
   );
 }

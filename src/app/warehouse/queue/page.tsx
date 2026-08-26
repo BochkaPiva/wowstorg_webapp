@@ -7,6 +7,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
+import { withDetailReturn } from "@/lib/detail-return";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 import "./queue.css";
@@ -166,6 +167,7 @@ function WarehouseQueueContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const returnTo = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
 
   const [tab, setTab] = React.useState<"active" | "archive">(
     () => (searchParams.get("tab") === "archive" ? "archive" : "active"),
@@ -336,7 +338,7 @@ function WarehouseQueueContent() {
                 </button>
               ) : null}
             </span>
-            <Link href={`/orders/${order.id}?from=warehouse-queue`} className="queue-button queue-button--quiet">Открыть</Link>
+            <Link href={withDetailReturn(`/orders/${order.id}`, "warehouse-queue", returnTo)} className="queue-button queue-button--quiet">Открыть</Link>
             <button
               type="button"
               className="queue-button queue-button--disclosure"
@@ -431,7 +433,7 @@ function WarehouseQueueContent() {
                     {order.warehouseInternalNote ? "Изменить комментарий" : "Добавить комментарий"}
                   </button>
                   {order.status === "RETURN_DECLARED" ? (
-                    <Link href={`/orders/${order.id}?from=warehouse-queue#check-in`} className="queue-textButton">Открыть приёмку →</Link>
+                    <Link href={withDetailReturn(`/orders/${order.id}#check-in`, "warehouse-queue", returnTo)} className="queue-textButton">Открыть приёмку →</Link>
                   ) : null}
                 </div>
               </aside>

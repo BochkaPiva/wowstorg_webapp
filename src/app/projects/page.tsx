@@ -13,6 +13,7 @@ import {
   PROJECT_STATUS_LABEL,
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
+import { withDetailReturn } from "@/lib/detail-return";
 import type { ProjectBall, ProjectStatus } from "@prisma/client";
 
 type ProjectCard = {
@@ -175,6 +176,8 @@ function ProjectsContent() {
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
 
   const [tab, setTab] = React.useState<"active" | "archive">(() => tabFromSearchParams(searchParams));
+  const returnTo = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
+  const detailSource = tab === "archive" ? "projects-archive" : "projects";
 
   React.useEffect(() => {
     setTab(tabFromSearchParams(searchParams));
@@ -336,7 +339,7 @@ function ProjectsContent() {
         setCustomerId("");
         setCustomerInput("");
         closeCreateModal();
-        router.push(`/projects/${data.project.id}`);
+        router.push(withDetailReturn(`/projects/${data.project.id}`, "projects", returnTo));
         return;
       }
     } finally {
@@ -541,7 +544,7 @@ function ProjectsContent() {
                         <span className="font-medium opacity-75">· {archiveHeader.subtitle}</span>
                       </div>
                     ) : null}
-                    <Link href={`/projects/${p.id}`} className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.72fr)]">
+                    <Link href={withDetailReturn(`/projects/${p.id}`, detailSource, returnTo)} className="grid min-w-0 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.72fr)]">
                       <div className={isCancelledArchive ? "bg-zinc-50 p-4" : "p-4"}>
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
@@ -582,7 +585,7 @@ function ProjectsContent() {
                     </Link>
                     {tab === "active" ? (
                       <div className="flex min-h-11 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 py-2">
-                        <Link href={`/projects/${p.id}`} className="text-xs font-bold text-violet-800 transition-colors hover:text-violet-950">Открыть карточку →</Link>
+                        <Link href={withDetailReturn(`/projects/${p.id}`, detailSource, returnTo)} className="text-xs font-bold text-violet-800 transition-colors hover:text-violet-950">Открыть карточку →</Link>
                         <button type="button" onClick={() => openArchiveModal(p)} className="inline-flex h-8 items-center border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-700 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white">
                           Завершить / отменить
                         </button>

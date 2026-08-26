@@ -106,7 +106,15 @@ function sectionBackHref(path: string, role: string): string {
   return `/${parts.slice(0, -1).join("/")}`;
 }
 
-export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
+export function AppShell({
+  title,
+  children,
+  backHref,
+}: {
+  title: string;
+  children: React.ReactNode;
+  backHref?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { state, refresh } = useAuth();
@@ -177,7 +185,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
               <button
                 type="button"
                 className="app-backButton"
-                onClick={() => router.push(sectionBackHref(pathname, state.user.role))}
+                onClick={() => router.push(backHref ?? sectionBackHref(pathname, state.user.role))}
                 aria-label="Назад к разделу"
               >
                 <span aria-hidden="true">←</span>

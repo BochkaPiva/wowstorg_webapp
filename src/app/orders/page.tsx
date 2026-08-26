@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import React from "react";
+import { withDetailReturn } from "@/lib/detail-return";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
@@ -419,7 +420,7 @@ export default function OrdersPage() {
                 {actingId === o.id ? "Сохраняем…" : canApprove ? "Согласовать смету" : "На приёмку"}
               </button>
             ) : null}
-            <Link href={`/orders/${o.id}`} className="my-order__button my-order__button--dark">
+            <Link href={withDetailReturn(`/orders/${o.id}`, "orders", "/orders")} className="my-order__button my-order__button--dark">
               Открыть
             </Link>
             {o.status === "ISSUED" && !o.parentOrderId ? (
@@ -471,7 +472,7 @@ export default function OrdersPage() {
                   <span>Состав заявки</span>
                   <strong>{preview?.lines.length ?? 0} {preview?.lines.length === 1 ? "позиция" : "позиций"}</strong>
                 </div>
-                <Link href={`/orders/${o.id}`}>Открыть полностью →</Link>
+                <Link href={withDetailReturn(`/orders/${o.id}`, "orders", "/orders")}>Открыть полностью →</Link>
               </header>
               {previewLoading.has(o.id) ? (
                 <div className="my-order__previewLoading">Загружаем состав…</div>

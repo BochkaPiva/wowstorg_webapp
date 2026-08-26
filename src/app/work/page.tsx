@@ -13,6 +13,7 @@ import {
 import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
 import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import { useAuth } from "@/app/providers";
+import { withDetailReturn } from "@/lib/detail-return";
 
 import "./work.css";
 
@@ -909,10 +910,10 @@ export default function WorkQueuePage() {
                 const isExpanded = expanded.has(item.key);
                 const customerName = item.customer?.name ?? item.customerFallback ?? "Заказчик не указан";
                 const href = item.kind === "STANDALONE_ORDER"
-                  ? `/orders/${item.id}?from=work`
+                  ? withDetailReturn(`/orders/${item.id}`, "work", "/work")
                   : item.kind === "STANDALONE_ESTIMATE"
                     ? `/estimates/${item.id}`
-                    : `/projects/${item.id}`;
+                    : withDetailReturn(`/projects/${item.id}`, "work", "/work");
                 const preview = previews[item.id] ?? null;
                 return (
                   <article
@@ -1041,7 +1042,7 @@ export default function WorkQueuePage() {
                                   </button>
                                 ) : null}
                                 {item.kind !== "STANDALONE_ORDER" ? (
-                                  <Link href={`/orders/${order.id}?from=work`}>Открыть заявку</Link>
+                                  <Link href={withDetailReturn(`/orders/${order.id}`, "work", "/work")}>Открыть заявку</Link>
                                 ) : null}
                               </span>
                             </header>

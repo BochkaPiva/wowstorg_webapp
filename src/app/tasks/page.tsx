@@ -179,6 +179,10 @@ const PRIORITY_LABEL: Record<Priority, string> = {
 const TASK_COLORS = ["#334155", "#365a83", "#6d3b7d", "#7b6b2e", "#315f2f", "#7f2f5f"];
 const COLUMN_COLORS = ["#94a3b8", "#c084fc", "#facc15", "#5eead4", "#60a5fa", "#fb7185"];
 
+function isChecklistMissingError(cause: unknown) {
+  return cause instanceof Error && cause.message.includes("Подзадача не найдена");
+}
+
 function initials(name: string): string {
   return name
     .split(/\s+/u)
@@ -2094,11 +2098,11 @@ function TasksPageContent() {
   }, []);
 
   const updateBoard = React.useCallback((updater: (current: BoardDetail | null) => BoardDetail | null) => {
-    setBoard((current) => {
-      const nextBoard = updater(boardRef.current ?? current);
-      boardRef.current = nextBoard;
-      return nextBoard;
-    });
+    // React state updates are batched. Keep the ref authoritative synchronously so a
+    // second click in the same frame is calculated from the first optimistic change.
+    const nextBoard = updater(boardRef.current);
+    boardRef.current = nextBoard;
+    setBoard(nextBoard);
   }, []);
 
   const fetchBoardDetail = React.useCallback(async (id: string) => {
@@ -2118,8 +2122,13 @@ function TasksPageContent() {
 
   const loadBoard = React.useCallback(
     async (id: string) => {
+      const mutationSequence = mutationSequenceRef.current;
       const nextBoard = await fetchBoardDetail(id);
-      if (nextBoard) applyBoard(nextBoard);
+      if (
+        nextBoard
+        && pendingMutationsRef.current === 0
+        && mutationSequenceRef.current === mutationSequence
+      ) applyBoard(nextBoard);
     },
     [applyBoard, fetchBoardDetail],
   );
@@ -2220,8 +2229,15 @@ function TasksPageContent() {
         activityDrawer
       ) return;
       try {
+        const mutationSequence = mutationSequenceRef.current;
         const nextBoard = await fetchBoardDetail(boardId);
-        if (!stopped && nextBoard && nextBoard.syncToken !== boardRef.current?.syncToken) applyBoard(nextBoard);
+        if (
+          !stopped
+          && nextBoard
+          && pendingMutationsRef.current === 0
+          && mutationSequenceRef.current === mutationSequence
+          && nextBoard.syncToken !== boardRef.current?.syncToken
+        ) applyBoard(nextBoard);
       } catch {
         // Фоновая синхронизация не должна мешать работе с доской.
       }
@@ -2409,6 +2425,18 @@ function TasksPageContent() {
       } catch (e) {
         if (latestMutationByChecklistItemRef.current.get(queueKey) !== mutationId) return;
         latestMutationByChecklistItemRef.current.delete(queueKey);
+        if (isChecklistMissingError(e)) {
+          updateTaskInBoard(taskId, (task) => {
+            const checklistItems = task.checklistItems.filter((item) => item.id !== itemId && item.id !== persistedItemId);
+            return {
+              ...task,
+              checklistItems,
+              checklistDone: checklistItems.filter((item) => item.isDone).length,
+              checklistTotal: checklistItems.length,
+            };
+          }, persistedTaskId);
+          return;
+        }
         if (previousItem) {
           updateTaskInBoard(taskId, (task) => {
             const checklistItems = task.checklistItems.map((item) => (
@@ -2448,7 +2476,28 @@ function TasksPageContent() {
       : "Удалить подзадачу?";
     if (!window.confirm(confirmation)) return;
 
+    setError(null);
     const previousBoard = boardRef.current;
+    const previousTask = previousBoard?.columns
+      .flatMap((column) => column.tasks)
+      .find((task) => task.id === taskId);
+    const removedItemIds = new Set([itemId]);
+    if (previousTask) {
+      let foundDescendant = true;
+      while (foundDescendant) {
+        foundDescendant = false;
+        for (const item of previousTask.checklistItems) {
+          if (item.parentId && removedItemIds.has(item.parentId) && !removedItemIds.has(item.id)) {
+            removedItemIds.add(item.id);
+            foundDescendant = true;
+          }
+        }
+      }
+    }
+    const queueKey = checklistQueueKeyByItemRef.current.get(itemId) ?? itemId;
+    const mutationId = mutationSequenceRef.current + 1;
+    mutationSequenceRef.current = mutationId;
+    latestMutationByChecklistItemRef.current.set(queueKey, mutationId);
     updateBoard((current) => current ? {
       ...current,
       columns: current.columns.map((column) => ({
@@ -2456,19 +2505,7 @@ function TasksPageContent() {
         tasks: column.tasks.map((task) => {
           if (task.id !== taskId) return task;
 
-          const removedIds = new Set([itemId]);
-          let foundDescendant = true;
-          while (foundDescendant) {
-            foundDescendant = false;
-            for (const item of task.checklistItems) {
-              if (item.parentId && removedIds.has(item.parentId) && !removedIds.has(item.id)) {
-                removedIds.add(item.id);
-                foundDescendant = true;
-              }
-            }
-          }
-
-          const checklistItems = task.checklistItems.filter((item) => !removedIds.has(item.id));
+          const checklistItems = task.checklistItems.filter((item) => !removedItemIds.has(item.id));
           return {
             ...task,
             checklistItems,
@@ -2479,11 +2516,50 @@ function TasksPageContent() {
       })),
     } : current);
 
+    const sendMutation = async () => {
+      try {
+        const persistedItemId = await (checklistIdResolutionRef.current.get(itemId) ?? Promise.resolve(itemId));
+        await readApi(await fetch(`/api/tasks/checklist/${persistedItemId}`, { method: "DELETE" }));
+        if (latestMutationByChecklistItemRef.current.get(queueKey) === mutationId) {
+          latestMutationByChecklistItemRef.current.delete(queueKey);
+        }
+      } catch (e) {
+        // If an optimistic item failed to be created, there is nothing left to delete.
+        if (itemId.startsWith("temp-checklist-")) {
+          latestMutationByChecklistItemRef.current.delete(queueKey);
+          return;
+        }
+        if (latestMutationByChecklistItemRef.current.get(queueKey) !== mutationId) return;
+        latestMutationByChecklistItemRef.current.delete(queueKey);
+        if (previousTask) {
+          updateTaskInBoard(taskId, (task) => {
+            const currentIds = new Set(task.checklistItems.map((item) => item.id));
+            const checklistItems = previousTask.checklistItems
+              .filter((item) => removedItemIds.has(item.id) && !currentIds.has(item.id))
+              .concat(task.checklistItems)
+              .sort((left, right) => left.sortOrder - right.sortOrder);
+            return {
+              ...task,
+              checklistItems,
+              checklistDone: checklistItems.filter((item) => item.isDone).length,
+              checklistTotal: checklistItems.length,
+            };
+          });
+        }
+        showTransientError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
+      }
+    };
+    const previousMutation = checklistQueueByItemRef.current.get(queueKey) ?? Promise.resolve();
+    const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
+    checklistQueueByItemRef.current.set(queueKey, queuedMutation);
+    pendingMutationsRef.current += 1;
     try {
-      await readApi(await fetch(`/api/tasks/checklist/${itemId}`, { method: "DELETE" }));
-    } catch (e) {
-      applyBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось удалить подзадачу");
+      await queuedMutation;
+    } finally {
+      pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+      if (checklistQueueByItemRef.current.get(queueKey) === queuedMutation) {
+        checklistQueueByItemRef.current.delete(queueKey);
+      }
     }
   }
 
@@ -2548,7 +2624,7 @@ function TasksPageContent() {
       deadlineStickerEnabled: Boolean(draft.dueDate),
       reminderStickerEnabled: Boolean(draft.reminderAt),
       assigneeStickerEnabled: Boolean(draft.assigneeUserId),
-      completedAt: column.isDone ? new Date().toISOString() : null,
+      completedAt: null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2571,6 +2647,8 @@ function TasksPageContent() {
       ),
     });
 
+    mutationSequenceRef.current += 1;
+    pendingMutationsRef.current += 1;
     void request
       .then(({ task }) => {
         taskQueueKeyByIdRef.current.set(task.id, tempId);
@@ -2593,8 +2671,17 @@ function TasksPageContent() {
       })
       .catch((e) => {
         taskIdResolutionRef.current.delete(tempId);
-        applyBoard(previousBoard);
-        setError(e instanceof Error ? e.message : "Не удалось создать задачу");
+        updateBoard((current) => current ? {
+          ...current,
+          columns: current.columns.map((item) => ({
+            ...item,
+            tasks: item.tasks.filter((currentTask) => currentTask.id !== tempId),
+          })),
+        } : current);
+        showTransientError(e instanceof Error ? e.message : "Не удалось создать задачу");
+      })
+      .finally(() => {
+        pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
       });
   }
 
@@ -2698,7 +2785,7 @@ function TasksPageContent() {
                 : { ...column, tasks: withoutTask };
             }),
           } : current);
-          setError(e instanceof Error ? e.message : "Не удалось обновить задачу");
+          showTransientError(e instanceof Error ? e.message : "Не удалось обновить задачу");
         }
       } finally {
         pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
@@ -2713,8 +2800,8 @@ function TasksPageContent() {
 
   async function addChecklistItemInline(taskId: string, title: string, parentId: string | null = null) {
     setError(null);
-    const previousBoard = boardRef.current;
     const tempId = `temp-checklist-${crypto.randomUUID()}`;
+    mutationSequenceRef.current += 1;
     setExpandedTaskIds((current) => new Set(current).add(taskId));
 
     updateTaskInBoard(taskId, (task) => {
@@ -2788,8 +2875,16 @@ function TasksPageContent() {
       }), persistedTaskId);
     } catch (e) {
       checklistIdResolutionRef.current.delete(tempId);
-      applyBoard(previousBoard);
-      setError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
+      updateTaskInBoard(taskId, (task) => {
+        const checklistItems = task.checklistItems.filter((item) => item.id !== tempId);
+        return {
+          ...task,
+          checklistItems,
+          checklistTotal: checklistItems.length,
+          checklistDone: checklistItems.filter((item) => item.isDone).length,
+        };
+      });
+      showTransientError(e instanceof Error ? e.message : "Не удалось добавить подзадачу");
     } finally {
       pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
     }
@@ -2972,6 +3067,12 @@ function TasksPageContent() {
     if (!window.confirm("Удалить задачу вместе с подзадачами и историей?")) return;
     const previousBoard = boardRef.current;
     if (!previousBoard) return;
+    const sourceColumn = previousBoard.columns.find((column) => column.tasks.some((task) => task.id === taskId));
+    const sourceTask = sourceColumn?.tasks.find((task) => task.id === taskId);
+    const queueKey = taskQueueKeyByIdRef.current.get(taskId) ?? taskId;
+    const mutationId = mutationSequenceRef.current + 1;
+    mutationSequenceRef.current = mutationId;
+    latestMutationByTaskRef.current.set(queueKey, mutationId);
     applyBoard({
       ...previousBoard,
       columns: previousBoard.columns.map((column) => ({
@@ -2979,15 +3080,48 @@ function TasksPageContent() {
         tasks: column.tasks.filter((task) => task.id !== taskId),
       })),
     });
+    const sendMutation = async () => {
+      try {
+        const persistedTaskId = await (taskIdResolutionRef.current.get(taskId) ?? Promise.resolve(taskId));
+        await readApi(await fetch(`/api/tasks/tasks/${persistedTaskId}`, { method: "DELETE" }));
+        if (latestMutationByTaskRef.current.get(queueKey) === mutationId) {
+          latestMutationByTaskRef.current.delete(queueKey);
+        }
+        if (activityDrawer?.taskId === taskId || activityDrawer?.taskId === persistedTaskId) setActivityDrawer(null);
+      } catch (cause) {
+        if (taskId.startsWith("temp-task-")) {
+          latestMutationByTaskRef.current.delete(queueKey);
+          return;
+        }
+        if (latestMutationByTaskRef.current.get(queueKey) !== mutationId) return;
+        latestMutationByTaskRef.current.delete(queueKey);
+        if (sourceColumn && sourceTask) {
+          updateBoard((current) => current ? {
+            ...current,
+            columns: current.columns.map((column) => column.id === sourceColumn.id
+              ? {
+                  ...column,
+                  tasks: column.tasks.some((task) => task.id === taskId)
+                    ? column.tasks
+                    : [...column.tasks, sourceTask].sort((left, right) => left.sortOrder - right.sortOrder),
+                }
+              : column),
+          } : current);
+        }
+        showTransientError(cause instanceof Error ? cause.message : "Не удалось удалить задачу");
+      }
+    };
+    const previousMutation = moveQueueByTaskRef.current.get(queueKey) ?? Promise.resolve();
+    const queuedMutation = previousMutation.catch(() => undefined).then(sendMutation);
+    moveQueueByTaskRef.current.set(queueKey, queuedMutation);
     pendingMutationsRef.current += 1;
     try {
-      await readApi(await fetch(`/api/tasks/tasks/${taskId}`, { method: "DELETE" }));
-      if (activityDrawer?.taskId === taskId) setActivityDrawer(null);
-    } catch (cause) {
-      applyBoard(previousBoard);
-      setError(cause instanceof Error ? cause.message : "Не удалось удалить задачу");
+      await queuedMutation;
     } finally {
       pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
+      if (moveQueueByTaskRef.current.get(queueKey) === queuedMutation) {
+        moveQueueByTaskRef.current.delete(queueKey);
+      }
     }
   }
 

@@ -204,13 +204,16 @@ export async function DELETE(
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
-  const item = await prisma.workTaskChecklistItem.findUnique({
-    where: { id },
-    select: { taskId: true, title: true },
-  });
-  if (!item) return jsonError(404, "Подзадача не найдена");
-  await prisma.$transaction(async (tx) => {
-    await tx.workTaskChecklistItem.delete({ where: { id } });
+  const deleted = await prisma.$transaction(async (tx) => {
+    const item = await tx.workTaskChecklistItem.findUnique({
+      where: { id },
+      select: { taskId: true, title: true },
+    });
+    // DELETE is intentionally idempotent: a repeated click or a delayed request
+    // must not turn an already successful removal into a user-facing error.
+    if (!item) return false;
+    const result = await tx.workTaskChecklistItem.deleteMany({ where: { id } });
+    if (result.count === 0) return false;
     await appendWorkTaskActivity(tx, {
       taskId: item.taskId,
       actorUserId: auth.user.id,
@@ -218,6 +221,7 @@ export async function DELETE(
       message: `Удалена подзадача «${item.title}»`,
       metadata: { checklistItemId: id },
     });
+    return true;
   });
-  return jsonOk({ ok: true });
+  return jsonOk({ ok: true, alreadyDeleted: !deleted });
 }

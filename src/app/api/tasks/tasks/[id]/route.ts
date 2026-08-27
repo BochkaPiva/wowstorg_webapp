@@ -272,6 +272,6 @@ export async function DELETE(
   if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
-  await prisma.workTask.delete({ where: { id } });
-  return jsonOk({ ok: true });
+  const result = await prisma.workTask.deleteMany({ where: { id } });
+  return jsonOk({ ok: true, alreadyDeleted: result.count === 0 });
 }

@@ -195,12 +195,12 @@ function addOverviewSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
     ["Блок", "Факт прибыль", "Факт выручка", "Прогноз прибыль", "Прогноз выручка", "Комментарий"],
     [
       [
-        "Самостоятельные заявки",
+        "Самостоятельные заявки (закрытые / активные в периоде)",
         data.overview.finance.fact.standaloneOrdersProfit,
         data.overview.finance.fact.standaloneOrdersRevenue,
         data.overview.finance.forecast.standaloneOrdersProfit,
         data.overview.finance.forecast.standaloneOrdersRevenue,
-        `${data.overview.finance.forecast.standaloneOrdersTotal} активных заявок в прогнозе`,
+        `${data.overview.finance.forecast.standaloneOrdersTotal} активных заявок пересекают период`,
       ],
       [
         "Проекты",
@@ -331,7 +331,7 @@ function addRequisitesSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
     [
       ["Выручка", data.requisites.kpi.totalRevenue, data.requisites.forecast.totalRevenue, "Только самостоятельные заявки", periodLabel(data)],
       ["Прибыль", data.requisites.kpi.profitEstimate, data.requisites.forecast.profitEstimate, "После клиентского налога и внутренних расходов", periodLabel(data)],
-      ["Количество", data.requisites.kpi.ordersClosed, data.requisites.forecast.ordersTotal, "Факт = CLOSED, прогноз = не CLOSED/CANCELLED", periodLabel(data)],
+      ["Количество", data.requisites.kpi.ordersClosed, data.requisites.forecast.ordersTotal, "Факт = CLOSED с окончанием в периоде; прогноз = активные заявки, пересекающие период", periodLabel(data)],
       ["Исключено заявок в проектах", data.requisites.kpi.linkedClosedOrdersExcluded, data.requisites.kpi.linkedOrdersExcluded, "Чтобы не было двойного счета", periodLabel(data)],
     ],
     { currencyColumns: [1, 2] },

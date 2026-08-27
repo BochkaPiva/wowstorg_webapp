@@ -18,6 +18,7 @@ import {
   isCashPaymentMethod,
 } from "@/lib/order-service-internal-costs";
 import { prisma } from "@/server/db";
+import { orderRentalPeriodWhere } from "@/server/analytics/period-filters";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 export type AnalyticsScope = { from?: string; to?: string };
@@ -370,8 +371,9 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   const orderPeriodWhere = periodWhere("endDate", scope);
   const standaloneOrderWhere = { ...orderPeriodWhere, projectId: null };
   const linkedOrderWhere = { ...orderPeriodWhere, projectId: { not: null } };
-  const standaloneForecastOrderWhere = {
-    ...standaloneOrderWhere,
+  const standaloneForecastOrderWhere: Prisma.OrderWhereInput = {
+    ...orderRentalPeriodWhere(scope),
+    projectId: null,
     status: { notIn: FORECAST_ORDER_EXCLUDED_STATUSES },
   };
 
@@ -1364,7 +1366,7 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
     projects,
     customers,
     methodology: [
-      { section: "Реквизит", rule: "Фактическая выручка считается по закрытым заявкам, которые завершились в выбранном периоде. Скидки и налог берутся из той же формулы, что используется в заявках и сметах." },
+      { section: "Реквизит", rule: "Фактическая выручка считается по закрытым заявкам, которые завершились в выбранном периоде. Прогноз включает активные заявки, период аренды которых пересекается с выбранным диапазоном. Скидки и налог берутся из той же формулы, что используется в заявках и сметах." },
       { section: "Проекты", rule: `Финансовый прогноз считается по основной версии сметы проекта. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
       { section: "Заказчики", rule: "Метрики по заказчикам собираются из проектов, созданных в выбранном периоде. Фактическая выручка по заявкам показывается отдельно и учитывает только закрытые заявки." },
       { section: "Статусы", rule: "Возраст статусов и зависшие проекты — это управленческие сигналы для контроля работы, а не бухгалтерские показатели." },

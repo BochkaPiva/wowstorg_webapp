@@ -76,7 +76,7 @@ const TAB_META: Array<{
     label: "Сводка бизнеса",
     shortLabel: "Сводка",
     description: "Факт, прогноз, структура результата и точки управленческого внимания.",
-    basis: "Заявки — по дате завершения. Проекты — по датам мероприятия.",
+    basis: "Факт заявок — по дате завершения; прогноз — по пересечению периода аренды. Проекты — по датам мероприятия.",
   },
   {
     id: "bonuses",
@@ -769,7 +769,7 @@ function OverviewTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) 
           {
             label: "Прогноз выручки",
             value: formatMoney(finance.forecast.revenueTotal),
-            note: "Активные заявки и проекты",
+            note: "Активные заявки и проекты в выбранном периоде",
             accent: "violet",
           },
           {
@@ -805,7 +805,7 @@ function OverviewTab({ data, scope }: { data: AnalyticsPayload; scope: Scope }) 
             valueFormatter={formatMoney}
             rows={[
               {
-                label: "Заявки без проекта",
+                label: "Закрытые заявки без проекта",
                 value: finance.fact.standaloneOrdersRevenue,
                 meta: `Прибыль ${formatMoney(finance.fact.standaloneOrdersProfit)}`,
               },

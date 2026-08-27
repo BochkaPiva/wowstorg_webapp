@@ -556,6 +556,7 @@ UI обязательно показывает tooltip:
 - Linked orders are financially owned by their project and are excluded from standalone order revenue, service totals, customer totals and profit signals.
 - Overview fact = standalone closed orders + completed projects.
 - Overview forecast = standalone active orders + active non-archived projects.
+- Active standalone orders enter the forecast when their rental interval intersects the selected period; they are not required to end before the report's `to` date.
 - Bonus block = 15% of profit, split between 2 people.
 
 ## Update 2026-05-25: project period basis

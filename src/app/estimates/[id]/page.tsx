@@ -1,12 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ProjectDetailSkeleton } from "@/app/_ui/Skeleton";
-import { ProjectEstimatePanel } from "@/app/projects/[id]/ProjectEstimatePanel";
+import {
+  ProjectModuleBoundary,
+  ProjectModuleSkeleton,
+} from "@/app/projects/[id]/ProjectModuleBoundary";
+
+const ProjectEstimatePanel = dynamic(
+  () =>
+    import("@/app/projects/[id]/ProjectEstimatePanel").then(
+      (module) => module.ProjectEstimatePanel,
+    ),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Смета" /> },
+);
 
 type EstimateDetails = {
   id: string;
@@ -39,6 +51,7 @@ export default function StandaloneEstimatePage() {
   const [customerId, setCustomerId] = React.useState("");
   const [newCustomerName, setNewCustomerName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [estimateGridEnabled, setEstimateGridEnabled] = React.useState(true);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -46,8 +59,12 @@ export default function StandaloneEstimatePage() {
     try {
       const response = await fetch(`/api/standalone-estimates/${id}`, { cache: "no-store" });
       if (!response.ok) throw new Error(await responseMessage(response));
-      const payload = await response.json() as { estimate: EstimateDetails };
+      const payload = await response.json() as {
+        estimate: EstimateDetails;
+        features?: { projectEstimateGridV2?: boolean };
+      };
       setEstimate(payload.estimate);
+      setEstimateGridEnabled(payload.features?.projectEstimateGridV2 ?? true);
       setCustomerId(payload.estimate.customer?.id ?? "");
       setNewCustomerName(payload.estimate.leadCustomerName ?? "");
     } catch (loadError) {
@@ -149,12 +166,15 @@ export default function StandaloneEstimatePage() {
             <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</div>
           ) : null}
 
-          <ProjectEstimatePanel
-            projectId={estimate.id}
-            apiBase={`/api/standalone-estimates/${estimate.id}`}
-            standalone
-            readOnly={Boolean(estimate.convertedAt)}
-          />
+          <ProjectModuleBoundary title="Смета" resetKey={`${estimate.id}:estimate`}>
+            <ProjectEstimatePanel
+              projectId={estimate.id}
+              apiBase={`/api/standalone-estimates/${estimate.id}`}
+              standalone
+              readOnly={Boolean(estimate.convertedAt)}
+              estimateGridEnabled={estimateGridEnabled}
+            />
+          </ProjectModuleBoundary>
 
           {convertOpen ? (
             <div

@@ -9,12 +9,15 @@ import {
   resolveProjectEstimateRates,
   roundMoney,
 } from "@/lib/project-estimate-totals";
-import { calcCashInternalCostTaxAmount, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
+import {
+  getProjectEstimateLineInternalTotal,
+  summarizeProjectEstimateSections,
+} from "@/lib/project-estimate-line-totals";
 import type { ProjectEstimateReadLine, ProjectEstimateReadSection } from "@/server/projects/estimate-read-model";
 import {
   addFormulaRefFormula,
   applyLineFormulas,
-  cashInternalTaxFormula,
+  cashInternalTaxRangesFormula,
   percentOfFormula,
   setXlsxFormula,
   setXlsxMoneyFormat,
@@ -105,20 +108,7 @@ function lineClient(line: ProjectEstimateReadLine): number {
 }
 
 function lineInternal(line: ProjectEstimateReadLine): number {
-  return getNumericAmount(line.costInternal) +
-    (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0);
-}
-
-function lineCashInternalCostTax(line: ProjectEstimateReadLine): number {
-  const primary = isCashPaymentMethod(line.paymentMethod)
-    ? calcCashInternalCostTaxAmount(getNumericAmount(line.costInternal))
-    : 0;
-  const extra = (line.internalExpenses ?? []).reduce(
-    (sum, expense) =>
-      sum + (isCashPaymentMethod(expense.paymentMethod) ? calcCashInternalCostTaxAmount(getNumericAmount(expense.cost)) : 0),
-    0,
-  );
-  return primary + extra;
+  return getProjectEstimateLineInternalTotal(line);
 }
 
 type InternalExpensePart = {
@@ -733,7 +723,7 @@ export async function buildProjectEstimateXlsx(args: {
 
   let clientSubtotal = 0;
   let internalSubtotal = 0;
-  let cashInternalCostTax = 0;
+  const lineSummary = summarizeProjectEstimateSections(exportSections);
   let dataRowIndex = 0;
   const allClientDataRanges: XlsxDataRowRange[] = [];
   const allInternalDataRanges: XlsxDataRowRange[] = [];
@@ -765,11 +755,9 @@ export async function buildProjectEstimateXlsx(args: {
       if (isClient && line.lineType === "HIDDEN_EXPENSE") continue;
       const client = lineClient(line);
       const internal = lineInternal(line);
-      const lineCashTax = lineCashInternalCostTax(line);
       sectionClient += client;
       clientSubtotal += client;
       internalSubtotal += internal;
-      cashInternalCostTax += lineCashTax;
       if (isClient) {
         dataRowIndex += 1;
         sectionLineCount += 1;
@@ -878,7 +866,7 @@ export async function buildProjectEstimateXlsx(args: {
   const projectTotals = calcProjectEstimateTotals({
     clientSubtotal,
     internalSubtotal,
-    cashInternalCostTax,
+    cashInternalCostTax: lineSummary.cashInternalCostTax,
     commissionRate: financeRates.commissionRate,
     taxRate: financeRates.taxRate,
     clientChargeTaxRate: financeRates.clientChargeTaxRate,
@@ -919,12 +907,11 @@ export async function buildProjectEstimateXlsx(args: {
       financeRates.taxRate,
       taxableClientFormula,
     );
-    const cashTaxParts = allInternalDataRanges
-      .map(({ firstRow, lastRow }) =>
-        cashInternalTaxFormula(lineCols.internal!, lineCols.payment!, firstRow, lastRow),
-      )
-      .join("+");
-    const cashTaxFormula = cashTaxParts || "0";
+    const cashTaxFormula = cashInternalTaxRangesFormula(
+      lineCols.internal!,
+      lineCols.payment!,
+      allInternalDataRanges,
+    );
     const totalExpensesFormula = addFormulaExpressions([
       projectInternalFormula,
       nonCashTaxFormula,
@@ -991,7 +978,7 @@ export async function buildProjectEstimateXlsx(args: {
           {
             label: "Налог нал 3.5%",
             formula: cashTaxFormula,
-            result: roundMoney(cashInternalCostTax),
+            result: projectTotals.cashInternalCostTax,
           },
           {
             label: "Итого расходов",

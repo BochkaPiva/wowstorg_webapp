@@ -6,7 +6,11 @@ import {
   calcProjectEstimateRequisiteUnitPricePerDay,
   normalizeProjectEstimateDays,
 } from "@/lib/project-estimate-requisite";
-import { calcOrderServicesInternalCosts, isCashPaymentMethod } from "@/lib/order-service-internal-costs";
+import { calcOrderServicesInternalCosts } from "@/lib/order-service-internal-costs";
+import {
+  getProjectEstimateLineCashInternalTotal,
+  getProjectEstimateLineInternalTotal,
+} from "@/lib/project-estimate-line-totals";
 import { calcProjectEstimateTotals, getNumericAmount, type ProjectEstimateTotals } from "@/lib/project-estimate-totals";
 import { roundMoney } from "@/lib/money";
 import { usableStockUnits } from "@/lib/inventory-stock";
@@ -27,32 +31,6 @@ function unitLabelFromExtras(extras: Record<string, { unit?: string | null }>, l
   const u = extras[lineId]?.unit;
   const t = typeof u === "string" ? u.trim() : "";
   return t.length > 0 ? t : null;
-}
-
-function lineInternalTotal(line: {
-  costInternal?: { toString(): string } | string | number | null;
-  internalExpenses?: Array<{ cost?: { toString(): string } | string | number | null }> | null;
-}) {
-  return (
-    getNumericAmount(line.costInternal) +
-    (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0)
-  );
-}
-
-function lineCashInternalTotal(line: {
-  costInternal?: { toString(): string } | string | number | null;
-  paymentMethod?: string | null;
-  internalExpenses?: Array<{
-    cost?: { toString(): string } | string | number | null;
-    paymentMethod?: string | null;
-  }> | null;
-}) {
-  const primary = isCashPaymentMethod(line.paymentMethod) ? getNumericAmount(line.costInternal) : 0;
-  const extra = (line.internalExpenses ?? []).reduce(
-    (sum, expense) => sum + (isCashPaymentMethod(expense.paymentMethod) ? getNumericAmount(expense.cost) : 0),
-    0,
-  );
-  return primary + extra;
 }
 
 const EDITABLE_ORDER_STATUSES = new Set([
@@ -87,6 +65,8 @@ export type ProjectEstimateReadLine = {
   contractorNote?: string | null;
   contractorRequisites?: string | null;
   internalExpenses?: ProjectEstimateReadLineInternalExpense[];
+  /** Пользовательские вспомогательные значения, ключ = id колонки. Не участвуют в финансах. */
+  customValues?: Record<string, string>;
 };
 
 export type ProjectEstimateReadLineInternalExpense = {
@@ -199,6 +179,7 @@ export async function buildProjectEstimateReadModel(args: {
     select: {
       id: true,
       versionNumber: true,
+      revision: true,
       title: true,
       note: true,
       isPrimary: true,
@@ -222,12 +203,16 @@ export async function buildProjectEstimateReadModel(args: {
       ? await prisma.projectEstimateVersion.findFirst({
           where: { projectId: args.projectId, versionNumber: targetNum },
           include: {
+            customColumns: {
+              orderBy: { sortOrder: "asc" },
+            },
             sections: {
               orderBy: { sortOrder: "asc" },
               include: {
                 lines: {
                   orderBy: { position: "asc" },
                   include: {
+                    customCells: true,
                     internalExpenses: {
                       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
                     },
@@ -366,10 +351,10 @@ export async function buildProjectEstimateReadModel(args: {
             qty: line.qty != null ? Number(line.qty) : null,
             unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
           });
-          const internalCost = lineInternalTotal(line);
+          const internalCost = getProjectEstimateLineInternalTotal(line);
           clientSubtotal += getNumericAmount(costClient);
           internalSubtotal += internalCost;
-          cashInternalSubtotal += lineCashInternalTotal(line);
+          cashInternalSubtotal += getProjectEstimateLineCashInternalTotal(line);
         }
       }
     }
@@ -418,6 +403,7 @@ export async function buildProjectEstimateReadModel(args: {
         : {
             id: versionRow.id,
             versionNumber: versionRow.versionNumber,
+            revision: versionRow.revision,
             title: versionRow.title?.trim() || versionRow.note?.trim() || `Смета ${versionRow.versionNumber}`,
             note: versionRow.note,
             sortOrder: versionRow.sortOrder,
@@ -426,6 +412,15 @@ export async function buildProjectEstimateReadModel(args: {
             commissionEnabled: versionRow.commissionEnabled,
             clientTaxEnabled: versionRow.clientTaxEnabled,
             clientChargeTaxEnabled: versionRow.clientChargeTaxEnabled,
+            customColumns: versionRow.customColumns.map((column) => ({
+              id: column.id,
+              key: column.key,
+              label: column.label,
+              type: column.type,
+              formula: column.formula,
+              sortOrder: column.sortOrder,
+              width: column.width,
+            })),
             sections: [
               ...versionRow.sections.map<ProjectEstimateReadSection>((section) => {
               const linkedOrder =
@@ -666,6 +661,9 @@ export async function buildProjectEstimateReadModel(args: {
                       contractorNote: expense.contractorNote,
                       contractorRequisites: expense.contractorRequisites,
                     })),
+                    customValues: Object.fromEntries(
+                      line.customCells.map((cell) => [cell.columnId, cell.value ?? ""]),
+                    ),
                   };
                 }),
               };

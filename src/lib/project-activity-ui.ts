@@ -31,6 +31,8 @@ export const PROJECT_PATCH_FIELD_LABEL: Record<string, string> = {
   eventDateConfirmed: "Дата подтверждена",
   openBlockers: "Блокеры",
   internalSummary: "Внутреннее резюме",
+  workspace: "Рабочее пространство",
+  ownerUserId: "Ответственный",
 };
 
 export const CONTACT_PATCH_FIELD_LABEL: Record<string, string> = {

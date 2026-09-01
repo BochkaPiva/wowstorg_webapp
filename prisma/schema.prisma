@@ -208,6 +208,11 @@ enum ProjectBall {
   NONE
 }
 
+enum ProjectMemberRole {
+  OWNER
+  EDITOR
+}
+
 enum ProjectContactCategory {
   DECISION_MAKER
   CONTRACTOR
@@ -239,6 +244,15 @@ enum ProjectEstimateSectionKind {
   LOCAL
   REQUISITE
   CONTRACTOR
+}
+
+/// Пользовательская вспомогательная колонка сметы. Ни один тип не участвует в канонических финансах.
+enum ProjectEstimateCustomColumnType {
+  TEXT
+  NUMBER
+  DATE
+  CHECKBOX
+  FORMULA
 }
 
 enum InventoryAuditRunKind {
@@ -310,6 +324,15 @@ model User {
   browserPushSubscriptions       BrowserPushSubscription[]
   inventoryAuditRuns             InventoryAuditRun[]
   projectsOwned                  Project[]                    @relation("project_owner")
+  projectsCreated                Project[]                    @relation("project_created_by")
+  projectMemberships             ProjectMember[]              @relation("project_member_user")
+  projectMembershipsAdded        ProjectMember[]              @relation("project_member_added_by")
+  projectWidgetsCreated          ProjectWidget[]              @relation("project_widget_created_by")
+  projectWidgetsUpdated          ProjectWidget[]              @relation("project_widget_updated_by")
+  projectWorkspaceItemsCreated   ProjectWorkspaceItem[]       @relation("project_workspace_item_created_by")
+  projectWorkspaceItemsUpdated   ProjectWorkspaceItem[]       @relation("project_workspace_item_updated_by")
+  projectMutationReceipts        ProjectMutationReceipt[]     @relation("project_mutation_receipt_actor")
+  projectWorkspaceTemplates      ProjectWorkspaceTemplate[]   @relation("project_workspace_template_owner")
   standaloneEstimatesOwned       StandaloneEstimate[]         @relation("standalone_estimate_owner")
   projectActivityLogs            ProjectActivityLog[]
   projectCommunicationEntries    ProjectCommunicationEntry[]
@@ -600,6 +623,13 @@ model Project {
   ownerUserId String
   owner       User   @relation("project_owner", fields: [ownerUserId], references: [id], onDelete: Restrict)
 
+  /// Автор проекта не меняется при переназначении ответственного.
+  createdByUserId String
+  createdBy       User   @relation("project_created_by", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  /// Версия конфигурации карточки для будущего optimistic concurrency control.
+  revision Int @default(0)
+
   status ProjectStatus @default(LEAD)
   ball   ProjectBall   @default(CLIENT)
 
@@ -628,14 +658,149 @@ model Project {
   estimateVersions         ProjectEstimateVersion[]
   scheduleDays             ProjectScheduleDay[]
   tasks                    WorkTask[]
+  members                  ProjectMember[]
+  widgets                  ProjectWidget[]
+  workspaceItems           ProjectWorkspaceItem[]
+  mutationReceipts         ProjectMutationReceipt[]
   sourceStandaloneEstimate StandaloneEstimate?           @relation("standalone_estimate_converted_project")
 
   @@index([customerId])
   @@index([ownerUserId])
+  @@index([createdByUserId])
   @@index([archivedAt])
   @@index([status])
   @@index([mode])
   @@index([updatedAt])
+}
+
+/// Участник проекта. Ответственный всегда присутствует с ролью OWNER.
+model ProjectMember {
+  projectId String
+  userId    String
+  role      ProjectMemberRole @default(EDITOR)
+  addedById String
+  createdAt DateTime          @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation("project_member_user", fields: [userId], references: [id], onDelete: Restrict)
+  addedBy User    @relation("project_member_added_by", fields: [addedById], references: [id], onDelete: Restrict)
+
+  @@id([projectId, userId])
+  @@index([userId, projectId])
+  @@index([addedById])
+}
+
+/// Сохранённый виджет модульной карточки проекта.
+/// type остаётся строкой: реестр приложения валидирует известные типы и позволяет добавлять новые без enum-миграции.
+model ProjectWidget {
+  id            String   @id @default(cuid())
+  projectId     String
+  instanceKey   String
+  type          String
+  schemaVersion Int      @default(1)
+  sortOrder     Int      @default(0)
+  x             Int      @default(0)
+  y             Int      @default(0)
+  width         Int      @default(12)
+  heightPreset  String   @default("AUTO")
+  config        Json?
+  isVisible     Boolean  @default(true)
+  revision      Int      @default(0)
+  createdById   String
+  updatedById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project   Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User                   @relation("project_widget_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User                   @relation("project_widget_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  items     ProjectWorkspaceItem[]
+
+  @@unique([projectId, instanceKey])
+  @@index([projectId, sortOrder])
+  @@index([type])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+/// Личный шаблон компоновки карточки проекта. Хранит только структуру виджетов,
+/// без смет, заявок, файлов и содержимого свободной доски.
+model ProjectWorkspaceTemplate {
+  id            String   @id @default(cuid())
+  ownerUserId   String
+  name          String
+  schemaVersion Int      @default(1)
+  widgets       Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner User @relation("project_workspace_template_owner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerUserId, name])
+  @@index([ownerUserId, updatedAt])
+}
+
+/// Лёгкий элемент ограниченной свободной доски проекта.
+/// payload проходит type-specific Zod-валидацию; файлы и связанные сущности не копируются.
+model ProjectWorkspaceItem {
+  id        String @id
+  projectId String
+  widgetId  String
+  type      String
+  x         Int
+  y         Int
+  width     Int
+  height    Int
+  zIndex    Int    @default(0)
+  payload   Json?
+
+  linkedTaskId    String?
+  linkedOrderId   String?
+  linkedFileId    String?
+  linkedSectionId String?
+
+  revision    Int       @default(0)
+  createdById String
+  updatedById String
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project       Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  widget        ProjectWidget           @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+  linkedTask    WorkTask?               @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  linkedOrder   Order?                  @relation(fields: [linkedOrderId], references: [id], onDelete: SetNull)
+  linkedFile    ProjectFile?            @relation(fields: [linkedFileId], references: [id], onDelete: SetNull)
+  linkedSection ProjectEstimateSection? @relation(fields: [linkedSectionId], references: [id], onDelete: SetNull)
+  createdBy     User                    @relation("project_workspace_item_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy     User                    @relation("project_workspace_item_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([projectId, widgetId, deletedAt])
+  @@index([widgetId])
+  @@index([linkedTaskId])
+  @@index([linkedOrderId])
+  @@index([linkedFileId])
+  @@index([linkedSectionId])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+/// Receipt делает повтор структурной мутации безопасным при retry и восстановлении после offline.
+model ProjectMutationReceipt {
+  id          String   @id @default(cuid())
+  projectId   String
+  actorUserId String
+  mutationId  String
+  kind        String
+  result      Json?
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User    @relation("project_mutation_receipt_actor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actorUserId, mutationId])
+  @@index([createdAt])
+  @@index([actorUserId])
 }
 
 /// Независимая смета: быстрый расчёт без проектной карточки, контактов, задач и дат.
@@ -798,6 +963,7 @@ model WorkTask {
   checklistItems WorkTaskChecklistItem[]
   assignees      WorkTaskAssignee[]
   activities     WorkTaskActivity[]
+  workspaceItems ProjectWorkspaceItem[]
 
   @@index([boardId, columnId, sortOrder])
   @@index([assigneeUserId, dueDate])
@@ -1081,6 +1247,8 @@ model ProjectFile {
 
   createdAt DateTime @default(now())
 
+  workspaceItems ProjectWorkspaceItem[]
+
   @@index([projectId])
   @@index([folderId])
 }
@@ -1095,6 +1263,8 @@ model ProjectEstimateVersion {
   standaloneEstimate   StandaloneEstimate? @relation(fields: [standaloneEstimateId], references: [id], onDelete: Cascade)
 
   versionNumber          Int
+  /// Версия изменяемого снимка сметы для защиты автосохранения от перезаписи из другой вкладки.
+  revision               Int     @default(0)
   title                  String?
   note                   String?
   isPrimary              Boolean @default(false)
@@ -1112,8 +1282,9 @@ model ProjectEstimateVersion {
 
   createdAt DateTime @default(now())
 
-  sections    ProjectEstimateSection[]
-  draftOrders ProjectDraftOrder[]
+  sections      ProjectEstimateSection[]
+  draftOrders   ProjectDraftOrder[]
+  customColumns ProjectEstimateCustomColumn[]
 
   @@unique([projectId, versionNumber])
   @@unique([standaloneEstimateId, versionNumber])
@@ -1140,7 +1311,8 @@ model ProjectEstimateSection {
   /// Локальные поля строк реквизита (ед. изм. и т.п.), ключ = id строки read-model (orderLineId или service key).
   lineLocalExtras Json?
 
-  lines ProjectEstimateLine[]
+  lines          ProjectEstimateLine[]
+  workspaceItems ProjectWorkspaceItem[]
 
   @@index([versionId])
   @@index([linkedOrderId])
@@ -1173,6 +1345,7 @@ model ProjectEstimateLine {
   contractorRequisites String? @db.VarChar(500)
 
   internalExpenses ProjectEstimateLineInternalExpense[]
+  customCells      ProjectEstimateCustomCell[]
 
   orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
@@ -1182,6 +1355,43 @@ model ProjectEstimateLine {
 
   @@index([sectionId, position])
   @@index([orderLineId])
+}
+
+/// Определение пользовательской колонки конкретной сметы.
+/// `key` стабилен при переименовании и используется в формулах.
+model ProjectEstimateCustomColumn {
+  id        String                 @id @default(cuid())
+  versionId String
+  version   ProjectEstimateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  key       String                          @db.VarChar(80)
+  label     String                          @db.VarChar(80)
+  type      ProjectEstimateCustomColumnType
+  formula   String?                         @db.VarChar(500)
+  sortOrder Int                             @default(0)
+  width     Int                             @default(160)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cells ProjectEstimateCustomCell[]
+
+  @@unique([versionId, key])
+  @@index([versionId, sortOrder])
+}
+
+/// Значение пользовательской ячейки. Формульные значения не сохраняются — вычисляются из снимка строки.
+model ProjectEstimateCustomCell {
+  lineId   String
+  line     ProjectEstimateLine         @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  columnId String
+  column   ProjectEstimateCustomColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  value     String?  @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@id([lineId, columnId])
+  @@index([columnId])
 }
 
 model ProjectEstimateLineInternalExpense {
@@ -1482,6 +1692,7 @@ model Order {
   lossRecords             LossRecord[]
   projectEstimateSections ProjectEstimateSection[]
   tasks                   WorkTask[]
+  workspaceItems          ProjectWorkspaceItem[]
   notificationCooldowns   OrderNotificationCooldown[]
   greenwichReminders      GreenwichOrderReminder[]
   greenwichRatingEvents   GreenwichRatingEvent[]

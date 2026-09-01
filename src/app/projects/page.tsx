@@ -14,7 +14,13 @@ import {
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { withDetailReturn } from "@/lib/detail-return";
+import {
+  normalizeProjectWidgetTypes,
+  PROJECT_WIDGET_REGISTRY,
+  type ProjectWidgetType,
+} from "@/lib/projects/project-widget-registry";
 import type { ProjectBall, ProjectStatus } from "@prisma/client";
+import type { ProjectWorkspaceWidgetInput } from "@/lib/projects/project-workspace";
 
 type ProjectCard = {
   id: string;
@@ -100,6 +106,13 @@ function buildProjectsPageQuery(args: {
 }
 
 type CustomerOpt = { id: string; name: string };
+type ProjectUserOpt = { id: string; displayName: string };
+type ProjectWorkspaceTemplateOpt = {
+  id: string;
+  name: string;
+  widgets: ProjectWorkspaceWidgetInput[];
+  updatedAt: string;
+};
 
 function tabFromSearchParams(sp: { get: (k: string) => string | null }): "active" | "archive" {
   const t = sp.get("tab");
@@ -215,11 +228,21 @@ function ProjectsContent() {
   const [projectActionError, setProjectActionError] = React.useState<string | null>(null);
   const [createBusy, setCreateBusy] = React.useState(false);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
   const [title, setTitle] = React.useState("");
   const [customerId, setCustomerId] = React.useState("");
   const [customerInput, setCustomerInput] = React.useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = React.useState(false);
   const customerInputRef = React.useRef<HTMLDivElement | null>(null);
+  const [projectUsers, setProjectUsers] = React.useState<ProjectUserOpt[]>([]);
+  const [currentProjectUserId, setCurrentProjectUserId] = React.useState("");
+  const [ownerUserId, setOwnerUserId] = React.useState("");
+  const [memberUserIds, setMemberUserIds] = React.useState<string[]>([]);
+  const [workspaceTemplates, setWorkspaceTemplates] = React.useState<ProjectWorkspaceTemplateOpt[]>([]);
+  const [selectedWorkspaceTemplateId, setSelectedWorkspaceTemplateId] = React.useState("");
+  const [selectedWidgetTypes, setSelectedWidgetTypes] = React.useState<ProjectWidgetType[]>(() =>
+    normalizeProjectWidgetTypes(),
+  );
 
   const customerInputTrim = customerInput.trim();
   const customerFiltered = React.useMemo(() => {
@@ -297,6 +320,27 @@ function ProjectsContent() {
   }, [state.status, role]);
 
   React.useEffect(() => {
+    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
+    fetch("/api/projects/meta", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as
+          | { users?: ProjectUserOpt[]; currentUserId?: string; templates?: ProjectWorkspaceTemplateOpt[] }
+          | null;
+        if (!response.ok) return;
+        const users = data?.users ?? [];
+        const currentUserId = data?.currentUserId ?? "";
+        setProjectUsers(users);
+        setCurrentProjectUserId(currentUserId);
+        setWorkspaceTemplates(data?.templates ?? []);
+        setOwnerUserId((current) => current || currentUserId || users[0]?.id || "");
+        setMemberUserIds((current) =>
+          current.length > 0 ? current : currentUserId ? [currentUserId] : users[0]?.id ? [users[0].id] : [],
+        );
+      })
+      .catch(() => setProjectUsers([]));
+  }, [state.status, role]);
+
+  React.useEffect(() => {
     function onPointerDown(e: PointerEvent) {
       const target = e.target as Node | null;
       if (target && customerInputRef.current && !customerInputRef.current.contains(target)) {
@@ -309,6 +353,12 @@ function ProjectsContent() {
 
   function openCreateModal() {
     setCustomerDropdownOpen(false);
+    setCreateError(null);
+    const initialOwner = ownerUserId || currentProjectUserId || projectUsers[0]?.id || "";
+    if (initialOwner) {
+      setOwnerUserId(initialOwner);
+      setMemberUserIds((current) => Array.from(new Set([initialOwner, ...current])));
+    }
     setCreateModalOpen(true);
   }
 
@@ -319,7 +369,8 @@ function ProjectsContent() {
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !customerInputTrim) return;
+    if (!title.trim() || !customerInputTrim || !ownerUserId) return;
+    setCreateError(null);
     setCreateBusy(true);
     try {
       const match =
@@ -331,6 +382,11 @@ function ProjectsContent() {
         body: JSON.stringify({
           title: title.trim(),
           ...(match ? { customerId: match.id } : { customerName: customerInputTrim }),
+          ownerUserId,
+          memberUserIds: Array.from(new Set([ownerUserId, ...memberUserIds])),
+          ...(selectedWorkspaceTemplateId
+            ? { workspaceTemplateId: selectedWorkspaceTemplateId }
+            : { widgetTypes: selectedWidgetTypes }),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -338,13 +394,48 @@ function ProjectsContent() {
         setTitle("");
         setCustomerId("");
         setCustomerInput("");
+        const defaultOwner = currentProjectUserId || projectUsers[0]?.id || "";
+        setOwnerUserId(defaultOwner);
+        setMemberUserIds(defaultOwner ? [defaultOwner] : []);
+        setSelectedWidgetTypes(normalizeProjectWidgetTypes());
+        setSelectedWorkspaceTemplateId("");
         closeCreateModal();
         router.push(withDetailReturn(`/projects/${data.project.id}`, "projects", returnTo));
         return;
       }
+      setCreateError(data?.error?.message ?? `Не удалось создать проект (${res.status})`);
+    } catch {
+      setCreateError("Сеть или сервер недоступны. Попробуйте ещё раз.");
     } finally {
       setCreateBusy(false);
     }
+  }
+
+  function toggleProjectMember(userId: string) {
+    if (userId === ownerUserId) return;
+    setMemberUserIds((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  }
+
+  function toggleProjectWidget(type: ProjectWidgetType) {
+    const definition = PROJECT_WIDGET_REGISTRY.find((item) => item.type === type);
+    if (definition?.mandatory) return;
+    setSelectedWorkspaceTemplateId("");
+    setSelectedWidgetTypes((current) =>
+      normalizeProjectWidgetTypes(
+        current.includes(type) ? current.filter((item) => item !== type) : [...current, type],
+      ),
+    );
+  }
+
+  function selectWorkspaceTemplate(template: ProjectWorkspaceTemplateOpt | null) {
+    setSelectedWorkspaceTemplateId(template?.id ?? "");
+    setSelectedWidgetTypes(
+      template
+        ? normalizeProjectWidgetTypes(template.widgets.filter((widget) => widget.isVisible).map((widget) => widget.type))
+        : normalizeProjectWidgetTypes(),
+    );
   }
 
   function openArchiveModal(project: ProjectCard) {
@@ -642,38 +733,50 @@ function ProjectsContent() {
 
           {createModalOpen && typeof document !== "undefined"
             ? createPortal(
-            <div className="fixed inset-0 z-[1000] flex min-h-dvh items-center justify-center bg-zinc-950/45 px-4 py-6 backdrop-blur-md">
+            <div className="fixed inset-0 z-[1000] flex min-h-dvh items-center justify-center bg-zinc-950/50 px-4 py-6 backdrop-blur-sm">
               <form
                 onSubmit={createProject}
-                className="w-full max-w-2xl overflow-visible rounded-[2rem] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(245,243,255,0.94))] p-5 shadow-[0_30px_100px_rgba(24,24,27,0.28)]"
+                className="flex max-h-[calc(100dvh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-white/80 bg-[#f7f6f2] shadow-[0_30px_100px_rgba(24,24,27,0.3)]"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-4 border-b border-zinc-200 bg-white px-6 py-5 sm:px-8">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">Новый проект</div>
-                    <h2 className="mt-1 text-3xl font-black text-zinc-950">Создать проект</h2>
+                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-700">Новое рабочее пространство</div>
+                    <h2 className="mt-1 text-3xl font-black tracking-[-0.03em] text-zinc-950">Собрать проект под задачу</h2>
+                    <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">Смета и заявки подключены всегда. Выберите остальные инструменты под реальную работу этого проекта.</p>
                   </div>
                   <button
                     type="button"
                     onClick={closeCreateModal}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-200 bg-white/80 text-xl font-black leading-none text-zinc-500 shadow-sm transition hover:bg-white hover:text-zinc-950"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-xl font-black leading-none text-zinc-500 transition-colors duration-200 hover:border-zinc-400 hover:text-zinc-950"
                     aria-label="Закрыть"
                   >
                     ×
                   </button>
                 </div>
 
-                <div className="mt-5 grid gap-3">
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="h-14 w-full rounded-2xl border border-zinc-200 bg-white/85 px-4 text-base font-bold text-zinc-950 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                    maxLength={300}
-                    placeholder="Название проекта"
-                    required
-                  />
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8">
+                  <section aria-labelledby="project-basics-title">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <h3 id="project-basics-title" className="text-base font-black text-zinc-950">Основа</h3>
+                      <span className="text-xs font-semibold text-zinc-400">01</span>
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-bold text-zinc-600">Название проекта</span>
+                        <input
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          className="h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-950 outline-none transition-colors duration-200 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                          maxLength={300}
+                          placeholder="Например, презентация нового продукта"
+                          required
+                        />
+                      </label>
 
-                  <div className="relative" ref={customerInputRef}>
+                      <div className="relative" ref={customerInputRef}>
+                        <label htmlFor="project-customer" className="mb-1.5 block text-xs font-bold text-zinc-600">Заказчик</label>
                     <input
+                      id="project-customer"
                       value={customerInput}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -686,13 +789,13 @@ function ProjectsContent() {
                         setCustomerDropdownOpen(true);
                       }}
                       onFocus={() => setCustomerDropdownOpen(true)}
-                      className="h-14 w-full rounded-2xl border border-zinc-200 bg-white/85 px-4 text-base font-bold text-zinc-950 shadow-sm outline-none placeholder:text-zinc-400 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                      placeholder="Заказчик"
+                      className="h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-950 outline-none transition-colors duration-200 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                      placeholder="Выберите или введите нового"
                       autoComplete="off"
                       required
                     />
                     {customerDropdownOpen ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto rounded-2xl border border-zinc-200 bg-white/95 py-1 shadow-[0_18px_50px_rgba(17,24,39,0.16)] backdrop-blur">
+                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-[0_18px_50px_rgba(17,24,39,0.16)]">
                         {customerFiltered.length === 0 ? (
                           <div className="px-4 py-3 text-sm font-medium text-zinc-500">
                             {customerInputTrim ? "Новый заказчик будет создан вместе с проектом" : "Список пуст"}
@@ -702,7 +805,7 @@ function ProjectsContent() {
                             <button
                               key={c.id}
                               type="button"
-                              className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-zinc-800 transition hover:bg-violet-50"
+                              className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:bg-violet-50"
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setCustomerInput(c.name);
@@ -717,23 +820,137 @@ function ProjectsContent() {
                       </div>
                     ) : null}
                   </div>
+                    </div>
+                  </section>
+
+                  <section aria-labelledby="project-team-title" className="mt-7 border-t border-zinc-200 pt-6">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div>
+                        <h3 id="project-team-title" className="text-base font-black text-zinc-950">Команда</h3>
+                        <p className="mt-1 text-sm text-zinc-500">Ответственный ведёт проект, участники получают к нему быстрый доступ.</p>
+                      </div>
+                      <span className="text-xs font-semibold text-zinc-400">02</span>
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                      <label className="block rounded-xl border border-zinc-200 bg-white p-3">
+                        <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-violet-700">Ответственный</span>
+                        <select
+                          value={ownerUserId}
+                          onChange={(event) => {
+                            const nextOwner = event.target.value;
+                            setOwnerUserId(nextOwner);
+                            setMemberUserIds((current) => Array.from(new Set([nextOwner, ...current])));
+                          }}
+                          className="mt-2 h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-950 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                          required
+                        >
+                          {projectUsers.map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}
+                        </select>
+                      </label>
+                      <fieldset className="rounded-xl border border-zinc-200 bg-white p-3">
+                        <legend className="px-1 text-[11px] font-black uppercase tracking-[0.14em] text-zinc-500">Участники</legend>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {projectUsers.map((user) => {
+                            const selected = user.id === ownerUserId || memberUserIds.includes(user.id);
+                            return (
+                              <button
+                                key={user.id}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => toggleProjectMember(user.id)}
+                                className={`rounded-full border px-3 py-2 text-xs font-bold transition-colors duration-150 ${selected ? "border-violet-300 bg-violet-50 text-violet-800" : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-400"}`}
+                              >
+                                <span className="mr-1.5" aria-hidden="true">{selected ? "✓" : "+"}</span>{user.displayName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    </div>
+                  </section>
+
+                  <section aria-labelledby="project-modules-title" className="mt-7 border-t border-zinc-200 pt-6">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div>
+                        <h3 id="project-modules-title" className="text-base font-black text-zinc-950">Рабочие блоки</h3>
+                        <p className="mt-1 text-sm text-zinc-500">Оставьте только то, чем будете пользоваться в этом проекте.</p>
+                      </div>
+                      <span className="text-xs font-semibold text-zinc-400">03</span>
+                    </div>
+                    <div className="mt-3 rounded-xl border border-zinc-200 bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-black text-zinc-950">Быстрый старт</div>
+                          <p className="mt-0.5 text-xs text-zinc-500">Шаблон переносит только порядок и размеры блоков — без данных проектов.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => selectWorkspaceTemplate(null)}
+                            aria-pressed={!selectedWorkspaceTemplateId}
+                            className={`min-h-9 rounded-lg border px-3 text-xs font-bold transition-colors ${!selectedWorkspaceTemplateId ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"}`}
+                          >
+                            Стандарт
+                          </button>
+                          {workspaceTemplates.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => selectWorkspaceTemplate(template)}
+                              aria-pressed={selectedWorkspaceTemplateId === template.id}
+                              className={`min-h-9 rounded-lg border px-3 text-xs font-bold transition-colors ${selectedWorkspaceTemplateId === template.id ? "border-violet-700 bg-violet-700 text-white" : "border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-400"}`}
+                            >
+                              {template.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {PROJECT_WIDGET_REGISTRY.map((widget, index) => {
+                        const selected = selectedWidgetTypes.includes(widget.type);
+                        return (
+                          <button
+                            key={widget.type}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => toggleProjectWidget(widget.type)}
+                            className={`group min-h-32 rounded-xl border p-4 text-left transition-colors duration-200 ${selected ? "border-violet-300 bg-white text-zinc-950" : "border-zinc-200 bg-[#efeee9] text-zinc-500 hover:border-zinc-400"}`}
+                          >
+                            <span className="flex items-center justify-between gap-3">
+                              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">{String(index + 1).padStart(2, "0")} · {widget.eyebrow}</span>
+                              <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-black ${selected ? "bg-violet-700 text-white" : "border border-zinc-300 bg-white text-zinc-400"}`}>{selected ? "✓" : "+"}</span>
+                            </span>
+                            <span className="mt-4 block text-sm font-black">{widget.title}</span>
+                            <span className="mt-1 block text-xs leading-5 opacity-75">{widget.description}</span>
+                            {widget.mandatory ? <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.12em] text-violet-700">Всегда в проекте</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {createError ? <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800" role="alert">{createError}</div> : null}
                 </div>
 
-                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-200 bg-white px-6 py-4 sm:px-8">
+                  <p className="text-xs font-semibold text-zinc-500">{selectedWidgetTypes.length} {selectedWidgetTypes.length === 1 ? "блок" : selectedWidgetTypes.length < 5 ? "блока" : "блоков"} · {new Set([ownerUserId, ...memberUserIds].filter(Boolean)).size} в команде</p>
+                  <div className="flex flex-wrap justify-end gap-2">
                   <button
                     type="button"
                     onClick={closeCreateModal}
-                    className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-sm font-black text-zinc-700 shadow-sm transition hover:bg-white"
+                    className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-black text-zinc-700 transition-colors duration-200 hover:border-zinc-500"
                   >
                     Отмена
                   </button>
                   <button
                     type="submit"
-                    disabled={createBusy || !title.trim() || !customerInputTrim}
-                    className="rounded-2xl bg-violet-700 px-5 py-3 text-sm font-black text-white shadow-[0_16px_34px_rgba(109,40,217,0.24)] transition hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"
+                    disabled={createBusy || !title.trim() || !customerInputTrim || !ownerUserId}
+                    className="rounded-xl bg-zinc-950 px-5 py-3 text-sm font-black text-white transition-colors duration-200 hover:bg-violet-700 disabled:cursor-wait disabled:opacity-50"
                   >
                     {createBusy ? "Создаю..." : "Создать проект"}
                   </button>
+                  </div>
                 </div>
               </form>
             </div>,

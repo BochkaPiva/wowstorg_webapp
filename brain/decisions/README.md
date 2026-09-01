@@ -14,5 +14,7 @@
 | 008 | [008-external-financial-snapshots.md](./008-external-financial-snapshots.md) | Финансовые снимки внешних заявок |
 | 009 | [009-greenwich-rating-ledger-and-price-snapshots.md](./009-greenwich-rating-ledger-and-price-snapshots.md) | Журнал рейтинга и строковые снимки скидки |
 | 010 | [010-greenwich-monthly-bonus-redemption.md](./010-greenwich-monthly-bonus-redemption.md) | Аккаунтный месячный бонус и атомарное погашение |
+| 011 | [011-order-quality-feedback-and-dirty-returns.md](./011-order-quality-feedback-and-dirty-returns.md) | Оценка закрытых заявок и загрязнение возврата |
+| 012 | [012-modular-project-workspace.md](./012-modular-project-workspace.md) | Модульное рабочее пространство проекта |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

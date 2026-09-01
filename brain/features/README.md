@@ -50,6 +50,7 @@
 | Задачи / рабочая доска | [`work-tasks.md`](./work-tasks.md) |
 | Операционный дашборд | [`dashboard-operations.md`](./dashboard-operations.md) (план в [`docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md`](../../docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md)) |
 | Пересборка карточки проекта | [`project-card-rebuild.md`](./project-card-rebuild.md) (план в [`docs/PROJECT_CARD_REBUILD_PLAN.md`](../../docs/PROJECT_CARD_REBUILD_PLAN.md)) |
+| Модульное рабочее пространство проекта V2 | [`project-workspace-v2.md`](./project-workspace-v2.md) (технический план в [`docs/PROJECT_WORKSPACE_V2_TECHNICAL_PLAN.md`](../../docs/PROJECT_WORKSPACE_V2_TECHNICAL_PLAN.md)); заменяет прежнее предположение о фиксированной компоновке, сохраняя доменные инварианты |
 | Брендовый редизайн внутреннего приложения | [`internal-brand-redesign.md`](./internal-brand-redesign.md) |
 | Единая рабочая очередь и быстрые расчёты | [`unified-work-queue.md`](./unified-work-queue.md) |
 | Финансовая сверка Excel ↔ WebApp | [`financial-reconciliation.md`](./financial-reconciliation.md) |

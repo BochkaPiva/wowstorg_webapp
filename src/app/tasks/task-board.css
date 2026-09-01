@@ -1295,6 +1295,126 @@
   box-shadow: 0 0 0 1px rgb(45 59 77 / 0.13) inset, 0 2px 5px rgb(30 43 62 / 0.06);
 }
 
+/* Project widget: one clean boundary belongs to the project card, not to the iframe. */
+.task-board-shell.is-embedded {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: #f7f7f6;
+  box-shadow: none;
+}
+
+.task-board-shell.is-embedded .task-board-toolbar {
+  min-height: 50px;
+  border-bottom-color: #ececea;
+  background: #fff;
+  padding: 8px 12px;
+}
+
+.task-board-shell.is-embedded .task-board-toolbar__scope {
+  display: none;
+}
+
+.task-board-shell.is-embedded .task-board-toolbar__identity > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.task-board-shell.is-embedded .task-board-toolbar__identity > div > span {
+  margin: 0;
+}
+
+.task-board-shell.is-embedded .task-board-theme-toggle {
+  display: none;
+}
+
+.task-board-shell.is-embedded .task-board-button {
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 0.71rem;
+}
+
+.task-board-shell.is-embedded .task-board-button--quiet {
+  border-color: transparent;
+  background: transparent;
+}
+
+.task-board-shell.is-embedded .task-board-button--quiet:hover {
+  border-color: transparent;
+  background: #f1f1ef;
+}
+
+.task-board-shell.is-embedded .task-board-viewport {
+  overflow-x: auto;
+  overflow-y: visible;
+  border-radius: 0;
+  background: #f7f7f6;
+}
+
+.task-board-shell.is-embedded .task-board-columns.is-embedded {
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  min-height: 0;
+  gap: 9px;
+  padding: 10px;
+}
+
+.task-board-shell.is-embedded .task-column {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #e2e4e8;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--task-column-accent) 5%, #f1f2f3);
+  box-shadow: none;
+}
+
+.task-board-shell.is-embedded .task-column__header {
+  border-radius: 10px 10px 0 0;
+  padding: 13px 11px 10px;
+}
+
+.task-board-shell.is-embedded .task-column__header::before {
+  height: 3px;
+  border-radius: 10px 10px 0 0;
+  box-shadow: none;
+}
+
+.task-board-shell.is-embedded .task-column__title {
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.task-board-shell.is-embedded .task-column__done {
+  width: 25px;
+  height: 25px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.55);
+}
+
+.task-board-shell.is-embedded .task-column__actions {
+  min-height: 22px;
+  margin-top: 6px;
+}
+
+.task-board-shell.is-embedded .task-column__cards {
+  min-height: 0;
+  padding: 0 7px 7px;
+}
+
+.task-board-shell.is-embedded .task-card {
+  border: 1px solid #e0e2e6;
+  border-radius: 9px;
+  background: #fff !important;
+  color: #25252b;
+  box-shadow: 0 1px 2px rgb(24 24 27 / 0.06);
+}
+
+.task-board-shell.is-embedded .task-card:hover {
+  border-color: #d2cedd;
+  box-shadow: 0 3px 8px rgb(24 24 27 / 0.07);
+}
+
 .task-card-assignee,
 .task-checklist-row__avatar {
   width: auto;

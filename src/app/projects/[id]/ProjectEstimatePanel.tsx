@@ -8,16 +8,22 @@ import { createPortal } from "react-dom";
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import {
-  calcOrderServicesInternalCosts,
-  isCashPaymentMethod,
   type OrderServicePaymentMethod,
 } from "@/lib/order-service-internal-costs";
+import {
+  getProjectEstimateLineInternalTotal,
+  summarizeProjectEstimateSections,
+} from "@/lib/project-estimate-line-totals";
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import {
   normalizedLocalLineCostClientNumber,
   normalizedLocalLineCostClientString,
   parseEstimateQtyUp,
 } from "@/lib/project-estimate-local-line";
+import {
+  buildProjectEstimateTablePasteOperations,
+  type ProjectEstimateTableColumn,
+} from "@/lib/project-estimate-table";
 import {
   calcProjectEstimateRequisiteTotal,
   calcProjectEstimateRequisiteUnitPricePerDay,
@@ -31,6 +37,14 @@ import {
 } from "@/lib/project-estimate-totals";
 import { formatMoneyRub, roundMoney } from "@/lib/money";
 import { calcOrderPricing } from "@/lib/order-pricing";
+import {
+  evaluateProjectEstimateCustomColumns,
+  PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT,
+  PROJECT_ESTIMATE_FORMULA_FIELDS,
+  type ProjectEstimateCustomColumn,
+  type ProjectEstimateCustomColumnType,
+  validateProjectEstimateFormula,
+} from "@/lib/projects/project-estimate-custom-columns";
 
 type EstLine = {
   id: string;
@@ -54,6 +68,7 @@ type EstLine = {
   contractorNote?: string | null;
   contractorRequisites?: string | null;
   internalExpenses?: EstLineInternalExpense[];
+  customValues?: Record<string, string>;
 };
 
 type EstLineInternalExpense = {
@@ -149,6 +164,7 @@ type LocalDraftLine = {
   contractorNote: string | null;
   contractorRequisites: string | null;
   internalExpenses: LocalDraftLineInternalExpense[];
+  customValues: Record<string, string>;
   orderLineId: null;
   itemId: string | null;
 };
@@ -192,9 +208,27 @@ type StoredEstimateDraft = {
   schemaVersion: number;
   versionNumber: number;
   sections: LocalDraftSection[];
+  customColumns?: ProjectEstimateCustomColumn[];
   commissionEnabled?: boolean;
   clientTaxEnabled?: boolean;
   clientChargeTaxEnabled?: boolean;
+};
+
+type EstimateSaveMode = "AUTO" | "MANUAL";
+type EstimateSaveStatus = "IDLE" | "SAVING" | "SAVED" | "ERROR" | "PAUSED";
+type EstimateTitleDialogMode = "CREATE" | "DUPLICATE" | "RENAME";
+
+type EstimateTitleDialogState = {
+  mode: EstimateTitleDialogMode;
+  title: string;
+};
+
+type SavedEstimateSnapshot = {
+  sections: LocalDraftSection[];
+  customColumns: ProjectEstimateCustomColumn[];
+  commissionEnabled: boolean;
+  clientTaxEnabled: boolean;
+  clientChargeTaxEnabled: boolean;
 };
 
 type VersionMeta = {
@@ -236,6 +270,7 @@ type EstimatePayload = {
   current: {
     id: string;
     versionNumber: number;
+    revision?: number;
     title: string;
     note: string | null;
     sortOrder: number;
@@ -244,6 +279,7 @@ type EstimatePayload = {
     commissionEnabled: boolean;
     clientTaxEnabled: boolean;
     clientChargeTaxEnabled: boolean;
+    customColumns: ProjectEstimateCustomColumn[];
     sections: EstSection[];
   } | null;
 };
@@ -441,10 +477,25 @@ function draftEstimateStorageKey(projectId: string, versionNumber: number) {
   return `project-estimate-draft:${projectId}:v${versionNumber}`;
 }
 
-const ESTIMATE_DRAFT_SCHEMA_VERSION = 6;
+const ESTIMATE_DRAFT_SCHEMA_VERSION = 7;
 
 function makeTempId(prefix: string) {
   return `draft-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function makeEstimateCustomColumn(sortOrder: number): ProjectEstimateCustomColumn {
+  const token = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID().replace(/-/g, "")
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  return {
+    id: `custom-${token}`,
+    key: `c_${token.slice(0, 16).toLowerCase()}`,
+    label: "Новая колонка",
+    type: "TEXT",
+    formula: null,
+    sortOrder,
+    width: 160,
+  };
 }
 
 /** Дата YYYY-MM-DD по UTC (для полей materialize demo-заявки). */
@@ -583,23 +634,7 @@ function lineInternalTotal(line: {
   costInternal?: string | number | null;
   internalExpenses?: Array<{ cost?: string | number | null }> | null;
 }): number {
-  return roundMoney(
-    getNumericAmount(line.costInternal) +
-      (line.internalExpenses ?? []).reduce((sum, expense) => sum + getNumericAmount(expense.cost), 0),
-  );
-}
-
-function lineCashInternalTotal(line: {
-  costInternal?: string | number | null;
-  paymentMethod?: string | null;
-  internalExpenses?: Array<{ cost?: string | number | null; paymentMethod?: string | null }> | null;
-}): number {
-  const primary = isCashPaymentMethod(line.paymentMethod) ? getNumericAmount(line.costInternal) : 0;
-  const extra = (line.internalExpenses ?? []).reduce(
-    (sum, expense) => sum + (isCashPaymentMethod(expense.paymentMethod) ? getNumericAmount(expense.cost) : 0),
-    0,
-  );
-  return roundMoney(primary + extra);
+  return getProjectEstimateLineInternalTotal(line);
 }
 
 function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
@@ -635,6 +670,7 @@ function cloneLocalSections(sections: EstSection[]): LocalDraftSection[] {
         contractorNote: line.contractorNote ?? null,
         contractorRequisites: line.contractorRequisites ?? null,
         internalExpenses: cloneLineInternalExpenses(line),
+        customValues: { ...(line.customValues ?? {}) },
         orderLineId: null,
         itemId: line.itemId,
       })),
@@ -654,6 +690,34 @@ function nextSectionSortOrderAtBottom(
     ...(persistedSections ?? []).map((section) => section.sortOrder),
   ];
   return (allSortOrders.length > 0 ? Math.max(...allSortOrders) : 0) + 10;
+}
+
+function cloneLocalDraftSections(sections: LocalDraftSection[]): LocalDraftSection[] {
+  return sections.map((section) => ({
+    ...section,
+    lines: section.lines.map((line) => ({
+      ...line,
+      internalExpenses: line.internalExpenses.map((expense) => ({ ...expense })),
+      customValues: { ...line.customValues },
+    })),
+  }));
+}
+
+function cloneEstimateCustomColumns(columns: ProjectEstimateCustomColumn[]): ProjectEstimateCustomColumn[] {
+  return [...columns]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((column, index) => ({ ...column, sortOrder: index }));
+}
+
+function normalizeEstimateCustomColumnsForCompare(columns: ProjectEstimateCustomColumn[]) {
+  return cloneEstimateCustomColumns(columns).map((column) => ({
+    id: column.id,
+    key: column.key,
+    label: column.label.trim(),
+    type: column.type,
+    formula: column.type === "FORMULA" ? column.formula?.trim() || null : null,
+    width: column.width,
+  }));
 }
 
 function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
@@ -676,6 +740,11 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
         contractorRequisites: line.contractorRequisites?.trim() || null,
         itemId: line.itemId ?? null,
         internalExpenses: normalizeInternalExpensesForCompare(line.internalExpenses ?? []),
+        customValues: Object.fromEntries(
+          Object.entries(line.customValues ?? {})
+            .filter(([, value]) => value !== "")
+            .sort(([left], [right]) => left.localeCompare(right)),
+        ),
         position: lineIndex,
         lineNumber: lineIndex + 1,
       })),
@@ -826,6 +895,8 @@ export function ProjectEstimatePanel({
   readOnly,
   apiBase,
   standalone = false,
+  workspaceMode = false,
+  estimateGridEnabled = true,
   selectedVersionNumber: selectedVersionNumberProp,
   onSelectedVersionNumberChange,
   onResolvedVersionChange,
@@ -834,6 +905,8 @@ export function ProjectEstimatePanel({
   readOnly: boolean;
   apiBase?: string;
   standalone?: boolean;
+  workspaceMode?: boolean;
+  estimateGridEnabled?: boolean;
   selectedVersionNumber?: number | null;
   onSelectedVersionNumberChange?: (value: number | null) => void;
   onResolvedVersionChange?: (value: { id: string; versionNumber: number } | null) => void;
@@ -852,16 +925,41 @@ export function ProjectEstimatePanel({
   const [versionPickerOpen, setVersionPickerOpen] = React.useState(false);
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [downloadOpen, setDownloadOpen] = React.useState(false);
+  const [titleDialog, setTitleDialog] = React.useState<EstimateTitleDialogState | null>(null);
+  const [titleDialogError, setTitleDialogError] = React.useState<string | null>(null);
   const versionPickerWrapRef = React.useRef<HTMLDivElement>(null);
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
   const downloadWrapRef = React.useRef<HTMLDivElement>(null);
   const saveBarRef = React.useRef<HTMLDivElement | null>(null);
   const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
+  const [customColumns, setCustomColumns] = React.useState<ProjectEstimateCustomColumn[]>([]);
+  const [customColumnsOpen, setCustomColumnsOpen] = React.useState(false);
+  const [savedEstimateSnapshot, setSavedEstimateSnapshot] = React.useState<SavedEstimateSnapshot>({
+    sections: [],
+    customColumns: [],
+    commissionEnabled: true,
+    clientTaxEnabled: true,
+    clientChargeTaxEnabled: false,
+  });
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
   const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
   const [clientChargeTaxEnabled, setClientChargeTaxEnabled] = React.useState(false);
   const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
+  const [estimateSaving, setEstimateSaving] = React.useState(false);
+  const [estimateSaveStatus, setEstimateSaveStatus] = React.useState<EstimateSaveStatus>("IDLE");
+  const [estimateSaveMessage, setEstimateSaveMessage] = React.useState<string | null>(null);
+  const [estimateConflictDetected, setEstimateConflictDetected] = React.useState(false);
+  const [lastEstimateSavedAt, setLastEstimateSavedAt] = React.useState<Date | null>(null);
   const [showFloatingSave, setShowFloatingSave] = React.useState(false);
+  const effectiveEstimateViewMode = estimateGridEnabled ? "TABLE" : "CARDS";
+  const estimateDraftRevisionRef = React.useRef(0);
+  const serverEstimateRevisionRef = React.useRef(0);
+  const estimateDraftDirtyRef = React.useRef(false);
+  const estimateConflictRef = React.useRef(false);
+  const estimateBroadcastChannelRef = React.useRef<BroadcastChannel | null>(null);
+  const restoredEstimateScrollKeyRef = React.useRef<string | null>(null);
+  const estimateSaveInFlightRef = React.useRef(false);
+  const autoSaveRef = React.useRef<() => void>(() => undefined);
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -876,6 +974,26 @@ export function ProjectEstimatePanel({
     [onSelectedVersionNumberChange],
   );
 
+  estimateDraftDirtyRef.current = estimateDraftDirty;
+  estimateConflictRef.current = estimateConflictDetected;
+
+  React.useEffect(() => {
+    if (!titleDialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) {
+        setTitleDialog(null);
+        setTitleDialogError(null);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [busy, titleDialog]);
+
   const load = React.useCallback(
     (v: number | null) => {
       setLoading(true);
@@ -889,10 +1007,24 @@ export function ProjectEstimatePanel({
           } else {
             setData(j);
             const versionNumber = j.current?.versionNumber ?? null;
+            serverEstimateRevisionRef.current = j.current?.revision ?? 0;
             const baseSections = j.current?.sections ? sortSectionsBySortOrder(cloneLocalSections(j.current.sections)) : [];
+            const baseCustomColumns = cloneEstimateCustomColumns(j.current?.customColumns ?? []);
             const baseCommissionEnabled = j.current?.commissionEnabled ?? true;
             const baseClientTaxEnabled = j.current?.clientTaxEnabled ?? true;
             const baseClientChargeTaxEnabled = j.current?.clientChargeTaxEnabled ?? false;
+            setSavedEstimateSnapshot({
+              sections: cloneLocalDraftSections(baseSections),
+              customColumns: cloneEstimateCustomColumns(baseCustomColumns),
+              commissionEnabled: baseCommissionEnabled,
+              clientTaxEnabled: baseClientTaxEnabled,
+              clientChargeTaxEnabled: baseClientChargeTaxEnabled,
+            });
+            estimateConflictRef.current = false;
+            setEstimateConflictDetected(false);
+            estimateDraftRevisionRef.current += 1;
+            setEstimateSaveStatus("IDLE");
+            setEstimateSaveMessage(null);
             if (versionNumber != null) {
               const storageKey = draftEstimateStorageKey(projectId, versionNumber);
               const raw = window.localStorage.getItem(storageKey);
@@ -905,6 +1037,9 @@ export function ProjectEstimatePanel({
                     Array.isArray(parsed.sections)
                   ) {
                     const storedSections = sortSectionsBySortOrder(parsed.sections);
+                    const storedCustomColumns = cloneEstimateCustomColumns(
+                      parsed.customColumns ?? baseCustomColumns,
+                    );
                     const storedCommissionEnabled = parsed.commissionEnabled ?? baseCommissionEnabled;
                     const storedClientTaxEnabled = parsed.clientTaxEnabled ?? baseClientTaxEnabled;
                     const storedClientChargeTaxEnabled =
@@ -916,23 +1051,29 @@ export function ProjectEstimatePanel({
                       storedCommissionEnabled === baseCommissionEnabled &&
                       storedClientTaxEnabled === baseClientTaxEnabled &&
                       storedClientChargeTaxEnabled === baseClientChargeTaxEnabled;
-                    if (hasDestructiveEmptyDraft || isSameAsServer) {
+                    const columnsAreSameAsServer =
+                      JSON.stringify(normalizeEstimateCustomColumnsForCompare(storedCustomColumns)) ===
+                      JSON.stringify(normalizeEstimateCustomColumnsForCompare(baseCustomColumns));
+                    if (hasDestructiveEmptyDraft || (isSameAsServer && columnsAreSameAsServer)) {
                       window.localStorage.removeItem(storageKey);
                       setLocalSectionsDraft(baseSections);
+                      setCustomColumns(baseCustomColumns);
                       setCommissionEnabled(baseCommissionEnabled);
                       setClientTaxEnabled(baseClientTaxEnabled);
                       setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                       setEstimateDraftDirty(false);
                     } else {
                       setLocalSectionsDraft(storedSections);
+                      setCustomColumns(storedCustomColumns);
                       setCommissionEnabled(storedCommissionEnabled);
                       setClientTaxEnabled(storedClientTaxEnabled);
                       setClientChargeTaxEnabled(storedClientChargeTaxEnabled);
-                      setEstimateDraftDirty(true);
+                      setEstimateDraftDirty(!isSameAsServer || !columnsAreSameAsServer);
                     }
                   } else {
                     window.localStorage.removeItem(storageKey);
                     setLocalSectionsDraft(baseSections);
+                    setCustomColumns(baseCustomColumns);
                     setCommissionEnabled(baseCommissionEnabled);
                     setClientTaxEnabled(baseClientTaxEnabled);
                     setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
@@ -941,6 +1082,7 @@ export function ProjectEstimatePanel({
                 } catch {
                   window.localStorage.removeItem(storageKey);
                   setLocalSectionsDraft(baseSections);
+                  setCustomColumns(baseCustomColumns);
                   setCommissionEnabled(baseCommissionEnabled);
                   setClientTaxEnabled(baseClientTaxEnabled);
                   setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
@@ -948,13 +1090,23 @@ export function ProjectEstimatePanel({
                 }
               } else {
                 setLocalSectionsDraft(baseSections);
+                setCustomColumns(baseCustomColumns);
                 setCommissionEnabled(baseCommissionEnabled);
                 setClientTaxEnabled(baseClientTaxEnabled);
                 setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
                 setEstimateDraftDirty(false);
               }
             } else {
+              serverEstimateRevisionRef.current = 0;
               setLocalSectionsDraft([]);
+              setCustomColumns([]);
+              setSavedEstimateSnapshot({
+                sections: [],
+                customColumns: [],
+                commissionEnabled: true,
+                clientTaxEnabled: true,
+                clientChargeTaxEnabled: false,
+              });
               setCommissionEnabled(true);
               setClientTaxEnabled(true);
               setClientChargeTaxEnabled(false);
@@ -978,6 +1130,44 @@ export function ProjectEstimatePanel({
   React.useEffect(() => {
     load(selectedVersion);
   }, [load, selectedVersion]);
+
+  const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
+
+  React.useEffect(() => {
+    if (
+      standalone ||
+      currentVersionNumber == null ||
+      typeof BroadcastChannel === "undefined"
+    ) {
+      estimateBroadcastChannelRef.current = null;
+      return;
+    }
+    const channel = new BroadcastChannel(
+      `project-estimate:${projectId}:v${currentVersionNumber}`,
+    );
+    estimateBroadcastChannelRef.current = channel;
+    channel.onmessage = (event: MessageEvent<{ revision?: unknown }>) => {
+      const revision = Number(event.data?.revision);
+      if (!Number.isInteger(revision) || revision <= serverEstimateRevisionRef.current) return;
+      if (estimateDraftDirtyRef.current || estimateSaveInFlightRef.current) {
+        estimateConflictRef.current = true;
+        setEstimateConflictDetected(true);
+        setEstimateSaveStatus("PAUSED");
+        setEstimateSaveMessage(
+          "Смета изменилась в другой вкладке. Выберите, какую версию оставить.",
+        );
+        return;
+      }
+      serverEstimateRevisionRef.current = revision;
+      load(currentVersionNumber);
+    };
+    return () => {
+      channel.close();
+      if (estimateBroadcastChannelRef.current === channel) {
+        estimateBroadcastChannelRef.current = null;
+      }
+    };
+  }, [currentVersionNumber, load, projectId, standalone]);
 
   React.useEffect(() => {
     function onRefresh() {
@@ -1018,9 +1208,50 @@ export function ProjectEstimatePanel({
     });
   }, [data?.current, onResolvedVersionChange]);
 
-  const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
   const estimateDraftStorageKey =
     currentVersionNumber != null ? draftEstimateStorageKey(projectId, currentVersionNumber) : null;
+  const estimateScrollStorageKey =
+    currentVersionNumber != null
+      ? `project-estimate-scroll:${projectId}:v${currentVersionNumber}`
+      : null;
+
+  React.useEffect(() => {
+    if (
+      standalone ||
+      loading ||
+      effectiveEstimateViewMode !== "TABLE" ||
+      !estimateScrollStorageKey ||
+      restoredEstimateScrollKeyRef.current === estimateScrollStorageKey
+    ) {
+      return;
+    }
+    restoredEstimateScrollKeyRef.current = estimateScrollStorageKey;
+    const stored = Number(window.sessionStorage.getItem(estimateScrollStorageKey));
+    if (!Number.isFinite(stored) || stored <= 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo({ top: Math.min(stored, maxScroll), behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [effectiveEstimateViewMode, estimateScrollStorageKey, loading, standalone]);
+
+  React.useEffect(() => {
+    if (standalone || effectiveEstimateViewMode !== "TABLE" || !estimateScrollStorageKey) return;
+    let frame: number | null = null;
+    const persistScroll = () => {
+      if (frame != null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        window.sessionStorage.setItem(estimateScrollStorageKey, String(Math.max(0, window.scrollY)));
+      });
+    };
+    window.addEventListener("scroll", persistScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", persistScroll);
+      if (frame != null) window.cancelAnimationFrame(frame);
+      window.sessionStorage.setItem(estimateScrollStorageKey, String(Math.max(0, window.scrollY)));
+    };
+  }, [effectiveEstimateViewMode, estimateScrollStorageKey, standalone]);
 
   React.useEffect(() => {
     if (!estimateDraftStorageKey) return;
@@ -1032,6 +1263,7 @@ export function ProjectEstimatePanel({
       schemaVersion: ESTIMATE_DRAFT_SCHEMA_VERSION,
       versionNumber: currentVersionNumber!,
       sections: localSectionsDraft,
+      customColumns,
       commissionEnabled,
       clientTaxEnabled,
       clientChargeTaxEnabled,
@@ -1041,6 +1273,7 @@ export function ProjectEstimatePanel({
     clientTaxEnabled,
     clientChargeTaxEnabled,
     commissionEnabled,
+    customColumns,
     currentVersionNumber,
     estimateDraftDirty,
     estimateDraftStorageKey,
@@ -1066,13 +1299,103 @@ export function ProjectEstimatePanel({
 
   function mutateLocalSections(mutator: (prev: LocalDraftSection[]) => LocalDraftSection[]) {
     setLocalSectionsDraft((prev) => mutator(prev));
+    estimateDraftRevisionRef.current += 1;
     setEstimateDraftDirty(true);
+    if (!estimateConflictRef.current) {
+      setEstimateSaveStatus("IDLE");
+      setEstimateSaveMessage(null);
+    }
   }
 
-  async function createEstimate(duplicate: boolean) {
+  function mutateCustomColumns(
+    mutator: (prev: ProjectEstimateCustomColumn[]) => ProjectEstimateCustomColumn[],
+  ) {
+    setCustomColumns((prev) => cloneEstimateCustomColumns(mutator(prev)));
+    markEstimateDraftDirty();
+  }
+
+  function addCustomColumn() {
+    if (customColumns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT) return;
+    mutateCustomColumns((prev) => [...prev, makeEstimateCustomColumn(prev.length)]);
+    setCustomColumnsOpen(true);
+  }
+
+  function patchCustomColumn(
+    columnId: string,
+    patch: Partial<Pick<ProjectEstimateCustomColumn, "label" | "type" | "formula" | "width">>,
+  ) {
+    mutateCustomColumns((prev) =>
+      prev.map((column) => {
+        if (column.id !== columnId) return column;
+        const nextType = patch.type ?? column.type;
+        return {
+          ...column,
+          ...patch,
+          type: nextType,
+          formula:
+            nextType === "FORMULA"
+              ? patch.formula ?? column.formula ?? "qty * unit_price"
+              : null,
+        };
+      }),
+    );
+  }
+
+  function moveCustomColumn(columnId: string, direction: -1 | 1) {
+    mutateCustomColumns((prev) => {
+      const ordered = cloneEstimateCustomColumns(prev);
+      const index = ordered.findIndex((column) => column.id === columnId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= ordered.length) return ordered;
+      const [column] = ordered.splice(index, 1);
+      if (column) ordered.splice(target, 0, column);
+      return ordered;
+    });
+  }
+
+  function deleteCustomColumn(columnId: string) {
+    const column = customColumns.find((candidate) => candidate.id === columnId);
+    if (!column || !window.confirm(`Удалить колонку «${column.label}» и её значения?`)) return;
+    setCustomColumns((prev) => cloneEstimateCustomColumns(prev.filter((item) => item.id !== columnId)));
+    setLocalSectionsDraft((prev) =>
+      prev.map((section) => ({
+        ...section,
+        lines: section.lines.map((line) => {
+          const nextValues = { ...line.customValues };
+          delete nextValues[columnId];
+          return { ...line, customValues: nextValues };
+        }),
+      })),
+    );
+    markEstimateDraftDirty();
+  }
+
+  function markEstimateDraftDirty() {
+    estimateDraftRevisionRef.current += 1;
+    setEstimateDraftDirty(true);
+    if (!estimateConflictRef.current) {
+      setEstimateSaveStatus("IDLE");
+      setEstimateSaveMessage(null);
+    }
+  }
+
+  function openEstimateTitleDialog(mode: EstimateTitleDialogMode) {
     if (readOnly) return;
-    const title =
-      window.prompt("Название сметы", duplicate ? `Копия ${data?.current?.title ?? "сметы"}` : "Новая смета") ?? "";
+    const currentTitle = data?.current?.title?.trim() || "сметы";
+    setTitleDialog({
+      mode,
+      title:
+        mode === "DUPLICATE"
+          ? `Копия ${currentTitle}`
+          : mode === "RENAME"
+            ? data?.current?.title ?? ""
+            : "Новая смета",
+    });
+    setTitleDialogError(null);
+  }
+
+  async function createEstimate(duplicate: boolean, title: string) {
+    if (readOnly) return;
     if (!title.trim()) return;
     const vNum = data?.current?.versionNumber;
     setBusy(true);
@@ -1089,15 +1412,22 @@ export function ProjectEstimatePanel({
       if (res.ok && j?.version) {
         setSelectedVersion(j.version.versionNumber);
         refreshActivity();
+        setTitleDialog(null);
+        setTitleDialogError(null);
       } else {
-        window.alert(j?.error?.message ?? "Ошибка");
+        setTitleDialogError(j?.error?.message ?? "Не удалось создать смету");
       }
+    } catch {
+      setTitleDialogError("Не удалось связаться с сервером. Попробуйте ещё раз.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function patchCurrentEstimate(patch: { title?: string; includeInProjectTotals?: boolean }) {
+  async function patchCurrentEstimate(
+    patch: { title?: string; includeInProjectTotals?: boolean },
+    options?: { titleDialog?: boolean },
+  ) {
     if (!data?.current) return;
     setBusy(true);
     try {
@@ -1109,12 +1439,41 @@ export function ProjectEstimatePanel({
       const j = await res.json().catch(() => null);
       if (res.ok) {
         load(data.current.versionNumber);
+        if (options?.titleDialog) {
+          setTitleDialog(null);
+          setTitleDialogError(null);
+        }
       } else {
-        window.alert(j?.error?.message ?? "Ошибка");
+        if (options?.titleDialog) {
+          setTitleDialogError(j?.error?.message ?? "Не удалось переименовать смету");
+        } else {
+          window.alert(j?.error?.message ?? "Ошибка");
+        }
+      }
+    } catch {
+      if (options?.titleDialog) {
+        setTitleDialogError("Не удалось связаться с сервером. Попробуйте ещё раз.");
+      } else {
+        window.alert("Не удалось связаться с сервером. Попробуйте ещё раз.");
       }
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitEstimateTitleDialog() {
+    if (!titleDialog || busy) return;
+    const title = titleDialog.title.trim();
+    if (!title) {
+      setTitleDialogError("Введите название сметы");
+      return;
+    }
+    setTitleDialogError(null);
+    if (titleDialog.mode === "RENAME") {
+      await patchCurrentEstimate({ title }, { titleDialog: true });
+      return;
+    }
+    await createEstimate(titleDialog.mode === "DUPLICATE", title);
   }
 
   async function deleteEstimate(versionNumber: number) {
@@ -1224,101 +1583,41 @@ export function ProjectEstimatePanel({
         section.id === sectionId
           ? {
               ...section,
-              lines: section.lines.map((line) => {
-                if (line.id !== lineId) return line;
-                let next: LocalDraftLine = { ...line };
-                if (typeof patch.name === "string") next = { ...next, name: patch.name };
-                if (Object.prototype.hasOwnProperty.call(patch, "description")) {
-                  next = {
-                    ...next,
-                    description: patch.description == null ? null : String(patch.description),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "costClient")) {
-                  next = {
-                    ...next,
-                    costClient: patch.costClient == null ? null : String(patch.costClient),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "costInternal")) {
-                  next = {
-                    ...next,
-                    costInternal: patch.costInternal == null ? null : String(patch.costInternal),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "unit")) {
-                  next = {
-                    ...next,
-                    unit: patch.unit == null || String(patch.unit).trim() === "" ? null : String(patch.unit).trim(),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "qty")) {
-                  next = {
-                    ...next,
-                    qty: patch.qty == null || String(patch.qty).trim() === "" ? null : String(patch.qty),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "unitPriceClient")) {
-                  next = {
-                    ...next,
-                    unitPriceClient:
-                      patch.unitPriceClient == null || String(patch.unitPriceClient).trim() === ""
-                        ? null
-                        : String(patch.unitPriceClient),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "paymentMethod")) {
-                  next = {
-                    ...next,
-                    paymentMethod:
-                      patch.paymentMethod == null ? null : String(patch.paymentMethod).trim() || null,
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "paymentStatus")) {
-                  next = {
-                    ...next,
-                    paymentStatus:
-                      patch.paymentStatus == null ? null : String(patch.paymentStatus).trim() || null,
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "contractorNote")) {
-                  next = {
-                    ...next,
-                    contractorNote:
-                      patch.contractorNote == null ? null : String(patch.contractorNote),
-                  };
-                }
-                if (Object.prototype.hasOwnProperty.call(patch, "contractorRequisites")) {
-                  next = {
-                    ...next,
-                    contractorRequisites:
-                      patch.contractorRequisites == null ? null : String(patch.contractorRequisites),
-                  };
-                }
-                if (Array.isArray(patch.internalExpenses)) {
-                  next = {
-                    ...next,
-                    internalExpenses: cloneLineInternalExpenses({
-                      internalExpenses: patch.internalExpenses as LocalDraftLineInternalExpense[],
-                    }).map((expense, index) => ({ ...expense, sortOrder: index })),
-                  };
-                }
-                const q = next.qty != null ? Number(next.qty.replace(",", ".")) : NaN;
-                const up =
-                  next.unitPriceClient != null ? Number(next.unitPriceClient.replace(",", ".")) : NaN;
-                const touchedPricing =
-                  Object.prototype.hasOwnProperty.call(patch, "qty") ||
-                  Object.prototype.hasOwnProperty.call(patch, "unitPriceClient");
-                if (Number.isFinite(q) && q > 0 && Number.isFinite(up) && up >= 0) {
-                  next = { ...next, costClient: String(roundMoney(q * up)) };
-                } else if (touchedPricing) {
-                  next = { ...next, costClient: null };
-                }
-                return next;
-              }),
+              lines: section.lines.map((line) =>
+                line.id === lineId ? patchLocalDraftLine(line, patch) : line,
+              ),
             }
           : section,
       ),
+    );
+  }
+
+  function pasteLocalTable(
+    sectionId: string,
+    startLineId: string,
+    startColumn: ProjectEstimateTableColumn,
+    text: string,
+  ) {
+    const operations = buildProjectEstimateTablePasteOperations({ text, startColumn });
+    if (operations.length === 0) return;
+    mutateLocalSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        const startIndex = Math.max(0, section.lines.findIndex((line) => line.id === startLineId));
+        const lines = [...section.lines];
+        const neededLength = startIndex + operations.length;
+        while (lines.length < neededLength) lines.push(createEmptyLocalDraftLine(lines.length));
+        operations.forEach((operation) => {
+          const index = startIndex + operation.rowOffset;
+          const current = lines[index];
+          if (!current) return;
+          lines[index] = patchLocalDraftLine(current, operation.patch);
+        });
+        return {
+          ...section,
+          lines: lines.map((line, index) => ({ ...line, position: index, lineNumber: index + 1 })),
+        };
+      }),
     );
   }
 
@@ -1405,6 +1704,7 @@ export function ProjectEstimatePanel({
               contractorNote: payload.contractorNote?.trim() || null,
               contractorRequisites: payload.contractorRequisites?.trim() || null,
               internalExpenses: cloneLineInternalExpenses({ internalExpenses: payload.internalExpenses ?? [] }),
+              customValues: {},
               orderLineId: null,
               itemId: payload.itemId ?? null,
             },
@@ -1456,6 +1756,7 @@ export function ProjectEstimatePanel({
         paymentStatus: null,
         contractorNote: null,
         contractorRequisites: null,
+        customValues: {},
         internalExpenses: [],
         orderLineId: null,
         itemId: args.item.id,
@@ -1581,6 +1882,83 @@ export function ProjectEstimatePanel({
     );
   }
 
+  function deleteLines(sectionId: string, lineIds: string[]) {
+    const selectedIds = new Set(lineIds);
+    if (selectedIds.size === 0) return;
+    mutateLocalSections((prev) =>
+      prev.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              lines: section.lines
+                .filter((line) => !selectedIds.has(line.id))
+                .map((line, index) => ({ ...line, position: index, lineNumber: index + 1 })),
+            }
+          : section,
+      ),
+    );
+  }
+
+  function duplicateLines(sectionId: string, lineIds: string[]) {
+    const selectedIds = new Set(lineIds);
+    if (selectedIds.size === 0) return;
+    mutateLocalSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        const duplicated = section.lines
+          .filter((line) => selectedIds.has(line.id))
+          .map((line) => ({
+            ...line,
+            id: makeTempId("line"),
+            customValues: { ...line.customValues },
+            internalExpenses: line.internalExpenses.map((expense, index) => ({
+              ...expense,
+              id: makeTempId("expense"),
+              sortOrder: index,
+            })),
+          }));
+        return {
+          ...section,
+          lines: [...section.lines, ...duplicated].map((line, index) => ({
+            ...line,
+            position: index,
+            lineNumber: index + 1,
+          })),
+        };
+      }),
+    );
+  }
+
+  function insertEmptyLine(
+    sectionId: string,
+    anchorLineId: string,
+    direction: "ABOVE" | "BELOW",
+  ): string {
+    const newLineId = makeTempId("line");
+    mutateLocalSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        const anchorIndex = section.lines.findIndex((line) => line.id === anchorLineId);
+        const insertionIndex =
+          anchorIndex < 0
+            ? section.lines.length
+            : direction === "ABOVE"
+              ? anchorIndex
+              : anchorIndex + 1;
+        const nextLines = [...section.lines];
+        nextLines.splice(insertionIndex, 0, {
+          ...createEmptyLocalDraftLine(insertionIndex),
+          id: newLineId,
+        });
+        return {
+          ...section,
+          lines: nextLines.map((line, index) => ({ ...line, position: index, lineNumber: index + 1 })),
+        };
+      }),
+    );
+    return newLineId;
+  }
+
   function patchLineInternalExpense(
     sectionId: string,
     lineId: string,
@@ -1655,28 +2033,57 @@ export function ProjectEstimatePanel({
     );
   }
 
-  async function saveEstimateDraft() {
-    if (readOnly || currentVersionNumber == null) return;
-    const baseSections = data?.current?.sections ? cloneLocalSections(data.current.sections) : [];
-    const deletingAllLocalSections = localSectionsDraft.length === 0 && baseSections.length > 0;
-    if (
-      deletingAllLocalSections &&
-      !window.confirm("Удалить все локальные разделы из этой сметы?")
-    ) {
+  async function saveEstimateDraft(mode: EstimateSaveMode = "MANUAL") {
+    if (readOnly || currentVersionNumber == null || estimateSaveInFlightRef.current) return;
+
+    const snapshotRevision = estimateDraftRevisionRef.current;
+    const snapshotSections = sortSectionsBySortOrder(cloneLocalDraftSections(localSectionsDraft));
+    const snapshotCustomColumns = cloneEstimateCustomColumns(customColumns);
+    const snapshotCommissionEnabled = commissionEnabled;
+    const snapshotClientTaxEnabled = clientTaxEnabled;
+    const snapshotClientChargeTaxEnabled = clientChargeTaxEnabled;
+    const hasIncompleteLine = snapshotSections.some((section) =>
+      section.lines.some((line) => !line.name.trim()),
+    );
+    if (hasIncompleteLine) {
+      setEstimateSaveStatus("PAUSED");
+      setEstimateSaveMessage("Автосохранение продолжится после заполнения названия новой строки.");
       return;
     }
-    setBusy(true);
+
+    const deletingAllLocalSections =
+      snapshotSections.length === 0 && savedEstimateSnapshot.sections.length > 0;
+    if (deletingAllLocalSections && mode === "AUTO") {
+      setEstimateSaveStatus("PAUSED");
+      setEstimateSaveMessage("Удаление всех разделов требует ручного подтверждения.");
+      return;
+    }
+    if (deletingAllLocalSections && !window.confirm("Удалить все локальные разделы из этой сметы?")) {
+      return;
+    }
+
+    estimateSaveInFlightRef.current = true;
+    setEstimateSaving(true);
+    setEstimateSaveStatus("SAVING");
+    setEstimateSaveMessage(mode === "AUTO" ? "Сохраняю изменения…" : "Сохраняю смету…");
     try {
       const res = await fetch(`${estimateApiBase}/estimate`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           versionNumber: currentVersionNumber,
+          ...(!standalone
+            ? {
+                saveMode: mode,
+                expectedRevision: serverEstimateRevisionRef.current,
+                customColumns: snapshotCustomColumns,
+              }
+            : {}),
           allowDeleteAllLocalSections: deletingAllLocalSections,
-          commissionEnabled,
-          clientTaxEnabled,
-          clientChargeTaxEnabled,
-          localSections: sortSectionsBySortOrder(localSectionsDraft).map((section) => ({
+          commissionEnabled: snapshotCommissionEnabled,
+          clientTaxEnabled: snapshotClientTaxEnabled,
+          clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+          localSections: snapshotSections.map((section) => ({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
             sortOrder: section.sortOrder,
@@ -1728,35 +2135,123 @@ export function ProjectEstimatePanel({
                   contractorNote: expense.contractorNote?.trim() || null,
                   contractorRequisites: expense.contractorRequisites?.trim() || null,
                 })),
+              ...(!standalone ? { customValues: line.customValues } : {}),
             })),
           })),
         }),
       });
       const j = await res.json().catch(() => null);
       if (res.ok) {
-        setEstimateDraftDirty(false);
-        if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
-        load(selectedVersion);
-        refreshActivity();
+        if (standalone) {
+          setEstimateDraftDirty(false);
+          setEstimateSaveStatus("SAVED");
+          setEstimateSaveMessage("Изменения сохранены.");
+          if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
+          load(selectedVersion);
+          refreshActivity();
+          return;
+        }
+        if (typeof j?.revision === "number") {
+          serverEstimateRevisionRef.current = j.revision;
+          estimateBroadcastChannelRef.current?.postMessage({ revision: j.revision });
+        }
+        estimateConflictRef.current = false;
+        setEstimateConflictDetected(false);
+        setSavedEstimateSnapshot({
+          sections: cloneLocalDraftSections(snapshotSections),
+          customColumns: cloneEstimateCustomColumns(snapshotCustomColumns),
+          commissionEnabled: snapshotCommissionEnabled,
+          clientTaxEnabled: snapshotClientTaxEnabled,
+          clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+        });
+        setLastEstimateSavedAt(new Date());
+        if (estimateDraftRevisionRef.current === snapshotRevision) {
+          setEstimateDraftDirty(false);
+          setEstimateSaveStatus("SAVED");
+          setEstimateSaveMessage("Все изменения сохранены.");
+          if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
+        } else {
+          setEstimateSaveStatus("IDLE");
+          setEstimateSaveMessage("Есть новые изменения — сохраню их следом.");
+        }
       } else {
-        window.alert(j?.error?.message ?? "Ошибка");
+        if (res.status === 409) {
+          estimateConflictRef.current = true;
+          setEstimateConflictDetected(true);
+          setEstimateSaveStatus("PAUSED");
+          setEstimateSaveMessage(
+            j?.error?.message ??
+              "Смета изменилась в другой вкладке. Выберите, какую версию оставить.",
+          );
+        } else {
+          setEstimateSaveStatus("ERROR");
+          setEstimateSaveMessage(j?.error?.message ?? "Не удалось сохранить смету. Черновик остался в браузере.");
+        }
       }
     } catch {
-      window.alert("Не удалось связаться с сервером. Проверьте соединение и повторите сохранение.");
+      setEstimateSaveStatus("ERROR");
+      setEstimateSaveMessage("Нет связи с сервером. Черновик сохранён в браузере — повторю после следующего изменения.");
     } finally {
-      setBusy(false);
+      estimateSaveInFlightRef.current = false;
+      setEstimateSaving(false);
     }
   }
+
+  autoSaveRef.current = () => {
+    void saveEstimateDraft("AUTO");
+  };
+
+  React.useEffect(() => {
+    if (
+      standalone ||
+      readOnly ||
+      !data?.current ||
+      !estimateDraftDirty ||
+      estimateSaving ||
+      busy ||
+      estimateSaveStatus === "ERROR" ||
+      estimateSaveStatus === "PAUSED"
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => autoSaveRef.current(), 1400);
+    return () => window.clearTimeout(timer);
+  }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, readOnly, standalone]);
 
   function discardEstimateDraft() {
     if (!window.confirm("Сбросить несохранённые изменения сметы?")) return;
     if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
-    const baseSections = data?.current?.sections ? cloneLocalSections(data.current.sections) : [];
-    setLocalSectionsDraft(baseSections);
-    setCommissionEnabled(data?.current?.commissionEnabled ?? true);
-    setClientTaxEnabled(data?.current?.clientTaxEnabled ?? true);
-    setClientChargeTaxEnabled(data?.current?.clientChargeTaxEnabled ?? false);
+    estimateDraftRevisionRef.current += 1;
+    setLocalSectionsDraft(cloneLocalDraftSections(savedEstimateSnapshot.sections));
+    setCustomColumns(cloneEstimateCustomColumns(savedEstimateSnapshot.customColumns));
+    setCommissionEnabled(savedEstimateSnapshot.commissionEnabled);
+    setClientTaxEnabled(savedEstimateSnapshot.clientTaxEnabled);
+    setClientChargeTaxEnabled(savedEstimateSnapshot.clientChargeTaxEnabled);
     setEstimateDraftDirty(false);
+    estimateConflictRef.current = false;
+    setEstimateConflictDetected(false);
+    setEstimateSaveStatus("IDLE");
+    setEstimateSaveMessage(null);
+  }
+
+  function keepLocalDraftAfterConflict() {
+    if (!window.confirm("Повторить сохранение вашего черновика поверх свежей серверной версии?")) return;
+    estimateConflictRef.current = false;
+    setEstimateConflictDetected(false);
+    setEstimateSaveStatus("IDLE");
+    setEstimateSaveMessage("Обновляю основу и повторю сохранение черновика…");
+    load(currentVersionNumber);
+  }
+
+  function acceptServerEstimateAfterConflict() {
+    if (!window.confirm("Отказаться от локального черновика и загрузить серверную версию?")) return;
+    if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
+    estimateConflictRef.current = false;
+    setEstimateConflictDetected(false);
+    setEstimateDraftDirty(false);
+    setEstimateSaveStatus("IDLE");
+    setEstimateSaveMessage(null);
+    load(currentVersionNumber);
   }
 
   const vn = currentVersionNumber;
@@ -1811,8 +2306,8 @@ export function ProjectEstimatePanel({
 
   const dirtyLocalLineIds = React.useMemo(() => {
     const dirtyIds = new Set<string>();
-    if (!data?.current) return dirtyIds;
-    const baseline = cloneLocalSections(data.current.sections);
+    if (!data?.current || !estimateDraftDirty) return dirtyIds;
+    const baseline = savedEstimateSnapshot.sections;
     const normalizedBase = new Map(
       sortSectionsBySortOrder(baseline).map((section) => [section.id, normalizeLocalSectionsForCompare([section])[0]]),
     );
@@ -1836,34 +2331,14 @@ export function ProjectEstimatePanel({
     });
 
     return dirtyIds;
-  }, [data?.current, localSectionsDraft]);
+  }, [data?.current, estimateDraftDirty, localSectionsDraft, savedEstimateSnapshot.sections]);
 
   const totals = React.useMemo(() => {
-    const sections = renderedSections;
-    let clientSubtotal = 0;
-    let internalSubtotal = 0;
-    let cashInternalSubtotal = 0;
-    for (const s of sections) {
-      for (const l of s.lines) {
-        clientSubtotal += getNumericAmount(l.costClient);
-        const internalCost = lineInternalTotal(l);
-        internalSubtotal += internalCost;
-        cashInternalSubtotal += lineCashInternalTotal(l);
-      }
-    }
-    const roundedClientSubtotal = roundMoney(clientSubtotal);
-    const roundedInternalSubtotal = roundMoney(internalSubtotal);
-    const cashInternalCostTax = calcOrderServicesInternalCosts({
-      delivery: {
-        enabled: true,
-        internalCost: cashInternalSubtotal,
-        internalPaymentMethod: "CASH",
-      },
-    }).cashInternalCostTax;
+    const lineSummary = summarizeProjectEstimateSections(renderedSections);
     const estimateTotals = calcProjectEstimateTotals({
-      clientSubtotal: roundedClientSubtotal,
-      internalSubtotal: roundedInternalSubtotal,
-      cashInternalCostTax,
+      clientSubtotal: lineSummary.clientSubtotal,
+      internalSubtotal: lineSummary.internalSubtotal,
+      cashInternalCostTax: lineSummary.cashInternalCostTax,
       commissionEnabled,
       clientTaxEnabled,
       clientChargeTaxEnabled,
@@ -1876,7 +2351,7 @@ export function ProjectEstimatePanel({
       revenueTotal: estimateTotals.revenueTotal,
       tax6: estimateTotals.tax,
       internalSubtotal: estimateTotals.internalSubtotal,
-      cashInternalSubtotal: roundMoney(cashInternalSubtotal),
+      cashInternalSubtotal: lineSummary.cashInternalSubtotal,
       cashInternalCostTax: estimateTotals.cashInternalCostTax,
       internalWithCashTax: estimateTotals.internalExpensesTotal,
       totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax),
@@ -1915,7 +2390,7 @@ export function ProjectEstimatePanel({
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-zinc-300 bg-white p-3 sm:p-4">
+    <div className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""}`}>
       <UnitPresetDatalist />
 
       {loading ? (
@@ -1931,7 +2406,7 @@ export function ProjectEstimatePanel({
             <button
               type="button"
               disabled={busy}
-              onClick={() => void createEstimate(false)}
+              onClick={() => openEstimateTitleDialog("CREATE")}
               className={btnPrimary}
             >
               Создать первую смету
@@ -1940,27 +2415,25 @@ export function ProjectEstimatePanel({
         </div>
       ) : (
         <>
-          <div className="rounded-md border border-zinc-300 border-t-4 border-t-yellow-400 bg-zinc-50 p-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="project-estimate__toolbar border-b border-zinc-300 bg-white pb-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-700">
-                    {standalone ? "Независимый расчёт" : "Финансы"}
-                  </span>
-                  <EstimateHelpLegend title="Как работать со сметами">
-                    {standalone
-                      ? "Составьте расчёт и выгрузите клиентскую или внутреннюю версию. После согласования его можно превратить в полноценный проект."
-                      : "Создавай отдельные сметы для основного договора и доп. соглашений. В общий итог проекта попадают только сметы с отметкой «В итогах проекта»."}
-                  </EstimateHelpLegend>
-                </div>
-                <div className="mt-2 text-3xl font-black tracking-tight text-zinc-950">
-                  {standalone ? "Смета" : "Сметы проекта"}
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
+                {standalone ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-violet-700">Независимый расчёт</span>
+                      <EstimateHelpLegend title="Как работать со сметами">
+                        Составьте расчёт и выгрузите клиентскую или внутреннюю версию. После согласования его можно превратить в полноценный проект.
+                      </EstimateHelpLegend>
+                    </div>
+                    <div className="mt-1 text-xl font-black tracking-tight text-zinc-950">Смета</div>
+                  </>
+                ) : null}
+                <div className={`${standalone ? "mt-2" : ""} flex flex-wrap items-center gap-2`}>
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
-                    className="inline-flex min-h-14 min-w-[17rem] items-center justify-between gap-4 rounded-md border border-zinc-300 bg-white px-4 py-3 text-left transition-colors hover:border-zinc-950"
+                    className="project-estimate__version inline-flex min-h-10 min-w-[15rem] items-center justify-between gap-3 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-left transition-colors hover:border-zinc-950"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
                       setActionsOpen(false);
@@ -1968,8 +2441,8 @@ export function ProjectEstimatePanel({
                     }}
                   >
                     <span>
-                      <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Открыта сейчас</span>
-                      <span className="mt-1 block text-lg font-black leading-tight text-zinc-950">
+                      {!workspaceMode ? <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-500">Открыта сейчас</span> : null}
+                      <span className="block text-sm font-extrabold leading-tight text-zinc-950">
                         {currentVersionMeta?.title?.trim() || (vn != null ? `Смета ${vn}` : "Смета не выбрана")}
                       </span>
                     </span>
@@ -2008,7 +2481,7 @@ export function ProjectEstimatePanel({
                   ) : null}
                 </div>
 
-                {currentVersionMeta && !standalone ? (
+                {currentVersionMeta && !standalone && !workspaceMode ? (
                   <>
                     <span
                       className="inline-flex items-center rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-xs font-extrabold text-violet-800 shadow-sm"
@@ -2023,12 +2496,27 @@ export function ProjectEstimatePanel({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-start gap-2 lg:justify-end">
+              <div className="project-estimate__actions flex flex-wrap items-start gap-2 lg:justify-end">
+                {workspaceMode ? (
+                  <>
+                    <div className="project-estimate__quick-totals" aria-label="Финансы выбранной сметы">
+                      <span><small>Клиент</small><strong>{money(totals.revenueTotal)} ₽</strong></span>
+                      <span><small>Расходы</small><strong>{money(totals.totalExpensesWithTax)} ₽</strong></span>
+                      <span className={totals.marginAfterTax < 0 ? "is-negative" : "is-positive"}><small>Маржа</small><strong>{money(totals.marginAfterTax)} ₽</strong></span>
+                    </div>
+                    {!readOnly ? (
+                      <div className="project-estimate__column-actions">
+                        <button type="button" onClick={() => setCustomColumnsOpen((value) => !value)} aria-expanded={customColumnsOpen}>Колонки</button>
+                        <button type="button" disabled={busy || estimateSaving || customColumns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT} onClick={() => { setCustomColumnsOpen(true); addCustomColumn(); }} aria-label="Добавить колонку">+</button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 {vn != null ? (
                   <div className="relative" ref={downloadWrapRef}>
                     <button
                       type="button"
-                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
                       aria-label="Скачать смету"
                       onClick={() => {
                         setDownloadOpen((v) => !v);
@@ -2037,7 +2525,7 @@ export function ProjectEstimatePanel({
                       }}
                     >
                       <DownloadIcon />
-                      <span>Скачать</span>
+                      <span className={workspaceMode ? "sr-only" : ""}>Скачать</span>
                     </button>
                     {downloadOpen ? (
                       <div className={menuPanel}>
@@ -2062,7 +2550,7 @@ export function ProjectEstimatePanel({
                 <button
                   type="button"
                   disabled={busy}
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
                   aria-label="Действия со сметой"
                   onClick={() => {
                     setActionsOpen((v) => !v);
@@ -2071,7 +2559,7 @@ export function ProjectEstimatePanel({
                   }}
                 >
                   <MoreIcon />
-                  <span>Действия</span>
+                   <span className={workspaceMode ? "sr-only" : ""}>Действия</span>
                 </button>
                 {actionsOpen ? (
                   <div className={menuPanel}>
@@ -2081,7 +2569,7 @@ export function ProjectEstimatePanel({
                       className={menuAction}
                       onClick={() => {
                         setActionsOpen(false);
-                        void createEstimate(false);
+                        openEstimateTitleDialog("CREATE");
                       }}
                     >
                       <span>
@@ -2095,7 +2583,7 @@ export function ProjectEstimatePanel({
                       className={menuAction}
                       onClick={() => {
                         setActionsOpen(false);
-                        void createEstimate(true);
+                        openEstimateTitleDialog("DUPLICATE");
                       }}
                     >
                       <span>
@@ -2110,9 +2598,7 @@ export function ProjectEstimatePanel({
                       onClick={() => {
                         if (!data.current) return;
                         setActionsOpen(false);
-                        const title = window.prompt("Новое название сметы", data.current.title ?? "");
-                        if (title == null || !title.trim()) return;
-                        void patchCurrentEstimate({ title: title.trim() });
+                        openEstimateTitleDialog("RENAME");
                       }}
                     >
                       <span>
@@ -2272,14 +2758,42 @@ export function ProjectEstimatePanel({
                     </div>
               ) : null}
 
-              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-200 pb-2">
+              {!workspaceMode ? <div className="project-estimate__section-tools flex flex-wrap items-end justify-between gap-3 border-b border-zinc-200 pb-2">
                 <div className="flex items-center gap-2">
-                  <div className="text-sm font-black text-zinc-950">Разделы сметы</div>
+                  <div className="text-sm font-black text-zinc-950">{workspaceMode ? `${renderedSections.length} ${renderedSections.length === 1 ? "раздел" : "раздела"}` : "Разделы сметы"}</div>
                   <EstimateHelpLegend title="Порядок разделов">
                     Открывай только нужные разделы. Стрелки справа меняют порядок; новый раздел добавляется в конец сметы.
                   </EstimateHelpLegend>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {estimateGridEnabled && !workspaceMode ? (
+                    <span className="inline-flex min-h-8 items-center rounded-full bg-violet-50 px-3 text-xs font-bold text-violet-800">
+                      Табличная смета
+                    </span>
+                  ) : null}
+                  {!standalone && !readOnly ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className={btnSecondaryXs}
+                        onClick={() => setCustomColumnsOpen((value) => !value)}
+                        aria-expanded={customColumnsOpen}
+                      >
+                        {customColumnsOpen ? "Скрыть колонки" : "Настроить колонки"}{customColumns.length > 0 ? ` · ${customColumns.length}` : ""}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || estimateSaving || customColumns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT}
+                        className="inline-flex min-h-8 items-center rounded-md bg-zinc-950 px-2.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40"
+                        onClick={() => {
+                          setCustomColumnsOpen(true);
+                          addCustomColumn();
+                        }}
+                      >
+                        + Колонка
+                      </button>
+                    </div>
+                  ) : null}
                   {standalone && !readOnly ? (
                     <button
                       type="button"
@@ -2290,7 +2804,7 @@ export function ProjectEstimatePanel({
                       {standaloneCatalogOpen ? "Закрыть каталог" : "+ Реквизит из каталога"}
                     </button>
                   ) : null}
-                  <div className="text-xs font-semibold tabular-nums text-zinc-500">
+                  {!workspaceMode ? <div className="text-xs font-semibold tabular-nums text-zinc-500">
                     {renderedSections.length}{" "}
                     {renderedSections.length % 10 === 1 && renderedSections.length % 100 !== 11
                       ? "раздел"
@@ -2298,9 +2812,22 @@ export function ProjectEstimatePanel({
                           ![12, 13, 14].includes(renderedSections.length % 100)
                         ? "раздела"
                         : "разделов"}
-                  </div>
+                  </div> : null}
                 </div>
-              </div>
+              </div> : null}
+
+              {!standalone && !readOnly && customColumnsOpen ? (
+                <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-4 sm:px-4">
+                  <CustomColumnManager
+                    columns={customColumns}
+                    busy={busy || estimateSaving}
+                    onAdd={addCustomColumn}
+                    onPatch={patchCustomColumn}
+                    onMove={moveCustomColumn}
+                    onDelete={deleteCustomColumn}
+                  />
+                </div>
+              ) : null}
 
               {standalone && standaloneCatalogOpen && !readOnly ? (
                 <StandaloneEstimateCatalog
@@ -2309,7 +2836,7 @@ export function ProjectEstimatePanel({
                 />
               ) : null}
 
-              <div className="space-y-3">
+              <div className="project-estimate__sections space-y-3">
                 {renderedSections.map((sec, sectionIndex) =>
                   isRequisiteSectionWithOrder(sec) ? (
                     <RequisiteSectionEditor
@@ -2343,6 +2870,7 @@ export function ProjectEstimatePanel({
                       canMoveDown={sectionIndex < renderedSections.length - 1}
                       onMove={(direction) => void moveSection(sec.id, direction)}
                       defaultOpen={sectionIndex === 0}
+                      workspaceMode={workspaceMode}
                     >
                       {isDraftRequisiteSection(sec) ? (
                         <DraftRequisiteEditor
@@ -2355,44 +2883,63 @@ export function ProjectEstimatePanel({
                           }}
                         />
                       ) : (
-                        <>
-                          {sec.lines.map((ln) => (
-                            <LineEditor
-                              key={ln.id}
-                              sectionId={sec.id}
-                              sectionKind={sec.kind === "LOCAL" ? "LOCAL" : "CONTRACTOR"}
-                              line={ln}
-                              isDirty={dirtyLocalLineIds.has(ln.id)}
-                              readOnly={readOnly}
-                              busy={busy}
-                              onSave={saveLine}
-                              onDelete={deleteLine}
-                              onAddInternalExpense={addLineInternalExpense}
-                              onPatchInternalExpense={patchLineInternalExpense}
-                              onDeleteInternalExpense={deleteLineInternalExpense}
-                            />
-                          ))}
+                        effectiveEstimateViewMode === "TABLE" && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") ? (
+                          <CompactEstimateTable
+                            sectionId={sec.id}
+                            lines={sec.lines as LocalDraftLine[]}
+                            customColumns={standalone ? [] : customColumns}
+                            dirtyLineIds={dirtyLocalLineIds}
+                            readOnly={readOnly}
+                            busy={busy}
+                            onSave={saveLine}
+                            onDelete={deleteLine}
+                            onDeleteMany={deleteLines}
+                            onDuplicateMany={duplicateLines}
+                            onInsert={insertEmptyLine}
+                            onAdd={() => addEmptyLine(sec.id)}
+                            onPaste={pasteLocalTable}
+                            workspaceMode={workspaceMode}
+                          />
+                        ) : (
+                          <>
+                            {sec.lines.map((ln) => (
+                              <LineEditor
+                                key={ln.id}
+                                sectionId={sec.id}
+                                sectionKind={sec.kind === "LOCAL" ? "LOCAL" : "CONTRACTOR"}
+                                line={ln}
+                                isDirty={dirtyLocalLineIds.has(ln.id)}
+                                readOnly={readOnly}
+                                busy={busy}
+                                onSave={saveLine}
+                                onDelete={deleteLine}
+                                onAddInternalExpense={addLineInternalExpense}
+                                onPatchInternalExpense={patchLineInternalExpense}
+                                onDeleteInternalExpense={deleteLineInternalExpense}
+                              />
+                            ))}
 
-                          {!readOnly ? (
-                            <div className="border-t border-dashed border-zinc-200 pt-2">
-                              <button
-                                type="button"
-                                disabled={busy}
-                                className={`${btnSecondaryXs} border-violet-200 bg-violet-50/80 font-semibold text-violet-900 hover:bg-violet-100`}
-                                onClick={() => addEmptyLine(sec.id)}
-                              >
-                                {sec.lines.length === 0 ? "+ Добавить строку" : "+ Строка"}
-                              </button>
-                            </div>
-                          ) : null}
-                        </>
+                            {!readOnly ? (
+                              <div className="border-t border-dashed border-zinc-200 pt-2">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  className={`${btnSecondaryXs} border-violet-200 bg-violet-50/80 font-semibold text-violet-900 hover:bg-violet-100`}
+                                  onClick={() => addEmptyLine(sec.id)}
+                                >
+                                  {sec.lines.length === 0 ? "+ Добавить строку" : "+ Строка"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </>
+                        )
                       )}
                     </EstimateSectionBlock>
                   ),
                 )}
               </div>
 
-              {!readOnly ? (
+              {!readOnly && !workspaceMode ? (
                 <form
                   onSubmit={addSection}
                   className="mt-3 grid gap-2 border border-dashed border-zinc-300 bg-zinc-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
@@ -2420,7 +2967,38 @@ export function ProjectEstimatePanel({
                 </form>
               ) : null}
 
-              <div className="border border-zinc-300 bg-white">
+              {!readOnly && workspaceMode ? (
+                <details className="project-estimate__add-section">
+                  <summary>+ Новый раздел</summary>
+                  <form onSubmit={addSection}>
+                    <input
+                      id="project-estimate-new-section-compact"
+                      value={newSectionTitle}
+                      onChange={(event) => setNewSectionTitle(event.target.value)}
+                      placeholder="Название раздела"
+                      maxLength={200}
+                    />
+                    <button type="submit" disabled={busy || !newSectionTitle.trim()}>Добавить</button>
+                  </form>
+                </details>
+              ) : null}
+
+              {workspaceMode ? (
+                <div className="project-estimate__finance-rail">
+                  <div><span>Итого клиенту</span><strong>{money(totals.revenueTotal)} ₽</strong></div>
+                  <div><span>Все расходы</span><strong>{money(totals.totalExpensesWithTax)} ₽</strong></div>
+                  <div className={totals.marginAfterTax < 0 ? "is-negative" : "is-positive"}><span>Маржа после налогов</span><strong>{money(totals.marginAfterTax)} ₽</strong></div>
+                  <div><span>Рентабельность</span><strong>{Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}</strong></div>
+                  <details>
+                    <summary>Налоги и комиссии</summary>
+                    <div>
+                      <EstimateFinanceToggle label={`Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`} checked={commissionEnabled} disabled={readOnly || busy} onChange={(value) => { setCommissionEnabled(value); markEstimateDraftDirty(); }} />
+                      <EstimateFinanceToggle label={`Налог клиенту ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientChargeTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientChargeTaxEnabled(value); markEstimateDraftDirty(); }} />
+                      <EstimateFinanceToggle label={`Расходный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientTaxEnabled(value); markEstimateDraftDirty(); }} />
+                    </div>
+                  </details>
+                </div>
+              ) : <div className="border border-zinc-300 bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-3">
                   <div>
                     <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Выбранная смета</div>
@@ -2453,7 +3031,7 @@ export function ProjectEstimatePanel({
                         disabled={readOnly || busy}
                         onChange={(value) => {
                           setCommissionEnabled(value);
-                          setEstimateDraftDirty(true);
+                          markEstimateDraftDirty();
                         }}
                       />
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
@@ -2465,7 +3043,7 @@ export function ProjectEstimatePanel({
                         disabled={readOnly || busy}
                         onChange={(value) => {
                           setClientChargeTaxEnabled(value);
-                          setEstimateDraftDirty(true);
+                          markEstimateDraftDirty();
                         }}
                       />
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.clientChargeTax)} ₽</span>
@@ -2500,7 +3078,7 @@ export function ProjectEstimatePanel({
                         disabled={readOnly || busy}
                         onChange={(value) => {
                           setClientTaxEnabled(value);
-                          setEstimateDraftDirty(true);
+                          markEstimateDraftDirty();
                         }}
                       />
                       <span className="font-bold tabular-nums text-zinc-950">{money(totals.tax6)} ₽</span>
@@ -2531,9 +3109,9 @@ export function ProjectEstimatePanel({
                   </div>
                 </div>
               </div>
-              </div>
+              </div>}
 
-              {!standalone && data.versions.length > 1 ? (
+              {!standalone && !workspaceMode && data.versions.length > 1 ? (
                 <div className="border border-emerald-200 bg-emerald-50/45 p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -2569,29 +3147,70 @@ export function ProjectEstimatePanel({
                 </div>
               ) : null}
 
-              {!readOnly && data?.current ? (
+              {!readOnly && data?.current && !workspaceMode ? (
                 <div
                   ref={saveBarRef}
                   className="flex flex-wrap items-center justify-between gap-3 border border-zinc-300 bg-zinc-50 p-3"
                 >
-                  <div className="text-xs text-zinc-500">
-                    {estimateDraftDirty ? "Есть несохранённые изменения" : "Все изменения сохранены"}
+                  <div className="min-w-0 flex-1 text-xs text-zinc-500" aria-live="polite">
+                    <div className="flex items-center gap-2 font-semibold text-zinc-700">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          estimateSaveStatus === "ERROR"
+                            ? "bg-rose-500"
+                            : estimateSaveStatus === "PAUSED"
+                              ? "bg-amber-400"
+                              : estimateSaving
+                                ? "animate-pulse bg-violet-500"
+                                : estimateDraftDirty
+                                  ? "bg-amber-400"
+                                  : "bg-emerald-500"
+                        }`}
+                      />
+                      {estimateSaveMessage ??
+                        (estimateDraftDirty ? "Изменения будут сохранены автоматически" : "Все изменения сохранены")}
+                    </div>
+                    {lastEstimateSavedAt && !estimateDraftDirty ? (
+                      <div className="mt-1 text-[11px] text-zinc-400">
+                        Последнее сохранение в {lastEstimateSavedAt.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    ) : null}
                   </div>
                   <button
                     type="button"
-                    disabled={busy || !estimateDraftDirty}
+                    disabled={busy || estimateSaving || !estimateDraftDirty}
                     onClick={discardEstimateDraft}
                     className={`${btnSecondary} min-h-11`}
                   >
                     Сбросить черновик
                   </button>
+                  {estimateConflictDetected ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busy || estimateSaving}
+                        onClick={acceptServerEstimateAfterConflict}
+                        className={`${btnSecondary} min-h-11`}
+                      >
+                        Принять серверную
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || estimateSaving}
+                        onClick={keepLocalDraftAfterConflict}
+                        className="min-h-11 rounded-md border border-amber-400 bg-amber-50 px-4 py-2.5 text-sm font-extrabold text-amber-950 transition hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        Оставить мой черновик
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
-                    disabled={busy || !estimateDraftDirty}
-                    onClick={() => void saveEstimateDraft()}
+                    disabled={busy || estimateSaving || !estimateDraftDirty || estimateConflictDetected}
+                    onClick={() => void saveEstimateDraft("MANUAL")}
                     className="min-h-11 rounded-md border border-zinc-950 bg-zinc-950 px-5 py-2.5 text-sm font-extrabold text-white hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {busy ? "Сохраняю смету…" : "Сохранить смету"}
+                    {estimateSaving ? "Сохраняю смету…" : "Сохранить сейчас"}
                   </button>
                 </div>
               ) : null}
@@ -2599,21 +3218,231 @@ export function ProjectEstimatePanel({
           )}
         </>
       )}
-      {showFloatingSave && typeof document !== "undefined"
+      {titleDialog && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[240] flex items-center justify-center bg-zinc-950/55 p-4 backdrop-blur-[2px]"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !busy) {
+                  setTitleDialog(null);
+                  setTitleDialogError(null);
+                }
+              }}
+            >
+              <form
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="estimate-title-dialog-heading"
+                className="w-full max-w-md overflow-hidden rounded-3xl border border-white/70 bg-white shadow-[0_28px_90px_rgba(24,24,27,0.32)]"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitEstimateTitleDialog();
+                }}
+              >
+                <div className="border-b border-zinc-200 bg-[linear-gradient(135deg,#faf5ff_0%,#ffffff_58%,#fff7cc_100%)] px-6 py-5">
+                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-700">
+                    {titleDialog.mode === "RENAME" ? "Настройки сметы" : "Сметы проекта"}
+                  </div>
+                  <h2 id="estimate-title-dialog-heading" className="mt-2 text-2xl font-black tracking-tight text-zinc-950">
+                    {titleDialog.mode === "CREATE"
+                      ? "Новая смета"
+                      : titleDialog.mode === "DUPLICATE"
+                        ? "Копия текущей сметы"
+                        : "Переименовать смету"}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-zinc-600">
+                    {titleDialog.mode === "DUPLICATE"
+                      ? "Все разделы и строки текущей сметы будут перенесены в новую копию."
+                      : "Название поможет быстро отличать основной расчёт от дополнительных смет."}
+                  </p>
+                </div>
+                <div className="space-y-4 px-6 py-5">
+                  <label className="block">
+                    <span className="text-xs font-extrabold uppercase tracking-[0.12em] text-zinc-600">Название</span>
+                    <input
+                      autoFocus
+                      maxLength={160}
+                      value={titleDialog.title}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onChange={(event) => {
+                        setTitleDialog((current) => current ? { ...current, title: event.target.value } : current);
+                        if (titleDialogError) setTitleDialogError(null);
+                      }}
+                      className="mt-2 min-h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 text-base font-semibold text-zinc-950 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100"
+                      placeholder="Например, Основная смета"
+                    />
+                  </label>
+                  {titleDialogError ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">
+                      {titleDialogError}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setTitleDialog(null);
+                        setTitleDialogError(null);
+                      }}
+                      className="min-h-11 rounded-xl border border-zinc-300 bg-white px-5 text-sm font-extrabold text-zinc-800 transition hover:border-zinc-500 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy || !titleDialog.title.trim()}
+                      className="min-h-11 rounded-xl border border-zinc-950 bg-zinc-950 px-5 text-sm font-extrabold text-white transition hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busy
+                        ? "Сохраняю…"
+                        : titleDialog.mode === "CREATE"
+                          ? "Создать смету"
+                          : titleDialog.mode === "DUPLICATE"
+                            ? "Создать копию"
+                            : "Сохранить название"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>,
+            document.body,
+          )
+        : null}
+      {showFloatingSave && !workspaceMode && typeof document !== "undefined"
         ? createPortal(
             <button
               type="button"
-              disabled={busy || !estimateDraftDirty}
-              onClick={() => void saveEstimateDraft()}
+              disabled={busy || estimateSaving || !estimateDraftDirty || estimateConflictDetected}
+              onClick={() => void saveEstimateDraft("MANUAL")}
               className="fixed bottom-6 right-6 z-[160] rounded-2xl border border-violet-500 bg-[linear-gradient(135deg,#7c3aed,#111827)] px-5 py-3 text-sm font-extrabold text-white shadow-[0_18px_45px_rgba(76,29,149,0.32)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "Сохраняю…" : "Сохранить смету"}
+              {estimateConflictDetected
+                ? "Нужно выбрать версию"
+                : estimateSaving
+                  ? "Сохраняю…"
+                  : "Сохранить сейчас"}
             </button>,
             document.body,
           )
         : null}
     </div>
   );
+}
+
+function patchLocalDraftLine(line: LocalDraftLine, patch: Record<string, unknown>): LocalDraftLine {
+  let next: LocalDraftLine = { ...line };
+  if (typeof patch.name === "string" || patch.name === null) {
+    next = { ...next, name: patch.name == null ? "" : patch.name };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+    next = { ...next, description: patch.description == null ? null : String(patch.description) };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "costClient")) {
+    next = { ...next, costClient: patch.costClient == null ? null : String(patch.costClient) };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "costInternal")) {
+    next = { ...next, costInternal: patch.costInternal == null ? null : String(patch.costInternal) };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "unit")) {
+    next = {
+      ...next,
+      unit: patch.unit == null || String(patch.unit).trim() === "" ? null : String(patch.unit).trim(),
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "qty")) {
+    next = {
+      ...next,
+      qty: patch.qty == null || String(patch.qty).trim() === "" ? null : String(patch.qty),
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "unitPriceClient")) {
+    next = {
+      ...next,
+      unitPriceClient:
+        patch.unitPriceClient == null || String(patch.unitPriceClient).trim() === ""
+          ? null
+          : String(patch.unitPriceClient),
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "paymentMethod")) {
+    next = {
+      ...next,
+      paymentMethod: patch.paymentMethod == null ? null : String(patch.paymentMethod).trim() || null,
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "paymentStatus")) {
+    next = {
+      ...next,
+      paymentStatus: patch.paymentStatus == null ? null : String(patch.paymentStatus).trim() || null,
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "contractorNote")) {
+    next = {
+      ...next,
+      contractorNote: patch.contractorNote == null ? null : String(patch.contractorNote),
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "contractorRequisites")) {
+    next = {
+      ...next,
+      contractorRequisites: patch.contractorRequisites == null ? null : String(patch.contractorRequisites),
+    };
+  }
+  if (Array.isArray(patch.internalExpenses)) {
+    next = {
+      ...next,
+      internalExpenses: cloneLineInternalExpenses({
+        internalExpenses: patch.internalExpenses as LocalDraftLineInternalExpense[],
+      }).map((expense, index) => ({ ...expense, sortOrder: index })),
+    };
+  }
+  if (patch.customValues && typeof patch.customValues === "object" && !Array.isArray(patch.customValues)) {
+    next = {
+      ...next,
+      customValues: Object.fromEntries(
+        Object.entries(patch.customValues as Record<string, unknown>).map(([columnId, value]) => [
+          columnId,
+          value == null ? "" : String(value),
+        ]),
+      ),
+    };
+  }
+
+  const parsed = parseEstimateQtyUp(next);
+  const touchedPricing =
+    Object.prototype.hasOwnProperty.call(patch, "qty") ||
+    Object.prototype.hasOwnProperty.call(patch, "unitPriceClient");
+  if (parsed) {
+    next = { ...next, costClient: String(roundMoney(parsed.q * parsed.up)) };
+  } else if (touchedPricing) {
+    next = { ...next, costClient: null };
+  }
+  return next;
+}
+
+function createEmptyLocalDraftLine(index: number): LocalDraftLine {
+  return {
+    id: makeTempId("line"),
+    position: index,
+    lineNumber: index + 1,
+    name: "",
+    description: null,
+    lineType: "OTHER",
+    costClient: null,
+    costInternal: null,
+    unit: "шт",
+    qty: null,
+    unitPriceClient: null,
+    paymentMethod: null,
+    paymentStatus: null,
+    contractorNote: null,
+    contractorRequisites: null,
+    internalExpenses: [],
+    customValues: {},
+    orderLineId: null,
+    itemId: null,
+  };
 }
 
 function StandaloneEstimateCatalog({
@@ -2926,6 +3755,7 @@ function EstimateSectionBlock({
   summaryTitleAddon,
   summaryTrailing,
   defaultOpen = false,
+  workspaceMode = false,
   canMoveUp = false,
   canMoveDown = false,
   onMove,
@@ -2942,6 +3772,7 @@ function EstimateSectionBlock({
   /** Если задано — подменяет стандартную колонку «Открыть заявку» справа в summary. */
   summaryTrailing?: React.ReactNode;
   defaultOpen?: boolean;
+  workspaceMode?: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onMove?: (direction: -1 | 1) => void;
@@ -2971,7 +3802,7 @@ function EstimateSectionBlock({
 
   return (
     <details
-      className={`group overflow-hidden border bg-white ${
+      className={`project-estimate-section group overflow-hidden border bg-white ${workspaceMode ? "project-estimate-section--workspace" : ""} ${
         sec.kind === "REQUISITE"
           ? sectionTone.requisite
           : sec.kind === "DRAFT_REQUISITE"
@@ -2983,10 +3814,10 @@ function EstimateSectionBlock({
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer list-none px-3 py-3 sm:px-4">
+      <summary className="project-estimate-section__summary cursor-pointer list-none px-3 py-3 sm:px-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="project-estimate-section__kind flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                   sec.kind === "REQUISITE"
@@ -3025,7 +3856,7 @@ function EstimateSectionBlock({
                 </EstimateHelpLegend>
               ) : null}
             </div>
-            <div className={`mt-1.5 text-base font-black text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}>
+            <div className={`project-estimate-section__title mt-1.5 text-base font-black text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}>
               {summaryTitleAddon}
               <span className="min-w-0">
                 {sec.kind === "REQUISITE"
@@ -3035,7 +3866,7 @@ function EstimateSectionBlock({
                     : sec.title}
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+            <div className="project-estimate-section__meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               {sec.kind === "REQUISITE" ? (
                 <>
                   {orderMeta?.eventName?.trim() ? (
@@ -3067,8 +3898,8 @@ function EstimateSectionBlock({
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-start justify-end gap-2 self-start">
-            <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="project-estimate-section__actions flex flex-wrap items-start justify-end gap-2 self-start">
+            <div className="project-estimate-section__totals flex flex-wrap items-center justify-end gap-3">
               <div className="text-right">
                 <div className="text-[9px] font-black uppercase tracking-[0.14em] text-zinc-400">Клиенту</div>
                 <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionClientSubtotal)} ₽</div>
@@ -3162,7 +3993,7 @@ function EstimateSectionBlock({
           </div>
         </div>
       </summary>
-      <div className="space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
+      <div className="project-estimate-section__body space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
         {!readOnly ? (
           (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && editingTitle ? (
             <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
@@ -3237,6 +4068,7 @@ const ESTIMATE_CLIENT_ROW_GRID =
   "grid gap-1.5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_4.5rem_4rem_4.5rem_4.5rem]";
 
 const PAYMENT_METHOD_OPTIONS = ["Наличные", "Безнал"] as const;
+const UNIT_OPTIONS = ["шт", "час", "усл."] as const;
 const PAYMENT_STATUS_PAID = "Оплачено";
 const PAYMENT_STATUS_UNPAID = "Не оплачено";
 /** Уникальный id datalist для комбобокса статуса (input list=… + datalist). */
@@ -3257,6 +4089,810 @@ function paymentStatusTextClass(raw: string | null | undefined): string {
   if (t === PAYMENT_STATUS_PAID) return "font-semibold text-emerald-700";
   if (t === PAYMENT_STATUS_UNPAID) return "font-semibold text-red-700";
   return "text-zinc-900";
+}
+
+const COMPACT_TABLE_COLUMNS: Array<{
+  key: ProjectEstimateTableColumn;
+  label: string;
+  className: string;
+  defaultWidth: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  internal?: boolean;
+}> = [
+  { key: "name", label: "Позиция", className: "", defaultWidth: 240 },
+  { key: "description", label: "Описание", className: "", defaultWidth: 256 },
+  { key: "unit", label: "Ед.", className: "", defaultWidth: 80 },
+  { key: "qty", label: "Кол-во", className: "", defaultWidth: 96, inputMode: "decimal" },
+  { key: "unitPriceClient", label: "Цена / ед.", className: "", defaultWidth: 128, inputMode: "decimal" },
+  { key: "costInternal", label: "Расход", className: "", defaultWidth: 128, inputMode: "decimal", internal: true },
+  { key: "paymentMethod", label: "Тип оплаты", className: "", defaultWidth: 126, internal: true },
+  { key: "paymentStatus", label: "Статус оплаты", className: "", defaultWidth: 142, internal: true },
+  { key: "contractorNote", label: "Комментарий", className: "", defaultWidth: 220, internal: true },
+  { key: "contractorRequisites", label: "Реквизиты / счёт", className: "", defaultWidth: 220, internal: true },
+];
+
+const CUSTOM_COLUMN_TYPE_LABELS: Record<ProjectEstimateCustomColumnType, string> = {
+  TEXT: "Текст",
+  NUMBER: "Число",
+  DATE: "Дата",
+  CHECKBOX: "Флажок",
+  FORMULA: "Формула",
+};
+
+function CustomColumnManager({
+  columns,
+  busy,
+  onAdd,
+  onPatch,
+  onMove,
+  onDelete,
+}: {
+  columns: ProjectEstimateCustomColumn[];
+  busy: boolean;
+  onAdd: () => void;
+  onPatch: (
+    columnId: string,
+    patch: Partial<Pick<ProjectEstimateCustomColumn, "label" | "type" | "formula" | "width">>,
+  ) => void;
+  onMove: (columnId: string, direction: -1 | 1) => void;
+  onDelete: (columnId: string) => void;
+}) {
+  const formulaFields = [
+    ...Object.entries(PROJECT_ESTIMATE_FORMULA_FIELDS),
+    ...columns.map((column) => [column.key, column.label] as const),
+  ];
+
+  return (
+    <section>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-black text-zinc-950">Поля таблицы</div>
+          <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-600">
+            Свои заметки, даты и расчёты прямо в строках. Эти поля не влияют на сумму сметы,
+            прибыль, аналитику и текущие выгрузки.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={busy || columns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT}
+          className={btnSecondaryXs}
+          onClick={onAdd}
+        >
+          + Колонка
+        </button>
+      </div>
+
+      {columns.length === 0 ? (
+        <div className="mt-3 rounded-xl border border-dashed border-violet-200 bg-white/70 px-4 py-5 text-center text-xs text-zinc-500">
+          Добавьте первую колонку — например, «Поставщик», «Срок оплаты» или «Маржа %».
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {columns.map((column, index) => {
+            const formulaValidation =
+              column.type === "FORMULA"
+                ? validateProjectEstimateFormula(column.formula ?? "")
+                : { ok: true as const };
+            return (
+              <div key={column.id} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+                <div className="grid gap-2 lg:grid-cols-[minmax(12rem,1fr)_10rem_9rem_auto]">
+                  <label className="min-w-0">
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Название</span>
+                    <input
+                      value={column.label}
+                      onChange={(event) => onPatch(column.id, { label: event.target.value })}
+                      maxLength={80}
+                      className={`mt-1 h-10 w-full ${inputFieldCompact}`}
+                      aria-label={`Название колонки ${index + 1}`}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Тип</span>
+                    <select
+                      value={column.type}
+                      onChange={(event) =>
+                        onPatch(column.id, { type: event.target.value as ProjectEstimateCustomColumnType })
+                      }
+                      className={`mt-1 h-10 w-full ${inputFieldCompact}`}
+                    >
+                      {Object.entries(CUSTOM_COLUMN_TYPE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">Ширина</span>
+                    <select
+                      value={column.width}
+                      onChange={(event) => onPatch(column.id, { width: Number(event.target.value) })}
+                      className={`mt-1 h-10 w-full ${inputFieldCompact}`}
+                    >
+                      <option value={120}>Узкая</option>
+                      <option value={160}>Обычная</option>
+                      <option value={240}>Широкая</option>
+                      <option value={320}>Очень широкая</option>
+                    </select>
+                  </label>
+                  <div className="flex items-end justify-end gap-1">
+                    <button type="button" disabled={busy || index === 0} onClick={() => onMove(column.id, -1)} className={btnGhostXs} aria-label="Сдвинуть колонку влево">←</button>
+                    <button type="button" disabled={busy || index === columns.length - 1} onClick={() => onMove(column.id, 1)} className={btnGhostXs} aria-label="Сдвинуть колонку вправо">→</button>
+                    <button type="button" disabled={busy} onClick={() => onDelete(column.id)} className="inline-flex h-8 items-center rounded-md px-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40">Удалить</button>
+                  </div>
+                </div>
+
+                {column.type === "FORMULA" ? (
+                  <div className="mt-3 rounded-xl bg-zinc-950 p-3 text-white">
+                    <label>
+                      <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">Формула</span>
+                      <input
+                        value={column.formula ?? ""}
+                        onChange={(event) => onPatch(column.id, { formula: event.target.value })}
+                        placeholder="qty * unit_price"
+                        maxLength={500}
+                        spellCheck={false}
+                        className="mt-1 h-10 w-full rounded-lg border border-white/15 bg-white/10 px-3 font-mono text-sm text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/25"
+                      />
+                    </label>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {formulaFields.map(([key, label]) => (
+                        <span key={`${column.id}-${key}`} title={label} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-zinc-300">
+                          {key}
+                        </span>
+                      ))}
+                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-zinc-300">round()</span>
+                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-zinc-300">min()</span>
+                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-zinc-300">max()</span>
+                    </div>
+                    {!formulaValidation.ok ? (
+                      <p className="mt-2 text-xs font-semibold text-rose-300">{formulaValidation.error}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CompactEstimateTable({
+  sectionId,
+  lines,
+  customColumns,
+  dirtyLineIds,
+  readOnly,
+  busy,
+  onSave,
+  onDelete,
+  onDeleteMany,
+  onDuplicateMany,
+  onInsert,
+  onAdd,
+  onPaste,
+  workspaceMode = false,
+}: {
+  sectionId: string;
+  lines: LocalDraftLine[];
+  customColumns: ProjectEstimateCustomColumn[];
+  dirtyLineIds: Set<string>;
+  readOnly: boolean;
+  busy: boolean;
+  onSave: (sectionId: string, lineId: string, patch: Record<string, unknown>) => void;
+  onDelete: (sectionId: string, lineId: string) => void;
+  onDeleteMany: (sectionId: string, lineIds: string[]) => void;
+  onDuplicateMany: (sectionId: string, lineIds: string[]) => void;
+  onInsert: (sectionId: string, anchorLineId: string, direction: "ABOVE" | "BELOW") => string;
+  onAdd: () => void;
+  onPaste: (
+    sectionId: string,
+    startLineId: string,
+    startColumn: ProjectEstimateTableColumn,
+    text: string,
+  ) => void;
+  workspaceMode?: boolean;
+}) {
+  const [selectedLineIds, setSelectedLineIds] = React.useState<Set<string>>(() => new Set());
+  const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
+  const [fillDrag, setFillDrag] = React.useState<{
+    column: ProjectEstimateTableColumn;
+    sourceRow: number;
+    targetRow: number;
+    value: string;
+  } | null>(null);
+  const fillDragRef = React.useRef(fillDrag);
+  const [columnWidths, setColumnWidths] = React.useState<Record<ProjectEstimateTableColumn, number>>(() => {
+    const defaults = Object.fromEntries(COMPACT_TABLE_COLUMNS.map((column) => [column.key, column.defaultWidth])) as Record<ProjectEstimateTableColumn, number>;
+    if (typeof window === "undefined") return defaults;
+    try {
+      const stored = JSON.parse(localStorage.getItem("project-estimate-grid-column-widths:v1") ?? "{}") as Partial<Record<ProjectEstimateTableColumn, number>>;
+      return Object.fromEntries(
+        COMPACT_TABLE_COLUMNS.map((column) => [
+          column.key,
+          Math.max(72, Math.min(480, Number(stored[column.key]) || column.defaultWidth)),
+        ]),
+      ) as Record<ProjectEstimateTableColumn, number>;
+    } catch {
+      return defaults;
+    }
+  });
+  const selectedCount = selectedLineIds.size;
+  const allSelected = lines.length > 0 && selectedCount === lines.length;
+
+  React.useEffect(() => {
+    fillDragRef.current = fillDrag;
+  }, [fillDrag]);
+
+  function beginFillDrag(
+    event: React.PointerEvent<HTMLSpanElement>,
+    rowIndex: number,
+    column: ProjectEstimateTableColumn,
+    value: string,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    const initial = { column, sourceRow: rowIndex, targetRow: rowIndex, value };
+    fillDragRef.current = initial;
+    setFillDrag(initial);
+    document.body.classList.add("project-estimate-fill-dragging");
+
+    const move = (moveEvent: PointerEvent) => {
+      const cell = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLElement>(
+        `[data-estimate-fill-column="${column}"]`,
+      );
+      const nextRow = Number(cell?.dataset.estimateFillRow);
+      if (!Number.isInteger(nextRow) || nextRow < 0 || nextRow >= lines.length) return;
+      setFillDrag((current) => {
+        if (!current || current.targetRow === nextRow) return current;
+        const next = { ...current, targetRow: nextRow };
+        fillDragRef.current = next;
+        return next;
+      });
+    };
+    const finish = () => {
+      document.body.classList.remove("project-estimate-fill-dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      const current = fillDragRef.current;
+      if (current) {
+        const from = Math.min(current.sourceRow, current.targetRow);
+        const to = Math.max(current.sourceRow, current.targetRow);
+        for (let index = from; index <= to; index += 1) {
+          if (index === current.sourceRow) continue;
+          const line = lines[index];
+          if (line) onSave(sectionId, line.id, { [current.column]: current.value });
+        }
+      }
+      fillDragRef.current = null;
+      setFillDrag(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  }
+
+  function beginColumnResize(event: React.PointerEvent<HTMLSpanElement>, column: ProjectEstimateTableColumn) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[column];
+
+    const move = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.max(72, Math.min(480, startWidth + moveEvent.clientX - startX));
+      setColumnWidths((current) => ({ ...current, [column]: nextWidth }));
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      setColumnWidths((current) => {
+        try {
+          localStorage.setItem("project-estimate-grid-column-widths:v1", JSON.stringify(current));
+        } catch {
+          // Column widths remain available for the current session.
+        }
+        return current;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  }
+
+  React.useEffect(() => {
+    const availableIds = new Set(lines.map((line) => line.id));
+    setSelectedLineIds((previous) => {
+      const next = new Set([...previous].filter((lineId) => availableIds.has(lineId)));
+      if (next.size === previous.size && [...next].every((lineId) => previous.has(lineId))) return previous;
+      return next;
+    });
+  }, [lines]);
+
+  React.useEffect(() => {
+    if (!bulkNotice) return;
+    const timeout = window.setTimeout(() => setBulkNotice(null), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [bulkNotice]);
+
+  const focusCell = React.useCallback((rowIndex: number, column: string) => {
+    const cell = document.querySelector<HTMLInputElement | HTMLSelectElement>(
+      `[data-estimate-section="${sectionId}"][data-estimate-row="${rowIndex}"][data-estimate-column="${column}"]`,
+    );
+    cell?.focus();
+    if (cell instanceof HTMLInputElement) cell.select();
+  }, [sectionId]);
+
+  function handleCellKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    rowIndex: number,
+    column: string,
+  ) {
+    const isEnter = event.key === "Enter";
+    const isVerticalArrow = event.key === "ArrowUp" || event.key === "ArrowDown";
+    const isHorizontalArrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
+    if (!isEnter && !isVerticalArrow && !isHorizontalArrow) return;
+    event.preventDefault();
+    if (isHorizontalArrow) {
+      const navigationColumns = [
+        ...COMPACT_TABLE_COLUMNS.map((item) => item.key),
+        ...customColumns.filter((item) => item.type !== "FORMULA" && item.type !== "CHECKBOX").map((item) => item.id),
+      ];
+      const columnIndex = navigationColumns.indexOf(column);
+      const nextColumnIndex = columnIndex + (event.key === "ArrowLeft" ? -1 : 1);
+      const nextColumn = navigationColumns[nextColumnIndex];
+      if (nextColumn) focusCell(rowIndex, nextColumn);
+      return;
+    }
+    const nextIndex = isEnter
+      ? event.shiftKey
+        ? rowIndex - 1
+        : rowIndex + 1
+      : event.key === "ArrowUp"
+        ? rowIndex - 1
+        : rowIndex + 1;
+    if (nextIndex >= 0 && nextIndex < lines.length) focusCell(nextIndex, column);
+  }
+
+  function toggleAllLines() {
+    setSelectedLineIds(allSelected ? new Set() : new Set(lines.map((line) => line.id)));
+  }
+
+  function toggleLine(lineId: string) {
+    setSelectedLineIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  }
+
+  function duplicateSelectedLines() {
+    if (selectedCount === 0) return;
+    onDuplicateMany(sectionId, [...selectedLineIds]);
+    setSelectedLineIds(new Set());
+  }
+
+  function insertSelectedLine(direction: "ABOVE" | "BELOW") {
+    if (selectedCount !== 1) return;
+    const anchorLineId = [...selectedLineIds][0];
+    if (!anchorLineId) return;
+    const newLineId = onInsert(sectionId, anchorLineId, direction);
+    setSelectedLineIds(new Set());
+    window.setTimeout(() => {
+      const cell = document.querySelector<HTMLInputElement>(
+        `[data-estimate-section="${sectionId}"][data-estimate-line="${newLineId}"][data-estimate-column="name"]`,
+      );
+      cell?.focus();
+    }, 0);
+  }
+
+  async function copySelectedLines() {
+    const selectedLines = lines.filter((line) => selectedLineIds.has(line.id));
+    if (selectedLines.length === 0) return;
+    const text = selectedLines
+      .map((line) =>
+        COMPACT_TABLE_COLUMNS.map((column) => {
+          const value = line[column.key];
+          return value == null ? "" : String(value).replace(/[\t\r\n]+/g, " ");
+        }).join("\t"),
+      )
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setBulkNotice("Скопировано");
+    } catch {
+      setBulkNotice("Не удалось скопировать");
+    }
+  }
+
+  function deleteSelectedLines() {
+    if (selectedCount === 0) return;
+    const message =
+      selectedCount === 1
+        ? "Удалить выбранную строку?"
+        : `Удалить выбранные строки (${selectedCount})?`;
+    if (!window.confirm(message)) return;
+    onDeleteMany(sectionId, [...selectedLineIds]);
+    setSelectedLineIds(new Set());
+  }
+
+  return (
+    <div className={`project-estimate-grid overflow-hidden rounded-lg border border-zinc-300 bg-white ${workspaceMode ? "project-estimate-grid--workspace" : ""}`}>
+      {(!workspaceMode || selectedCount > 0) ? <div className="project-estimate-grid__toolbar flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-zinc-300 bg-zinc-50 px-3 py-2">
+        {selectedCount > 0 && !readOnly ? (
+          <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Действия с выбранными строками">
+            <span className="text-xs font-black tabular-nums text-violet-800">
+              Выбрано: {selectedCount}
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              className="inline-flex h-8 items-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:opacity-50"
+              onClick={duplicateSelectedLines}
+            >
+              Дублировать
+            </button>
+            {selectedCount === 1 ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:opacity-50"
+                  onClick={() => insertSelectedLine("ABOVE")}
+                >
+                  Строка выше
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:opacity-50"
+                  onClick={() => insertSelectedLine("BELOW")}
+                >
+                  Строка ниже
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:opacity-50"
+              onClick={() => void copySelectedLines()}
+            >
+              Копировать
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-bold text-red-700 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-50"
+              onClick={deleteSelectedLines}
+            >
+              Удалить
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+              onClick={() => setSelectedLineIds(new Set())}
+            >
+              Снять выбор
+            </button>
+            {bulkNotice ? (
+              <span className="text-[11px] font-semibold text-zinc-500" role="status">
+                {bulkNotice}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="project-estimate-grid__hint">
+            <div className="text-xs font-black text-zinc-900">Табличный режим</div>
+            <div className="text-[11px] text-zinc-500">
+              Enter — следующая строка · можно вставлять диапазон из Excel или Google Sheets
+            </div>
+          </div>
+        )}
+        {!workspaceMode ? <div className="text-xs font-semibold tabular-nums text-zinc-500">{lines.length} строк</div> : null}
+      </div> : null}
+
+      <div className={`${workspaceMode ? "max-h-[22rem]" : "max-h-[70vh]"} overflow-auto`}>
+        <table
+          className="w-full table-fixed border-collapse text-left text-xs"
+          style={{ minWidth: `${284 + Object.values(columnWidths).reduce((sum, width) => sum + width, 0) + customColumns.reduce((sum, column) => sum + column.width, 0)}px` }}
+        >
+          <thead className="sticky top-0 z-10 bg-zinc-100 text-zinc-700 shadow-[0_1px_0_#d4d4d8]">
+            <tr>
+              {!readOnly ? (
+                <th className="w-11 px-2 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAllLines}
+                    disabled={lines.length === 0 || busy}
+                    className="h-4 w-4 rounded border-zinc-500 accent-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                    aria-label={allSelected ? "Снять выбор со всех строк" : "Выбрать все строки"}
+                  />
+                </th>
+              ) : null}
+              <th className="w-12 border-l border-zinc-200 px-2 py-2 text-center text-[10px] font-bold text-zinc-500">№</th>
+              {COMPACT_TABLE_COLUMNS.map((column) => (
+                <React.Fragment key={column.key}>
+                  <th
+                    style={{ width: columnWidths[column.key] }}
+                    className={`${column.className} project-estimate-grid__cell ${column.internal ? "project-estimate-grid__cell--internal" : ""} ${column.key === "costInternal" ? "project-estimate-grid__cell--internal-first" : ""} relative border-l border-zinc-200 px-2 py-2 text-[10px] font-bold text-zinc-600`}
+                    title={column.internal ? "Внутреннее поле — не показывается клиенту" : undefined}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {column.label}
+                      {column.key === "costInternal" ? <span className="project-estimate-grid__internal-badge">внутр.</span> : null}
+                    </span>
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Изменить ширину столбца «${column.label}»`}
+                      onPointerDown={(event) => beginColumnResize(event, column.key)}
+                      className="absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none hover:bg-violet-300/50"
+                    />
+                  </th>
+                  {column.key === "unitPriceClient" ? (
+                    <th className="w-32 min-w-32 border-l border-zinc-200 bg-violet-50/35 px-2 py-2 text-right text-[10px] font-bold text-zinc-700">
+                      Сумма
+                    </th>
+                  ) : null}
+                </React.Fragment>
+              ))}
+              {customColumns.map((column) => (
+                <th
+                  key={column.id}
+                  style={{ width: column.width }}
+                  className="border-l border-violet-200 bg-violet-50 px-2 py-2 text-[10px] font-bold text-violet-800"
+                  title={`Вспомогательная колонка · ${CUSTOM_COLUMN_TYPE_LABELS[column.type]} · не влияет на финансы`}
+                >
+                  <span className="block truncate">{column.label}</span>
+                </th>
+              ))}
+              {!readOnly ? <th className="w-12 border-l border-zinc-200" aria-label="Действия" /> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, rowIndex) => (
+              <tr
+                key={line.id}
+                className={`group border-t border-zinc-200 transition-colors hover:bg-violet-50/35 ${
+                  dirtyLineIds.has(line.id) ? "bg-amber-50/70" : "bg-white"
+                }`}
+              >
+                {!readOnly ? (
+                  <td className="px-2 py-1.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selectedLineIds.has(line.id)}
+                      onChange={() => toggleLine(line.id)}
+                      disabled={busy}
+                      className="h-4 w-4 rounded border-zinc-300 accent-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                      aria-label={`Выбрать строку ${rowIndex + 1}`}
+                    />
+                  </td>
+                ) : null}
+                <td className="px-2 py-1.5 text-center font-bold tabular-nums text-zinc-400">{rowIndex + 1}</td>
+                {COMPACT_TABLE_COLUMNS.map((column) => {
+                  const rawValue = line[column.key];
+                  const value = rawValue == null ? "" : String(rawValue);
+                  const inFillRange =
+                    fillDrag?.column === column.key &&
+                    rowIndex >= Math.min(fillDrag.sourceRow, fillDrag.targetRow) &&
+                    rowIndex <= Math.max(fillDrag.sourceRow, fillDrag.targetRow);
+                  return (
+                    <React.Fragment key={column.key}>
+                    <td
+                      style={{ width: columnWidths[column.key] }}
+                      data-estimate-fill-column={column.key}
+                      data-estimate-fill-row={rowIndex}
+                      className={`${column.className} project-estimate-grid__cell ${column.internal ? "project-estimate-grid__cell--internal" : ""} ${column.key === "costInternal" ? "project-estimate-grid__cell--internal-first" : ""} border-l border-zinc-200 p-0.5 ${inFillRange ? "bg-violet-100/70" : ""}`}
+                    >
+                      {readOnly ? (
+                        <div className="min-h-8 px-2 py-2 text-zinc-800">{value || "—"}</div>
+                      ) : (
+                        <div className="group/cell relative">
+                          {column.key === "unit" ? (
+                            <>
+                              <select
+                                value={value}
+                                onChange={(event) => onSave(sectionId, line.id, { unit: event.target.value })}
+                                onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                                data-estimate-section={sectionId}
+                                data-estimate-line={line.id}
+                                data-estimate-row={rowIndex}
+                                data-estimate-column={column.key}
+                                className="project-estimate-grid__select h-9 w-full appearance-none border border-transparent bg-transparent px-2 pr-7 text-xs text-zinc-900 outline-none focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6]"
+                                aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                              >
+                                {value && !UNIT_OPTIONS.includes(value as (typeof UNIT_OPTIONS)[number]) ? <option value={value}>{value}</option> : null}
+                                <option value="">—</option>
+                                {UNIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                              </select>
+                              <span className="project-estimate-grid__select-chevron" aria-hidden>⌄</span>
+                            </>
+                          ) : column.key === "paymentMethod" ? (
+                            <>
+                            <select
+                              value={value}
+                              onChange={(event) => onSave(sectionId, line.id, { paymentMethod: event.target.value || null })}
+                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                              data-estimate-section={sectionId}
+                              data-estimate-line={line.id}
+                              data-estimate-row={rowIndex}
+                              data-estimate-column={column.key}
+                              className="project-estimate-grid__select h-9 w-full appearance-none border border-transparent bg-transparent px-2 pr-7 text-xs text-zinc-900 outline-none focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6]"
+                              aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                            >
+                              <option value="">—</option>
+                              {PAYMENT_METHOD_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                            </select>
+                            <span className="project-estimate-grid__select-chevron" aria-hidden>⌄</span>
+                            </>
+                          ) : column.key === "paymentStatus" ? (
+                            <>
+                            <select
+                              value={value}
+                              onChange={(event) => onSave(sectionId, line.id, { paymentStatus: event.target.value || null })}
+                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                              data-estimate-section={sectionId}
+                              data-estimate-line={line.id}
+                              data-estimate-row={rowIndex}
+                              data-estimate-column={column.key}
+                              className={`project-estimate-grid__select h-9 w-full appearance-none border border-transparent bg-transparent px-2 pr-7 text-xs outline-none focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6] ${paymentStatusTextClass(value)}`}
+                              aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                            >
+                              <option value="">—</option>
+                              <option value={PAYMENT_STATUS_PAID}>{PAYMENT_STATUS_PAID}</option>
+                              <option value={PAYMENT_STATUS_UNPAID}>{PAYMENT_STATUS_UNPAID}</option>
+                            </select>
+                            <span className="project-estimate-grid__select-chevron" aria-hidden>⌄</span>
+                            </>
+                          ) : (
+                            <input
+                              value={value}
+                              onChange={(event) => onSave(sectionId, line.id, { [column.key]: event.target.value })}
+                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                              onPaste={(event) => {
+                                const text = event.clipboardData.getData("text/plain");
+                                if (!text) return;
+                                event.preventDefault();
+                                onPaste(sectionId, line.id, column.key, text);
+                              }}
+                              data-estimate-section={sectionId}
+                              data-estimate-line={line.id}
+                              data-estimate-row={rowIndex}
+                              data-estimate-column={column.key}
+                              inputMode={column.inputMode}
+                              className={`h-9 w-full border border-transparent bg-transparent px-2 text-xs text-zinc-900 outline-none transition focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6] ${column.inputMode === "decimal" ? "text-right tabular-nums" : ""}`}
+                              aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                            />
+                          )}
+                          <span
+                            role="button"
+                            tabIndex={-1}
+                            aria-label={`Протянуть значение «${column.label}»`}
+                            title="Потяните, чтобы скопировать значение по строкам"
+                            onPointerDown={(event) => beginFillDrag(event, rowIndex, column.key, value)}
+                            className="absolute bottom-0 right-0 hidden h-2 w-2 translate-x-1/2 translate-y-1/2 cursor-crosshair border border-white bg-violet-600 group-focus-within/cell:block"
+                          />
+                        </div>
+                      )}
+                    </td>
+                    {column.key === "unitPriceClient" ? (
+                      <td className="border-l border-zinc-200 bg-violet-50/25 px-2 py-1.5 text-right font-black tabular-nums text-zinc-950">
+                        {formatMoneyRub(normalizedLocalLineCostClientNumber(line) ?? 0)} ₽
+                      </td>
+                    ) : null}
+                    </React.Fragment>
+                  );
+                })}
+                {(() => {
+                  const clientTotal = normalizedLocalLineCostClientNumber(line) ?? 0;
+                  const internalTotal = getProjectEstimateLineInternalTotal(line);
+                  const formulaResults = evaluateProjectEstimateCustomColumns({
+                    columns: customColumns,
+                    rawValues: line.customValues,
+                    canonicalValues: {
+                      line_number: rowIndex + 1,
+                      qty: Number(line.qty?.replace(",", ".") || 0) || 0,
+                      unit_price: Number(line.unitPriceClient?.replace(",", ".") || 0) || 0,
+                      client_total: clientTotal,
+                      internal_total: internalTotal,
+                      margin: roundMoney(clientTotal - internalTotal),
+                    },
+                  });
+                  return customColumns.map((column) => {
+                    const value = line.customValues[column.id] ?? "";
+                    const formulaResult = formulaResults[column.id];
+                    const patchValue = (nextValue: string) =>
+                      onSave(sectionId, line.id, {
+                        customValues: { ...line.customValues, [column.id]: nextValue },
+                      });
+                    return (
+                      <td
+                        key={column.id}
+                        style={{ width: column.width }}
+                        className="border-l border-violet-100 bg-violet-50/25 p-0.5"
+                      >
+                        {column.type === "FORMULA" ? (
+                          <div
+                            className={`min-h-9 px-2 py-2 text-right font-bold tabular-nums ${
+                              formulaResult?.error ? "text-rose-700" : "text-violet-900"
+                            }`}
+                            title={formulaResult?.error ?? column.formula ?? undefined}
+                          >
+                            {formulaResult?.error
+                              ? "Ошибка"
+                              : formulaResult?.value == null
+                                ? "—"
+                                : formatMoneyRub(formulaResult.value)}
+                          </div>
+                        ) : column.type === "CHECKBOX" ? (
+                          <label className="flex min-h-9 items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={value === "true"}
+                              disabled={readOnly || busy}
+                              onChange={(event) => patchValue(event.target.checked ? "true" : "false")}
+                              className="h-4 w-4 rounded border-zinc-300 accent-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                              aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                            />
+                          </label>
+                        ) : readOnly ? (
+                          <div className={`min-h-9 px-2 py-2 text-zinc-800 ${column.type === "NUMBER" ? "text-right tabular-nums" : ""}`}>
+                            {value || "—"}
+                          </div>
+                        ) : (
+                          <input
+                            type={column.type === "DATE" ? "date" : column.type === "NUMBER" ? "number" : "text"}
+                            value={value}
+                            onChange={(event) => patchValue(event.target.value)}
+                            onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.id)}
+                            data-estimate-section={sectionId}
+                            data-estimate-line={line.id}
+                            data-estimate-row={rowIndex}
+                            data-estimate-column={column.id}
+                            inputMode={column.type === "NUMBER" ? "decimal" : undefined}
+                            className={`h-9 w-full border border-transparent bg-transparent px-2 text-xs text-zinc-900 outline-none transition focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6] ${
+                              column.type === "NUMBER" ? "text-right tabular-nums" : ""
+                            }`}
+                            aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                          />
+                        )}
+                      </td>
+                    );
+                  });
+                })()}
+                {!readOnly ? (
+                  <td className="border-l border-zinc-200 px-1 text-center">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 opacity-0 transition hover:bg-red-50 hover:text-red-700 focus:opacity-100 group-hover:opacity-100 disabled:opacity-30"
+                      onClick={() => onDelete(sectionId, line.id)}
+                      title="Удалить строку"
+                      aria-label={`Удалить строку ${rowIndex + 1}`}
+                    >
+                      ×
+                    </button>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {!readOnly ? (
+        <button
+          type="button"
+          disabled={busy}
+          className="flex w-full items-center justify-center border-t border-dashed border-zinc-200 bg-zinc-50/70 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50"
+          onClick={onAdd}
+        >
+          + Добавить строку
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function LineEditor({

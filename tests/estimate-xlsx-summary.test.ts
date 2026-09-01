@@ -1,8 +1,14 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 
+import { summarizeProjectEstimateSections } from "@/lib/project-estimate-line-totals";
+import { calcProjectEstimateTotals } from "@/lib/project-estimate-totals";
 import { buildInternalEstimateXlsx } from "@/server/estimate-xlsx";
 import { buildProjectEstimateXlsx } from "@/server/projects/estimate-xlsx";
+import type {
+  ProjectEstimateReadLine,
+  ProjectEstimateReadSection,
+} from "@/server/projects/estimate-read-model";
 
 type ExcelJsBuffer = Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0];
 
@@ -20,6 +26,59 @@ function findCell(sheet: ExcelJS.Worksheet, value: string): ExcelJS.Cell | null 
     });
   });
   return found;
+}
+
+function projectLine(index: number): ProjectEstimateReadLine {
+  return {
+    id: `line-${index}`,
+    position: index,
+    lineNumber: index + 1,
+    name: `Позиция ${index + 1}`,
+    description: null,
+    lineType: "SERVICE",
+    costClient: String(100 + index),
+    costInternal: "0.11",
+    orderLineId: null,
+    itemId: null,
+    unit: "усл",
+    unitPriceClient: 100 + index,
+    qty: 1,
+    plannedDays: null,
+    paymentMethod: "CASH",
+    paymentStatus: null,
+    contractorNote: null,
+    contractorRequisites: null,
+    internalExpenses:
+      index % 5 === 0
+        ? [
+            {
+              id: `expense-${index}`,
+              sortOrder: 0,
+              title: null,
+              cost: "0.09",
+              paymentMethod: "CASH",
+              paymentStatus: null,
+              contractorNote: null,
+              contractorRequisites: null,
+            },
+          ]
+        : [],
+  };
+}
+
+function projectSection(index: number, lines: ProjectEstimateReadLine[]): ProjectEstimateReadSection {
+  return {
+    id: `section-${index}`,
+    sortOrder: index,
+    title: `Раздел ${index + 1}`,
+    kind: "CONTRACTOR",
+    linkedOrderId: null,
+    linkedDraftOrderId: null,
+    linkedOrderStatus: null,
+    linkedOrderEditable: false,
+    lineLocalExtras: null,
+    lines,
+  };
 }
 
 describe("internal estimate xlsx summaries", () => {
@@ -115,6 +174,47 @@ describe("internal estimate xlsx summaries", () => {
     expect(sheet.getCell(clientAmount!.row, 3).value).toMatchObject({
       formula: expect.any(String),
       result: expect.any(Number),
+    });
+  });
+
+  it("keeps UI/server and XLSX totals identical for a 70-line estimate", async () => {
+    const lines = Array.from({ length: 70 }, (_, index) => projectLine(index));
+    const sections = [projectSection(0, lines.slice(0, 35)), projectSection(1, lines.slice(35))];
+    const summary = summarizeProjectEstimateSections(sections);
+    const expected = calcProjectEstimateTotals({
+      clientSubtotal: summary.clientSubtotal,
+      internalSubtotal: summary.internalSubtotal,
+      cashInternalCostTax: summary.cashInternalCostTax,
+    });
+
+    // Aggregate rounding is observable here: per-line rounding would incorrectly produce zero.
+    expect(summary.cashInternalCostTax).toBe(0.31);
+
+    const buffer = await buildProjectEstimateXlsx({
+      projectTitle: "Большая смета",
+      versionNumber: 1,
+      variant: "internal",
+      sections,
+    });
+    const sheet = await loadFirstSheet(buffer);
+
+    const clientAmount = findCell(sheet, "Сумма для клиента");
+    const cashTax = findCell(sheet, "Налог нал 3.5%");
+    const totalExpenses = findCell(sheet, "Итого расходов");
+    const profit = findCell(sheet, "Заработок");
+
+    expect(sheet.getCell(clientAmount!.row, 4).value).toMatchObject({
+      result: expected.revenueTotal,
+    });
+    expect(sheet.getCell(cashTax!.row, 9).value).toMatchObject({
+      formula: expect.stringContaining("ROUND"),
+      result: expected.cashInternalCostTax,
+    });
+    expect(sheet.getCell(totalExpenses!.row, 9).value).toMatchObject({
+      result: expected.internalExpensesTotal + expected.tax,
+    });
+    expect(sheet.getCell(profit!.row, 13).value).toMatchObject({
+      result: expected.marginAfterTax,
     });
   });
 });

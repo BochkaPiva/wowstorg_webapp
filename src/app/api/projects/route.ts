@@ -11,13 +11,21 @@ import {
   calcProjectEstimateRequisiteTotal,
   normalizeProjectEstimateDays,
 } from "@/lib/project-estimate-requisite";
-import { calcProjectEstimateTotals, getNumericAmount } from "@/lib/project-estimate-totals";
+import { calcProjectEstimateTotals } from "@/lib/project-estimate-totals";
 import {
   calcCashInternalCostTaxAmount,
   calcOrderServicesInternalCosts,
-  isCashPaymentMethod,
 } from "@/lib/order-service-internal-costs";
+import {
+  getProjectEstimateLineCashInternalTotal,
+  getProjectEstimateLineInternalTotal,
+} from "@/lib/project-estimate-line-totals";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
+import {
+  buildInitialProjectWidgets,
+  PROJECT_WIDGET_TYPES,
+} from "@/lib/projects/project-widget-registry";
+import { parseProjectWorkspaceTemplateWidgets } from "@/lib/projects/project-workspace-template";
 
 const CreateSchema = z
   .object({
@@ -27,6 +35,10 @@ const CreateSchema = z
     mode: z.nativeEnum(ProjectMode).optional(),
     status: z.nativeEnum(ProjectStatus).optional(),
     ball: z.nativeEnum(ProjectBall).optional(),
+    ownerUserId: z.string().trim().min(1).optional(),
+    memberUserIds: z.array(z.string().trim().min(1)).max(50).optional(),
+    widgetTypes: z.array(z.enum(PROJECT_WIDGET_TYPES)).max(PROJECT_WIDGET_TYPES.length).optional(),
+    workspaceTemplateId: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -238,6 +250,12 @@ export async function GET(req: Request) {
                   qty: true,
                   unitPriceClient: true,
                   paymentMethod: true,
+                  internalExpenses: {
+                    select: {
+                      cost: true,
+                      paymentMethod: true,
+                    },
+                  },
                 },
               },
             },
@@ -272,7 +290,7 @@ export async function GET(req: Request) {
   function versionFinancials(version: ProjectVersion | null, draftOrders: ProjectRow["draftOrders"]) {
     let clientSubtotal = 0;
     let internalSubtotal = 0;
-    let cashInternalCostTax = 0;
+    let cashInternalSubtotal = 0;
 
     if (version) {
       for (const section of version.sections) {
@@ -314,7 +332,7 @@ export async function GET(req: Request) {
             })),
           });
           internalSubtotal += serviceCosts.internalCostTotal;
-          cashInternalCostTax += serviceCosts.cashInternalCostTax;
+          cashInternalSubtotal += serviceCosts.cashInternalCostTotal;
           continue;
         }
 
@@ -326,16 +344,15 @@ export async function GET(req: Request) {
               unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
             }) ?? 0;
 
-          const lineInternal = getNumericAmount(line.costInternal);
+          const lineInternal = getProjectEstimateLineInternalTotal(line);
           internalSubtotal += lineInternal;
-          if (isCashPaymentMethod(line.paymentMethod)) {
-            cashInternalCostTax += calcCashInternalCostTaxAmount(lineInternal);
-          }
+          cashInternalSubtotal += getProjectEstimateLineCashInternalTotal(line);
         }
       }
     }
 
     clientSubtotal += addDraftOrdersClientSubtotal(draftOrders, version?.id ?? null);
+    const cashInternalCostTax = calcCashInternalCostTaxAmount(cashInternalSubtotal);
 
     return calcProjectEstimateTotals({
       clientSubtotal,
@@ -448,6 +465,19 @@ export async function POST(req: Request) {
 
   try {
     const project = await prisma.$transaction(async (tx) => {
+      const ownerUserId = parsed.data.ownerUserId ?? auth.user.id;
+      const memberUserIds = Array.from(new Set([ownerUserId, ...(parsed.data.memberUserIds ?? [])]));
+      if (memberUserIds.length > 50) {
+        throw new Error("PROJECT_MEMBERS_LIMIT");
+      }
+      const validUsers = await tx.user.findMany({
+        where: { id: { in: memberUserIds }, role: "WOWSTORG", isActive: true },
+        select: { id: true },
+      });
+      if (validUsers.length !== memberUserIds.length) {
+        throw new Error("PROJECT_USERS_NOT_FOUND");
+      }
+
       let customerId: string | null = parsed.data.customerId?.trim() || null;
 
       if (!customerId && projectMode === ProjectMode.FULL) {
@@ -475,13 +505,28 @@ export async function POST(req: Request) {
         }
       }
 
+      let templateWidgets = null;
+      if (parsed.data.workspaceTemplateId) {
+        const template = await tx.projectWorkspaceTemplate.findFirst({
+          where: { id: parsed.data.workspaceTemplateId, ownerUserId: auth.user.id },
+          select: { widgets: true },
+        });
+        if (!template) throw new Error("PROJECT_TEMPLATE_NOT_FOUND");
+        try {
+          templateWidgets = parseProjectWorkspaceTemplateWidgets(template.widgets);
+        } catch {
+          throw new Error("PROJECT_TEMPLATE_INVALID");
+        }
+      }
+
       const p = await tx.project.create({
         data: {
           title: parsed.data.title,
           customerId,
           mode: projectMode,
           leadCustomerName: null,
-          ownerUserId: auth.user.id,
+          ownerUserId,
+          createdByUserId: auth.user.id,
           status: parsed.data.status ?? ProjectStatus.LEAD,
           ball: parsed.data.ball ?? ProjectBall.CLIENT,
         },
@@ -499,20 +544,59 @@ export async function POST(req: Request) {
           updatedAt: true,
         },
       });
+      await tx.projectMember.createMany({
+        data: memberUserIds.map((userId) => ({
+          projectId: p.id,
+          userId,
+          role: userId === ownerUserId ? "OWNER" : "EDITOR",
+          addedById: auth.user.id,
+        })),
+      });
+      const widgets = templateWidgets ?? buildInitialProjectWidgets(parsed.data.widgetTypes).map((widget) => ({
+        ...widget,
+        isVisible: true,
+      }));
+      await tx.projectWidget.createMany({
+        data: widgets.map((widget) => ({
+          ...widget,
+          projectId: p.id,
+          createdById: auth.user.id,
+          updatedById: auth.user.id,
+        })),
+      });
       await ensureDefaultProjectFolders(tx, p.id);
       await appendProjectActivityLog(tx, {
         projectId: p.id,
         actorUserId: auth.user.id,
         kind: ProjectActivityKind.PROJECT_CREATED,
-        payload: { title: p.title, mode: p.mode },
+        payload: {
+          title: p.title,
+          mode: p.mode,
+          ownerUserId,
+          memberUserIds,
+          widgetTypes: widgets.map((widget) => widget.type),
+          workspaceTemplateId: parsed.data.workspaceTemplateId ?? null,
+        },
       });
       return p;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     return jsonOk({ project });
   } catch (e) {
     if (e instanceof Error && e.message === "CUSTOMER_NOT_FOUND") {
       return jsonError(400, "Заказчик не найден");
+    }
+    if (e instanceof Error && e.message === "PROJECT_USERS_NOT_FOUND") {
+      return jsonError(400, "Ответственный или участник проекта недоступен");
+    }
+    if (e instanceof Error && e.message === "PROJECT_MEMBERS_LIMIT") {
+      return jsonError(400, "В проекте может быть не больше 50 участников");
+    }
+    if (e instanceof Error && e.message === "PROJECT_TEMPLATE_NOT_FOUND") {
+      return jsonError(404, "Шаблон рабочего пространства не найден");
+    }
+    if (e instanceof Error && e.message === "PROJECT_TEMPLATE_INVALID") {
+      return jsonError(409, "Шаблон устарел или повреждён. Сохраните его заново");
     }
     throw e;
   }

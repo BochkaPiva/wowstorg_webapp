@@ -7,6 +7,11 @@ import { jsonError, jsonOk } from "@/server/http";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
 import { buildProjectEstimateReadModel } from "@/server/projects/estimate-read-model";
 import { assertProjectEditable } from "@/server/projects/project-guard";
+import {
+  normalizeProjectEstimateCustomCellValue,
+  ProjectEstimateCustomColumnsSchema,
+  ProjectEstimateCustomValuesSchema,
+} from "@/lib/projects/project-estimate-custom-columns";
 
 export const maxDuration = 60;
 
@@ -42,16 +47,20 @@ const DraftLineSchema = z
     contractorRequisites: z.string().trim().max(500).nullable().optional(),
     itemId: z.string().trim().min(1).nullable().optional(),
     internalExpenses: z.array(DraftLineInternalExpenseSchema).max(100).optional(),
+    customValues: ProjectEstimateCustomValuesSchema.optional(),
   })
   .strict();
 
 const PatchDraftSchema = z
   .object({
     versionNumber: z.number().int().positive(),
+    expectedRevision: z.number().int().min(0).optional(),
+    saveMode: z.enum(["AUTO", "MANUAL"]).optional().default("MANUAL"),
     allowDeleteAllLocalSections: z.boolean().optional(),
     commissionEnabled: z.boolean().optional(),
     clientTaxEnabled: z.boolean().optional(),
     clientChargeTaxEnabled: z.boolean().optional(),
+    customColumns: ProjectEstimateCustomColumnsSchema,
     localSections: z
       .array(
         z
@@ -115,11 +124,14 @@ export async function PATCH(
 
   const {
     versionNumber,
+    expectedRevision,
+    saveMode,
     localSections,
     allowDeleteAllLocalSections,
     commissionEnabled,
     clientTaxEnabled,
     clientChargeTaxEnabled,
+    customColumns,
   } =
     parsed.data;
 
@@ -144,6 +156,7 @@ export async function PATCH(
     where: { projectId, versionNumber },
     select: {
       id: true,
+      revision: true,
       sections: {
         where: {
           kind: { in: [ProjectEstimateSectionKind.LOCAL, ProjectEstimateSectionKind.CONTRACTOR] },
@@ -174,10 +187,47 @@ export async function PATCH(
         ),
       0,
     ),
+    customColumns: customColumns.length,
   };
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const savedRevision = await prisma.$transaction(async (tx) => {
+      const versionUpdate = await tx.projectEstimateVersion.updateMany({
+        where: {
+          id: version.id,
+          ...(expectedRevision !== undefined ? { revision: expectedRevision } : {}),
+        },
+        data: {
+          revision: { increment: 1 },
+          ...(commissionEnabled !== undefined ? { commissionEnabled } : {}),
+          ...(clientTaxEnabled !== undefined ? { clientTaxEnabled } : {}),
+          ...(clientChargeTaxEnabled !== undefined ? { clientChargeTaxEnabled } : {}),
+        },
+      });
+      if (versionUpdate.count !== 1) throw new Error("ESTIMATE_REVISION_CONFLICT");
+
+      // Вспомогательные колонки входят в тот же ревизионный снимок, но не связаны
+      // ни с одним каноническим финансовым полем. Формульные значения не храним.
+      await tx.projectEstimateCustomColumn.deleteMany({ where: { versionId: version.id } });
+      if (customColumns.length > 0) {
+        await tx.projectEstimateCustomColumn.createMany({
+          data: [...customColumns]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((column, index) => ({
+              id: column.id,
+              versionId: version.id,
+              key: column.key,
+              label: column.label.trim(),
+              type: column.type,
+              formula: column.type === "FORMULA" ? column.formula?.trim() || null : null,
+              sortOrder: index,
+              width: column.width,
+            })),
+        });
+      }
+
+      const customColumnById = new Map(customColumns.map((column) => [column.id, column]));
+
       // LOCAL/CONTRACTOR sections are an editable draft without external references.
       // Replacing the draft in bulk avoids hundreds of sequential update/delete calls
       // that can exceed Prisma's interactive transaction timeout on large estimates.
@@ -229,28 +279,51 @@ export async function PATCH(
                       contractorRequisites: expense.contractorRequisites?.trim() || null,
                     })),
                 },
+                customCells: {
+                  create: Object.entries(line.customValues ?? {}).flatMap(([columnId, rawValue]) => {
+                    const column = customColumnById.get(columnId);
+                    if (!column || column.type === "FORMULA") return [];
+                    const value = normalizeProjectEstimateCustomCellValue(column.type, rawValue);
+                    if (value == null) return [];
+                    return [{ columnId, value }];
+                  }),
+                },
               })),
             },
           },
         });
       }
 
-      if (
-        commissionEnabled !== undefined ||
-        clientTaxEnabled !== undefined ||
-        clientChargeTaxEnabled !== undefined
-      ) {
-        await tx.projectEstimateVersion.update({
-          where: { id: version.id },
-          data: {
-            ...(commissionEnabled !== undefined ? { commissionEnabled } : {}),
-            ...(clientTaxEnabled !== undefined ? { clientTaxEnabled } : {}),
-            ...(clientChargeTaxEnabled !== undefined ? { clientChargeTaxEnabled } : {}),
-          },
+      return (expectedRevision ?? version.revision) + 1;
+    }, {
+      maxWait: 5_000,
+      timeout: 45_000,
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+
+    if (saveMode === "MANUAL") {
+      scheduleAfterResponse("notifyProjectEstimateDraftSaved", async () => {
+        const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
+        await notifyProjectNoisyBlock({
+          projectId,
+          actorUserId: auth.user.id,
+          block: "estimate",
+          action: `Сохранён черновик локальных разделов сметы v${versionNumber}.`,
         });
-      }
-    }, { maxWait: 5_000, timeout: 45_000 });
+      });
+    }
+
+    return jsonOk({ ok: true, revision: savedRevision });
   } catch (e) {
+    if (
+      (e instanceof Error && e.message === "ESTIMATE_REVISION_CONFLICT")
+      || (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034")
+    ) {
+      return jsonError(
+        409,
+        "Смета уже изменилась в другой вкладке. Ваш черновик сохранён в браузере — обновите данные перед повторным сохранением.",
+      );
+    }
     console.error("Failed to save project estimate draft", {
       projectId,
       versionNumber,
@@ -268,15 +341,4 @@ export async function PATCH(
     }
     return jsonError(500, "Не удалось сохранить смету. Черновик остался в браузере, повторите попытку.");
   }
-  scheduleAfterResponse("notifyProjectEstimateDraftSaved", async () => {
-    const { notifyProjectNoisyBlock } = await import("@/server/projects/project-notifications");
-    await notifyProjectNoisyBlock({
-      projectId,
-      actorUserId: auth.user.id,
-      block: "estimate",
-      action: `Сохранён черновик локальных разделов сметы v${versionNumber}.`,
-    });
-  });
-
-  return jsonOk({ ok: true });
 }

@@ -7,6 +7,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { isProjectTerminalStatus } from "@/lib/project-ui-labels";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { scheduleAfterResponse } from "@/server/notifications/schedule-after-response";
+import { getProjectWorkspaceFeatures } from "@/server/projects/workspace-rollout";
 
 const FINAL_ORDER_STATUSES = ["CLOSED", "CANCELLED"] as const;
 
@@ -72,7 +73,42 @@ export async function GET(
       updatedAt: true,
       customer: { select: { id: true, name: true, logoKey: true, logoUpdatedAt: true } },
       owner: { select: { id: true, displayName: true } },
-      _count: { select: { orders: true } },
+      createdBy: { select: { id: true, displayName: true } },
+      revision: true,
+      members: {
+        orderBy: [{ role: "asc" as const }, { createdAt: "asc" as const }],
+        select: {
+          role: true,
+          createdAt: true,
+          user: { select: { id: true, displayName: true } },
+        },
+      },
+      widgets: {
+        orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+        select: {
+          id: true,
+          instanceKey: true,
+          type: true,
+          schemaVersion: true,
+          sortOrder: true,
+          x: true,
+          y: true,
+          width: true,
+          heightPreset: true,
+          config: true,
+          isVisible: true,
+          revision: true,
+        },
+      },
+      _count: {
+        select: {
+          orders: true,
+          tasks: true,
+          contacts: true,
+          projectFiles: true,
+          scheduleDays: true,
+        },
+      },
       draftOrders: {
         take: 1,
         select: {
@@ -142,6 +178,7 @@ export async function GET(
 
   if (!project) return jsonError(404, "Проект не найден");
   return jsonOk({
+    features: getProjectWorkspaceFeatures(),
     project: {
       ...project,
       customer: project.customer

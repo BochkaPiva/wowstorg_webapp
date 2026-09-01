@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
+import { getProjectWorkspaceFeatures } from "@/server/projects/workspace-rollout";
 
 const PatchSchema = z
   .object({
@@ -44,6 +45,9 @@ export async function GET(
   if (!estimate) return jsonError(404, "Смета не найдена");
 
   return jsonOk({
+    features: {
+      projectEstimateGridV2: getProjectWorkspaceFeatures().projectEstimateGridV2,
+    },
     estimate: {
       ...estimate,
       convertedAt: estimate.convertedAt?.toISOString() ?? null,

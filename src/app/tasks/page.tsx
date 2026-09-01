@@ -2004,17 +2004,15 @@ function TaskEditor({
 
 function TasksPageContent() {
   const { state } = useAuth();
-  const [viewParams] = React.useState(() => {
-    if (typeof window === "undefined") {
-      return { projectId: "", embedded: false, readOnly: false };
-    }
+  const [viewParams, setViewParams] = React.useState({ projectId: "", embedded: false, readOnly: false });
+  React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    return {
+    setViewParams({
       projectId: params.get("projectId")?.trim() || "",
       embedded: params.get("embed") === "1",
       readOnly: params.get("readOnly") === "1",
-    };
-  });
+    });
+  }, []);
   const [boards, setBoards] = React.useState<BoardListItem[]>([]);
   const [boardId, setBoardId] = React.useState("");
   const [board, setBoard] = React.useState<BoardDetail | null>(null);
@@ -2066,6 +2064,31 @@ function TasksPageContent() {
     const savedTheme = window.localStorage.getItem("wowstorg-task-board-theme");
     if (savedTheme === "dark" || savedTheme === "light") setBoardTheme(savedTheme);
   }, []);
+
+  React.useEffect(() => {
+    if (!viewParams.embedded) return;
+    let frame = 0;
+    const shell = document.querySelector<HTMLElement>(".task-board-shell");
+    if (!shell) return;
+    const publishHeight = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const height = Math.ceil(shell.getBoundingClientRect().height);
+        window.parent.postMessage({
+          type: "wowstorg:tasks-embed-height",
+          projectId: viewParams.projectId,
+          height,
+        }, window.location.origin);
+      });
+    };
+    const observer = new ResizeObserver(publishHeight);
+    observer.observe(shell);
+    publishHeight();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [viewParams.embedded, viewParams.projectId]);
 
   React.useEffect(() => () => {
     if (transientErrorTimerRef.current !== null) {
@@ -3319,7 +3342,7 @@ function TasksPageContent() {
                     draggable={false}
                     className="task-column__add"
                   >
-                    + Добавить задачу
+                    {viewParams.embedded ? "+ Задача" : "+ Добавить задачу"}
                   </button>
                   {column.isDone && column.tasks.some((task) => task.completedAt) ? (
                     <button
@@ -3505,10 +3528,10 @@ function TasksPageContent() {
 }
 
 export default function TasksPage() {
-  const [embedded] = React.useState(() => {
-    if (typeof window === "undefined") return false;
-    return new URLSearchParams(window.location.search).get("embed") === "1";
-  });
+  const [embedded, setEmbedded] = React.useState(false);
+  React.useEffect(() => {
+    setEmbedded(new URLSearchParams(window.location.search).get("embed") === "1");
+  }, []);
 
   if (embedded) {
     return <TasksPageContent />;

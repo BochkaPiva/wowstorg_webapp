@@ -1,7 +1,7 @@
 # Переменные окружения (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-24T15:07:39.492Z  
-> Уникальных имён `process.env.*`: 36  
+> **Сгенерировано:** 2026-08-30T12:11:25.069Z  
+> Уникальных имён `process.env.*`: 38  
 > Скан: `src/**/*.ts(x)` и `prisma/seed.cjs`  
 > Перегенерировать: `npm run brain:inventory`
 
@@ -15,6 +15,8 @@
 | `INVENTORY_AUDIT_RETENTION_DAYS` |
 | `NEXT_PUBLIC_APP_URL` |
 | `NODE_ENV` |
+| `PROJECT_ESTIMATE_GRID_V2_ENABLED` |
+| `PROJECT_WORKSPACE_V2_ENABLED` |
 | `REMINDERS_CRON_TOKEN` |
 | `SEED_ADMIN_LOGIN` |
 | `SEED_ADMIN_NAME` |

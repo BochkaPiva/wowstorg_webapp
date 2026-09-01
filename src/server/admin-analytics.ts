@@ -7,7 +7,6 @@ import {
 } from "@/lib/project-estimate-requisite";
 import {
   calcProjectEstimateTotals,
-  getNumericAmount,
   PROJECT_ESTIMATE_COMMISSION_RATE,
   PROJECT_ESTIMATE_TAX_RATE,
 } from "@/lib/project-estimate-totals";
@@ -15,8 +14,11 @@ import {
   calcCashInternalCostTaxAmount,
   calcOrderServicesInternalCosts,
   calcWarehouseProfitEstimate,
-  isCashPaymentMethod,
 } from "@/lib/order-service-internal-costs";
+import {
+  getProjectEstimateLineCashInternalTotal,
+  getProjectEstimateLineInternalTotal,
+} from "@/lib/project-estimate-line-totals";
 import { prisma } from "@/server/db";
 import { orderRentalPeriodWhere } from "@/server/analytics/period-filters";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
@@ -849,7 +851,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   function versionFinancials(version: ProjectVersion | null, draftOrders: ProjectRow["draftOrders"]): ProjectFinancials {
     let clientSubtotal = 0;
     let internalSubtotal = 0;
-    let cashInternalCostTax = 0;
+    let cashInternalSubtotal = 0;
 
     if (version) {
       for (const section of version.sections) {
@@ -891,7 +893,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
             })),
           });
           internalSubtotal += serviceCosts.internalCostTotal;
-          cashInternalCostTax += serviceCosts.cashInternalCostTax;
+          cashInternalSubtotal += serviceCosts.cashInternalCostTotal;
           continue;
         }
 
@@ -902,25 +904,15 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
               qty: line.qty != null ? Number(line.qty) : null,
               unitPriceClient: line.unitPriceClient != null ? Number(line.unitPriceClient) : null,
             }) ?? 0;
-          const extraInternal = line.internalExpenses.reduce(
-            (sum, expense) => sum + getNumericAmount(expense.cost),
-            0,
-          );
-          const lineInternal = getNumericAmount(line.costInternal) + extraInternal;
+          const lineInternal = getProjectEstimateLineInternalTotal(line);
           internalSubtotal += lineInternal;
-          if (isCashPaymentMethod(line.paymentMethod)) {
-            cashInternalCostTax += calcCashInternalCostTaxAmount(getNumericAmount(line.costInternal));
-          }
-          for (const expense of line.internalExpenses) {
-            if (isCashPaymentMethod(expense.paymentMethod)) {
-              cashInternalCostTax += calcCashInternalCostTaxAmount(getNumericAmount(expense.cost));
-            }
-          }
+          cashInternalSubtotal += getProjectEstimateLineCashInternalTotal(line);
         }
       }
     }
 
     clientSubtotal += addDraftOrdersClientSubtotal(draftOrders, version?.id ?? null);
+    const cashInternalCostTax = calcCashInternalCostTaxAmount(cashInternalSubtotal);
 
     return calcProjectEstimateTotals({
       clientSubtotal,

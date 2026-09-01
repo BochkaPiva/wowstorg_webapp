@@ -137,3 +137,18 @@ export function cashInternalTaxFormula(
     `(SUMIF(${paymentRange},"Наличные",${internalRange})+SUMIF(${paymentRange},"Наличка",${internalRange})+SUMIF(${paymentRange},"CASH",${internalRange}))*${rate}`,
   );
 }
+
+export function cashInternalTaxRangesFormula(
+  internalCol: number,
+  paymentCol: number,
+  ranges: XlsxDataRowRange[],
+  rate = 0.035,
+): string {
+  if (ranges.length === 0) return "0";
+  const cashSubtotalParts = ranges.map(({ firstRow, lastRow }) => {
+    const internalRange = `${xlsxCellRef(firstRow, internalCol)}:${xlsxCellRef(lastRow, internalCol)}`;
+    const paymentRange = `${xlsxCellRef(firstRow, paymentCol)}:${xlsxCellRef(lastRow, paymentCol)}`;
+    return `(SUMIF(${paymentRange},"Наличные",${internalRange})+SUMIF(${paymentRange},"Наличка",${internalRange})+SUMIF(${paymentRange},"CASH",${internalRange}))`;
+  });
+  return roundMoneyFormula(`(${cashSubtotalParts.join("+")})*${rate}`);
+}

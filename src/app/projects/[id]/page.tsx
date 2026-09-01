@@ -3,6 +3,7 @@
 import "@/app/catalog/catalog.css";
 import "react-day-picker/style.css";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 import { createPortal } from "react-dom";
@@ -30,12 +31,46 @@ import {
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { projectReturnFallback, safeDetailReturnTo } from "@/lib/detail-return";
-import { ProjectContactsPanel } from "./ProjectContactsPanel";
-import { ProjectEstimatePanel } from "./ProjectEstimatePanel";
-import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { ProjectSchedulePanel } from "./ProjectSchedulePanel";
+import { ProjectModuleBoundary, ProjectModuleSkeleton } from "./ProjectModuleBoundary";
+import {
+  ProjectWorkspaceSettings,
+  type ProjectWorkspaceMember,
+  type ProjectWorkspaceSavedData,
+  type ProjectWorkspaceWidgetRecord,
+} from "./ProjectWorkspaceSettings";
+import { buildProjectWorkspaceDraft } from "@/lib/projects/project-workspace";
+import {
+  buildLegacyProjectWorkspaceDraft,
+  resolveProjectWorkspaceView,
+} from "@/lib/projects/project-workspace-rollout";
+import {
+  PROJECT_WIDGET_REGISTRY,
+  type ProjectWidgetType,
+} from "@/lib/projects/project-widget-registry";
+import { ProjectWorkspaceDashboard } from "./ProjectWorkspaceDashboard";
 
 import type { ProjectActivityKind, ProjectBall, ProjectStatus } from "@prisma/client";
+
+const ProjectContactsPanel = dynamic(
+  () => import("./ProjectContactsPanel").then((module) => module.ProjectContactsPanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Контакты" /> },
+);
+const ProjectEstimatePanel = dynamic(
+  () => import("./ProjectEstimatePanel").then((module) => module.ProjectEstimatePanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Сметы проекта" /> },
+);
+const ProjectFilesPanel = dynamic(
+  () => import("./ProjectFilesPanel").then((module) => module.ProjectFilesPanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Файлы" /> },
+);
+const ProjectFreeBoard = dynamic(
+  () => import("./ProjectFreeBoard").then((module) => module.ProjectFreeBoard),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Свободная доска" /> },
+);
+const ProjectSchedulePanel = dynamic(
+  () => import("./ProjectSchedulePanel").then((module) => module.ProjectSchedulePanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Тайминг" /> },
+);
 
 type LinkedOrder = {
   id: string;
@@ -89,7 +124,17 @@ type ProjectDetail = {
   updatedAt: string;
   customer: { id: string; name: string; logoUrl?: string | null } | null;
   owner: { id: string; displayName: string };
-  _count: { orders: number };
+  createdBy: { id: string; displayName: string };
+  revision: number;
+  members: ProjectWorkspaceMember[];
+  widgets: ProjectWorkspaceWidgetRecord[];
+  _count: {
+    orders: number;
+    tasks: number;
+    contacts: number;
+    projectFiles: number;
+    scheduleDays: number;
+  };
   draftOrder?: {
     id: string;
     title: string | null;
@@ -141,9 +186,9 @@ function buildProjectCatalogHref(args: {
 }
 
 const sectionShell =
-  "rounded-lg border border-zinc-300 bg-white p-3 sm:p-4";
+  "rounded-xl border border-zinc-200 bg-white p-3 sm:p-4";
 const softShell =
-  "rounded-lg border border-zinc-300 bg-white p-3 sm:p-4";
+  "rounded-xl border border-zinc-200 bg-white p-3 sm:p-4";
 const glassSectionHeader =
   "flex flex-col gap-3 border-b border-zinc-200 pb-3 sm:flex-row sm:items-center sm:justify-between";
 const glassSectionTitle = "text-lg font-black tracking-tight text-zinc-950";
@@ -157,15 +202,19 @@ const iconBtn =
   "inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50";
 const metaBadge =
   "inline-flex items-center rounded border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700";
-const workTabBtn = (active: boolean) =>
-  [
-    "min-h-11 rounded-md border px-4 py-2 text-sm font-extrabold transition-colors",
-    active
-      ? "border-zinc-950 bg-zinc-950 text-white"
-      : "border-zinc-300 bg-white text-zinc-600 hover:border-zinc-950 hover:text-zinc-950",
-  ].join(" ");
-const heroStatCard =
-  "rounded-md border border-zinc-200 bg-zinc-50 p-3";
+const PROJECT_WIDGET_WIDTH_CLASS: Record<4 | 6 | 8 | 12, string> = {
+  4: "lg:col-span-4",
+  6: "lg:col-span-6",
+  8: "lg:col-span-8",
+  12: "lg:col-span-12",
+};
+
+const PROJECT_WIDGET_MIN_HEIGHT: Record<"COMPACT" | "MEDIUM" | "LARGE" | "AUTO", number | undefined> = {
+  COMPACT: 220,
+  MEDIUM: 340,
+  LARGE: 520,
+  AUTO: undefined,
+};
 
 const PROJECT_STATUS_NEXT: Partial<Record<ProjectStatus, ProjectStatus>> = {
   LEAD: "BRIEFING",
@@ -785,6 +834,45 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
   return null;
 }
 
+function ProjectTasksEmbed({
+  projectId,
+  projectTitle,
+  readOnly,
+}: {
+  projectId: string;
+  projectTitle: string;
+  readOnly: boolean;
+}) {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const [contentHeight, setContentHeight] = React.useState(236);
+
+  React.useEffect(() => {
+    const receiveHeight = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== iframeRef.current?.contentWindow) return;
+      const payload = event.data as { type?: string; projectId?: string; height?: number } | null;
+      if (
+        payload?.type !== "wowstorg:tasks-embed-height"
+        || payload.projectId !== projectId
+        || typeof payload.height !== "number"
+        || !Number.isFinite(payload.height)
+      ) return;
+      setContentHeight(Math.max(196, Math.min(1800, Math.ceil(payload.height))));
+    };
+    window.addEventListener("message", receiveHeight);
+    return () => window.removeEventListener("message", receiveHeight);
+  }, [projectId]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={`Задачи проекта ${projectTitle}`}
+      src={`/tasks?embed=1&projectId=${encodeURIComponent(projectId)}${readOnly ? "&readOnly=1" : ""}`}
+      className="project-tasks-embed w-full border-0 bg-white"
+      style={{ height: contentHeight }}
+    />
+  );
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -795,10 +883,24 @@ export default function ProjectDetailPage() {
   const returnFallback = projectReturnFallback(searchParams.get("from"));
   const backHref = safeDetailReturnTo(searchParams.get("returnTo"), returnFallback.href);
   const forbidden = state.status === "authenticated" && role !== "WOWSTORG";
+  const [workspaceFeatures, setWorkspaceFeatures] = React.useState({
+    projectWorkspaceV2: true,
+    projectEstimateGridV2: true,
+  });
+  const workspaceView = resolveProjectWorkspaceView(
+    searchParams.get("workspace"),
+    workspaceFeatures.projectWorkspaceV2,
+  );
+  const isWorkspaceV2 = workspaceView === "v2";
+  const isEstimateGridV2 =
+    workspaceFeatures.projectEstimateGridV2 ||
+    searchParams.get("estimate")?.toLocaleLowerCase("en-US") === "v2" ||
+    searchParams.get("workspace")?.toLocaleLowerCase("en-US") === "v2";
 
   const [project, setProject] = React.useState<ProjectDetail | null>(null);
   const [initialLoading, setInitialLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [saveBusy, setSaveBusy] = React.useState(false);
   const [draftDeleteBusy, setDraftDeleteBusy] = React.useState(false);
   const [draftDeleteError, setDraftDeleteError] = React.useState<string | null>(null);
@@ -808,7 +910,6 @@ export default function ProjectDetailPage() {
   const [archiveModalStatus, setArchiveModalStatus] = React.useState<"COMPLETED" | "CANCELLED">("COMPLETED");
   const [archiveModalNote, setArchiveModalNote] = React.useState("");
   const [showAllLog, setShowAllLog] = React.useState(false);
-  const [activeWorkTab, setActiveWorkTab] = React.useState<"estimate" | "schedule" | "files" | "journal">("estimate");
   const [catalogModeOpen, setCatalogModeOpen] = React.useState(false);
   const [linkExistingOpen, setLinkExistingOpen] = React.useState(false);
   const [linkableOrders, setLinkableOrders] = React.useState<LinkableOrder[]>([]);
@@ -818,13 +919,11 @@ export default function ProjectDetailPage() {
   const [linkExistingError, setLinkExistingError] = React.useState<string | null>(null);
   const [selectedEstimateVersionNumber, setSelectedEstimateVersionNumber] = React.useState<number | null>(null);
   const [resolvedEstimateVersion, setResolvedEstimateVersion] = React.useState<{ id: string; versionNumber: number } | null>(null);
-
   const [title, setTitle] = React.useState("");
   const [status, setStatus] = React.useState<ProjectStatus>("LEAD");
   const [ball, setBall] = React.useState<ProjectBall>("CLIENT");
   const [eventStartDate, setEventStartDate] = React.useState("");
   const [eventEndDate, setEventEndDate] = React.useState("");
-  const [eventDateNote, setEventDateNote] = React.useState("");
   const [eventDateConfirmed, setEventDateConfirmed] = React.useState(false);
   const [openBlockers, setOpenBlockers] = React.useState("");
   const [internalSummary, setInternalSummary] = React.useState("");
@@ -843,42 +942,117 @@ export default function ProjectDetailPage() {
   const hasDraftOrder = Boolean(project?.draftOrder && project.draftOrder.linesCount > 0);
   const projectHasConfirmedDates =
     Boolean(project?.eventDateConfirmed) && Boolean(project?.eventStartDate) && Boolean(project?.eventEndDate);
+  const workspaceWidgets = React.useMemo(
+    () =>
+      isWorkspaceV2
+        ? buildProjectWorkspaceDraft(project?.widgets)
+        : buildLegacyProjectWorkspaceDraft(),
+    [isWorkspaceV2, project?.widgets],
+  );
+  const visibleWorkspaceTypes = React.useMemo(
+    () => new Set(workspaceWidgets.filter((widget) => widget.isVisible).map((widget) => widget.type)),
+    [workspaceWidgets],
+  );
+  const workspaceLayoutByType = React.useMemo(
+    () => new Map(workspaceWidgets.map((widget) => [widget.type, widget] as const)),
+    [workspaceWidgets],
+  );
+
+  function workspaceModuleClass(type: ProjectWidgetType, shellClass = "") {
+    const width = workspaceLayoutByType.get(type)?.width ?? 12;
+    return ["project-workspace-module col-span-1 min-w-0", PROJECT_WIDGET_WIDTH_CLASS[width], shellClass].filter(Boolean).join(" ");
+  }
+
+  function workspaceModuleStyle(type: ProjectWidgetType): React.CSSProperties {
+    const widget = workspaceLayoutByType.get(type);
+    return {
+      order: widget?.sortOrder ?? 99,
+      minHeight: isWorkspaceV2 ? PROJECT_WIDGET_MIN_HEIGHT[widget?.heightPreset ?? "AUTO"] : undefined,
+    };
+  }
+
+  function applySavedWorkspace(workspace?: ProjectWorkspaceSavedData) {
+    if (!workspace) {
+      load();
+      return;
+    }
+    setProject((current) =>
+      current
+        ? {
+            ...current,
+            revision: workspace.revision,
+            owner: workspace.owner,
+            members: workspace.members,
+            widgets: workspace.widgets,
+          }
+        : current,
+    );
+  }
 
   /** true после первой успешной загрузки проекта — чтобы обновления не размонтировали страницу */
   const hasProjectRef = React.useRef(false);
+  const loadRequestRef = React.useRef(0);
   React.useEffect(() => {
     hasProjectRef.current = project != null;
   }, [project]);
 
-  const load = React.useCallback(() => {
+  const load = React.useCallback(async () => {
     if (!id || state.status !== "authenticated" || role !== "WOWSTORG") return;
+    const requestId = ++loadRequestRef.current;
     // Важно: не «сбрасываем» всю страницу на "Загрузка…", иначе скролл прыгает вверх
     // при любом патче (файлы/тайминг/смета), т.к. контент размонтируется.
     if (hasProjectRef.current) setRefreshing(true);
     else setInitialLoading(true);
-    fetch(`/api/projects/${id}?includeOrders=1&includeActivity=1`, { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then((data: { project?: ProjectDetail; error?: { message?: string } } | null) => {
-        if (data?.project) {
-          setProject(data.project);
-          setTitle(data.project.title);
-          setStatus(data.project.status);
-          setBall(data.project.ball);
-          setEventStartDate(data.project.eventStartDate ?? "");
-          setEventEndDate(data.project.eventEndDate ?? "");
-          setEventDateNote(data.project.eventDateNote ?? "");
-          setEventDateConfirmed(data.project.eventDateConfirmed);
-          setOpenBlockers(data.project.openBlockers ?? "");
-          setInternalSummary(data.project.internalSummary ?? "");
-        } else {
-          setProject(null);
-        }
-      })
-      .catch(() => setProject(null))
-      .finally(() => {
+    setLoadError(null);
+    try {
+      const response = await fetch(`/api/projects/${id}?includeOrders=1&includeActivity=1`, {
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as
+        | {
+            project?: ProjectDetail;
+            features?: {
+              projectWorkspaceV2?: boolean;
+              projectEstimateGridV2?: boolean;
+            };
+            error?: { message?: string };
+          }
+        | null;
+      if (requestId !== loadRequestRef.current) return;
+
+      if (!response.ok || !data?.project) {
+        setProject(null);
+        setLoadError(
+          response.status === 404
+            ? "Проект не найден или был удалён."
+            : data?.error?.message ?? "Не удалось загрузить проект. Проверьте соединение и повторите попытку.",
+        );
+        return;
+      }
+
+      setProject(data.project);
+      setWorkspaceFeatures({
+        projectWorkspaceV2: data.features?.projectWorkspaceV2 ?? true,
+        projectEstimateGridV2: data.features?.projectEstimateGridV2 ?? true,
+      });
+      setTitle(data.project.title);
+      setStatus(data.project.status);
+      setBall(data.project.ball);
+      setEventStartDate(data.project.eventStartDate ?? "");
+      setEventEndDate(data.project.eventEndDate ?? "");
+      setEventDateConfirmed(data.project.eventDateConfirmed);
+      setOpenBlockers(data.project.openBlockers ?? "");
+      setInternalSummary(data.project.internalSummary ?? "");
+    } catch {
+      if (requestId !== loadRequestRef.current) return;
+      setProject(null);
+      setLoadError("Не удалось загрузить проект. Проверьте соединение и повторите попытку.");
+    } finally {
+      if (requestId === loadRequestRef.current) {
         setInitialLoading(false);
         setRefreshing(false);
-      });
+      }
+    }
   }, [id, state.status, role]);
 
   React.useEffect(() => {
@@ -1097,25 +1271,120 @@ export default function ProjectDetailPage() {
 
   const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
-  return (
-    <AppShell title={project?.title ?? "Проект"} backHref={backHref}>
-      <div className="mb-4">
-        <Link
-          href={backHref}
-          className="text-sm font-medium text-violet-700 hover:text-violet-900"
-        >
-          ← {returnFallback.label}
-        </Link>
-      </div>
+  function renderWorkspaceWidget(type: ProjectWidgetType): React.ReactNode {
+    if (!project) return null;
+    if (type === "ESTIMATE") {
+      return (
+        <ProjectModuleBoundary title="Сметы проекта" resetKey={`${id}:estimate:inline`}>
+          <ProjectEstimatePanel
+            projectId={id}
+            readOnly={readOnly}
+            workspaceMode
+            estimateGridEnabled={isEstimateGridV2}
+            selectedVersionNumber={selectedEstimateVersionNumber}
+            onSelectedVersionNumberChange={setSelectedEstimateVersionNumber}
+            onResolvedVersionChange={setResolvedEstimateVersion}
+          />
+        </ProjectModuleBoundary>
+      );
+    }
+    if (type === "TASKS") {
+      return (
+        <ProjectTasksEmbed
+          projectId={id}
+          projectTitle={project.title}
+          readOnly={readOnly}
+        />
+      );
+    }
+    if (type === "SCHEDULE") {
+      return <ProjectModuleBoundary title="Тайминг" resetKey={`${id}:schedule:inline`}><ProjectSchedulePanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>;
+    }
+    if (type === "FILES") {
+      return <ProjectModuleBoundary title="Файлы" resetKey={`${id}:files:inline`}><ProjectFilesPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>;
+    }
+    if (type === "CONTACTS") {
+      return <ProjectModuleBoundary title="Контакты" resetKey={`${id}:contacts:inline`}><ProjectContactsPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>;
+    }
+    if (type === "FREE_BOARD") {
+      return (
+        <ProjectModuleBoundary title="Свободная доска" resetKey={`${id}:free-board:inline`}>
+          <ProjectFreeBoard projectId={id} actorUserId={state.status === "authenticated" ? state.user.id : "anonymous"} readOnly={readOnly} />
+        </ProjectModuleBoundary>
+      );
+    }
+    if (type === "NOTES") {
+      return (
+        <div className="grid min-h-56 divide-y divide-zinc-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <label className="flex min-h-56 flex-col p-4 sm:p-5">
+            <span className="text-xs font-bold text-zinc-500">Рабочее резюме</span>
+            <textarea value={internalSummary} onChange={(event) => setInternalSummary(event.target.value)} readOnly={readOnly} className="mt-2 min-h-32 flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 text-zinc-900 outline-none focus:shadow-none" placeholder="Договорённости, решения и общий контекст проекта" />
+            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })} className="mt-3 w-fit rounded-md bg-zinc-950 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50">Сохранить резюме</button> : null}
+          </label>
+          <label className="flex min-h-56 flex-col bg-amber-50/45 p-4 sm:p-5">
+            <span className="text-xs font-bold text-amber-900">Требует внимания</span>
+            <textarea value={openBlockers} onChange={(event) => setOpenBlockers(event.target.value)} readOnly={readOnly} className="mt-2 min-h-32 flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 text-zinc-900 outline-none focus:shadow-none" placeholder="Что мешает двигаться дальше и от кого ждём решение" />
+            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })} className="mt-3 w-fit rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-950 hover:border-amber-500 disabled:opacity-50">Сохранить вопросы</button> : null}
+          </label>
+        </div>
+      );
+    }
+    if (type === "HISTORY") {
+      return project.activityLogs?.length ? (
+        <ul className="max-h-80 divide-y divide-zinc-100 overflow-y-auto">
+          {project.activityLogs.map((row) => (
+            <li key={row.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5">
+              <div className="min-w-0"><div className="truncate font-bold text-zinc-950">{PROJECT_ACTIVITY_KIND_LABEL[row.kind] ?? row.kind}</div><div className="mt-0.5 text-xs text-zinc-500">{row.actor.displayName}</div><div className="mt-1 text-xs leading-5 text-zinc-700"><ActivityDescription row={row} /></div></div>
+              <time className="text-xs font-semibold text-zinc-400">{fmtDateTime(row.createdAt)}</time>
+            </li>
+          ))}
+        </ul>
+      ) : <div className="px-5 py-12 text-center text-sm text-zinc-500">История пока пуста.</div>;
+    }
+    if (type === "ORDERS") {
+      return (
+        <div>
+          {!readOnly ? (
+            <div className="flex flex-wrap gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+              <button type="button" onClick={openProjectCatalogEntry} className="rounded-md bg-yellow-400 px-3 py-2 text-xs font-extrabold text-zinc-950 hover:bg-yellow-300">Добавить реквизит</button>
+              <button type="button" onClick={() => void openLinkExistingModal()} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-800 hover:border-zinc-950">Привязать заявку</button>
+            </div>
+          ) : null}
+          {project.orders?.length ? project.orders.map((order) => (
+            <Link key={order.id} href={`/orders/${order.id}?from=project&returnTo=${encodeURIComponent(`/projects/${id}`)}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-zinc-100 px-4 py-3 text-sm last:border-b-0 hover:bg-zinc-50">
+              <span className="min-w-0"><span className="block truncate font-bold text-zinc-950">{order.eventName?.trim() || `Заявка ${order.id.slice(0, 8)}`}</span><span className="mt-0.5 block text-xs text-zinc-500">{fmtDate(order.startDate)} — {fmtDate(order.endDate)}</span></span>
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-800">{orderStatusLabelRu[order.status] ?? order.status}</span>
+            </Link>
+          )) : <div className="px-4 py-12 text-center text-sm text-zinc-500">Связанных заявок пока нет.</div>}
+        </div>
+      );
+    }
+    return null;
+  }
 
+  return (
+    <AppShell title="Проекты" backHref={backHref}>
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : initialLoading ? (
         <ProjectDetailSkeleton />
       ) : !project ? (
-        <div className="text-sm text-zinc-600">Проект не найден.</div>
+        <section className="rounded-xl border border-red-200 bg-red-50 p-5 sm:p-6" role="alert">
+          <div className="text-sm font-black text-red-950">Не удалось открыть карточку проекта</div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-red-800">
+            {loadError ?? "Проект не найден или недоступен."}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void load()} className={primaryBtn}>
+              Повторить
+            </button>
+            <Link href={backHref} className={secondaryBtn}>
+              {returnFallback.label}
+            </Link>
+          </div>
+        </section>
       ) : (
-        <div className="space-y-5">
+        <div className="project-detail-page space-y-4">
           {refreshing ? (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
               Обновляю данные…
@@ -1140,11 +1409,16 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-lg border border-zinc-300 border-t-4 border-t-yellow-400 bg-white">
-            <div className="grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_230px]">
-              <div className="min-w-0">
-                <div className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-800">Проект</div>
-                <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <section className="project-detail-hero">
+            <div className="project-detail-hero__surface">
+              <div className="project-detail-hero__primary min-w-0">
+                <div className="project-detail-hero__crumbs">
+                  <Link href={backHref} className="project-detail-hero__back" aria-label={returnFallback.label}>←</Link>
+                  <span className="truncate">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</span>
+                  <span aria-hidden className="project-detail-hero__crumb-separator">/</span>
+                  <span className="shrink-0">{project.members.length} участн.</span>
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     {editingField === "title" && !readOnly ? (
                       <div className="flex flex-col gap-2 sm:flex-row">
@@ -1179,19 +1453,19 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => !readOnly && setEditingField("title")}
                         disabled={readOnly}
-                        className={`block break-words text-left text-3xl font-black tracking-tight text-zinc-950 sm:text-4xl ${
+                        className={`project-detail-hero__title block break-words text-left ${
                           readOnly ? "cursor-default" : "rounded outline-none transition-colors hover:text-violet-900 focus:ring-2 focus:ring-violet-100"
                         }`}
                       >
                         {project.title}
                       </button>
                     )}
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div className="project-detail-hero__states">
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-md border px-3 py-2 text-xs font-black ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`project-detail-hero__state ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         {PROJECT_STATUS_LABEL[project.status]}
                       </button>
@@ -1199,7 +1473,7 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        className={`inline-flex items-center rounded-md border px-3 py-2 text-xs font-black ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
+                        className={`project-detail-hero__state ${projectBallTone(project.ball)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         Мяч: {PROJECT_BALL_LABEL[project.ball]}
                       </button>
@@ -1223,37 +1497,23 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 grid overflow-hidden rounded-md border border-zinc-200 sm:grid-cols-2 xl:grid-cols-4 [&>*]:rounded-none [&>*]:border-0 [&>*]:border-r [&>*]:border-zinc-200 [&>*]:bg-white">
-                  <div className={heroStatCard}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Заказчик</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.customer?.name ?? project.leadCustomerName ?? "Не указан"}</div>
-                  </div>
-                  <div className={heroStatCard}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ответственный</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-950">{project.owner.displayName}</div>
-                  </div>
-                  <div className={`${heroStatCard} sm:col-span-2 xl:col-span-1`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Даты мероприятия</div>
-                      {!readOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/80 bg-white text-violet-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-violet-50"
-                          aria-label="Изменить даты"
-                        >
-                          <CalendarIcon />
-                        </button>
-                      ) : null}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-950">
-                      {formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}
-                    </div>
-                    <div className={`mt-1 text-xs ${project.eventDateConfirmed ? "font-semibold text-emerald-700" : "text-zinc-500"}`}>
-                      {project.eventDateConfirmed ? "Дата подтверждена" : "Дата не подтверждена"}
-                    </div>
-                    {editingField === "eventDates" && !readOnly ? (
-                      <div className="mt-3 space-y-3">
+                <div className="project-detail-hero__meta">
+                  <span className="project-detail-hero__meta-item"><span>Ответственный</span><strong>{project.owner.displayName}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => !readOnly && setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
+                    disabled={readOnly}
+                    className={`project-detail-hero__meta-item outline-none ${readOnly ? "cursor-default" : "hover:text-violet-700 focus-visible:ring-2 focus-visible:ring-violet-200"}`}
+                  >
+                    <CalendarIcon />
+                    <strong>{formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}</strong>
+                    <span className={`h-1.5 w-1.5 rounded-full ${project.eventDateConfirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-label={project.eventDateConfirmed ? "Даты подтверждены" : "Даты не подтверждены"} />
+                  </button>
+                  <span className="project-detail-hero__meta-item"><strong className="tabular-nums">{project._count.orders}</strong><span>заявок</span></span>
+                  <span className="project-detail-hero__meta-item project-detail-hero__meta-item--muted"><span>Создан</span><strong>{fmtDate(project.createdAt)}</strong></span>
+                </div>
+                {editingField === "eventDates" && !readOnly ? (
+                      <div className="mt-3 max-w-xl space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
                         <ProjectEventDatePicker
                           startDate={eventStartDate}
                           endDate={eventEndDate}
@@ -1262,7 +1522,7 @@ export default function ProjectDetailPage() {
                             setEventEndDate(end);
                           }}
                         />
-                        <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-xs font-bold text-zinc-700 shadow-sm">
+                        <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700">
                           <span>Дата подтверждена</span>
                           <input
                             type="checkbox"
@@ -1300,21 +1560,21 @@ export default function ProjectDetailPage() {
                           </button>
                         </div>
                       </div>
-                    ) : null}
-                  </div>
-                  <div className={heroStatCard}>
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Прогресс</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-950">Заявок: {project._count.orders}</div>
-                    <div className="mt-1 text-xs text-zinc-500">Создан {fmtDate(project.createdAt)}</div>
-                  </div>
-                </div>
+                ) : null}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-zinc-200 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Быстрые действия</div>
-                  <p className="mt-1 text-xs leading-5 text-zinc-500">Основные действия с проектом — в одном месте.</p>
-                  <div className="mt-4 flex flex-col gap-2">
+              <div className="project-detail-hero__actions">
+                  {isWorkspaceV2 ? (
+                    <ProjectWorkspaceSettings
+                      projectId={id}
+                      revision={project.revision}
+                      owner={project.owner}
+                      members={project.members}
+                      widgets={project.widgets}
+                      readOnly={readOnly}
+                      onSaved={applySavedWorkspace}
+                    />
+                  ) : null}
                     <Link
                       href={buildProjectCatalogHref({
                         projectId: id,
@@ -1325,7 +1585,7 @@ export default function ProjectDetailPage() {
                         e.preventDefault();
                         openProjectCatalogEntry();
                       }}
-                      className={`${primaryBtn} w-full py-3 text-center ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                      className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
                       aria-disabled={readOnly}
                     >
                       Каталог → реквизит
@@ -1335,23 +1595,53 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
-                        className={`${secondaryBtn} w-full justify-center py-3 text-xs`}
+                        className="project-detail-hero__archive"
                         title={
                           canArchiveProject
                             ? undefined
                             : "Сначала завершите или отмените все заявки, привязанные к проекту"
                         }
                       >
-                        Завершить (в архив)
+                        В архив
                       </button>
                     ) : null}
-                  </div>
-                </div>
               </div>
             </div>
           </section>
 
-          <section className={softShell}>
+          {!isWorkspaceV2 ? (
+            <section className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-black text-amber-950">Безопасный классический вид</div>
+                <p className="mt-1 text-xs leading-5 text-amber-800">
+                  Все рабочие блоки показаны в фиксированной компоновке. Данные проекта остаются теми же.
+                </p>
+              </div>
+              <Link
+                href={`?${new URLSearchParams({
+                  ...Object.fromEntries(searchParams.entries()),
+                  workspace: "v2",
+                }).toString()}`}
+                className={`${secondaryBtn} shrink-0 text-center`}
+              >
+                Открыть новый вид
+              </Link>
+            </section>
+          ) : null}
+
+          <ProjectWorkspaceDashboard
+            projectId={id}
+            widgets={workspaceWidgets}
+            renderWidget={renderWorkspaceWidget}
+          />
+
+          {/* Legacy inline workspace retained temporarily for safe rollback while the dashboard is validated.
+          <div className="project-workspace-grid grid grid-cols-1 items-start gap-3 lg:grid-cols-12">
+          {visibleWorkspaceTypes.has("TASKS") ? <section
+            id="project-module-tasks"
+            className={workspaceModuleClass("TASKS", softShell)}
+            style={workspaceModuleStyle("TASKS")}
+          >
             <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
                 <div className={glassSectionTitle}>Задачи проекта</div>
@@ -1373,9 +1663,8 @@ export default function ProjectDetailPage() {
                 className="h-[34rem] w-full border-0 bg-transparent"
               />
             </div>
-          </section>
+          </section> : null}
 
-          <div className="grid gap-4">
             <section className="hidden" aria-hidden="true">
               <div className="border-b border-zinc-100 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="text-lg font-extrabold tracking-tight text-violet-900">Карточка проекта</div>
@@ -1568,7 +1857,11 @@ export default function ProjectDetailPage() {
               </div>
             </section>
 
-            <section className={`${softShell} h-full`}>
+            {visibleWorkspaceTypes.has("NOTES") ? <section
+              id="project-module-notes"
+              className={workspaceModuleClass("NOTES", `${softShell} h-full`)}
+              style={workspaceModuleStyle("NOTES")}
+            >
               <div className={glassSectionHeader}>
                 <div className="flex items-center gap-2">
                   <div className={glassSectionTitle}>Рабочие заметки</div>
@@ -1687,12 +1980,24 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               </div>
-            </section>
-          </div>
+            </section> : null}
+          {visibleWorkspaceTypes.has("CONTACTS") ? (
+            <div
+              id="project-module-contacts"
+              className={workspaceModuleClass("CONTACTS")}
+              style={workspaceModuleStyle("CONTACTS")}
+            >
+              <ProjectModuleBoundary title="Контакты" resetKey={`${id}:contacts`}>
+                <ProjectContactsPanel projectId={id} readOnly={readOnly} />
+              </ProjectModuleBoundary>
+            </div>
+          ) : null}
 
-          <ProjectContactsPanel projectId={id} readOnly={readOnly} />
-
-          <div className={softShell}>
+          <div
+            id="project-module-orders"
+            className={workspaceModuleClass("ORDERS", softShell)}
+            style={workspaceModuleStyle("ORDERS")}
+          >
             <div className={glassSectionHeader}>
               <div className="flex items-center gap-2">
                 <div className={glassSectionTitle}>Заявки реквизита</div>
@@ -1935,80 +2240,108 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <section className={softShell}>
-            <div className={glassSectionHeader}>
-              <div className="flex items-center gap-2">
-                <div className={glassSectionTitle}>Рабочая зона</div>
-                <HelpLegend title="Рабочая зона проекта">
-                  Выбери, с чем сейчас работаешь: смета, тайминг, файлы или история изменений. Это вкладки одного проекта, поэтому можно переключаться и не терять контекст.
-                </HelpLegend>
-              </div>
-              <div className="grid w-full grid-cols-2 gap-1 border border-zinc-300 bg-zinc-50 p-1 sm:flex sm:w-auto sm:flex-wrap">
-                <button type="button" onClick={() => setActiveWorkTab("estimate")} className={workTabBtn(activeWorkTab === "estimate")}>
-                  Смета
-                </button>
-                <button type="button" onClick={() => setActiveWorkTab("schedule")} className={workTabBtn(activeWorkTab === "schedule")}>
-                  Тайминг
-                </button>
-                <button type="button" onClick={() => setActiveWorkTab("files")} className={workTabBtn(activeWorkTab === "files")}>
-                  Файлы
-                </button>
-                <button type="button" onClick={() => setActiveWorkTab("journal")} className={workTabBtn(activeWorkTab === "journal")}>
-                  Журнал
-                </button>
-              </div>
-            </div>
+          {visibleWorkspaceTypes.has("FREE_BOARD") ? (
+            <section
+              id="project-module-free-board"
+              className={workspaceModuleClass("FREE_BOARD")}
+              style={workspaceModuleStyle("FREE_BOARD")}
+            >
+              <ProjectModuleBoundary title="Свободная доска" resetKey={`${id}:free-board`}>
+                <ProjectFreeBoard
+                  projectId={id}
+                  actorUserId={state.status === "authenticated" ? state.user.id : "anonymous"}
+                  readOnly={readOnly}
+                />
+              </ProjectModuleBoundary>
+            </section>
+          ) : null}
 
-            <div className="mt-4">
-              {activeWorkTab === "estimate" ? (
+          {visibleWorkspaceTypes.has("ESTIMATE") ? (
+            <section
+              id="project-module-estimate"
+              className={workspaceModuleClass("ESTIMATE")}
+              style={workspaceModuleStyle("ESTIMATE")}
+            >
+              <ProjectModuleBoundary title="Сметы проекта" resetKey={`${id}:estimate`}>
                 <ProjectEstimatePanel
                   projectId={id}
                   readOnly={readOnly}
+                  estimateGridEnabled={isEstimateGridV2}
                   selectedVersionNumber={selectedEstimateVersionNumber}
                   onSelectedVersionNumberChange={setSelectedEstimateVersionNumber}
                   onResolvedVersionChange={setResolvedEstimateVersion}
                 />
-              ) : null}
-              {activeWorkTab === "schedule" ? <ProjectSchedulePanel projectId={id} readOnly={readOnly} /> : null}
-              {activeWorkTab === "files" ? <ProjectFilesPanel projectId={id} readOnly={readOnly} /> : null}
-              {activeWorkTab === "journal" ? (
-                <div className={sectionShell}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-lg font-extrabold tracking-tight text-violet-900">Журнал</div>
-                    {project.activityLogs?.length ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllLog((v) => !v)}
-                        className={secondaryBtn}
-                      >
-                        {showAllLog ? "Скрыть историю" : "Показать всю историю"}
-                      </button>
-                    ) : null}
-                  </div>
-                  {!project.activityLogs?.length ? (
-                    <p className="mt-3 text-sm text-zinc-600">Пока нет записей.</p>
-                  ) : (
-                    <ul className="mt-3 space-y-3 border-t border-zinc-100 pt-3">
-                      {(showAllLog ? project.activityLogs : project.activityLogs.slice(0, 6)).map((row) => (
-                        <li key={row.id} className="text-sm">
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <span className="font-medium text-zinc-900">
-                              {PROJECT_ACTIVITY_KIND_LABEL[row.kind] ?? row.kind}
-                            </span>
-                            <span className="text-xs text-zinc-400">{fmtDateTime(row.createdAt)}</span>
-                          </div>
-                          <div className="text-xs text-zinc-500">{row.actor.displayName}</div>
-                          <div className="mt-1 text-zinc-800">
-                            <ActivityDescription row={row} />
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </section>
+              </ProjectModuleBoundary>
+            </section>
+          ) : null}
+
+          {visibleWorkspaceTypes.has("SCHEDULE") ? (
+            <section
+              id="project-module-schedule"
+              className={workspaceModuleClass("SCHEDULE")}
+              style={workspaceModuleStyle("SCHEDULE")}
+            >
+              <ProjectModuleBoundary title="Тайминг" resetKey={`${id}:schedule`}>
+                <ProjectSchedulePanel projectId={id} readOnly={readOnly} />
+              </ProjectModuleBoundary>
+            </section>
+          ) : null}
+
+          {visibleWorkspaceTypes.has("FILES") ? (
+            <section
+              id="project-module-files"
+              className={workspaceModuleClass("FILES")}
+              style={workspaceModuleStyle("FILES")}
+            >
+              <ProjectModuleBoundary title="Файлы" resetKey={`${id}:files`}>
+                <ProjectFilesPanel projectId={id} readOnly={readOnly} />
+              </ProjectModuleBoundary>
+            </section>
+          ) : null}
+
+          {visibleWorkspaceTypes.has("HISTORY") ? (
+            <section
+              id="project-module-history"
+              className={workspaceModuleClass("HISTORY", sectionShell)}
+              style={workspaceModuleStyle("HISTORY")}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-lg font-extrabold tracking-tight text-violet-900">Журнал</div>
+                {project.activityLogs?.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllLog((v) => !v)}
+                    className={secondaryBtn}
+                  >
+                    {showAllLog ? "Скрыть историю" : "Показать всю историю"}
+                  </button>
+                ) : null}
+              </div>
+              {!project.activityLogs?.length ? (
+                <p className="mt-3 text-sm text-zinc-600">Пока нет записей.</p>
+              ) : (
+                <ul className="mt-3 space-y-3 border-t border-zinc-100 pt-3">
+                  {(showAllLog ? project.activityLogs : project.activityLogs.slice(0, 6)).map((row) => (
+                    <li key={row.id} className="text-sm">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-medium text-zinc-900">
+                          {PROJECT_ACTIVITY_KIND_LABEL[row.kind] ?? row.kind}
+                        </span>
+                        <span className="text-xs text-zinc-400">{fmtDateTime(row.createdAt)}</span>
+                      </div>
+                      <div className="text-xs text-zinc-500">{row.actor.displayName}</div>
+                      <div className="mt-1 text-zinc-800">
+                        <ActivityDescription row={row} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+          </div>
+          */}
+
           {linkExistingOpen && typeof document !== "undefined"
             ? createPortal(
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/45 p-4">

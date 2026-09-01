@@ -11,6 +11,7 @@ import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
+import { buildInitialProjectWidgets } from "@/lib/projects/project-widget-registry";
 import { ensureDefaultProjectFolders } from "@/server/projects/project-files";
 
 const ConvertSchema = z.object({
@@ -76,6 +77,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           title: estimate.title,
           customerId,
           ownerUserId: estimate.ownerUserId,
+          createdByUserId: auth.user.id,
           mode: ProjectMode.FULL,
           status: ProjectStatus.LEAD,
           ball: ProjectBall.CLIENT,
@@ -87,6 +89,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           ball: true,
           customer: { select: { id: true, name: true } },
         },
+      });
+      await tx.projectMember.create({
+        data: {
+          projectId: created.id,
+          userId: estimate.ownerUserId,
+          role: "OWNER",
+          addedById: auth.user.id,
+        },
+      });
+      await tx.projectWidget.createMany({
+        data: buildInitialProjectWidgets().map((widget) => ({
+          ...widget,
+          projectId: created.id,
+          createdById: auth.user.id,
+          updatedById: auth.user.id,
+        })),
       });
 
       await tx.projectEstimateVersion.updateMany({

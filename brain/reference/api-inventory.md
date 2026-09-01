@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-24T15:07:39.492Z  
-> **Файлов route.ts:** 134  
+> **Сгенерировано:** 2026-08-30T12:11:25.069Z  
+> **Файлов route.ts:** 140  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -106,7 +106,13 @@
 | GET | `/api/projects/[id]/schedule/export` | `src/app/api/projects/[id]/schedule/export/route.ts` |
 | GET, POST, PATCH | `/api/projects/[id]/schedule` | `src/app/api/projects/[id]/schedule/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/schedule/slots/[slotId]` | `src/app/api/projects/[id]/schedule/slots/[slotId]/route.ts` |
+| POST | `/api/projects/[id]/workspace/items/batch` | `src/app/api/projects/[id]/workspace/items/batch/route.ts` |
+| GET | `/api/projects/[id]/workspace/items` | `src/app/api/projects/[id]/workspace/items/route.ts` |
+| PATCH | `/api/projects/[id]/workspace` | `src/app/api/projects/[id]/workspace/route.ts` |
+| GET | `/api/projects/meta` | `src/app/api/projects/meta/route.ts` |
 | GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
+| DELETE | `/api/projects/workspace-templates/[templateId]` | `src/app/api/projects/workspace-templates/[templateId]/route.ts` |
+| GET, POST | `/api/projects/workspace-templates` | `src/app/api/projects/workspace-templates/route.ts` |
 | POST, GET | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
 | POST | `/api/standalone-estimates/[id]/convert` | `src/app/api/standalone-estimates/[id]/convert/route.ts` |
 | GET | `/api/standalone-estimates/[id]/estimate/pdf` | `src/app/api/standalone-estimates/[id]/estimate/pdf/route.ts` |

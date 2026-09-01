@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-24 — общие атомарные сервисы сайта и Telegram покрывают согласование, возврат и оценку.
+> **Дата сверки:** 2026-08-28 — добавлено атомарное создание проектного пространства вместе с командой и стартовым layout.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -24,6 +24,8 @@
 | `src/app/api/orders/[id]/quick-supplement/warehouse/route.ts` | **да** |
 | `src/app/api/orders/[id]/return-declared/route.ts` | нет |
 | `src/app/api/orders/[id]/warehouse-edit/route.ts` | **да** |
+| `src/app/api/projects/route.ts` | **да** (проект, участники, стартовые виджеты, папки и activity log создаются одним действием) |
+| `src/app/api/projects/[id]/workspace/route.ts` | **да** (owner, members, layout виджетов и revision сохраняются атомарно; timeout 15 с, итоговый снимок читается после commit; конфликт возвращает 409) |
 | `src/app/api/projects/[id]/draft-order/route.ts` | нет |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |
 | `src/app/api/projects/[id]/convert/route.ts` | **да** |
@@ -47,4 +49,4 @@
 | `src/server/orders/service-feedback.ts` | нет (единая оценка закрытой заявки и подавление старых просьб об оценке) |
 | `src/server/reminders/reminder-runner.ts` | нет (идемпотентное начисление месячного бонуса, событие рейтинга и закрытие предупреждения) |
 
-Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006 и ADR 007).
+Итого **Serializable** на путях создания/редактирования реальных заявок, переноса дат с пересчётом доступности, создания проектного пространства, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006, ADR 007 и ADR 012).

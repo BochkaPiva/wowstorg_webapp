@@ -2389,6 +2389,29 @@ export function ProjectEstimatePanel({
     return formatMoneyRub(n);
   }
 
+  const workspaceSaveState = estimateConflictDetected
+    ? "conflict"
+    : estimateSaveStatus === "ERROR"
+      ? "error"
+      : estimateSaveStatus === "PAUSED"
+        ? "paused"
+        : estimateSaving
+          ? "saving"
+          : estimateDraftDirty
+            ? "dirty"
+            : "saved";
+  const workspaceSaveLabel = estimateConflictDetected
+    ? "Конфликт версий"
+    : estimateSaveStatus === "ERROR"
+      ? "Не сохранено"
+      : estimateSaveStatus === "PAUSED"
+        ? "Сохранение на паузе"
+        : estimateSaving
+          ? "Сохраняю…"
+          : estimateDraftDirty
+            ? "Есть изменения"
+            : "Сохранено автоматически";
+
   return (
     <div className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""}`}>
       <UnitPresetDatalist />
@@ -2504,6 +2527,30 @@ export function ProjectEstimatePanel({
                       <span><small>Расходы</small><strong>{money(totals.totalExpensesWithTax)} ₽</strong></span>
                       <span className={totals.marginAfterTax < 0 ? "is-negative" : "is-positive"}><small>Маржа</small><strong>{money(totals.marginAfterTax)} ₽</strong></span>
                     </div>
+                    {!readOnly ? (
+                      <div
+                        className="project-estimate__save-control"
+                        data-state={workspaceSaveState}
+                        aria-live="polite"
+                        title={estimateSaveMessage ?? "Изменения сохраняются автоматически"}
+                      >
+                        <span>{workspaceSaveLabel}</span>
+                        {estimateConflictDetected ? (
+                          <div className="project-estimate__save-conflict-actions">
+                            <button type="button" disabled={busy || estimateSaving} onClick={acceptServerEstimateAfterConflict}>Серверная</button>
+                            <button type="button" disabled={busy || estimateSaving} onClick={keepLocalDraftAfterConflict}>Моя</button>
+                          </div>
+                        ) : estimateDraftDirty || estimateSaveStatus === "ERROR" || estimateSaveStatus === "PAUSED" ? (
+                          <button
+                            type="button"
+                            disabled={busy || estimateSaving}
+                            onClick={() => void saveEstimateDraft("MANUAL")}
+                          >
+                            {estimateSaveStatus === "ERROR" ? "Повторить" : "Сохранить"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {!readOnly ? (
                       <div className="project-estimate__column-actions">
                         <button type="button" onClick={() => setCustomColumnsOpen((value) => !value)} aria-expanded={customColumnsOpen}>Колонки</button>

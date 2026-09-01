@@ -1362,6 +1362,74 @@ body.project-estimate-fill-dragging * {
   color: #be123c;
 }
 
+.project-estimate__save-control {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  border-radius: 8px;
+  background: #edf8f2;
+  padding: 3px 5px 3px 8px;
+  color: #12613f;
+  font-size: 9px;
+  font-weight: 730;
+  white-space: nowrap;
+}
+
+.project-estimate__save-control > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-estimate__save-control > span::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.project-estimate__save-control[data-state="dirty"],
+.project-estimate__save-control[data-state="paused"] {
+  background: #fff6d8;
+  color: #765600;
+}
+
+.project-estimate__save-control[data-state="saving"] {
+  background: #f0e9fb;
+  color: #6425b9;
+}
+
+.project-estimate__save-control[data-state="error"],
+.project-estimate__save-control[data-state="conflict"] {
+  background: #fff0f1;
+  color: #a81e34;
+}
+
+.project-estimate__save-control > button,
+.project-estimate__save-conflict-actions button {
+  min-height: 25px;
+  border: 0;
+  border-radius: 6px;
+  background: #25242a;
+  padding: 4px 7px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 760;
+}
+
+.project-estimate__save-control > button:hover,
+.project-estimate__save-conflict-actions button:hover {
+  background: #5e20bb;
+}
+
+.project-estimate__save-conflict-actions {
+  display: inline-flex;
+  gap: 3px;
+}
+
 .project-estimate--workspace .project-estimate__actions > .relative > button {
   min-height: 32px;
   width: 32px;
@@ -1867,7 +1935,7 @@ body.project-estimate-fill-dragging * {
 
 .project-detail-hero__actions .project-workspace-toolbar button,
 .project-detail-hero__catalog,
-.project-detail-hero__archive {
+.project-detail-hero__complete {
   display: inline-flex;
   min-height: 35px;
   align-items: center;
@@ -1893,10 +1961,25 @@ body.project-estimate-fill-dragging * {
   color: #211a00;
 }
 
-.project-detail-hero__archive {
-  border: 0;
-  background: transparent;
-  color: #7a7a80;
+.project-detail-hero__complete {
+  gap: 7px;
+  border: 1px solid #fff;
+  background: #fff;
+  color: #2c183a;
+  box-shadow: 0 2px 4px rgb(27 12 45 / 14%);
+}
+
+.project-detail-hero__complete::before {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: #6d28d9;
+  color: #fff;
+  content: "✓";
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .project-detail-hero__actions button:hover,
@@ -1904,9 +1987,19 @@ body.project-estimate-fill-dragging * {
   transform: translateY(-1px);
 }
 
-.project-detail-hero__archive:hover {
-  background: #f3f3f2;
-  color: #303036;
+.project-detail-hero__complete:hover {
+  border-color: #ffd526;
+  background: #ffd526;
+  color: #24152e;
+}
+
+.project-detail-hero__complete:disabled {
+  cursor: not-allowed;
+  border-color: rgb(255 255 255 / 45%);
+  background: rgb(255 255 255 / 58%);
+  color: rgb(44 24 58 / 58%);
+  box-shadow: none;
+  transform: none;
 }
 
 .project-workspace-dashboard {
@@ -2880,7 +2973,7 @@ body.project-estimate-fill-dragging * {
 .project-detail-hero__actions {
   position: relative;
   z-index: 4;
-  max-width: 360px;
+  max-width: 520px;
 }
 
 .project-detail-hero__mascot {

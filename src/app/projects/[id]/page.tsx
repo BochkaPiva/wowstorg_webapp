@@ -1606,14 +1606,14 @@ export default function ProjectDetailPage() {
                         type="button"
                         onClick={() => openArchiveModal()}
                         disabled={archiveBusy || !canArchiveProject}
-                        className="project-detail-hero__archive"
+                        className="project-detail-hero__complete"
                         title={
                           canArchiveProject
                             ? undefined
                             : "Сначала завершите или отмените все заявки, привязанные к проекту"
                         }
                       >
-                        В архив
+                        Завершить проект
                       </button>
                     ) : null}
               </div>
@@ -2533,11 +2533,11 @@ export default function ProjectDetailPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div id="project-archive-title" className="text-lg font-extrabold tracking-tight text-zinc-950">
-                          Убрать проект в архив
+                          Завершение проекта
                         </div>
                         <p className="mt-1 text-sm text-zinc-600">
-                          Выбери итоговый статус и при необходимости оставь комментарий — он появится на карточке в списке
-                          архива. После архивации редактирование проекта будет недоступно.
+                          Выбери результат и при необходимости оставь комментарий. Проект получит итоговый статус и
+                          перейдёт в архив, где останется доступен для просмотра.
                         </p>
                       </div>
                       <button
@@ -2557,7 +2557,7 @@ export default function ProjectDetailPage() {
                       </div>
                     ) : null}
                     <label className="mt-4 block text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      Статус при закрытии
+                      Результат проекта
                       <select
                         value={archiveModalStatus}
                         onChange={(e) => setArchiveModalStatus(e.target.value as "COMPLETED" | "CANCELLED")}
@@ -2598,7 +2598,11 @@ export default function ProjectDetailPage() {
                         disabled={archiveBusy}
                         onClick={() => void confirmArchiveToModal()}
                       >
-                        {archiveBusy ? "Сохраняю…" : "В архив"}
+                        {archiveBusy
+                          ? "Сохраняю…"
+                          : archiveModalStatus === "COMPLETED"
+                            ? "Завершить проект"
+                            : "Отменить проект"}
                       </button>
                     </div>
                   </div>

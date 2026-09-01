@@ -1315,16 +1315,16 @@ export default function ProjectDetailPage() {
     }
     if (type === "NOTES") {
       return (
-        <div className="grid min-h-56 divide-y divide-zinc-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-          <label className="flex min-h-56 flex-col p-4 sm:p-5">
-            <span className="text-xs font-bold text-zinc-500">Рабочее резюме</span>
+        <div className="project-status-panel">
+          <label className="project-status-panel__field">
+            <span>Контекст</span>
             <textarea value={internalSummary} onChange={(event) => setInternalSummary(event.target.value)} readOnly={readOnly} className="mt-2 min-h-32 flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 text-zinc-900 outline-none focus:shadow-none" placeholder="Договорённости, решения и общий контекст проекта" />
-            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })} className="mt-3 w-fit rounded-md bg-zinc-950 px-3 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50">Сохранить резюме</button> : null}
+            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ internalSummary: internalSummary.trim() || null })}>Сохранить</button> : null}
           </label>
-          <label className="flex min-h-56 flex-col bg-amber-50/45 p-4 sm:p-5">
-            <span className="text-xs font-bold text-amber-900">Требует внимания</span>
+          <label className="project-status-panel__field project-status-panel__field--attention">
+            <span><i aria-hidden /> Требует внимания</span>
             <textarea value={openBlockers} onChange={(event) => setOpenBlockers(event.target.value)} readOnly={readOnly} className="mt-2 min-h-32 flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-6 text-zinc-900 outline-none focus:shadow-none" placeholder="Что мешает двигаться дальше и от кого ждём решение" />
-            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })} className="mt-3 w-fit rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-amber-950 hover:border-amber-500 disabled:opacity-50">Сохранить вопросы</button> : null}
+            {!readOnly ? <button type="button" disabled={saveBusy} onClick={() => void patchField({ openBlockers: openBlockers.trim() || null })}>Сохранить</button> : null}
           </label>
         </div>
       );

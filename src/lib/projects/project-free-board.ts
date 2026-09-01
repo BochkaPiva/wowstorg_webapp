@@ -233,7 +233,7 @@ export function createProjectFreeBoardItem(
     ...common,
     type,
     payload: {
-      text: type === "HEADING" ? "Новый раздел" : type === "STICKER" ? "Новая идея" : "Новая заметка",
+      text: type === "HEADING" ? "Новый текст" : type === "STICKER" ? "Новая идея" : "Новая заметка",
       color: type === "STICKER" ? "YELLOW" : type === "HEADING" ? "NEUTRAL" : "LILAC",
     },
   };

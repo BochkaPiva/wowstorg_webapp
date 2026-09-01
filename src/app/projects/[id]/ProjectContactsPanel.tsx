@@ -271,14 +271,14 @@ export function ProjectContactsPanel({
   }
 
   return (
-    <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
-      <div className="flex flex-col gap-3 border-b border-zinc-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-lg font-black tracking-tight text-violet-950">Контакты</div>
+    <div className="project-contacts-panel">
+      <div className="project-contacts-panel__toolbar">
+        <span>{contacts.length} {contacts.length === 1 ? "контакт" : "контактов"}</span>
         {!readOnly ? (
           <button
             type="button"
             onClick={() => setNewContactOpen((v) => !v)}
-            className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+            className="project-panel-primary-action"
           >
             {newContactOpen ? "Скрыть" : "Добавить контакт"}
           </button>
@@ -292,7 +292,7 @@ export function ProjectContactsPanel({
       ) : null}
 
       {!readOnly && newContactOpen ? (
-        <div className="space-y-2 rounded-2xl border border-dashed border-violet-300 bg-violet-50/50 p-3">
+          <div className="project-contacts-panel__composer">
           <form onSubmit={createContact} className="space-y-2">
             <input
               value={newFullName}
@@ -360,12 +360,12 @@ export function ProjectContactsPanel({
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
       ) : (
-        <ul className="grid gap-4 xl:grid-cols-4">
+        <ul className="project-contacts-panel__grid">
           {contacts.map((c) => (
             <li
               key={c.id}
               className={[
-                "relative min-w-0 rounded-2xl border bg-white p-0 shadow-sm transition-shadow hover:shadow-md",
+                "project-contact-card relative min-w-0 bg-white p-0",
                 c.isActive ? CATEGORY_TONE[c.category] : "border-zinc-300 opacity-75",
               ].join(" ")}
               draggable={!readOnly}

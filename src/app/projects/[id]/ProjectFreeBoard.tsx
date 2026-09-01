@@ -73,7 +73,7 @@ type BatchResponse = {
 const ITEM_LABEL: Record<BasicItemType, string> = {
   NOTE: "Заметка",
   STICKER: "Стикер",
-  HEADING: "Заголовок",
+  HEADING: "Текст",
   CHECKLIST: "Чек-лист",
   LINK: "Ссылка",
 };
@@ -220,6 +220,7 @@ export function ProjectFreeBoard({
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [zoom, setZoom] = React.useState(1);
   const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = React.useState(false);
   const [spacePressed, setSpacePressed] = React.useState(false);
   const [selectedConnectorId, setSelectedConnectorId] = React.useState<string | null>(null);
   const [connectorDraft, setConnectorDraft] = React.useState<ConnectorDraft | null>(null);
@@ -748,10 +749,13 @@ export function ProjectFreeBoard({
 
   const handleViewportPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     viewportRef.current?.focus({ preventScroll: true });
-    const wantsPan = event.button === 1 || (event.button === 0 && spacePressed);
+    const target = event.target as HTMLElement;
+    const isInteractive = Boolean(target.closest("[data-board-item], button, input, textarea, select, a, label"));
+    const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || !isInteractive));
     if (wantsPan) {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
+      setIsPanning(true);
       panGestureRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -761,9 +765,7 @@ export function ProjectFreeBoard({
       };
       return;
     }
-    if (readOnly || event.button !== 0) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("[data-board-item], button, input, textarea, select, a, label")) return;
+    if (readOnly || event.button !== 2 || isInteractive) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const startX = (event.clientX - rect.left - pan.x) / zoom;
     const startY = (event.clientY - rect.top - pan.y) / zoom;
@@ -805,7 +807,10 @@ export function ProjectFreeBoard({
   }, [pan.x, pan.y, zoom]);
 
   const endViewportPan = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (panGestureRef.current?.pointerId === event.pointerId) panGestureRef.current = null;
+    if (panGestureRef.current?.pointerId === event.pointerId) {
+      panGestureRef.current = null;
+      setIsPanning(false);
+    }
     const selection = selectionGestureRef.current;
     if (selection?.pointerId === event.pointerId) {
       selectionGestureRef.current = null;
@@ -836,13 +841,10 @@ export function ProjectFreeBoard({
   }, [width]);
 
   const handleViewportWheel = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
-    if (event.ctrlKey || event.metaKey) {
-      const direction = event.deltaY > 0 ? -1 : 1;
-      setZoom((current) => Math.max(0.45, Math.min(1.5, Number((current + direction * 0.08).toFixed(2)))));
-      return;
-    }
-    setPan((current) => ({ x: current.x - event.deltaX, y: current.y - event.deltaY }));
+    const direction = event.deltaY > 0 ? -1 : 1;
+    setZoom((current) => Math.max(0.45, Math.min(1.5, Number((current + direction * 0.08).toFixed(2)))));
   }, []);
 
   const beginConnectorDrag = React.useCallback((
@@ -902,7 +904,7 @@ export function ProjectFreeBoard({
   ) => {
     if (readOnly || spacePressed || event.button !== 0) return;
     const target = event.target as HTMLElement;
-    if (target.closest("input, textarea, select, button, a, label, [data-no-drag], [contenteditable='true']")) return;
+    if (target.closest("input, textarea, select, button, a, label, [data-no-drag], [contenteditable='true'], .react-resizable-handle")) return;
     event.preventDefault();
     viewportRef.current?.focus({ preventScroll: true });
 
@@ -1079,12 +1081,13 @@ export function ProjectFreeBoard({
           />
         ) : null}
         {item.type === "HEADING" ? (
-          <input
+          <textarea
             value={item.payload.text}
             onChange={(event) => updateItem(item.id, (current) => current.type === "HEADING" ? { ...current, payload: { ...current.payload, text: event.target.value } } : current)}
             readOnly={readOnly}
-            aria-label="Заголовок раздела"
-            className="w-full bg-transparent text-xl font-black tracking-tight text-zinc-950 outline-none placeholder:text-zinc-400"
+            aria-label="Текстовый блок"
+            placeholder="Введите текст"
+            className="h-full min-h-10 w-full resize-none bg-transparent text-base font-semibold leading-6 text-zinc-950 outline-none placeholder:text-zinc-400"
           />
         ) : null}
         {item.type === "LINK" ? (
@@ -1306,7 +1309,7 @@ export function ProjectFreeBoard({
       <header className="project-free-board__toolbar" aria-label="Инструменты свободной доски">
         <div className="sr-only">
           <div className="text-sm font-extrabold tracking-tight text-zinc-900">Рабочее полотно</div>
-          <p className="mt-0.5 text-xs text-zinc-500">Shift + клик — выбрать · пробел + перетаскивание — двигать поле · Home — к началу</p>
+          <p className="mt-0.5 text-xs text-zinc-500">ЛКМ по фону — двигать поле · ПКМ — выделить · Ctrl + колесо — масштаб · Home — к началу</p>
         </div>
         <div className="project-free-board__toolrail-inner">
           {!readOnly && selectedIds.size ? (
@@ -1464,12 +1467,13 @@ export function ProjectFreeBoard({
           <div
             ref={viewportRef}
             tabIndex={0}
-            className={`project-free-board-viewport relative h-[70dvh] min-h-[620px] max-h-[900px] touch-none overflow-hidden outline-none ${spacePressed ? "cursor-grabbing" : "cursor-default"}`}
+            className={`project-free-board-viewport relative h-[70dvh] min-h-[620px] max-h-[900px] touch-none overflow-hidden outline-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
             onPointerDown={handleViewportPointerDown}
             onPointerMove={handleViewportPointerMove}
             onPointerUp={endViewportPan}
             onPointerCancel={endViewportPan}
             onWheel={handleViewportWheel}
+            onContextMenu={(event) => event.preventDefault()}
           >
             {mounted ? (
               <div

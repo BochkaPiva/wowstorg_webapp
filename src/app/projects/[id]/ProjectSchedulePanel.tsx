@@ -9,8 +9,6 @@ const inputField =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const btnPrimary =
   "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
-const btnPrimaryXs =
-  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
 const btnSecondaryXs =
   "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 
@@ -35,6 +33,15 @@ function minutesToTime(total: number): string {
 function parseIntervalEnd(intervalText: string): string | null {
   const match = intervalText.match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
   return match?.[2] ?? null;
+}
+
+function parseInterval(intervalText: string): { start: number; end: number } | null {
+  const match = intervalText.match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
+  if (!match) return null;
+  const start = timeToMinutes(match[1]);
+  const end = timeToMinutes(match[2]);
+  if (start == null || end == null || end <= start) return null;
+  return { start, end };
 }
 
 function draftScheduleStorageKey(projectId: string) {
@@ -66,6 +73,7 @@ export function ProjectSchedulePanel({
   const [error, setError] = React.useState<string | null>(null);
   const [newDayNote, setNewDayNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"timeline" | "table">("timeline");
   const storageKey = React.useMemo(() => draftScheduleStorageKey(projectId), [projectId]);
 
   const load = React.useCallback(() => {
@@ -223,10 +231,13 @@ export function ProjectSchedulePanel({
   const exportHref = `/api/projects/${projectId}/schedule/export`;
 
   return (
-    <div className="space-y-3 rounded-lg border border-zinc-300 bg-white p-3 sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-lg font-extrabold tracking-tight text-violet-900">Тайминг-сценарий</div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="project-schedule-panel">
+      <div className="project-schedule-panel__toolbar">
+        <div className="project-schedule-panel__views" role="group" aria-label="Вид тайминг-плана">
+          <button type="button" onClick={() => setViewMode("timeline")} aria-pressed={viewMode === "timeline"}>Лента</button>
+          <button type="button" onClick={() => setViewMode("table")} aria-pressed={viewMode === "table"}>Таблица</button>
+        </div>
+        <div className="project-schedule-panel__actions">
           {!readOnly ? (
             <>
               <button
@@ -257,12 +268,9 @@ export function ProjectSchedulePanel({
           </a>
         </div>
       </div>
-      <p className="text-xs text-zinc-500">
-        Дни и слоты теперь можно собирать как черновик без перезагрузки блока. В БД тайминг уходит только после явного сохранения.
-      </p>
       {!readOnly && draftDirty ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-          Есть несохранённые изменения в тайминге.
+        <div className="project-schedule-panel__draft">
+          Черновик изменён
         </div>
       ) : null}
 
@@ -272,7 +280,7 @@ export function ProjectSchedulePanel({
         <p className="text-sm text-red-700">{error}</p>
       ) : (
         <>
-          {!readOnly ? (
+          {!readOnly && viewMode === "table" ? (
             <form
               onSubmit={addDay}
               className="grid gap-2 border-b border-zinc-200 pb-3 sm:grid-cols-[minmax(0,1fr)_auto]"
@@ -290,9 +298,11 @@ export function ProjectSchedulePanel({
             </form>
           ) : null}
 
-          <div className="space-y-4">
+          {viewMode === "timeline" ? (
+            <ScheduleTimeline days={draftDays} />
+          ) : <div className="project-schedule-panel__days">
             {draftDays.length === 0 ? (
-              <p className="text-sm text-zinc-600">Пока нет дней.</p>
+              <div className="project-schedule-panel__empty">Добавьте первый день и его события.</div>
             ) : (
               draftDays.map((d) => (
                 <DayBlock
@@ -307,9 +317,56 @@ export function ProjectSchedulePanel({
                 />
               ))
             )}
-          </div>
+          </div>}
         </>
       )}
+    </div>
+  );
+}
+
+function ScheduleTimeline({ days }: { days: Day[] }) {
+  const slots = days.flatMap((day) => day.slots.map((slot) => ({ day, slot, interval: parseInterval(slot.intervalText) })))
+    .filter((item): item is { day: Day; slot: Slot; interval: { start: number; end: number } } => Boolean(item.interval));
+  if (!days.length) return <div className="project-schedule-panel__empty">Пока нет событий. Переключитесь в таблицу, чтобы собрать тайминг.</div>;
+
+  const start = slots.length ? Math.max(0, Math.floor(Math.min(...slots.map((item) => item.interval.start)) / 60) * 60) : 8 * 60;
+  const end = slots.length ? Math.min(24 * 60, Math.ceil(Math.max(...slots.map((item) => item.interval.end)) / 60) * 60) : 20 * 60;
+  const safeEnd = Math.max(start + 60, end);
+  const span = safeEnd - start;
+  const tickCount = Math.min(9, Math.floor(span / 60) + 1);
+  const ticks = Array.from({ length: tickCount }, (_, index) => {
+    const minute = start + Math.round((span * index) / Math.max(1, tickCount - 1));
+    return minutesToTime(minute);
+  });
+
+  return (
+    <div className="project-schedule-timeline">
+      <div className="project-schedule-timeline__axis" aria-hidden>
+        <span />
+        <div>{ticks.map((tick) => <span key={tick}>{tick}</span>)}</div>
+      </div>
+      {days.map((day) => (
+        <section key={day.id} className="project-schedule-timeline__day">
+          <h3>{day.dateNote}</h3>
+          <div className="project-schedule-timeline__tracks">
+            {day.slots.length ? day.slots.map((slot) => {
+              const interval = parseInterval(slot.intervalText);
+              const left = interval ? Math.max(0, ((interval.start - start) / span) * 100) : 0;
+              const width = interval ? Math.max(3, ((interval.end - interval.start) / span) * 100) : 100;
+              return (
+                <div key={slot.id} className="project-schedule-timeline__row">
+                  <span className="project-schedule-timeline__time">{slot.intervalText}</span>
+                  <div className="project-schedule-timeline__track">
+                    <span className="project-schedule-timeline__bar" style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%` }} title={`${slot.intervalText} — ${slot.description}`}>
+                      <strong>{slot.description}</strong>
+                    </span>
+                  </div>
+                </div>
+              );
+            }) : <div className="project-schedule-timeline__day-empty">Событий пока нет</div>}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -356,7 +413,7 @@ function DayBlock({
   }, [day.slots]);
 
   return (
-    <details className="rounded-xl border border-zinc-200 bg-white p-2.5 shadow-sm sm:p-3" open>
+    <details className="project-schedule-day" open>
       <summary className="cursor-pointer font-medium text-zinc-900">{day.dateNote}</summary>
       <div className="mt-2 space-y-2">
         {!readOnly ? (

@@ -33,8 +33,10 @@ function WidgetIcon({ type }: { type: ProjectWidgetType }) {
 
 function ExpandIcon({ expanded }: { expanded: boolean }) {
   return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.7" aria-hidden>
-      {expanded ? <path d="M8 3v5H3M12 17v-5h5M3 8l5-5m4 14 5-5" /> : <path d="M7 3H3v4M13 17h4v-4M3 7l5-5m9 11-5 5M13 3h4v4M7 17H3v-4M17 7l-5-5M3 13l5 5" />}
+    <svg viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {expanded
+        ? <path d="M8 3v5H3M12 17v-5h5" />
+        : <path d="M7 3H3v4M13 3h4v4M17 13v4h-4M3 13v4h4" />}
     </svg>
   );
 }

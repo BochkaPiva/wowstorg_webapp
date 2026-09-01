@@ -5,6 +5,8 @@ import Image from "next/image";
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { usableStockUnits } from "@/lib/inventory-stock";
 import {
@@ -298,9 +300,9 @@ const btnGhostXs =
 const inputFieldCompact =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const menuPanel =
-  "absolute right-0 top-full z-20 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-zinc-200 bg-white p-1 shadow-[0_18px_48px_rgba(24,24,27,0.14)]";
+  "project-estimate-menu absolute right-0 top-full z-50 mt-2 w-[min(19rem,calc(100vw-2rem))]";
 const menuAction =
-  "flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm text-zinc-800 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50";
+  "project-estimate-menu__action flex w-full items-start justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-50";
 const sectionTone = {
   requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
   draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
@@ -2417,7 +2419,7 @@ export function ProjectEstimatePanel({
       <UnitPresetDatalist />
 
       {loading ? (
-        <p className="text-sm text-zinc-600">Загрузка…</p>
+        <ProjectModuleContentSkeleton rows={4} />
       ) : error ? (
         <p className="text-sm text-red-700">{error}</p>
       ) : !data ? (
@@ -3834,10 +3836,14 @@ function EstimateSectionBlock({
     setIsOpen(defaultOpen);
   }, [defaultOpen, sec.id, sec.title]);
 
-  function saveTitle() {
+  function finishTitleEdit() {
     const t = titleDraft.trim();
-    if (!t || t === sec.title) return;
-    void onPatchSection(sec.id, { title: t });
+    setEditingTitle(false);
+    if (!t) {
+      setTitleDraft(sec.title);
+      return;
+    }
+    if (t !== sec.title) void onPatchSection(sec.id, { title: t });
   }
 
   const sectionClientSubtotal = roundMoney(
@@ -3905,13 +3911,48 @@ function EstimateSectionBlock({
             </div>
             <div className={`project-estimate-section__title mt-1.5 text-base font-black text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}>
               {summaryTitleAddon}
-              <span className="min-w-0">
-                {sec.kind === "REQUISITE"
-                  ? orderMeta?.label ?? "Реквизит"
-                  : sec.kind === "DRAFT_REQUISITE"
-                    ? sec.title
-                    : sec.title}
-              </span>
+              {editingTitle && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") ? (
+                <input
+                  value={titleDraft}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                  onBlur={finishTitleEdit}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setTitleDraft(sec.title);
+                      setEditingTitle(false);
+                    }
+                  }}
+                  className="project-estimate-section__title-input"
+                  aria-label="Название раздела"
+                  maxLength={200}
+                  autoFocus
+                />
+              ) : (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !readOnly ? (
+                <button
+                  type="button"
+                  className="project-estimate-section__title-button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setEditingTitle(true);
+                  }}
+                  disabled={busy}
+                  title="Нажмите, чтобы переименовать"
+                >
+                  {sec.title}
+                </button>
+              ) : (
+                <span className="min-w-0">
+                  {sec.kind === "REQUISITE" ? orderMeta?.label ?? "Реквизит" : sec.title}
+                </span>
+              )}
             </div>
             <div className="project-estimate-section__meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               {sec.kind === "REQUISITE" ? (
@@ -3993,22 +4034,6 @@ function EstimateSectionBlock({
               <>
                 <button
                   type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-zinc-500 shadow-sm hover:border-violet-200 hover:text-violet-700"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditingTitle(true);
-                  }}
-                  disabled={busy}
-                  title="Редактировать название раздела"
-                  aria-label="Редактировать название раздела"
-                >
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-400 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                   onClick={(e) => {
                     e.preventDefault();
@@ -4041,67 +4066,6 @@ function EstimateSectionBlock({
         </div>
       </summary>
       <div className="project-estimate-section__body space-y-3 border-t border-zinc-200 bg-zinc-50/60 p-3 sm:p-4">
-        {!readOnly ? (
-          (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && editingTitle ? (
-            <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
-              <input
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                placeholder="Название раздела"
-                className="min-w-[10rem] flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50"
-                maxLength={200}
-              />
-              <button
-                type="button"
-                disabled={busy || titleDraft.trim() === sec.title.trim() || !titleDraft.trim()}
-                className={btnPrimary}
-                onClick={() => {
-                  void saveTitle();
-                  setEditingTitle(false);
-                }}
-              >
-                Сохранить
-              </button>
-              <button
-                type="button"
-                className={btnSecondary}
-                onClick={() => {
-                  setTitleDraft(sec.title);
-                  setEditingTitle(false);
-                }}
-              >
-                Отмена
-              </button>
-            </div>
-          ) : sec.kind === "LOCAL" || sec.kind === "CONTRACTOR" ? (
-            <div className="hidden">
-              <button
-                type="button"
-                className={btnGhostXs}
-                onClick={() => setEditingTitle(true)}
-                disabled={busy}
-                title="Редактировать название раздела"
-                aria-label="Редактировать название раздела"
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden>
-                  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                </svg>
-                <span>Название</span>
-              </button>
-              {sec.kind === "LOCAL" || sec.kind === "CONTRACTOR" ? (
-                <button
-                  type="button"
-                  className={`${btnGhostXs} border-red-200 text-red-700 hover:bg-red-50`}
-                  onClick={() => void onDeleteSection(sec.id)}
-                  disabled={busy}
-                >
-                  Удалить раздел
-                </button>
-              ) : null}
-            </div>
-          ) : null
-        ) : null}
-
         {children}
       </div>
     </details>
@@ -6127,7 +6091,7 @@ function RequisiteSectionEditor({
       onMove={onMove}
     >
       {loading ? (
-        <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 text-sm text-zinc-600">Загрузка связанной заявки…</div>
+        <ProjectModuleContentSkeleton rows={3} />
       ) : !order ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {error ?? "Связанная заявка не найдена"}

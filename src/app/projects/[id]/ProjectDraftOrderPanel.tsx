@@ -3,6 +3,8 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+
 type DraftLine = {
   id: string;
   sortOrder: number;
@@ -348,7 +350,7 @@ export function ProjectDraftOrderPanel({
   }
 
   if (loading) {
-    return <div className="rounded-2xl border border-fuchsia-200 bg-white px-4 py-4 text-sm text-zinc-600">Загрузка demo-черновика…</div>;
+    return <ProjectModuleContentSkeleton rows={3} />;
   }
 
   return (

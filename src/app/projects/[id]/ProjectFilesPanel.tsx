@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+
 type TreeFile = {
   id: string;
   folderId: string;
@@ -603,7 +605,7 @@ export function ProjectFilesPanel({
       </div>
 
       {loading ? (
-        <p className="text-sm text-zinc-600">Загрузка…</p>
+        <ProjectModuleContentSkeleton rows={4} />
       ) : error ? (
         <p className="text-sm text-red-700">{error}</p>
       ) : (

@@ -147,6 +147,10 @@ export default function CartPage() {
     if (typeof window === "undefined") return null;
     return new URLSearchParams(window.location.search).get("estimateVersionId");
   });
+  const [returnTo, setReturnTo] = React.useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("returnTo");
+  });
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCart = Boolean(projectId) && !quickParentId;
   const isProjectDemoCart = isProjectCart && projectMode === "demo";
@@ -249,6 +253,7 @@ export default function CartPage() {
     setProjectId(params.get("projectId"));
     setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
     setEstimateVersionId(params.get("estimateVersionId"));
+    setReturnTo(params.get("returnTo"));
   }, []);
 
   React.useEffect(() => {
@@ -1064,7 +1069,12 @@ export default function CartPage() {
       }
       clearCart(cartScope);
       setCart([]);
-      router.replace(`/orders/${data?.orderId ?? ""}`);
+      const createdOrderId = data?.orderId ?? "";
+      router.replace(
+        isProjectCart && projectId
+          ? `/orders/${createdOrderId}?from=project&returnTo=${encodeURIComponent(returnTo ?? `/projects/${projectId}`)}`
+          : `/orders/${createdOrderId}`,
+      );
     } catch (e) {
       console.error("cart submit failed", e);
       setError(e instanceof Error ? e.message : "Не удалось отправить заявку");
@@ -1074,7 +1084,7 @@ export default function CartPage() {
   }
 
   return (
-    <AppShell title="Корзина">
+    <AppShell title="Корзина" backHref={isProjectCart && projectId ? (returnTo ?? `/projects/${projectId}`) : undefined}>
       <section className="cart-section">
         <div className="cart-head">
           <div className="cart-eyebrow">Оформление в одном окне</div>
@@ -1309,7 +1319,7 @@ export default function CartPage() {
                         <Link
                           href={
                             isProjectCart && projectId
-                              ? `/catalog?projectId=${encodeURIComponent(projectId)}`
+                              ? `/catalog?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(returnTo ?? `/projects/${projectId}`)}`
                               : "/catalog"
                           }
                           className="co-link cart-dateEdit"
@@ -1886,6 +1896,7 @@ export default function CartPage() {
                         params.set("projectId", projectId);
                         if (projectMode === "demo") params.set("projectMode", "demo");
                         if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
+                        if (returnTo?.trim()) params.set("returnTo", returnTo.trim());
                         return `/catalog?${params.toString()}`;
                       })()
                     : "/catalog"

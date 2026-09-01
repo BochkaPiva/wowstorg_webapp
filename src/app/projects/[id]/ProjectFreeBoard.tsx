@@ -100,6 +100,23 @@ const EMPTY_LINKABLES: ProjectFreeBoardLinkables = {
   estimateSections: [],
 };
 
+function recoverInvalidLinkedOperations(
+  operations: readonly ProjectFreeBoardOperation[],
+  invalidItemIds: ReadonlySet<string>,
+) {
+  const recovered = operations.map((operation): ProjectFreeBoardOperation => {
+    if (operation.op !== "UPSERT") return operation;
+    const item = operation.item;
+    const invalidConnector = item.type === "CONNECTOR"
+      && (invalidItemIds.has(item.payload.sourceId) || invalidItemIds.has(item.payload.targetId));
+    if (!invalidItemIds.has(item.id) && !invalidConnector) return operation;
+    return { op: "DELETE", itemId: item.id, expectedRevision: item.expectedRevision ?? null };
+  });
+  return {
+    operations: coalesceProjectFreeBoardOperations(recovered),
+  };
+}
+
 const LINKED_ITEM_LABEL: Record<ProjectFreeBoardLinkedItemType, string> = {
   TASK: "Задача",
   ORDER: "Заявка",
@@ -346,9 +363,32 @@ export function ProjectFreeBoard({
         window.setTimeout(() => void flush(), 80);
         return;
       }
-      const body = (await response.json().catch(() => null)) as BatchResponse | { error?: { message?: string } } | null;
+      const body = (await response.json().catch(() => null)) as BatchResponse | {
+        error?: { message?: string; details?: { itemIds?: string[] } };
+      } | null;
       if (!response.ok || !body || !("result" in body)) {
         const errorMessage = body && "error" in body ? body.error?.message : null;
+        if (errorMessage === "Связанная сущность не принадлежит этому проекту") {
+          const invalidItemIds = new Set(body && "error" in body ? body.error?.details?.itemIds ?? [] : []);
+          if (invalidItemIds.size) {
+            const recovered = recoverInvalidLinkedOperations(envelope.operations, invalidItemIds);
+            const nextEnvelope = {
+              mutationId: crypto.randomUUID(),
+              operations: recovered.operations,
+            };
+            inFlightRef.current = nextEnvelope;
+            saveEnvelope(actorUserId, projectId, "inflight", nextEnvelope);
+            replaceItems(itemsRef.current.filter((item) => {
+              if (invalidItemIds.has(item.id)) return false;
+              return item.type !== "CONNECTOR"
+                || (!invalidItemIds.has(item.payload.sourceId)
+                  && !invalidItemIds.has(item.payload.targetId));
+            }));
+            setMessage("Устаревшая связь удалена, остальные изменения сохраняются");
+            window.setTimeout(() => void flush(), 100);
+            return;
+          }
+        }
         throw new Error(errorMessage || "Не удалось сохранить доску");
       }
 
@@ -420,16 +460,17 @@ export function ProjectFreeBoard({
           readProjectBoardRecovery(storageKey(actorUserId, projectId, "inflight")),
           readProjectBoardRecovery(storageKey(actorUserId, projectId, "pending")),
         ]);
+        const currentLinkables = body.board.linkables ?? EMPTY_LINKABLES;
         inFlightRef.current = storedInFlight;
         pendingRef.current = storedPending?.operations ?? [];
         const optimistic = applyOptimisticOperations(
-          applyOptimisticOperations(canonical, storedInFlight?.operations ?? []),
+          applyOptimisticOperations(canonical, inFlightRef.current?.operations ?? []),
           pendingRef.current,
         );
         if (cancelled) return;
         replaceItems(optimistic);
         setServerReadOnly(body.board.readOnly);
-        setLinkables(body.board.linkables ?? EMPTY_LINKABLES);
+        setLinkables(currentLinkables);
         undoRef.current = [];
         redoRef.current = [];
         setHistoryVersion((value) => value + 1);
@@ -437,7 +478,7 @@ export function ProjectFreeBoard({
         if (body.board.invalidItemIds.length) {
           setMessage("Некоторые старые элементы скрыты: их данные требуют восстановления.");
           setSaveState("error");
-        } else if (storedInFlight || pendingRef.current.length) {
+        } else if (inFlightRef.current || pendingRef.current.length) {
           setSaveState("saving");
         } else {
           setSaveState("saved");
@@ -893,12 +934,38 @@ export function ProjectFreeBoard({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   }, [width]);
 
-  const handleViewportWheel = React.useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const direction = event.deltaY > 0 ? -1 : 1;
-    setZoom((current) => Math.max(0.45, Math.min(1.5, Number((current + direction * 0.08).toFixed(2)))));
-  }, []);
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || mobile || !loaded) return;
+
+    const zoomBoard = (event: WheelEvent) => {
+      // Chrome/Edge expose a touchpad pinch as a ctrl+wheel gesture. A native
+      // non-passive listener is required to stop the browser from zooming the
+      // whole page before React receives the synthetic event.
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = viewport.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const multiplier = Math.exp(-event.deltaY * 0.0022);
+
+      setZoom((currentZoom) => {
+        const nextZoom = Math.max(0.45, Math.min(1.5, Number((currentZoom * multiplier).toFixed(3))));
+        if (nextZoom === currentZoom) return currentZoom;
+        const ratio = nextZoom / currentZoom;
+        setPan((currentPan) => ({
+          x: pointerX - (pointerX - currentPan.x) * ratio,
+          y: pointerY - (pointerY - currentPan.y) * ratio,
+        }));
+        return nextZoom;
+      });
+    };
+
+    viewport.addEventListener("wheel", zoomBoard, { passive: false });
+    return () => viewport.removeEventListener("wheel", zoomBoard);
+  }, [loaded, mobile]);
 
   const beginConnectorDrag = React.useCallback((
     event: React.PointerEvent<HTMLButtonElement>,
@@ -1085,7 +1152,7 @@ export function ProjectFreeBoard({
         event.stopPropagation();
         toggleSelection(item.id);
       }}
-      className={`group relative flex h-full min-h-0 cursor-grab flex-col overflow-visible rounded-[8px] border shadow-[0_2px_7px_rgba(31,24,46,0.09)] transition-[box-shadow,border-color] active:cursor-grabbing ${selected ? "border-violet-600 ring-2 ring-violet-500/30" : ""} ${itemColor(item)}`}
+      className={`group relative flex h-full min-h-0 min-w-0 max-w-full cursor-grab flex-col overflow-visible rounded-[8px] border shadow-[0_2px_7px_rgba(31,24,46,0.09)] transition-[box-shadow,border-color] active:cursor-grabbing ${selected ? "border-violet-600 ring-2 ring-violet-500/30" : ""} ${itemColor(item)}`}
     >
       {!readOnly ? PROJECT_FREE_BOARD_PORTS.map((port) => (
         <button
@@ -1123,7 +1190,7 @@ export function ProjectFreeBoard({
           </div>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 px-3 pb-3 pt-1.5">
+      <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-hidden px-3 pb-3 pt-1.5">
         {(item.type === "NOTE" || item.type === "STICKER") ? (
           <textarea
             value={item.payload.text}
@@ -1140,7 +1207,7 @@ export function ProjectFreeBoard({
             readOnly={readOnly}
             aria-label="Текстовый блок"
             placeholder="Введите текст"
-            className="h-full min-h-10 w-full resize-none bg-transparent text-base font-semibold leading-6 text-zinc-950 outline-none placeholder:text-zinc-400"
+            className="block h-full min-h-10 w-full min-w-0 max-w-full resize-none overflow-auto bg-transparent text-base font-semibold leading-6 text-zinc-950 outline-none placeholder:text-zinc-400"
           />
         ) : null}
         {item.type === "LINK" ? (
@@ -1528,7 +1595,6 @@ export function ProjectFreeBoard({
             onPointerMove={handleViewportPointerMove}
             onPointerUp={endViewportPan}
             onPointerCancel={endViewportPan}
-            onWheel={handleViewportWheel}
             onContextMenu={(event) => event.preventDefault()}
           >
             {mounted ? (

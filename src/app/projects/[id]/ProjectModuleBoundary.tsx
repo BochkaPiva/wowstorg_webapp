@@ -2,18 +2,42 @@
 
 import React from "react";
 
+export function ProjectModuleContentSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="project-module-content-skeleton" aria-busy="true" aria-label="Загрузка содержимого">
+      <div className="project-module-content-skeleton__toolbar" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="project-module-content-skeleton__table" aria-hidden>
+        <div className="project-module-content-skeleton__head">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+        {Array.from({ length: rows }, (_, index) => (
+          <div className="project-module-content-skeleton__row" key={index}>
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectModuleSkeleton({ title = "Загрузка модуля" }: { title?: string }) {
   return (
-    <div className="min-h-48 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm" aria-busy="true">
+    <div className="min-h-48 overflow-hidden rounded-xl border border-zinc-200 bg-white" aria-busy="true">
       <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
         <span className="text-sm font-black text-zinc-700">{title}</span>
         <span className="h-8 w-20 animate-pulse rounded-md bg-zinc-100" aria-hidden />
       </div>
-      <div className="space-y-3 p-5" aria-hidden>
-        <div className="h-4 w-2/5 animate-pulse rounded bg-zinc-100" />
-        <div className="h-20 animate-pulse rounded-lg bg-zinc-100/80" />
-        <div className="h-10 w-3/4 animate-pulse rounded-lg bg-zinc-100/80" />
-      </div>
+      <ProjectModuleContentSkeleton />
     </div>
   );
 }

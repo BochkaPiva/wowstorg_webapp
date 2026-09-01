@@ -181,6 +181,7 @@ function buildProjectCatalogHref(args: {
 }) {
   const params = new URLSearchParams();
   params.set("projectId", args.projectId);
+  params.set("returnTo", `/projects/${args.projectId}`);
   if (args.mode === "demo") params.set("projectMode", "demo");
   if (args.estimateVersionId?.trim()) params.set("estimateVersionId", args.estimateVersionId.trim());
   return `/catalog?${params.toString()}`;
@@ -359,19 +360,71 @@ function CalendarIcon() {
 function ProjectEventDatePicker({
   startDate,
   endDate,
-  onRangeChange,
+  confirmed,
+  readOnly,
+  busy,
+  onSave,
 }: {
   startDate: string;
   endDate: string;
-  onRangeChange: (start: string, end: string) => void;
+  confirmed: boolean;
+  readOnly: boolean;
+  busy: boolean;
+  onSave: (start: string, end: string, confirmed: boolean) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [draftStart, setDraftStart] = React.useState(startDate);
+  const [draftEnd, setDraftEnd] = React.useState(endDate);
+  const [draftConfirmed, setDraftConfirmed] = React.useState(confirmed);
+  const anchorRef = React.useRef<HTMLButtonElement>(null);
+  const popoverRef = React.useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState<React.CSSProperties>({});
+
+  React.useEffect(() => {
+    if (open) return;
+    setDraftStart(startDate);
+    setDraftEnd(endDate);
+    setDraftConfirmed(confirmed);
+  }, [confirmed, endDate, open, startDate]);
+
+  const updatePosition = React.useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(360, window.innerWidth - 20);
+    const estimatedHeight = 450;
+    const top = rect.bottom + 8 + estimatedHeight <= window.innerHeight
+      ? rect.bottom + 8
+      : Math.max(10, rect.top - estimatedHeight - 8);
+    const left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 10));
+    setPosition({ position: "fixed", top, left, width });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (anchorRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const reposition = () => updatePosition();
+    window.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [open, updatePosition]);
+
   const selected = React.useMemo<DateRange | undefined>(
     () => ({
-      from: parseProjectYmd(startDate),
-      to: parseProjectYmd(endDate),
+      from: parseProjectYmd(draftStart),
+      to: parseProjectYmd(draftEnd),
     }),
-    [startDate, endDate],
+    [draftEnd, draftStart],
   );
   const summary =
     startDate && endDate
@@ -384,67 +437,77 @@ function ProjectEventDatePicker({
 
   function applyRange(range: DateRange | undefined) {
     if (!range?.from) {
-      onRangeChange("", "");
+      setDraftStart("");
+      setDraftEnd("");
       return;
     }
     const nextStart = format(range.from, "yyyy-MM-dd");
     const nextEnd = format(range.to ?? range.from, "yyyy-MM-dd");
-    onRangeChange(nextStart, nextEnd);
+    setDraftStart(nextStart);
+    setDraftEnd(nextEnd);
   }
 
   return (
     <>
       <button
+        ref={anchorRef}
         type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex w-full items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 px-3 py-3 text-left text-sm font-bold text-zinc-950 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white"
+        onClick={() => !readOnly && setOpen((current) => !current)}
+        disabled={readOnly}
+        className="project-detail-hero__meta-item project-detail-date-trigger outline-none"
+        aria-expanded={open}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700">
-            <CalendarIcon />
-          </span>
-          <span className="min-w-0 truncate">{summary}</span>
-        </span>
-        <span className="text-xs font-black uppercase tracking-[0.12em] text-violet-700">Изменить</span>
+        <CalendarIcon />
+        <strong>{summary}</strong>
+        <span className={`h-1.5 w-1.5 rounded-full ${confirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-label={confirmed ? "Даты подтверждены" : "Даты не подтверждены"} />
       </button>
-      {open
+      {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              className="fixed inset-0 z-[95] flex items-center justify-center bg-zinc-950/35 px-4 py-6 backdrop-blur-sm"
-              onMouseDown={() => setOpen(false)}
+              ref={popoverRef}
+              className="project-date-popover"
+              style={position}
             >
-              <div
-                className="w-full max-w-[44rem] overflow-hidden rounded-[2rem] border border-white/80 bg-white/95 p-4 shadow-[0_30px_90px_rgba(24,24,27,0.22)]"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Даты мероприятия</div>
-                    <div className="mt-1 text-xl font-black text-zinc-950">Выбор периода</div>
-                  </div>
-                  <button type="button" onClick={() => setOpen(false)} className={secondaryBtn}>
-                    Закрыть
-                  </button>
+              <div className="project-date-popover__head">
+                <div>
+                  <strong>Период проекта</strong>
+                  <span>{draftStart ? formatProjectDateRange(draftStart, draftEnd) : "Выберите дату или диапазон"}</span>
                 </div>
-                <div className="mt-4 rounded-[1.5rem] border border-violet-100 bg-[linear-gradient(135deg,rgba(250,245,255,0.86),rgba(255,255,255,0.96))] p-3">
-                  <DayPicker
-                    mode="range"
-                    selected={selected}
-                    onSelect={applyRange}
-                    locale={ru}
-                    numberOfMonths={2}
-                    weekStartsOn={1}
-                    fixedWeeks
-                  />
-                </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <button type="button" onClick={() => onRangeChange("", "")} className={secondaryBtn}>
-                    Очистить даты
-                  </button>
-                  <button type="button" onClick={() => setOpen(false)} className={primaryBtn}>
-                    Готово
-                  </button>
-                </div>
+                <button type="button" onClick={() => setOpen(false)} aria-label="Закрыть календарь">×</button>
+              </div>
+              <div className="project-date-popover__calendar">
+                <DayPicker
+                  mode="range"
+                  selected={selected}
+                  onSelect={applyRange}
+                  locale={ru}
+                  numberOfMonths={1}
+                  weekStartsOn={1}
+                  fixedWeeks
+                />
+              </div>
+              <label className="project-date-popover__confirm">
+                <span>
+                  <strong>Даты подтверждены</strong>
+                  <small>Период можно использовать для заявки и резерва</small>
+                </span>
+                <input type="checkbox" checked={draftConfirmed} onChange={(event) => setDraftConfirmed(event.target.checked)} />
+                <i aria-hidden />
+              </label>
+              <div className="project-date-popover__actions">
+                <button type="button" onClick={() => { setDraftStart(""); setDraftEnd(""); setDraftConfirmed(false); }}>
+                  Очистить
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    onSave(draftStart, draftEnd, Boolean(draftStart && draftEnd && draftConfirmed));
+                    setOpen(false);
+                  }}
+                >
+                  {busy ? "Сохраняю…" : "Применить"}
+                </button>
               </div>
             </div>,
             document.body,
@@ -1432,33 +1495,34 @@ export default function ProjectDetailPage() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     {editingField === "title" && !readOnly ? (
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <input
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
-                          className={`${inputField} text-xl font-black sm:text-2xl`}
-                          maxLength={300}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          disabled={saveBusy || !title.trim()}
-                          onClick={() => void patchField({ title: title.trim() })}
-                          className={`${primaryBtn} sm:w-auto`}
-                        >
-                          Сохранить
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
+                      <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        onBlur={(event) => {
+                          const nextTitle = event.currentTarget.value.trim();
+                          if (!nextTitle || nextTitle === project.title) {
                             setTitle(project.title);
                             setEditingField(null);
-                          }}
-                          className={`${secondaryBtn} sm:w-auto`}
-                        >
-                          Отмена
-                        </button>
-                      </div>
+                            return;
+                          }
+                          void patchField({ title: nextTitle });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setTitle(project.title);
+                            setEditingField(null);
+                          }
+                        }}
+                        className="project-detail-hero__title project-detail-hero__title-input"
+                        aria-label="Название проекта"
+                        maxLength={300}
+                        autoFocus
+                      />
                     ) : (
                       <button
                         type="button"
@@ -1510,68 +1574,26 @@ export default function ProjectDetailPage() {
 
                 <div className="project-detail-hero__meta">
                   <span className="project-detail-hero__meta-item"><span>Ответственный</span><strong>{project.owner.displayName}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => !readOnly && setEditingField((v) => (v === "eventDates" ? null : "eventDates"))}
-                    disabled={readOnly}
-                    className={`project-detail-hero__meta-item outline-none ${readOnly ? "cursor-default" : "hover:text-violet-700 focus-visible:ring-2 focus-visible:ring-violet-200"}`}
-                  >
-                    <CalendarIcon />
-                    <strong>{formatProjectDateRange(project.eventStartDate, project.eventEndDate, project.eventDateNote)}</strong>
-                    <span className={`h-1.5 w-1.5 rounded-full ${project.eventDateConfirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-label={project.eventDateConfirmed ? "Даты подтверждены" : "Даты не подтверждены"} />
-                  </button>
+                  <ProjectEventDatePicker
+                    startDate={project.eventStartDate ?? ""}
+                    endDate={project.eventEndDate ?? ""}
+                    confirmed={project.eventDateConfirmed}
+                    readOnly={readOnly}
+                    busy={saveBusy}
+                    onSave={(start, end, confirmed) => {
+                      setEventStartDate(start);
+                      setEventEndDate(end);
+                      setEventDateConfirmed(confirmed);
+                      void patchField({
+                        eventStartDate: start || null,
+                        eventEndDate: end || null,
+                        eventDateConfirmed: confirmed,
+                      });
+                    }}
+                  />
                   <span className="project-detail-hero__meta-item"><strong className="tabular-nums">{project._count.orders}</strong><span>заявок</span></span>
                   <span className="project-detail-hero__meta-item project-detail-hero__meta-item--muted"><span>Создан</span><strong>{fmtDate(project.createdAt)}</strong></span>
                 </div>
-                {editingField === "eventDates" && !readOnly ? (
-                      <div className="mt-3 max-w-xl space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-                        <ProjectEventDatePicker
-                          startDate={eventStartDate}
-                          endDate={eventEndDate}
-                          onRangeChange={(start, end) => {
-                            setEventStartDate(start);
-                            setEventEndDate(end);
-                          }}
-                        />
-                        <label className="flex items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700">
-                          <span>Дата подтверждена</span>
-                          <input
-                            type="checkbox"
-                            checked={eventDateConfirmed}
-                            onChange={(e) => setEventDateConfirmed(e.target.checked)}
-                            className="h-5 w-5 accent-violet-600"
-                          />
-                        </label>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={saveBusy}
-                            onClick={() =>
-                              void patchField({
-                                eventStartDate: eventStartDate || null,
-                                eventEndDate: eventEndDate || null,
-                                eventDateConfirmed,
-                              })
-                            }
-                            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white"
-                          >
-                            Сохранить
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEventStartDate(project.eventStartDate ?? "");
-                              setEventEndDate(project.eventEndDate ?? "");
-                              setEventDateConfirmed(project.eventDateConfirmed);
-                              setEditingField(null);
-                            }}
-                            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700"
-                          >
-                            Отмена
-                          </button>
-                        </div>
-                      </div>
-                ) : null}
               </div>
 
               <div className="project-detail-hero__actions">

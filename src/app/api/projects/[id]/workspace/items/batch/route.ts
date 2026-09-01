@@ -11,6 +11,12 @@ import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { serializeProjectFreeBoardItem } from "@/server/projects/free-board";
 
+class InvalidWorkspaceLinkError extends Error {
+  constructor(readonly itemIds: string[]) {
+    super("INVALID_LINK");
+  }
+}
+
 function linkedFields(item: ProjectFreeBoardItemInput) {
   return {
     linkedTaskId: item.type === "TASK" ? item.linkedTaskId : null,
@@ -87,27 +93,36 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const sectionIds = upsertItems.flatMap((item) =>
           item.type === "ESTIMATE_SECTION" ? [item.linkedSectionId] : [],
         );
-        const taskCount = taskIds.length
-          ? await tx.workTask.count({ where: { id: { in: taskIds }, projectId: id } })
-          : 0;
-        const orderCount = orderIds.length
-          ? await tx.order.count({ where: { id: { in: orderIds }, projectId: id } })
-          : 0;
-        const fileCount = fileIds.length
-          ? await tx.projectFile.count({ where: { id: { in: fileIds }, projectId: id } })
-          : 0;
-        const sectionCount = sectionIds.length
-          ? await tx.projectEstimateSection.count({
-              where: { id: { in: sectionIds }, version: { projectId: id } },
-            })
-          : 0;
-        if (
-          taskCount !== new Set(taskIds).size ||
-          orderCount !== new Set(orderIds).size ||
-          fileCount !== new Set(fileIds).size ||
-          sectionCount !== new Set(sectionIds).size
-        ) {
-          throw new Error("INVALID_LINK");
+        const [tasks, orders, files, sections] = await Promise.all([
+          taskIds.length
+            ? tx.workTask.findMany({ where: { id: { in: taskIds }, projectId: id }, select: { id: true } })
+            : [],
+          orderIds.length
+            ? tx.order.findMany({ where: { id: { in: orderIds }, projectId: id }, select: { id: true } })
+            : [],
+          fileIds.length
+            ? tx.projectFile.findMany({ where: { id: { in: fileIds }, projectId: id }, select: { id: true } })
+            : [],
+          sectionIds.length
+            ? tx.projectEstimateSection.findMany({
+                where: { id: { in: sectionIds }, version: { projectId: id } },
+                select: { id: true },
+              })
+            : [],
+        ]);
+        const validTaskIds = new Set(tasks.map((item) => item.id));
+        const validOrderIds = new Set(orders.map((item) => item.id));
+        const validFileIds = new Set(files.map((item) => item.id));
+        const validSectionIds = new Set(sections.map((item) => item.id));
+        const invalidLinkedItemIds = upsertItems.flatMap((item) => {
+          if (item.type === "TASK" && !validTaskIds.has(item.linkedTaskId)) return [item.id];
+          if (item.type === "ORDER" && !validOrderIds.has(item.linkedOrderId)) return [item.id];
+          if (item.type === "FILE" && !validFileIds.has(item.linkedFileId)) return [item.id];
+          if (item.type === "ESTIMATE_SECTION" && !validSectionIds.has(item.linkedSectionId)) return [item.id];
+          return [];
+        });
+        if (invalidLinkedItemIds.length) {
+          throw new InvalidWorkspaceLinkError(Array.from(new Set(invalidLinkedItemIds)));
         }
 
         let activeCount = await tx.projectWorkspaceItem.count({
@@ -242,8 +257,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (error instanceof Error && error.message === "FOREIGN_ITEM") {
       return jsonError(400, "Элемент принадлежит другой доске");
     }
-    if (error instanceof Error && error.message === "INVALID_LINK") {
-      return jsonError(400, "Связанная сущность не принадлежит этому проекту");
+    if (error instanceof InvalidWorkspaceLinkError) {
+      return jsonError(400, "Связанная сущность не принадлежит этому проекту", {
+        itemIds: error.itemIds,
+      });
     }
     if (error instanceof Error && error.message === "ITEM_LIMIT") {
       return jsonError(400, `На доске может быть не более ${PROJECT_FREE_BOARD_MAX_ITEMS} элементов`);

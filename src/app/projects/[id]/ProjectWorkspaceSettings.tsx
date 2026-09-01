@@ -96,6 +96,51 @@ function ModuleIcon({ definition }: { definition: ProjectWidgetDefinition }) {
   );
 }
 
+function DiscreteWorkspaceSlider<T extends string | number>({
+  label,
+  values,
+  value,
+  formatValue,
+  onChange,
+  tone,
+}: {
+  label: string;
+  values: readonly T[];
+  value: T;
+  formatValue: (value: T) => string;
+  onChange: (value: T) => void;
+  tone: "ink" | "violet";
+}) {
+  const selectedIndex = Math.max(0, values.findIndex((item) => item === value));
+  const progress = values.length > 1 ? (selectedIndex / (values.length - 1)) * 100 : 0;
+
+  return (
+    <div className="project-workspace-size-slider" data-tone={tone}>
+      <div className="project-workspace-size-slider__head">
+        <span>{label}</span>
+        <output>{formatValue(values[selectedIndex] ?? value)}</output>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(0, values.length - 1)}
+        step={1}
+        value={selectedIndex}
+        disabled={values.length < 2}
+        style={{ "--workspace-slider-progress": `${progress}%` } as React.CSSProperties}
+        aria-label={label}
+        aria-valuetext={formatValue(values[selectedIndex] ?? value)}
+        onChange={(event) => onChange(values[Number(event.target.value)] ?? value)}
+      />
+      <div className="project-workspace-size-slider__marks" aria-hidden>
+        {values.map((item, index) => (
+          <i key={String(item)} data-active={index <= selectedIndex || undefined} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectWorkspaceSettings({
   projectId,
   revision,
@@ -494,37 +539,23 @@ export function ProjectWorkspaceSettings({
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-zinc-100 pt-3">
-                        <div className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-3">
-                          <div>
-                            <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Ширина</div>
-                            <div className="flex flex-wrap gap-1">
-                              {definition.allowedWidths.map((width) => (
-                                <button
-                                  key={width}
-                                  type="button"
-                                  onClick={() => applyWidgetChange((current) => current.map((item) => item.type === widget.type ? { ...item, width: width as ProjectWorkspaceWidgetInput["width"] } : item))}
-                                  className={`min-h-8 rounded-md border px-2 text-[11px] font-bold ${widget.width === width ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white text-zinc-600"}`}
-                                >
-                                  {WIDTH_LABEL[width]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="mb-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Высота</div>
-                            <div className="flex flex-wrap gap-1">
-                              {definition.allowedHeights.map((heightPreset) => (
-                                <button
-                                  key={heightPreset}
-                                  type="button"
-                                  onClick={() => applyWidgetChange((current) => current.map((item) => item.type === widget.type ? { ...item, heightPreset } : item))}
-                                  className={`min-h-8 rounded-md border px-2 text-[11px] font-bold ${widget.heightPreset === heightPreset ? "border-violet-700 bg-violet-700 text-white" : "border-zinc-200 bg-white text-zinc-600"}`}
-                                >
-                                  {HEIGHT_LABEL[heightPreset]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                        <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
+                          <DiscreteWorkspaceSlider
+                            label="Ширина"
+                            values={definition.allowedWidths}
+                            value={widget.width}
+                            formatValue={(width) => WIDTH_LABEL[width]}
+                            tone="ink"
+                            onChange={(width) => applyWidgetChange((current) => current.map((item) => item.type === widget.type ? { ...item, width: width as ProjectWorkspaceWidgetInput["width"] } : item))}
+                          />
+                          <DiscreteWorkspaceSlider
+                            label="Высота"
+                            values={definition.allowedHeights}
+                            value={widget.heightPreset}
+                            formatValue={(heightPreset) => HEIGHT_LABEL[heightPreset]}
+                            tone="violet"
+                            onChange={(heightPreset) => applyWidgetChange((current) => current.map((item) => item.type === widget.type ? { ...item, heightPreset } : item))}
+                          />
                         </div>
                         <div className="flex gap-1">
                           <button type="button" disabled={index === 0} onClick={() => moveWidget(widget.type, -1)} className="h-8 w-8 rounded-md border border-zinc-200 bg-white text-sm font-black disabled:opacity-30" aria-label={`Поднять ${definition.title}`}>↑</button>

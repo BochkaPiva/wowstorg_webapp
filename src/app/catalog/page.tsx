@@ -139,14 +139,16 @@ function catalogCartHref(args: {
   projectId: string | null;
   projectMode: "dated" | "demo";
   estimateVersionId: string | null;
+  returnTo: string | null;
 }): string {
-  const { quickParentId, projectId, projectMode, estimateVersionId } = args;
+  const { quickParentId, projectId, projectMode, estimateVersionId, returnTo } = args;
   if (quickParentId) return `/cart?quickParentId=${encodeURIComponent(quickParentId)}`;
   if (projectId) {
     const params = new URLSearchParams();
     params.set("projectId", projectId);
     if (projectMode === "demo") params.set("projectMode", "demo");
     if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
+    if (returnTo?.trim()) params.set("returnTo", returnTo.trim());
     return `/cart?${params.toString()}`;
   }
   return "/cart";
@@ -161,6 +163,7 @@ export default function CatalogPage() {
   const [projectBannerTitle, setProjectBannerTitle] = React.useState<string | null>(null);
   const [projectMode, setProjectMode] = React.useState<"dated" | "demo">("dated");
   const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(null);
+  const [returnTo, setReturnTo] = React.useState<string | null>(null);
 
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCatalog = Boolean(projectId) && !quickParentId;
@@ -325,6 +328,7 @@ export default function CatalogPage() {
     setProjectId(params.get("projectId"));
     setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
     setEstimateVersionId(params.get("estimateVersionId"));
+    setReturnTo(params.get("returnTo"));
   }, []);
 
   /** После монтирования подставляем даты из localStorage (не в useState — иначе mismatch гидратации). */
@@ -869,6 +873,7 @@ export default function CatalogPage() {
     projectId,
     projectMode,
     estimateVersionId,
+    returnTo,
   });
   const showPager = Boolean(pagination && pagination.totalPages > 1 && shouldFetchPagedItems);
   const paginationTokens = React.useMemo(
@@ -930,7 +935,7 @@ export default function CatalogPage() {
   ) : null;
 
   return (
-    <AppShell title="Каталог">
+    <AppShell title="Каталог" backHref={isProjectCatalog && projectId ? (returnTo ?? `/projects/${projectId}`) : undefined}>
       <section className="mk-section">
         {isProjectCatalog && projectId ? (
           <div
@@ -956,7 +961,7 @@ export default function CatalogPage() {
                   : "Корзина и заявка отдельные от обычной: полная цена, привязка к проекту.")}
             </p>
             <Link
-              href={`/projects/${projectId}`}
+              href={returnTo ?? `/projects/${projectId}`}
               className={`mt-2 inline-block font-medium ${
                 isProjectDemoCatalog ? "text-violet-700 hover:text-violet-900" : "text-violet-700 hover:text-violet-900"
               }`}

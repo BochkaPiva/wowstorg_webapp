@@ -1179,6 +1179,8 @@ function TaskChecklistPanel({
 function TaskCard({
   task,
   column,
+  autoEditTitle,
+  onAutoEditComplete,
   onOpen,
   onPatchTask,
   onAddChecklistItem,
@@ -1202,6 +1204,8 @@ function TaskCard({
 }: {
   task: BoardTask;
   column: BoardColumn;
+  autoEditTitle: boolean;
+  onAutoEditComplete: () => void;
   onOpen: (task: BoardTask) => void;
   onPatchTask: (taskId: string, body: TaskPatchBody) => void;
   onAddChecklistItem: (taskId: string, title: string, parentId: string | null) => void;
@@ -1238,9 +1242,16 @@ function TaskCard({
     if (!editingTitle) setTitleDraft(task.title);
   }, [editingTitle, task.title]);
 
+  React.useEffect(() => {
+    if (!autoEditTitle || editingTitle) return;
+    setTitleDraft(task.title);
+    setEditingTitle(true);
+  }, [autoEditTitle, editingTitle, task.title]);
+
   function finishTitleEdit() {
     const nextTitle = titleDraft.trim();
     setEditingTitle(false);
+    onAutoEditComplete();
     if (!nextTitle) {
       setTitleDraft(task.title);
       return;
@@ -1325,6 +1336,7 @@ function TaskCard({
                       event.preventDefault();
                       setTitleDraft(task.title);
                       setEditingTitle(false);
+                      onAutoEditComplete();
                     }
                   }}
                 />
@@ -2020,6 +2032,7 @@ function TasksPageContent() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [editor, setEditor] = React.useState<{ task: BoardTask | null; columnId: string | null } | null>(null);
+  const [inlineEditingTaskId, setInlineEditingTaskId] = React.useState<string | null>(null);
   const [activityDrawer, setActivityDrawer] = React.useState<{
     taskId: string;
     tab: "activity" | "details" | "subtasks";
@@ -2615,7 +2628,7 @@ function TasksPageContent() {
   ) {
     const previousBoard = boardRef.current;
     const column = previousBoard?.columns.find((item) => item.id === columnId);
-    if (!previousBoard || !column) return;
+    if (!previousBoard || !column) return null;
 
     const tempId = `temp-task-${crypto.randomUUID()}`;
     const idResolution = request.then(({ task }) => task.id);
@@ -2675,6 +2688,7 @@ function TasksPageContent() {
     void request
       .then(({ task }) => {
         taskQueueKeyByIdRef.current.set(task.id, tempId);
+        setInlineEditingTaskId((current) => current === tempId ? task.id : current);
         updateBoard((current) =>
           current
             ? {
@@ -2694,6 +2708,7 @@ function TasksPageContent() {
       })
       .catch((e) => {
         taskIdResolutionRef.current.delete(tempId);
+        setInlineEditingTaskId((current) => current === tempId ? null : current);
         updateBoard((current) => current ? {
           ...current,
           columns: current.columns.map((item) => ({
@@ -2706,6 +2721,30 @@ function TasksPageContent() {
       .finally(() => {
         pendingMutationsRef.current = Math.max(0, pendingMutationsRef.current - 1);
       });
+    return tempId;
+  }
+
+  function createTaskInline(columnId: string) {
+    if (viewParams.readOnly) return;
+    const draft: TaskCreateDraft = {
+      title: "Новая задача",
+      description: null,
+      assigneeUserId: null,
+      assigneeUserIds: [],
+      dueDate: null,
+      reminderAt: null,
+      priority: "NORMAL",
+      color: TASK_COLORS[0] ?? null,
+      projectId: viewParams.projectId || null,
+      orderId: null,
+    };
+    const request = fetch(`/api/tasks/columns/${columnId}/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft),
+    }).then((response) => readApi<{ task: BoardTask }>(response));
+    const taskId = addTaskOptimistically(columnId, draft, request);
+    if (taskId) setInlineEditingTaskId(taskId);
   }
 
   async function patchTaskInline(taskId: string, body: TaskPatchBody) {
@@ -3337,7 +3376,7 @@ function TasksPageContent() {
                 <div className="task-column__actions">
                   <button
                     type="button"
-                    onClick={() => setEditor({ task: null, columnId: column.id })}
+                    onClick={() => createTaskInline(column.id)}
                     disabled={viewParams.readOnly}
                     draggable={false}
                     className="task-column__add"
@@ -3375,6 +3414,8 @@ function TasksPageContent() {
                     key={task.id}
                     task={task}
                     column={column}
+                    autoEditTitle={inlineEditingTaskId === task.id}
+                    onAutoEditComplete={() => setInlineEditingTaskId((current) => current === task.id ? null : current)}
                     users={meta?.users ?? []}
                     columns={board.columns}
                     onOpen={(nextTask) => setEditor({ task: nextTask, columnId: column.id })}

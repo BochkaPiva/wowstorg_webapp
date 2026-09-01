@@ -51,6 +51,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
   children: React.ReactNode;
 }) {
   const definition = PROJECT_WIDGET_REGISTRY.find((item) => item.type === widget.type)!;
+  const canExpand = widget.type !== "TASKS";
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -81,7 +82,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
           </div>
         </div>
         <div className="project-workspace-widget__controls">
-          {!collapsed ? (
+          {!collapsed && canExpand ? (
             <button type="button" onClick={onToggleExpanded} className="project-workspace-widget__control" aria-label={expanded ? `Вернуть «${definition.title}» в карточку` : `Развернуть «${definition.title}» на весь экран`} title={expanded ? "Вернуть в карточку" : "На весь экран"}>
               <ExpandIcon expanded={expanded} />
             </button>

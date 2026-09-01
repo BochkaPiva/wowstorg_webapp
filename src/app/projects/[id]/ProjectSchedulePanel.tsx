@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+
 type Slot = { id: string; sortOrder: number; intervalText: string; description: string };
 type Day = { id: string; sortOrder: number; dateNote: string; slots: Slot[] };
 
@@ -75,8 +77,8 @@ export function ProjectSchedulePanel({
   const [composerOpen, setComposerOpen] = React.useState(false);
   const storageKey = React.useMemo(() => draftScheduleStorageKey(projectId), [projectId]);
 
-  const load = React.useCallback(() => {
-    setLoading(true);
+  const load = React.useCallback((showSkeleton = true) => {
+    if (showSkeleton) setLoading(true);
     fetch(`/api/projects/${projectId}/schedule`, { cache: "no-store" })
       .then((r) => r.json())
       .then((j: { days?: Day[]; error?: { message?: string } }) => {
@@ -105,7 +107,9 @@ export function ProjectSchedulePanel({
         } else setError(j.error?.message ?? "Ошибка загрузки");
       })
       .catch(() => setError("Ошибка загрузки"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showSkeleton) setLoading(false);
+      });
   }, [projectId, storageKey]);
 
   React.useEffect(() => {
@@ -187,7 +191,7 @@ export function ProjectSchedulePanel({
     );
   }
 
-  async function saveDraft() {
+  const saveDraft = React.useCallback(async () => {
     if (readOnly) return;
     setBusy(true);
     try {
@@ -212,14 +216,20 @@ export function ProjectSchedulePanel({
       if (res.ok) {
         setDraftDirty(false);
         window.localStorage.removeItem(storageKey);
-        load();
+        load(false);
       } else {
         window.alert(j?.error?.message ?? "Ошибка");
       }
     } finally {
       setBusy(false);
     }
-  }
+  }, [draftDays, load, projectId, readOnly, storageKey]);
+
+  React.useEffect(() => {
+    if (!draftDirty || readOnly || busy) return;
+    const timer = window.setTimeout(() => void saveDraft(), 900);
+    return () => window.clearTimeout(timer);
+  }, [busy, draftDays, draftDirty, readOnly, saveDraft]);
 
   function discardDraft() {
     if (!window.confirm("Сбросить несохранённые изменения тайминга?")) return;
@@ -243,10 +253,10 @@ export function ProjectSchedulePanel({
               <span aria-hidden>＋</span> День
             </button>
           ) : null}
-          {!readOnly && draftDirty ? (
-            <button type="button" disabled={busy} onClick={() => void saveDraft()} className="project-schedule-panel__save">
-              {busy ? "Сохраняем…" : "Сохранить"}
-            </button>
+          {!readOnly ? (
+            <span className="project-schedule-panel__save-state" data-state={busy ? "saving" : draftDirty ? "dirty" : "saved"} aria-live="polite">
+              {busy ? "Сохраняю…" : draftDirty ? "Есть изменения" : "Сохранено"}
+            </span>
           ) : null}
           <details className="project-schedule-panel__menu">
             <summary aria-label="Действия тайминг-плана" title="Действия">•••</summary>
@@ -261,7 +271,7 @@ export function ProjectSchedulePanel({
       </div>
 
       {loading ? (
-        <p className="text-sm text-zinc-600">Загрузка…</p>
+        <ProjectModuleContentSkeleton rows={3} />
       ) : error ? (
         <p className="text-sm text-red-700">{error}</p>
       ) : (
@@ -379,6 +389,7 @@ function DayBlock({
   const [to, setTo] = React.useState("10:30");
   const [desc, setDesc] = React.useState("");
   const [slotError, setSlotError] = React.useState<string | null>(null);
+  const [editingName, setEditingName] = React.useState(false);
 
   React.useEffect(() => {
     setNote(day.dateNote);
@@ -400,52 +411,88 @@ function DayBlock({
 
   return (
     <details className="project-schedule-day" open>
-      <summary className="cursor-pointer font-medium text-zinc-900">{day.dateNote}</summary>
-      <div className="mt-2 space-y-2">
+      <summary className="project-schedule-day__summary">
+        {editingName && !readOnly ? (
+          <input
+            value={note}
+            disabled={busy}
+            onChange={(event) => setNote(event.target.value)}
+            onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+            onBlur={() => {
+              const nextNote = note.trim();
+              setEditingName(false);
+              if (!nextNote) setNote(day.dateNote);
+              else if (nextNote !== day.dateNote) onPatchDay(day.id, { dateNote: nextNote });
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setNote(day.dateNote);
+                setEditingName(false);
+              }
+            }}
+            className="project-schedule-day__title-input"
+            aria-label="Название дня"
+            maxLength={500}
+            autoFocus
+          />
+        ) : !readOnly ? (
+          <button
+            type="button"
+            className="project-schedule-day__title"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setEditingName(true);
+            }}
+            title="Нажмите, чтобы переименовать"
+          >
+            {day.dateNote}
+          </button>
+        ) : <strong>{day.dateNote}</strong>}
         {!readOnly ? (
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className={`min-w-[10rem] flex-1 ${inputField}`}
-            />
-            <button
-              type="button"
-              disabled={busy || note.trim() === day.dateNote.trim()}
-              className="min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50 sm:text-xs"
-              onClick={() => void onPatchDay(day.id, { dateNote: note.trim() })}
-            >
-              Сохранить название
-            </button>
-            <button
-              type="button"
-              className="min-h-11 px-1 text-sm font-medium text-red-700 hover:text-red-800 sm:text-xs"
-              disabled={busy}
-              onClick={() => void onDeleteDay(day.id)}
-            >
-              Удалить день
-            </button>
-          </div>
+          <button
+            type="button"
+            className="project-schedule-day__delete"
+            disabled={busy}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDeleteDay(day.id);
+            }}
+            aria-label={`Удалить ${day.dateNote}`}
+            title="Удалить день"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden><path d="M7 3h6l.7 1.5H17V6H3V4.5h3.3L7 3zm-2 4h10l-.6 10H5.6L5 7zm3 2v6h1.5V9H8zm3 0v6h1.5V9H11z" /></svg>
+          </button>
         ) : null}
-
-        <ul className="space-y-2">
+      </summary>
+      <div className="mt-2 space-y-2">
+        <ul className="project-schedule-day__slots">
           {day.slots.map((s) => (
             <li
               key={s.id}
-              className="grid gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 text-sm md:grid-cols-[160px_minmax(0,1fr)_auto]"
+              className="project-schedule-slot"
             >
-              <div className="font-semibold text-zinc-900 md:pr-3 md:border-r md:border-zinc-200/80">
+              <div className="project-schedule-slot__time">
                 {s.intervalText}
               </div>
-              <div className="whitespace-pre-wrap text-zinc-700">{s.description}</div>
+              <div className="project-schedule-slot__description">{s.description}</div>
               {!readOnly ? (
                 <button
                   type="button"
-                  className="min-h-10 text-sm text-red-700 md:justify-self-end sm:text-xs"
+                  className="project-schedule-slot__delete"
                   disabled={busy}
                   onClick={() => void onDeleteSlot(s.id)}
+                  aria-label={`Удалить слот ${s.intervalText}`}
+                  title="Удалить слот"
                 >
-                  Удалить слот
+                  ×
                 </button>
               ) : null}
             </li>
@@ -482,6 +529,7 @@ function DayBlock({
                 <input
                   type="time"
                   value={from}
+                  disabled={busy}
                   onChange={(e) => setFrom(e.target.value)}
                   className={`mt-0.5 block ${inputField}`}
                 />
@@ -491,6 +539,7 @@ function DayBlock({
                 <input
                   type="time"
                   value={to}
+                  disabled={busy}
                   onChange={(e) => setTo(e.target.value)}
                   className={`mt-0.5 block ${inputField}`}
                 />
@@ -499,6 +548,7 @@ function DayBlock({
             <input
               placeholder="Описание сценария"
               value={desc}
+              disabled={busy}
               onChange={(e) => setDesc(e.target.value)}
               className={`min-w-[8rem] flex-1 ${inputField}`}
             />

@@ -2,6 +2,8 @@
 
 import React from "react";
 
+import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+
 type Entry = {
   id: string;
   body: string;
@@ -358,7 +360,7 @@ export function ProjectContactsPanel({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-zinc-600">Загрузка…</p>
+        <ProjectModuleContentSkeleton rows={3} />
       ) : (
         <ul className="project-contacts-panel__grid">
           {contacts.map((c) => (

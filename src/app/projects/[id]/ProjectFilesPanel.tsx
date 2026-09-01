@@ -52,16 +52,11 @@ function fileExt(name: string): string {
   return base.slice(i + 1).toLowerCase();
 }
 
-const folderActionBtn =
-  "min-h-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
-const folderPrimaryBtn =
-  "min-h-10 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
-const folderDangerBtn =
-  "min-h-10 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900 hover:bg-red-100 sm:min-h-9 sm:px-2.5 sm:py-1.5 sm:text-xs";
-const fileActionBtn =
-  "min-h-8 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50";
-const fileDangerBtn =
-  "min-h-8 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100";
+const folderActionBtn = "project-file-action";
+const folderPrimaryBtn = "project-file-action project-file-action--primary";
+const folderDangerBtn = "project-file-action project-file-action--danger";
+const fileActionBtn = "project-file-action";
+const fileDangerBtn = "project-file-action project-file-action--danger";
 
 function fileKind(file: { originalName: string; mimeType: string }): "image" | "pdf" | "doc" | "sheet" | "zip" | "text" | "other" {
   const mime = (file.mimeType || "").toLowerCase();
@@ -76,61 +71,14 @@ function fileKind(file: { originalName: string; mimeType: string }): "image" | "
 }
 
 function FileIcon({ kind }: { kind: ReturnType<typeof fileKind> }) {
-  const cls = "h-9 w-9 rounded-xl grid place-items-center border bg-white";
-  if (kind === "image")
-    return (
-      <div className={`${cls} border-emerald-200`}>
-        <span className="text-emerald-700 text-sm font-bold">IMG</span>
-      </div>
-    );
-  if (kind === "pdf")
-    return (
-      <div className={`${cls} border-red-200`}>
-        <span className="text-red-700 text-sm font-bold">PDF</span>
-      </div>
-    );
-  if (kind === "doc")
-    return (
-      <div className={`${cls} border-sky-200`}>
-        <span className="text-sky-700 text-sm font-bold">DOC</span>
-      </div>
-    );
-  if (kind === "sheet")
-    return (
-      <div className={`${cls} border-amber-200`}>
-        <span className="text-amber-800 text-sm font-bold">XLS</span>
-      </div>
-    );
-  if (kind === "zip")
-    return (
-      <div className={`${cls} border-zinc-200`}>
-        <span className="text-zinc-700 text-sm font-bold">ZIP</span>
-      </div>
-    );
-  if (kind === "text")
-    return (
-      <div className={`${cls} border-violet-200`}>
-        <span className="text-violet-700 text-sm font-bold">TXT</span>
-      </div>
-    );
-  return (
-    <div className={`${cls} border-zinc-200`}>
-      <span className="text-zinc-700 text-sm font-bold">FILE</span>
-    </div>
-  );
-}
-
-function flattenFolderOptions(
-  folders: TreeFolder[],
-  prefix = "",
-): { id: string; label: string }[] {
-  const out: { id: string; label: string }[] = [];
-  for (const f of folders) {
-    const label = prefix ? `${prefix} / ${f.name}` : f.name;
-    out.push({ id: f.id, label });
-    out.push(...flattenFolderOptions(f.children, label));
-  }
-  return out;
+  const label = kind === "image" ? "IMG"
+    : kind === "pdf" ? "PDF"
+      : kind === "doc" ? "DOC"
+        : kind === "sheet" ? "XLS"
+          : kind === "zip" ? "ZIP"
+            : kind === "text" ? "TXT"
+              : "FILE";
+  return <div className="project-file-kind" data-kind={kind}><span>{label}</span></div>;
 }
 
 function FolderBlock({
@@ -138,8 +86,6 @@ function FolderBlock({
   depth,
   readOnly,
   projectId,
-  uploadTargetId,
-  setUploadTargetId,
   onRefresh,
   busyFolderId,
   setBusyFolderId,
@@ -156,8 +102,6 @@ function FolderBlock({
   depth: number;
   readOnly: boolean;
   projectId: string;
-  uploadTargetId: string;
-  setUploadTargetId: (id: string) => void;
   onRefresh: () => void;
   busyFolderId: string | null;
   setBusyFolderId: (id: string | null) => void;
@@ -302,7 +246,7 @@ function FolderBlock({
   const busy = busyFolderId === folder.id;
 
   return (
-    <div className="rounded-2xl border border-zinc-200/80 bg-white/85 p-3 shadow-sm" style={{ marginLeft: pad }}>
+    <section className="project-folder" style={{ marginLeft: pad }}>
       <input
         ref={uploadInputRef}
         id={`pf-upload-${folder.id}`}
@@ -314,23 +258,27 @@ function FolderBlock({
           if (f) void uploadFile(f);
         }}
       />
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="project-folder__header">
+        <div className="project-folder__identity">
+          <span className="project-folder__glyph" aria-hidden />
           <span className="break-words font-semibold text-zinc-900">{folder.name}</span>
+          <span className="project-folder__count">{folder.files.length + folder.children.length}</span>
         {folder.isSystem ? (
-            <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase text-zinc-500">
+            <span className="project-folder__system">
             системная
           </span>
         ) : null}
         </div>
         {!readOnly ? (
-          <div className="flex flex-wrap items-start justify-end gap-2">
+          <div className="project-folder__actions">
             <button
               type="button"
               className={folderPrimaryBtn}
               onClick={() => uploadInputRef.current?.click()}
+              aria-label={`Загрузить файл в ${folder.name}`}
+              title="Загрузить файл"
             >
-              Загрузить
+              <span aria-hidden>↑</span>
             </button>
             <button
               type="button"
@@ -340,8 +288,10 @@ function FolderBlock({
                 setRenameFolderId(null);
                 setNewSubfolderName("");
               }}
+              aria-label={`Создать подпапку в ${folder.name}`}
+              title="Новая подпапка"
             >
-              Подпапка
+              <span aria-hidden>＋</span>
             </button>
             <button
               type="button"
@@ -351,8 +301,10 @@ function FolderBlock({
                 setRenameDraft(folder.name);
                 setNewSubfolderParent(null);
               }}
+              aria-label={`Переименовать папку ${folder.name}`}
+              title="Переименовать"
             >
-              Переименовать
+              <span aria-hidden>✎</span>
             </button>
             {!folder.isSystem ? (
               <button
@@ -360,15 +312,17 @@ function FolderBlock({
                 className={folderDangerBtn}
                 onClick={() => void removeFolder()}
                 disabled={busy}
+                aria-label={`Удалить папку ${folder.name}`}
+                title="Удалить папку"
               >
-                Удалить
+                <span aria-hidden>×</span>
               </button>
             ) : null}
           </div>
         ) : null}
       </div>
 
-      {busy ? <div className="mt-2 text-xs font-medium text-zinc-500">Загрузка…</div> : null}
+      {busy ? <div className="project-folder__busy">Обновляем…</div> : null}
 
       {renameFolderId === folder.id ? (
         <form onSubmit={saveRename} className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
@@ -420,13 +374,13 @@ function FolderBlock({
       ) : null}
 
       {folder.files.length > 0 ? (
-        <ul className="mb-2 space-y-1.5">
+        <ul className="project-folder__files">
           {folder.files.map((file) => (
             <li
               key={file.id}
-              className="flex flex-col gap-3 rounded-xl border border-zinc-100 bg-white px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+              className="project-file-row"
             >
-              <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="project-file-row__identity">
                 <FileIcon kind={fileKind(file)} />
                 <div className="min-w-0 flex-1">
                   {renameFileId === file.id ? (
@@ -462,25 +416,27 @@ function FolderBlock({
                     <>
                       <a
                         href={`/api/projects/${projectId}/files/${file.id}`}
-                        className="font-semibold text-violet-700 hover:text-violet-900 break-all"
+                        className="project-file-row__name"
                         target="_blank"
                         rel="noreferrer"
                       >
                         {file.originalName}
                       </a>
-                      <div className="mt-0.5 text-xs text-zinc-500">
+                      <div className="project-file-row__meta">
                         {fmtBytes(file.sizeBytes)} · {file.uploadedBy.displayName} · {fmtDateTime(file.createdAt)}
                       </div>
                     </>
                   )}
                 </div>
               </div>
-              <div className="flex w-full flex-wrap items-start justify-start gap-1.5 sm:w-auto sm:justify-end">
+              <div className="project-file-row__actions">
                 <a
                   href={`/api/projects/${projectId}/files/${file.id}`}
                   className={fileActionBtn}
+                  aria-label={`Скачать ${file.originalName}`}
+                  title="Скачать"
                 >
-                  Скачать
+                  <span aria-hidden>↓</span>
                 </a>
                 {!readOnly ? (
                   <>
@@ -492,16 +448,20 @@ function FolderBlock({
                         setRenameFileDraft(file.originalName);
                       }}
                       disabled={busyFolderId === file.id}
+                      aria-label={`Переименовать ${file.originalName}`}
+                      title="Переименовать"
                     >
-                      Переименовать
+                      <span aria-hidden>✎</span>
                     </button>
                     <button
                       type="button"
                       className={fileDangerBtn}
                       onClick={() => void removeFile(file)}
                       disabled={busyFolderId === file.id}
+                      aria-label={`Удалить ${file.originalName}`}
+                      title="Удалить"
                     >
-                      Удалить
+                      <span aria-hidden>×</span>
                     </button>
                   </>
                 ) : null}
@@ -510,7 +470,7 @@ function FolderBlock({
           ))}
         </ul>
       ) : (
-        <p className="mb-2 text-xs text-zinc-500">Нет файлов в этой папке.</p>
+        <p className="project-folder__empty">Перетащите сюда первый файл или нажмите ↑.</p>
       )}
 
       {folder.children.map((ch) => (
@@ -520,8 +480,6 @@ function FolderBlock({
           depth={depth + 1}
           readOnly={readOnly}
           projectId={projectId}
-          uploadTargetId={uploadTargetId}
-          setUploadTargetId={setUploadTargetId}
           onRefresh={onRefresh}
           busyFolderId={busyFolderId}
           setBusyFolderId={setBusyFolderId}
@@ -535,7 +493,7 @@ function FolderBlock({
           setRenameDraft={setRenameDraft}
         />
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -552,13 +510,13 @@ export function ProjectFilesPanel({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [uploadTargetId, setUploadTargetId] = React.useState("");
   const [busyFolderId, setBusyFolderId] = React.useState<string | null>(null);
   const [newSubfolderParent, setNewSubfolderParent] = React.useState<string | null>(null);
   const [newSubfolderName, setNewSubfolderName] = React.useState("");
   const [newRootName, setNewRootName] = React.useState("");
   const [renameFolderId, setRenameFolderId] = React.useState<string | null>(null);
   const [renameDraft, setRenameDraft] = React.useState("");
+  const [showRootComposer, setShowRootComposer] = React.useState(false);
 
   const load = React.useCallback(() => {
     setLoading(true);
@@ -609,6 +567,7 @@ export function ProjectFilesPanel({
       });
       if (res.ok) {
         setNewRootName("");
+        setShowRootComposer(false);
         load();
         window.dispatchEvent(new CustomEvent("project-activity-refresh"));
       } else {
@@ -624,9 +583,23 @@ export function ProjectFilesPanel({
   return (
     <div className="project-files-panel">
       <div className="project-files-panel__toolbar">
-        <div className="project-files-panel__usage">
-          {fileCount} / 15 файлов · {fmtBytes(totalBytes)} / 200 МБ
+        <div className="project-files-panel__usage" aria-label="Использование хранилища">
+          <span>{fileCount} из 15 файлов</span>
+          <span className="project-files-panel__usage-track" aria-hidden>
+            <i style={{ width: `${Math.min(100, totalBytes / (200 * 1024 * 1024) * 100)}%` }} />
+          </span>
+          <span>{fmtBytes(totalBytes)} из 200 МБ</span>
         </div>
+        {!readOnly ? (
+          <button
+            type="button"
+            className="project-files-panel__new-folder"
+            onClick={() => setShowRootComposer((current) => !current)}
+            aria-expanded={showRootComposer}
+          >
+            <span aria-hidden>＋</span> Папка
+          </button>
+        ) : null}
       </div>
 
       {loading ? (
@@ -635,25 +608,25 @@ export function ProjectFilesPanel({
         <p className="text-sm text-red-700">{error}</p>
       ) : (
         <>
-          {!readOnly ? (
+          {!readOnly && showRootComposer ? (
             <form
               onSubmit={createRootFolder}
-              className="grid gap-2 border-b border-zinc-200 pb-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+              className="project-files-panel__root-composer"
             >
-              <label className="block text-xs text-zinc-600">
-                Новая папка в корне
+              <label>
+                <span className="sr-only">Название новой папки</span>
                 <input
                   value={newRootName}
                   onChange={(e) => setNewRootName(e.target.value)}
-                  className="mt-0.5 block w-full max-w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm sm:w-64"
+                  className="block w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm"
                   maxLength={120}
-                  placeholder="Название"
+                  placeholder="Название папки"
                 />
               </label>
               <button
                 type="submit"
                 disabled={busyFolderId !== null}
-                className="min-h-11 rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:text-xs"
+                className="project-files-panel__create"
               >
                 Создать
               </button>
@@ -661,9 +634,12 @@ export function ProjectFilesPanel({
           ) : null}
 
           {folders.length === 0 ? (
-            <p className="text-sm text-zinc-600">Нет папок.</p>
+            <div className="project-files-panel__empty">
+              <strong>Здесь пока пусто</strong>
+              <span>Создайте папку для договоров, презентаций или технических файлов.</span>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="project-files-panel__tree">
               {folders.map((f) => (
                 <FolderBlock
                   key={f.id}
@@ -671,8 +647,6 @@ export function ProjectFilesPanel({
                   depth={0}
                   readOnly={readOnly}
                   projectId={projectId}
-                  uploadTargetId={uploadTargetId}
-                  setUploadTargetId={setUploadTargetId}
                   onRefresh={load}
                   busyFolderId={busyFolderId}
                   setBusyFolderId={setBusyFolderId}

@@ -2,6 +2,7 @@
 
 import "@/app/catalog/catalog.css";
 import "react-day-picker/style.css";
+import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -1410,6 +1411,16 @@ export default function ProjectDetailPage() {
           ) : null}
 
           <section className="project-detail-hero">
+            <div className="project-detail-hero__mascot" aria-hidden="true">
+              <span>Держим курс!</span>
+              <Image
+                src="/project-mascot-v2.png"
+                alt=""
+                width={768}
+                height={512}
+                priority
+              />
+            </div>
             <div className="project-detail-hero__surface">
               <div className="project-detail-hero__primary min-w-0">
                 <div className="project-detail-hero__crumbs">

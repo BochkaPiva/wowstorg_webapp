@@ -16,7 +16,8 @@
 1. Сделать backup базы Supabase.
 2. Убедиться, что production-приложение ещё не использует новую схему.
 3. Открыть файл [`prisma/migrations/20260828110000_project_workspace_foundation/migration.sql`](../prisma/migrations/20260828110000_project_workspace_foundation/migration.sql) и выполнить его **один раз целиком** в Supabase SQL Editor.
-4. Не выполнять migration повторно: это обычная forward-only Prisma migration, а не идемпотентный seed.
+4. Затем выполнить [`prisma/migrations/20260901153000_project_workspace_board_48_columns/migration.sql`](../prisma/migrations/20260901153000_project_workspace_board_48_columns/migration.sql), синхронизирующий ограничения координат доски с 48-колоночным клиентом.
+5. Не выполнять migrations повторно: это forward-only Prisma migrations, а не seed.
 
 ## 2. Проверка после миграции
 
@@ -57,9 +58,13 @@ select type, count(*)
 from "ProjectWidget"
 group by type
 order by type;
+
+select pg_get_constraintdef(oid) as board_bounds
+from pg_constraint
+where conname = 'ProjectWorkspaceItem_bounds_check';
 ```
 
-Первые четыре результата должны быть `0`. Последний запрос — контрольный обзор backfill.
+Первые четыре результата должны быть `0`. Обзор типов контролирует backfill, а последнее ограничение должно содержать `x + width <= 48`.
 
 ## 3. Feature flags
 

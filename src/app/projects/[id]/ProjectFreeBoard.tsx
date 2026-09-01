@@ -51,6 +51,12 @@ type ConnectorDraft = {
   pointer: { x: number; y: number };
 };
 type SelectionBox = { left: number; top: number; width: number; height: number };
+type BoardInsertPoint = { x: number; y: number };
+type BoardContextMenu = {
+  left: number;
+  top: number;
+  insertAt: BoardInsertPoint;
+};
 
 type BoardResponse = {
   board: {
@@ -225,15 +231,20 @@ export function ProjectFreeBoard({
   const [selectedConnectorId, setSelectedConnectorId] = React.useState<string | null>(null);
   const [connectorDraft, setConnectorDraft] = React.useState<ConnectorDraft | null>(null);
   const [selectionBox, setSelectionBox] = React.useState<SelectionBox | null>(null);
+  const [contextMenu, setContextMenu] = React.useState<BoardContextMenu | null>(null);
+  const [linkInsertAt, setLinkInsertAt] = React.useState<BoardInsertPoint | null>(null);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const panGestureRef = React.useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const selectionGestureRef = React.useRef<{
     pointerId: number;
+    startClientX: number;
+    startClientY: number;
     startX: number;
     startY: number;
     currentX: number;
     currentY: number;
     additive: boolean;
+    moved: boolean;
   } | null>(null);
   const pendingRef = React.useRef<ProjectFreeBoardOperation[]>([]);
   const inFlightRef = React.useRef<ProjectFreeBoardMutationEnvelope | null>(null);
@@ -480,7 +491,7 @@ export function ProjectFreeBoard({
     enqueue({ op: "UPSERT", item: parsed.data }, delay);
   }, [enqueue, pushHistory, replaceItems]);
 
-  const addItem = React.useCallback((type: BasicItemType) => {
+  const addItem = React.useCallback((type: BasicItemType, insertAt?: BoardInsertPoint | null) => {
     if (readOnly) return;
     if (itemsRef.current.length >= PROJECT_FREE_BOARD_MAX_ITEMS) {
       setMessage(`На доске может быть не более ${PROJECT_FREE_BOARD_MAX_ITEMS} блоков`);
@@ -488,9 +499,13 @@ export function ProjectFreeBoard({
       return;
     }
     pushHistory(`add:${type}`, true);
-    const item = createProjectFreeBoardItem(type, nextPosition(itemsRef.current));
+    const draft = createProjectFreeBoardItem(type, insertAt ?? nextPosition(itemsRef.current));
+    const item = insertAt
+      ? { ...draft, x: Math.max(0, Math.min(PROJECT_FREE_BOARD_COLUMNS - draft.width, insertAt.x)), y: Math.max(0, Math.min(999, insertAt.y)) }
+      : draft;
     replaceItems([...itemsRef.current, item]);
     enqueue({ op: "UPSERT", item }, 80);
+    setContextMenu(null);
   }, [enqueue, pushHistory, readOnly, replaceItems]);
 
   const addLinkedItem = React.useCallback((type: ProjectFreeBoardLinkedItemType, linkable: ProjectFreeBoardLinkable) => {
@@ -512,12 +527,16 @@ export function ProjectFreeBoard({
       return;
     }
     pushHistory(`link:${type}`, true);
-    const item = createProjectFreeBoardLinkedItem(type, linkable, nextPosition(itemsRef.current));
+    const draft = createProjectFreeBoardLinkedItem(type, linkable, linkInsertAt ?? nextPosition(itemsRef.current));
+    const item = linkInsertAt
+      ? { ...draft, x: Math.max(0, Math.min(PROJECT_FREE_BOARD_COLUMNS - draft.width, linkInsertAt.x)), y: Math.max(0, Math.min(999, linkInsertAt.y)) }
+      : draft;
     replaceItems([...itemsRef.current, item]);
     enqueue({ op: "UPSERT", item }, 80);
     setLinkPickerType(null);
     setLinkQuery("");
-  }, [enqueue, pushHistory, readOnly, replaceItems]);
+    setLinkInsertAt(null);
+  }, [enqueue, linkInsertAt, pushHistory, readOnly, replaceItems]);
 
   const toggleSelection = React.useCallback((itemId: string) => {
     setSelectedIds((current) => {
@@ -720,6 +739,11 @@ export function ProjectFreeBoard({
       || (target instanceof HTMLElement && target.isContentEditable);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isBoardFocused() || isEditableTarget(event.target)) return;
+      if (event.key === "Escape") {
+        setContextMenu(null);
+        setLinkPickerType(null);
+        setLinkInsertAt(null);
+      }
       if (event.code === "Space") {
         event.preventDefault();
         setSpacePressed(true);
@@ -753,6 +777,7 @@ export function ProjectFreeBoard({
     const isInteractive = Boolean(target.closest("[data-board-item], button, input, textarea, select, a, label"));
     const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || !isInteractive));
     if (wantsPan) {
+      setContextMenu(null);
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       setIsPanning(true);
@@ -773,15 +798,16 @@ export function ProjectFreeBoard({
     event.currentTarget.setPointerCapture(event.pointerId);
     selectionGestureRef.current = {
       pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
       startX,
       startY,
       currentX: startX,
       currentY: startY,
       additive: event.shiftKey || event.metaKey,
+      moved: false,
     };
-    if (!event.shiftKey && !event.metaKey) setSelectedIds(new Set());
-    setSelectedConnectorId(null);
-    setSelectionBox({ left: startX, top: startY, width: 0, height: 0 });
+    setContextMenu(null);
   }, [pan.x, pan.y, readOnly, spacePressed, zoom]);
 
   const handleViewportPointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -798,6 +824,13 @@ export function ProjectFreeBoard({
     const rect = event.currentTarget.getBoundingClientRect();
     selection.currentX = (event.clientX - rect.left - pan.x) / zoom;
     selection.currentY = (event.clientY - rect.top - pan.y) / zoom;
+    const distance = Math.hypot(event.clientX - selection.startClientX, event.clientY - selection.startClientY);
+    if (!selection.moved && distance >= 6) {
+      selection.moved = true;
+      if (!selection.additive) setSelectedIds(new Set());
+      setSelectedConnectorId(null);
+    }
+    if (!selection.moved) return;
     setSelectionBox({
       left: Math.min(selection.startX, selection.currentX),
       top: Math.min(selection.startY, selection.currentY),
@@ -814,6 +847,26 @@ export function ProjectFreeBoard({
     const selection = selectionGestureRef.current;
     if (selection?.pointerId === event.pointerId) {
       selectionGestureRef.current = null;
+      if (!selection.moved) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const gridMargin = 10;
+        const gridPadding = 2;
+        const canvasWidth = Math.max(3600, width);
+        const columnWidth = (canvasWidth - gridPadding * 2 - gridMargin * (PROJECT_FREE_BOARD_COLUMNS - 1)) / PROJECT_FREE_BOARD_COLUMNS;
+        const columnStep = columnWidth + gridMargin;
+        const rowStep = 36;
+        setContextMenu({
+          left: Math.max(10, Math.min(rect.width - 226, event.clientX - rect.left)),
+          top: Math.max(10, Math.min(rect.height - 238, event.clientY - rect.top)),
+          insertAt: {
+            x: Math.max(0, Math.min(PROJECT_FREE_BOARD_COLUMNS - 2, Math.floor((selection.startX - gridPadding) / columnStep))),
+            y: Math.max(0, Math.min(999, Math.floor((selection.startY - gridPadding) / rowStep))),
+          },
+        });
+        setSelectionBox(null);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        return;
+      }
       const left = Math.min(selection.startX, selection.currentX);
       const top = Math.min(selection.startY, selection.currentY);
       const right = Math.max(selection.startX, selection.currentX);
@@ -1309,7 +1362,7 @@ export function ProjectFreeBoard({
       <header className="project-free-board__toolbar" aria-label="Инструменты свободной доски">
         <div className="sr-only">
           <div className="text-sm font-extrabold tracking-tight text-zinc-900">Рабочее полотно</div>
-          <p className="mt-0.5 text-xs text-zinc-500">ЛКМ по фону — двигать поле · ПКМ — выделить · Ctrl + колесо — масштаб · Home — к началу</p>
+          <p className="mt-0.5 text-xs text-zinc-500">ЛКМ по фону — двигать поле · ПКМ — добавить · ПКМ с движением — выделить · Ctrl + колесо — масштаб</p>
         </div>
         <div className="project-free-board__toolrail-inner">
           {!readOnly && selectedIds.size ? (
@@ -1365,7 +1418,10 @@ export function ProjectFreeBoard({
           {!readOnly ? (
             <button
               type="button"
-              onClick={() => setLinkPickerType((current) => current ? null : "TASK")}
+              onClick={() => {
+                setLinkInsertAt(null);
+                setLinkPickerType((current) => current ? null : "TASK");
+              }}
               className="project-free-board__tool-button"
               data-active={linkPickerType ? "true" : undefined}
               aria-label="Добавить объект проекта"
@@ -1572,6 +1628,43 @@ export function ProjectFreeBoard({
                     <p className="mt-1 text-sm leading-5 text-zinc-500">Добавьте заметку, стикер, список или объект проекта кнопкой над полотном.</p>
                   </div>
                 )}
+              </div>
+            ) : null}
+            {contextMenu && !readOnly ? (
+              <div
+                className="project-free-board__context-menu"
+                style={{ left: contextMenu.left, top: contextMenu.top }}
+                role="menu"
+                aria-label="Добавить блок в этой точке"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <div className="project-free-board__context-title">Добавить здесь</div>
+                <div className="project-free-board__context-grid">
+                  {(Object.keys(ITEM_LABEL) as BasicItemType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => addItem(type, contextMenu.insertAt)}
+                    >
+                      <Icon name={type} />
+                      <span>{ITEM_LABEL[type]}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setLinkInsertAt(contextMenu.insertAt);
+                      setLinkPickerType("TASK");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Icon name="link" />
+                    <span>Объект проекта</span>
+                  </button>
+                </div>
+                <div className="project-free-board__context-hint">ПКМ + движение — выделить область</div>
               </div>
             ) : null}
           </div>

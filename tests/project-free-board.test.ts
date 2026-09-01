@@ -48,6 +48,12 @@ describe("project free board", () => {
     ).toBe(false);
   });
 
+  it("accepts the expanded 48-column canvas and rejects items beyond its edge", () => {
+    const item = createProjectFreeBoardItem("CHECKLIST", { x: 40, y: 0 });
+    expect(ProjectFreeBoardItemInputSchema.safeParse(item).success).toBe(true);
+    expect(ProjectFreeBoardItemInputSchema.safeParse({ ...item, x: 41 }).success).toBe(false);
+  });
+
   it("ignores corrupted locally stored mutations", () => {
     expect(parseStoredProjectFreeBoardEnvelope("not json")).toBeNull();
     expect(parseStoredProjectFreeBoardEnvelope(JSON.stringify({ mutationId: "bad" }))).toBeNull();

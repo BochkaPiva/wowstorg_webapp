@@ -1415,6 +1415,36 @@
   box-shadow: 0 3px 8px rgb(24 24 27 / 0.07);
 }
 
+/* Embedded boards always use a light, high-contrast palette, independent of the saved full-page theme. */
+.task-board-shell.is-embedded .task-board-toolbar__identity h1,
+.task-board-shell.is-embedded .task-column__title {
+  color: #252936 !important;
+}
+
+.task-board-shell.is-embedded .task-board-toolbar__identity span,
+.task-board-shell.is-embedded .task-column__count {
+  color: #7b8493 !important;
+}
+
+.task-board-shell.is-embedded .task-board-button--quiet,
+.task-board-shell.is-embedded .task-column__archive,
+.task-board-shell.is-embedded .task-column__delete {
+  color: #687386;
+}
+
+.task-board-shell.is-embedded .task-column__add {
+  color: #2867b2;
+}
+
+.task-board-shell.is-embedded .task-column__done {
+  border-color: #b9c3d0;
+  color: #68778b;
+}
+
+.task-board-shell.is-embedded .task-card :is(h3, strong, p, span, button) {
+  color: inherit;
+}
+
 .task-card-assignee,
 .task-checklist-row__avatar {
   width: auto;

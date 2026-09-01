@@ -9,8 +9,6 @@ const inputField =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const btnPrimary =
   "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
-const btnSecondaryXs =
-  "rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 
 function timeToMinutes(hhmm: string): number | null {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm.trim());
@@ -74,6 +72,7 @@ export function ProjectSchedulePanel({
   const [newDayNote, setNewDayNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"timeline" | "table">("timeline");
+  const [composerOpen, setComposerOpen] = React.useState(false);
   const storageKey = React.useMemo(() => draftScheduleStorageKey(projectId), [projectId]);
 
   const load = React.useCallback(() => {
@@ -139,6 +138,7 @@ export function ProjectSchedulePanel({
       },
     ]);
     setNewDayNote("");
+    setComposerOpen(false);
   }
 
   function patchDay(dayId: string, patch: { dateNote?: string }) {
@@ -237,42 +237,28 @@ export function ProjectSchedulePanel({
           <button type="button" onClick={() => setViewMode("timeline")} aria-pressed={viewMode === "timeline"}>Лента</button>
           <button type="button" onClick={() => setViewMode("table")} aria-pressed={viewMode === "table"}>Таблица</button>
         </div>
-        <div className="project-schedule-panel__actions">
-          {!readOnly ? (
-            <>
-              <button
-                type="button"
-                disabled={busy || !draftDirty}
-                onClick={() => void saveDraft()}
-                className={btnPrimary}
-              >
-                Сохранить тайминг
-              </button>
-              <button
-                type="button"
-                disabled={busy || !draftDirty}
-                onClick={discardDraft}
-                className={btnSecondaryXs}
-              >
-                Сбросить
-              </button>
-            </>
+        <div className="project-schedule-panel__controls">
+          {!readOnly && viewMode === "table" ? (
+            <button type="button" className="project-schedule-panel__quiet-action" onClick={() => setComposerOpen((current) => !current)}>
+              <span aria-hidden>＋</span> День
+            </button>
           ) : null}
-          <a
-            href={exportHref}
-            className="rounded-lg border border-emerald-600/40 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Экспорт .docx
-          </a>
+          {!readOnly && draftDirty ? (
+            <button type="button" disabled={busy} onClick={() => void saveDraft()} className="project-schedule-panel__save">
+              {busy ? "Сохраняем…" : "Сохранить"}
+            </button>
+          ) : null}
+          <details className="project-schedule-panel__menu">
+            <summary aria-label="Действия тайминг-плана" title="Действия">•••</summary>
+            <div>
+              <a href={exportHref} target="_blank" rel="noreferrer">Экспортировать .docx</a>
+              {!readOnly && draftDirty ? (
+                <button type="button" disabled={busy} onClick={discardDraft}>Сбросить черновик</button>
+              ) : null}
+            </div>
+          </details>
         </div>
       </div>
-      {!readOnly && draftDirty ? (
-        <div className="project-schedule-panel__draft">
-          Черновик изменён
-        </div>
-      ) : null}
 
       {loading ? (
         <p className="text-sm text-zinc-600">Загрузка…</p>
@@ -280,7 +266,7 @@ export function ProjectSchedulePanel({
         <p className="text-sm text-red-700">{error}</p>
       ) : (
         <>
-          {!readOnly && viewMode === "table" ? (
+          {!readOnly && viewMode === "table" && composerOpen ? (
             <form
               onSubmit={addDay}
               className="grid gap-2 border-b border-zinc-200 pb-3 sm:grid-cols-[minmax(0,1fr)_auto]"

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 
 import {
   PROJECT_WIDGET_REGISTRY,
@@ -64,9 +65,9 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
     return () => window.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
-  return (
+  const widgetNode = (
     <section
-      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "fixed inset-0 z-[130] flex h-dvh flex-col" : `col-span-1 ${collapsed ? "md:col-span-4" : WIDTH_CLASS[widget.width]}`}`}
+      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${collapsed ? "md:col-span-4" : WIDTH_CLASS[widget.width]}`}`}
       style={expanded ? undefined : { order: widget.sortOrder }}
       id={`project-widget-${widget.type.toLowerCase().replaceAll("_", "-")}`}
       data-widget={widget.type}
@@ -101,6 +102,8 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
       {!collapsed ? <div className={`project-workspace-widget__body ${expanded ? "min-h-0 flex-1 overflow-auto" : ""}`}>{children}</div> : null}
     </section>
   );
+
+  return expanded ? createPortal(widgetNode, document.body) : widgetNode;
 }
 
 export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: {

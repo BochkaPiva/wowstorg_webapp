@@ -61,13 +61,6 @@ const HEIGHT_LABEL: Record<ProjectWorkspaceWidgetInput["heightPreset"], string> 
   AUTO: "По содержимому",
 };
 
-const WIDTH_CLASS: Record<ProjectWorkspaceWidgetInput["width"], string> = {
-  4: "md:col-span-4",
-  6: "md:col-span-6",
-  8: "md:col-span-8",
-  12: "md:col-span-12",
-};
-
 function initials(name: string) {
   return name
     .trim()
@@ -112,29 +105,48 @@ function DiscreteWorkspaceSlider<T extends string | number>({
   tone: "ink" | "violet";
 }) {
   const selectedIndex = Math.max(0, values.findIndex((item) => item === value));
-  const progress = values.length > 1 ? (selectedIndex / (values.length - 1)) * 100 : 0;
+  const [previewIndex, setPreviewIndex] = React.useState(selectedIndex);
+
+  React.useEffect(() => {
+    setPreviewIndex(selectedIndex);
+  }, [selectedIndex]);
+
+  const commitPreview = React.useCallback((index: number) => {
+    const nextValue = values[index] ?? value;
+    if (nextValue !== value) onChange(nextValue);
+  }, [onChange, value, values]);
+
+  const progress = values.length > 1 ? (previewIndex / (values.length - 1)) * 100 : 0;
+  const previewValue = values[previewIndex] ?? value;
 
   return (
     <div className="project-workspace-size-slider" data-tone={tone}>
       <div className="project-workspace-size-slider__head">
         <span>{label}</span>
-        <output>{formatValue(values[selectedIndex] ?? value)}</output>
+        <output>{formatValue(previewValue)}</output>
       </div>
       <input
         type="range"
         min={0}
         max={Math.max(0, values.length - 1)}
         step={1}
-        value={selectedIndex}
+        value={previewIndex}
         disabled={values.length < 2}
         style={{ "--workspace-slider-progress": `${progress}%` } as React.CSSProperties}
         aria-label={label}
-        aria-valuetext={formatValue(values[selectedIndex] ?? value)}
-        onChange={(event) => onChange(values[Number(event.target.value)] ?? value)}
+        aria-valuetext={formatValue(previewValue)}
+        onChange={(event) => setPreviewIndex(Number(event.target.value))}
+        onPointerUp={(event) => commitPreview(Number(event.currentTarget.value))}
+        onPointerCancel={(event) => {
+          setPreviewIndex(selectedIndex);
+          event.currentTarget.blur();
+        }}
+        onKeyUp={(event) => commitPreview(Number(event.currentTarget.value))}
+        onBlur={(event) => commitPreview(Number(event.currentTarget.value))}
       />
       <div className="project-workspace-size-slider__marks" aria-hidden>
         {values.map((item, index) => (
-          <i key={String(item)} data-active={index <= selectedIndex || undefined} />
+          <i key={String(item)} data-active={index <= previewIndex || undefined} />
         ))}
       </div>
     </div>
@@ -487,7 +499,7 @@ export function ProjectWorkspaceSettings({
                         setDraggedType(null);
                         setDropTargetType(null);
                       }}
-                      className={`col-span-1 rounded-xl border bg-white p-3 transition-[border-color,background-color,opacity,box-shadow] duration-150 motion-reduce:transition-none ${WIDTH_CLASS[widget.width]} ${
+                      className={`col-span-1 rounded-xl border bg-white p-3 transition-[border-color,background-color,opacity,box-shadow] duration-150 motion-reduce:transition-none md:col-span-6 ${
                         dropTargetType === widget.type
                           ? "border-violet-500 bg-violet-50 shadow-[0_0_0_2px_rgba(109,40,217,0.12)]"
                           : widget.isVisible

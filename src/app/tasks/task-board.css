@@ -1108,6 +1108,28 @@
   .task-board-toolbar__actions { flex-wrap: wrap; justify-content: flex-end; }
   .task-board-theme-toggle { min-width: 36px; }
   .task-board-shell .task-board-columns { grid-template-columns: 1fr; }
+
+  .task-board-shell.is-embedded .task-board-columns {
+    display: flex;
+    min-height: 0;
+    gap: 9px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 10px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .task-board-shell.is-embedded .task-column {
+    width: min(82vw, 320px);
+    min-height: 220px;
+    flex: 0 0 min(82vw, 320px);
+    scroll-snap-align: start;
+  }
+
+  .task-board-shell.is-embedded .task-column__cards {
+    min-height: 104px;
+  }
 }
 
 .task-board-shell .task-card-tools { height: auto; min-height: 29px; flex-wrap: wrap; padding-top: 3px; }

@@ -1022,7 +1022,7 @@ export function ProjectFreeBoard({
     event: React.PointerEvent<HTMLElement>,
     item: ProjectFreeBoardItemInput,
   ) => {
-    if (readOnly || spacePressed || event.button !== 0) return;
+    if (mobile || readOnly || spacePressed || event.button !== 0) return;
     const target = event.target as HTMLElement;
     if (target.closest("input, textarea, select, button, a, label, [data-no-drag], [contenteditable='true'], .react-resizable-handle")) return;
     event.preventDefault();
@@ -1081,7 +1081,7 @@ export function ProjectFreeBoard({
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
     window.addEventListener("pointercancel", finish, { once: true });
-  }, [enqueueMany, pushHistory, readOnly, replaceItems, selectedIds, spacePressed, width, zoom]);
+  }, [enqueueMany, mobile, pushHistory, readOnly, replaceItems, selectedIds, spacePressed, width, zoom]);
 
   const commitGeometry = React.useCallback((_layout: Layout, oldItem: LayoutItem | null, newItem: LayoutItem | null) => {
     if (!newItem) return;
@@ -1584,13 +1584,15 @@ export function ProjectFreeBoard({
       {!loaded ? (
         <div className="grid min-h-72 place-items-center px-4 py-12 text-sm font-semibold text-zinc-500">Готовим рабочее пространство…</div>
       ) : mobile ? (
-        <div className="grid gap-3 p-3">{boardItems.length ? boardItems.map(renderItem) : <div className="p-8 text-center text-sm font-medium text-zinc-500">Добавьте первый блок кнопкой выше.</div>}</div>
+        <div className="project-free-board__mobile-list" data-empty={!boardItems.length || undefined}>
+          {boardItems.length ? boardItems.map(renderItem) : <div className="p-8 text-center text-sm font-medium text-zinc-500">Добавьте первый блок кнопкой выше.</div>}
+        </div>
       ) : (
         <div ref={containerRef} className="relative">
           <div
             ref={viewportRef}
             tabIndex={0}
-            className={`project-free-board-viewport relative h-[70dvh] min-h-[620px] max-h-[900px] touch-none overflow-hidden outline-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+            className={`project-free-board-viewport relative touch-none overflow-hidden outline-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
             onPointerDown={handleViewportPointerDown}
             onPointerMove={handleViewportPointerMove}
             onPointerUp={endViewportPan}

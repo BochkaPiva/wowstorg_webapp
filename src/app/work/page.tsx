@@ -983,6 +983,17 @@ export default function WorkQueuePage() {
                             {busy === `delete:${item.id}` ? "Удаляем…" : "Удалить"}
                           </button>
                         ) : null}
+                        {item.kind === "PROJECT" || item.kind === "STANDALONE_ORDER" ? (
+                          <a
+                            className="work-action"
+                            href={item.kind === "PROJECT"
+                              ? `/api/projects/${item.id}/estimate/checklist`
+                              : `/api/orders/${item.id}/estimate/checklist`}
+                            title="Скачать складской чек-лист в Word"
+                          >
+                            Чек-лист
+                          </a>
+                        ) : null}
                         <Link className="work-action work-action--dark" href={href}>Открыть</Link>
                         <button
                           type="button"

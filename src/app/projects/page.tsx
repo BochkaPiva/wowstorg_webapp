@@ -677,9 +677,14 @@ function ProjectsContent() {
                     {tab === "active" ? (
                       <div className="flex min-h-11 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 py-2">
                         <Link href={withDetailReturn(`/projects/${p.id}`, detailSource, returnTo)} className="text-xs font-bold text-violet-800 transition-colors hover:text-violet-950">Открыть карточку →</Link>
-                        <button type="button" onClick={() => openArchiveModal(p)} className="inline-flex h-8 items-center border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-700 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white">
-                          Завершить / отменить
-                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <a href={`/api/projects/${p.id}/estimate/checklist`} className="inline-flex h-8 items-center border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-700 transition-colors duration-150 hover:border-violet-700 hover:text-violet-800" title="Скачать складской чек-лист в Word">
+                            Чек-лист ↓
+                          </a>
+                          <button type="button" onClick={() => openArchiveModal(p)} className="inline-flex h-8 items-center border border-zinc-300 bg-white px-3 text-xs font-bold text-zinc-700 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white">
+                            Завершить / отменить
+                          </button>
+                        </div>
                       </div>
                     ) : null}
                   </li>

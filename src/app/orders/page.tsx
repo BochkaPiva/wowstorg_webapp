@@ -423,6 +423,9 @@ export default function OrdersPage() {
             <Link href={withDetailReturn(`/orders/${o.id}`, "orders", "/orders")} className="my-order__button my-order__button--dark">
               Открыть
             </Link>
+            <a href={`/api/orders/${o.id}/estimate/checklist`} className="my-order__button" title="Скачать складской чек-лист в Word">
+              Чек-лист ↓
+            </a>
             {o.status === "ISSUED" && !o.parentOrderId ? (
               <Link href={`/catalog?quickParentId=${o.id}`} className="my-order__button">
                 Доп.-выдача

@@ -1,9 +1,9 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-08-30T12:11:25.069Z  
-> **Файлов route.ts:** 140  
-> Команда: `npm run brain:inventory`  
-> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
+> **Сгенерировано:** 2026-09-02T08:08:22.344Z
+> **Файлов route.ts:** 142
+> Команда: `npm run brain:inventory`
+> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).
 > Расхождение других доков с этой таблицей — **ошибка документации**.
 
 | HTTP | Путь (App Router) | Файл |
@@ -64,6 +64,7 @@
 | POST | `/api/orders/[id]/cancel` | `src/app/api/orders/[id]/cancel/route.ts` |
 | POST | `/api/orders/[id]/check-in` | `src/app/api/orders/[id]/check-in/route.ts` |
 | POST, PATCH | `/api/orders/[id]/dates` | `src/app/api/orders/[id]/dates/route.ts` |
+| GET | `/api/orders/[id]/estimate/checklist` | `src/app/api/orders/[id]/estimate/checklist/route.ts` |
 | GET | `/api/orders/[id]/estimate/internal` | `src/app/api/orders/[id]/estimate/internal/route.ts` |
 | GET | `/api/orders/[id]/estimate` | `src/app/api/orders/[id]/estimate/route.ts` |
 | PATCH | `/api/orders/[id]/greenwich-edit` | `src/app/api/orders/[id]/greenwich-edit/route.ts` |
@@ -86,6 +87,7 @@
 | POST | `/api/projects/[id]/convert` | `src/app/api/projects/[id]/convert/route.ts` |
 | POST | `/api/projects/[id]/draft-order/materialize` | `src/app/api/projects/[id]/draft-order/materialize/route.ts` |
 | GET, PATCH, DELETE | `/api/projects/[id]/draft-order` | `src/app/api/projects/[id]/draft-order/route.ts` |
+| GET | `/api/projects/[id]/estimate/checklist` | `src/app/api/projects/[id]/estimate/checklist/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/estimate/lines/[lineId]` | `src/app/api/projects/[id]/estimate/lines/[lineId]/route.ts` |
 | GET | `/api/projects/[id]/estimate/pdf` | `src/app/api/projects/[id]/estimate/pdf/route.ts` |
 | GET, PATCH | `/api/projects/[id]/estimate` | `src/app/api/projects/[id]/estimate/route.ts` |

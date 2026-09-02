@@ -73,7 +73,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
       data-expanded={expanded || undefined}
       data-collapsed={collapsed || undefined}
     >
-      <header className="project-workspace-widget__header">
+      <header className="project-workspace-widget__header" data-menu-open={menuOpen || undefined}>
         <div className="project-workspace-widget__identity">
           <span className="project-workspace-widget__icon"><WidgetIcon type={widget.type} /></span>
           <div className="project-workspace-widget__titlecopy">
@@ -90,7 +90,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
           <div ref={menuRef} className="relative">
             <button type="button" onClick={() => setMenuOpen((value) => !value)} className="project-workspace-widget__control text-lg leading-none" aria-label={`Действия: ${definition.title}`} aria-expanded={menuOpen}>⋮</button>
             {menuOpen ? (
-              <div className="absolute right-0 top-9 z-40 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-xs shadow-[0_6px_8px_rgba(0,0,0,0.1)]">
+              <div className="absolute right-0 top-9 z-[90] w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-xs shadow-[0_6px_8px_rgba(0,0,0,0.1)]">
                 <button type="button" onClick={() => { setMenuOpen(false); onToggleCollapsed(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">{collapsed ? "Развернуть содержимое" : "Свернуть содержимое"}</button>
                 <button type="button" onClick={() => { setMenuOpen(false); onConfigure(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">Порядок, размер и видимость…</button>
               </div>

@@ -272,6 +272,11 @@ function getModalPortalHost(): HTMLElement | null {
   return document.body;
 }
 
+function getTaskSurfacePortalHost(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.body;
+}
+
 function cardTextColor(color: string | null): string {
   void color;
   return "text-white";
@@ -608,7 +613,10 @@ function AnchoredPopover({
   const [position, setPosition] = React.useState({ top: 0, left: 0, maxHeight: 480, placement: "below" as "above" | "below" });
 
   React.useLayoutEffect(() => {
-    setHost(getModalPortalHost());
+    // Compact task menus must stay in the task document. In the project card the
+    // board lives in an iframe; portalling to the parent body loses task-board.css
+    // and makes the editor render as unstyled page content.
+    setHost(getTaskSurfacePortalHost());
   }, []);
 
   const updatePosition = React.useCallback(() => {
@@ -695,10 +703,11 @@ function AnchoredPopover({
   }, [anchor, host, onClose]);
 
   if (!host || !anchor) return null;
+  const embeddedSurface = window.parent !== window || new URLSearchParams(window.location.search).get("embed") === "1";
   return createPortal(
     <div
       ref={menuRef}
-      className={`task-popover is-${position.placement}`}
+      className={`task-popover${embeddedSurface ? " task-popover--embedded" : ""} is-${position.placement}`}
       style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
       onMouseDown={(event) => event.stopPropagation()}
     >
@@ -800,6 +809,7 @@ function RoundCheckbox({
       }}
       onMouseDown={(event) => event.stopPropagation()}
       className={[
+        "task-round-checkbox",
         "inline-flex shrink-0 items-center justify-center rounded-full border font-bold transition-colors",
         dim,
         checked

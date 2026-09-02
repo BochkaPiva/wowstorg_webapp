@@ -1899,6 +1899,15 @@ body.project-estimate-fill-dragging * {
   background: rgba(255, 255, 255, 0.96);
 }
 
+.project-workspace-widget__header[data-menu-open="true"] {
+  z-index: 90 !important;
+}
+
+.project-workspace-widget__header[data-menu-open="true"] + .project-workspace-widget__body {
+  position: relative;
+  z-index: 0;
+}
+
 .project-workspace-widget[data-expanded="true"] .project-workspace-widget__header {
   position: sticky;
   top: 0;
@@ -4057,11 +4066,51 @@ body.project-estimate-fill-dragging * {
   gap: 5px;
 }
 
+.project-workspace-action-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d7d5db;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0;
+  color: #55565e;
+  text-decoration: none;
+  transition: border-color 150ms var(--wow-ease), background-color 150ms var(--wow-ease), color 150ms var(--wow-ease);
+}
+
+.project-workspace-action-button:hover,
+.project-workspace-action-button:focus-visible {
+  border-color: #b9a6db;
+  background: #f4f0fb;
+  color: #5e20bb;
+  outline: none;
+}
+
+.project-workspace-action-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.project-estimate__actions .project-workspace-action-button svg {
+  fill: currentColor;
+  stroke: none;
+}
+
 .project-schedule-panel__menu {
   position: relative;
 }
 
-.project-schedule-panel__menu > summary {
+.project-schedule-panel__menu > summary,
+.project-schedule-panel__menu > .project-workspace-action-button {
   width: 31px;
   padding: 0;
   list-style: none;

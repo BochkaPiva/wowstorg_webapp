@@ -1190,8 +1190,18 @@ export function ProjectEstimatePanel({
       setActionsOpen(false);
       setDownloadOpen(false);
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setVersionPickerOpen(false);
+      setActionsOpen(false);
+      setDownloadOpen(false);
+    }
     document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [versionPickerOpen, actionsOpen, downloadOpen]);
 
   function refreshActivity() {
@@ -2565,7 +2575,7 @@ export function ProjectEstimatePanel({
                   <div className="relative" ref={downloadWrapRef}>
                     <button
                       type="button"
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
+                      className="project-workspace-action-button inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
                       aria-label="Скачать смету"
                       onClick={() => {
                         setDownloadOpen((v) => !v);
@@ -2599,7 +2609,7 @@ export function ProjectEstimatePanel({
                 <button
                   type="button"
                   disabled={busy}
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
+                  className="project-workspace-action-button inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
                   aria-label="Действия со сметой"
                   onClick={() => {
                     setActionsOpen((v) => !v);

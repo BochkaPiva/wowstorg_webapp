@@ -127,6 +127,24 @@ export function ProjectContactsPanel({
   const [editingContactId, setEditingContactId] = React.useState<string | null>(null);
   const [draggedContactId, setDraggedContactId] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (!menuOpenFor) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest(`[data-contact-menu="${menuOpenFor}"]`)) return;
+      setMenuOpenFor(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpenFor(null);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpenFor]);
+
   const load = React.useCallback(() => {
     setLoading(true);
     fetch(`/api/projects/${projectId}/contacts`, { cache: "no-store" })
@@ -410,7 +428,7 @@ export function ProjectContactsPanel({
                     </div>
                   </div>
                   {!readOnly ? (
-                    <div className="relative">
+                    <div className="relative" data-contact-menu={c.id}>
                       <button
                         type="button"
                         onClick={() => setMenuOpenFor((prev) => (prev === c.id ? null : c.id))}

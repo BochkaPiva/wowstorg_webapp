@@ -12,6 +12,24 @@ const inputField =
 const btnPrimary =
   "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
 
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 18v2h14v-2" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="5" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="12" cy="19" r="1.5" />
+    </svg>
+  );
+}
+
 function timeToMinutes(hhmm: string): number | null {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;
@@ -75,7 +93,26 @@ export function ProjectSchedulePanel({
   const [busy, setBusy] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"timeline" | "table">("timeline");
   const [composerOpen, setComposerOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
   const storageKey = React.useMemo(() => draftScheduleStorageKey(projectId), [projectId]);
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
 
   const load = React.useCallback((showSkeleton = true) => {
     if (showSkeleton) setLoading(true);
@@ -258,15 +295,35 @@ export function ProjectSchedulePanel({
               {busy ? "Сохраняю…" : draftDirty ? "Есть изменения" : "Сохранено"}
             </span>
           ) : null}
-          <details className="project-schedule-panel__menu">
-            <summary aria-label="Действия тайминг-плана" title="Действия">•••</summary>
-            <div>
-              <a href={exportHref} target="_blank" rel="noreferrer">Экспортировать .docx</a>
-              {!readOnly && draftDirty ? (
-                <button type="button" disabled={busy} onClick={discardDraft}>Сбросить черновик</button>
+          <a
+            href={exportHref}
+            target="_blank"
+            rel="noreferrer"
+            className="project-workspace-action-button"
+            aria-label="Скачать тайминг-план DOCX"
+            title="Скачать DOCX"
+          >
+            <DownloadIcon />
+          </a>
+          {!readOnly && draftDirty ? (
+            <div ref={menuRef} className="project-schedule-panel__menu">
+              <button
+                type="button"
+                className="project-workspace-action-button"
+                aria-label="Действия тайминг-плана"
+                title="Действия"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((current) => !current)}
+              >
+                <MoreIcon />
+              </button>
+              {menuOpen ? (
+                <div>
+                  <button type="button" disabled={busy} onClick={() => { setMenuOpen(false); discardDraft(); }}>Сбросить черновик</button>
+                </div>
               ) : null}
             </div>
-          </details>
+          ) : null}
         </div>
       </div>
 

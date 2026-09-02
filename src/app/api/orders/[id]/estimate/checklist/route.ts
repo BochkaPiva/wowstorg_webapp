@@ -22,6 +22,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       endDate: true,
       rentalStartPartOfDay: true,
       rentalEndPartOfDay: true,
+      createdBy: { select: { displayName: true } },
       customer: { select: { name: true } },
       lines: {
         orderBy: { position: "asc" },
@@ -47,6 +48,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const buffer = await buildWarehouseChecklistDocx({
     title: order.eventName?.trim() || order.customer.name,
     customerName: order.customer.name,
+    createdByName: order.createdBy.displayName,
     readyByDate: order.readyByDate,
     startDate: order.startDate,
     endDate: order.endDate,

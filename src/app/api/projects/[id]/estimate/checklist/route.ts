@@ -24,6 +24,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       select: {
         title: true,
         customer: { select: { name: true } },
+        createdBy: { select: { displayName: true } },
         eventStartDate: true,
         eventEndDate: true,
         eventDateConfirmed: true,
@@ -52,6 +53,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const buffer = await buildWarehouseChecklistDocx({
     title: project.title,
     customerName: project.customer?.name ?? null,
+    createdByName: project.createdBy.displayName,
     readyByDate: project.eventDateConfirmed ? project.eventStartDate : null,
     startDate: project.eventStartDate,
     endDate: project.eventEndDate,

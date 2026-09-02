@@ -128,6 +128,7 @@ function formatMetaDate(value: Date | null | undefined) {
 export async function buildWarehouseChecklistDocx(args: {
   title: string;
   customerName?: string | null;
+  createdByName?: string | null;
   readyByDate?: Date | null;
   startDate?: Date | null;
   endDate?: Date | null;
@@ -203,6 +204,8 @@ export async function buildWarehouseChecklistDocx(args: {
           children: [
             new TextRun({ text: "Заказчик: ", font: "Calibri", size: 18, bold: true }),
             new TextRun({ text: args.customerName?.trim() || "не указан", font: "Calibri", size: 18 }),
+            new TextRun({ text: "     Оформил: ", font: "Calibri", size: 18, bold: true }),
+            new TextRun({ text: args.createdByName?.trim() || "не указан", font: "Calibri", size: 18 }),
             new TextRun({ text: "     Подготовить к: ", font: "Calibri", size: 18, bold: true }),
             new TextRun({ text: formatMetaDate(args.readyByDate), font: "Calibri", size: 18 }),
             new TextRun({ text: "     Период: ", font: "Calibri", size: 18, bold: true }),

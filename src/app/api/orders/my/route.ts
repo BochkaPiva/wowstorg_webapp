@@ -23,6 +23,7 @@ export async function GET() {
         rentalStartPartOfDay: true,
         rentalEndPartOfDay: true,
         createdAt: true,
+        estimateFileKey: true,
         payMultiplier: true,
         deliveryEnabled: true,
         deliveryPrice: true,
@@ -73,6 +74,7 @@ export async function GET() {
         rentalStartPartOfDay: o.rentalStartPartOfDay,
         rentalEndPartOfDay: o.rentalEndPartOfDay,
         createdAt: o.createdAt.toISOString(),
+        estimateAvailable: Boolean(o.estimateFileKey),
         customer: {
           id: o.customer.id,
           name: o.customer.name,

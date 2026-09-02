@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import React from "react";
+import { createPortal } from "react-dom";
 import { withDetailReturn } from "@/lib/detail-return";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -35,6 +36,7 @@ type OrderCard = {
   rentalStartPartOfDay?: RentalPartOfDay | null;
   rentalEndPartOfDay?: RentalPartOfDay | null;
   createdAt: string;
+  estimateAvailable?: boolean;
   customer: { id: string; name: string; logoUrl?: string | null };
   totalAmount?: number;
   taxAmount?: number;
@@ -202,6 +204,100 @@ function compareOrders(a: OrderCard, b: OrderCard, mode: SortMode): number {
 
 function sortOrderList(list: OrderCard[], mode: SortMode): OrderCard[] {
   return [...list].sort((a, b) => compareOrders(a, b, mode));
+}
+
+function OrderDownloadMenu({ order }: { order: OrderCard }) {
+  const [open, setOpen] = React.useState(false);
+  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+
+  function openMenu() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = 260;
+      const menuHeight = order.estimateAvailable ? 132 : 154;
+      const top = rect.bottom + menuHeight + 12 <= window.innerHeight
+        ? rect.bottom + 8
+        : Math.max(8, rect.top - menuHeight - 8);
+      const left = Math.min(
+        window.innerWidth - menuWidth - 8,
+        Math.max(8, rect.right - menuWidth),
+      );
+      setPosition({ top, left });
+    }
+    setOpen(true);
+  }
+
+  React.useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const closeOnViewportChange = () => setOpen(false);
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnViewportChange);
+    window.addEventListener("scroll", closeOnViewportChange, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnViewportChange);
+      window.removeEventListener("scroll", closeOnViewportChange, true);
+    };
+  }, [open]);
+
+  return (
+    <div className="my-order__download">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="my-order__downloadButton"
+        aria-label="Скачать документы заявки"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Скачать документы"
+        onClick={() => open ? setOpen(false) : openMenu()}
+      >
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 16v3h14v-3" />
+        </svg>
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="my-order__downloadMenu"
+              role="menu"
+              aria-label="Скачать документы заявки"
+              style={{ top: position.top, left: position.left }}
+            >
+              {order.estimateAvailable ? (
+                <a href={`/api/orders/${order.id}/estimate`} role="menuitem" download onClick={() => setOpen(false)}>
+                  <span className="my-order__downloadMenuIcon">₽</span>
+                  <span><strong>Смета</strong><small>Расчёт заявки · Excel</small></span>
+                </a>
+              ) : (
+                <span className="my-order__downloadMenuDisabled" aria-disabled="true">
+                  <span className="my-order__downloadMenuIcon">₽</span>
+                  <span><strong>Смета ещё не готова</strong><small>Появится после расчёта</small></span>
+                </span>
+              )}
+              <a href={`/api/orders/${order.id}/estimate/checklist`} role="menuitem" download onClick={() => setOpen(false)}>
+                <span className="my-order__downloadMenuIcon">✓</span>
+                <span><strong>Чек-лист</strong><small>Получение и возврат · Word</small></span>
+              </a>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
 }
 
 export default function OrdersPage() {
@@ -423,9 +519,7 @@ export default function OrdersPage() {
             <Link href={withDetailReturn(`/orders/${o.id}`, "orders", "/orders")} className="my-order__button my-order__button--dark">
               Открыть
             </Link>
-            <a href={`/api/orders/${o.id}/estimate/checklist`} className="my-order__button" title="Скачать складской чек-лист в Word">
-              Чек-лист ↓
-            </a>
+            <OrderDownloadMenu order={o} />
             {o.status === "ISSUED" && !o.parentOrderId ? (
               <Link href={`/catalog?quickParentId=${o.id}`} className="my-order__button">
                 Доп.-выдача

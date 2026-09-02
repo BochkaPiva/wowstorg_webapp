@@ -945,6 +945,14 @@ export default function OrderDetailsPage() {
   const [editRentalDiscountType, setEditRentalDiscountType] = React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
   const [editRentalDiscountPercent, setEditRentalDiscountPercent] = React.useState<number | "">("");
   const [editRentalDiscountAmount, setEditRentalDiscountAmount] = React.useState<number | "">("");
+  const [editGreenwichRequestedDiscountType, setEditGreenwichRequestedDiscountType] =
+    React.useState<"NONE" | "PERCENT" | "AMOUNT">("NONE");
+  const [editGreenwichRequestedDiscountPercent, setEditGreenwichRequestedDiscountPercent] =
+    React.useState<number | "">("");
+  const [editGreenwichRequestedDiscountAmount, setEditGreenwichRequestedDiscountAmount] =
+    React.useState<number | "">("");
+  const [editGreenwichDiscountRequestComment, setEditGreenwichDiscountRequestComment] = React.useState("");
+  const [discountRequestOpen, setDiscountRequestOpen] = React.useState(false);
   const [catalogItems, setCatalogItems] = React.useState<CatalogItemOption[]>([]);
 
   const user = state.status === "authenticated" ? state.user : null;
@@ -1317,6 +1325,11 @@ export default function OrderDetailsPage() {
     setEditRentalDiscountType(order.rentalDiscountType ?? "NONE");
     setEditRentalDiscountPercent(order.rentalDiscountPercent ?? "");
     setEditRentalDiscountAmount(order.rentalDiscountAmount ?? "");
+    setEditGreenwichRequestedDiscountType(order.greenwichRequestedDiscountType ?? "NONE");
+    setEditGreenwichRequestedDiscountPercent(order.greenwichRequestedDiscountPercent ?? "");
+    setEditGreenwichRequestedDiscountAmount(order.greenwichRequestedDiscountAmount ?? "");
+    setEditGreenwichDiscountRequestComment(order.greenwichDiscountRequestComment ?? "");
+    setDiscountRequestOpen(order.greenwichRequestedDiscountType !== "NONE");
     setIsEditing(true);
     setActionError(null);
     if (canEditOrderServicesOnly) {
@@ -1344,6 +1357,15 @@ export default function OrderDetailsPage() {
         );
       })
       .catch(() => setCatalogItems([]));
+  }
+
+  function openDiscountRequestEditor() {
+    if (!order) return;
+    startEditing();
+    setDiscountRequestOpen(true);
+    if (order.greenwichRequestedDiscountType === "NONE") {
+      setEditGreenwichRequestedDiscountType("PERCENT");
+    }
   }
 
   function hiddenExpensePayload() {
@@ -1470,16 +1492,22 @@ export default function OrderDetailsPage() {
         return;
       }
     }
-    const discountError = isWarehouse
-      ? getOrderDiscountError({
-          type: editRentalDiscountType,
-          percent: editRentalDiscountPercent,
-          amount: editRentalDiscountAmount,
-          rentalSubtotal: editPricing?.rentalBeforeDiscount ?? 0,
-        })
-      : null;
+    const discountError = getOrderDiscountError({
+      type: isWarehouse ? editRentalDiscountType : editGreenwichRequestedDiscountType,
+      percent: isWarehouse ? editRentalDiscountPercent : editGreenwichRequestedDiscountPercent,
+      amount: isWarehouse ? editRentalDiscountAmount : editGreenwichRequestedDiscountAmount,
+      rentalSubtotal: editPricing?.rentalBeforeDiscount ?? 0,
+    });
     if (discountError) {
       setActionError(discountError);
+      return;
+    }
+    if (
+      isGreenwich &&
+      editGreenwichRequestedDiscountType !== "NONE" &&
+      !editGreenwichDiscountRequestComment.trim()
+    ) {
+      setActionError("Добавьте короткое обоснование скидки.");
       return;
     }
     setBusy(true);
@@ -1551,11 +1579,22 @@ export default function OrderDetailsPage() {
                     : null,
               }
             : {
-                  greenwichRequestedDiscountType: "NONE",
-                  greenwichRequestedDiscountPercent: null,
-                  greenwichRequestedDiscountAmount: null,
-                  greenwichDiscountRequestComment: null,
-                }),
+                greenwichRequestedDiscountType: editGreenwichRequestedDiscountType,
+                greenwichRequestedDiscountPercent:
+                  editGreenwichRequestedDiscountType === "PERCENT" &&
+                  editGreenwichRequestedDiscountPercent !== ""
+                    ? Number(editGreenwichRequestedDiscountPercent)
+                    : null,
+                greenwichRequestedDiscountAmount:
+                  editGreenwichRequestedDiscountType === "AMOUNT" &&
+                  editGreenwichRequestedDiscountAmount !== ""
+                    ? Number(editGreenwichRequestedDiscountAmount)
+                    : null,
+                greenwichDiscountRequestComment:
+                  editGreenwichRequestedDiscountType === "NONE"
+                    ? null
+                    : editGreenwichDiscountRequestComment.trim() || null,
+              }),
           lines: editLines.map((l) => ({
             id: l.id,
             itemId: l.itemId,
@@ -1856,6 +1895,14 @@ export default function OrderDetailsPage() {
                     Смета ↓
                   </a>
                 ) : null}
+                <a
+                  href={`/api/orders/${order.id}/estimate/checklist`}
+                  className={orderSecondaryButtonClass}
+                  title={isGreenwich ? "Скачать чек-лист получения и возврата в Word" : "Скачать складской чек-лист в Word"}
+                  download
+                >
+                  Чек-лист ↓
+                </a>
               </div>
             </div>
           </div>
@@ -1893,21 +1940,50 @@ export default function OrderDetailsPage() {
           {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
                 isGreenwich ? (
-                  <div className="grid overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 sm:grid-cols-3">
-                    <div className="bg-white px-4 py-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">До налога</div>
-                      <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
-                    </div>
-                    <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Налог {Math.round(orderPricing.taxRate * 100)}%</div>
-                      <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
-                    </div>
-                    <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
-                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Скидка на аренду</div>
-                      <div className="mt-1 font-black tabular-nums text-emerald-700">
-                        {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
+                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+                    <div className="grid bg-zinc-200 sm:grid-cols-3">
+                      <div className="bg-white px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">До налога</div>
+                        <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
+                      </div>
+                      <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Налог {Math.round(orderPricing.taxRate * 100)}%</div>
+                        <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
+                      </div>
+                      <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Подтверждённая скидка</div>
+                        <div className="mt-1 font-black tabular-nums text-emerald-700">
+                          {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
+                        </div>
                       </div>
                     </div>
+                    {(canEditOrder || order.greenwichRequestedDiscountType !== "NONE") ? (
+                      <div className="flex flex-col gap-3 border-t border-zinc-200 bg-violet-50/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-violet-950">
+                            {order.greenwichRequestedDiscountType === "NONE"
+                              ? "Нужна дополнительная скидка?"
+                              : `Запрошено: ${formatDiscountLabel(
+                                  order.greenwichRequestedDiscountType,
+                                  order.greenwichRequestedDiscountPercent,
+                                  order.greenwichRequestedDiscountAmount,
+                                )}`}
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-violet-800">
+                            {order.greenwichDiscountRequestComment || "Запрос увидит менеджер ВАУСТОРГ и примет решение."}
+                          </p>
+                        </div>
+                        {canEditOrder ? (
+                          <button
+                            type="button"
+                            onClick={openDiscountRequestEditor}
+                            className={orderSecondaryButtonClass + " shrink-0 px-3 py-2 text-xs"}
+                          >
+                            {order.greenwichRequestedDiscountType === "NONE" ? "Запросить скидку" : "Изменить запрос"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <OrderFinancialSummary
@@ -1930,6 +2006,23 @@ export default function OrderDetailsPage() {
                   />
                 )
               ) : null}
+            {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
+              <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-inset ring-amber-200">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <strong>Grinvich запросил скидку</strong>
+                  <span className="font-black tabular-nums">
+                    {formatDiscountLabel(
+                      order.greenwichRequestedDiscountType,
+                      order.greenwichRequestedDiscountPercent,
+                      order.greenwichRequestedDiscountAmount,
+                    )}
+                  </span>
+                </div>
+                {order.greenwichDiscountRequestComment ? (
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">{order.greenwichDiscountRequestComment}</p>
+                ) : null}
+              </div>
+            ) : null}
             {isWarehouse ? (
               <a
                 href={`/api/orders/${order.id}/estimate/internal`}
@@ -2318,7 +2411,9 @@ export default function OrderDetailsPage() {
 
                 {!isServiceOnlyEdit ? (
                   <div className="border-t border-zinc-200 px-5 py-4">
-                    <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-500">Скидка на реквизит</div>
+                    <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-500">
+                      {isWarehouse ? "Скидка на реквизит" : "Запрос скидки"}
+                    </div>
                     {isWarehouse ? (
                       <>
                         <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1">
@@ -2351,7 +2446,110 @@ export default function OrderDetailsPage() {
                         </p>
                       </>
                     ) : (
-                      <p className="mt-2 text-xs leading-5 text-zinc-600">Цена каждой позиции уже учитывает лучшую скидку Grinvich.</p>
+                      <>
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-zinc-800">
+                              {editGreenwichRequestedDiscountType === "NONE"
+                                ? "Дополнительная скидка не запрошена"
+                                : `Запрос: ${formatDiscountLabel(
+                                    editGreenwichRequestedDiscountType,
+                                    editGreenwichRequestedDiscountPercent === "" ? null : Number(editGreenwichRequestedDiscountPercent),
+                                    editGreenwichRequestedDiscountAmount === "" ? null : Number(editGreenwichRequestedDiscountAmount),
+                                  )}`}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-4 text-zinc-500">
+                              На итог повлияет только после подтверждения ВАУСТОРГ.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            aria-expanded={discountRequestOpen}
+                            onClick={() => {
+                              setDiscountRequestOpen((open) => !open);
+                              if (editGreenwichRequestedDiscountType === "NONE") {
+                                setEditGreenwichRequestedDiscountType("PERCENT");
+                              }
+                            }}
+                            className={orderSecondaryButtonClass + " shrink-0 px-3 py-2 text-xs"}
+                          >
+                            {discountRequestOpen ? "Скрыть" : editGreenwichRequestedDiscountType === "NONE" ? "Запросить" : "Изменить"}
+                          </button>
+                        </div>
+
+                        {discountRequestOpen ? (
+                          <div className="mt-3 space-y-3 border-t border-zinc-200 pt-3">
+                            <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-1" role="radiogroup" aria-label="Формат запроса скидки">
+                              {([['PERCENT', 'Процент'], ['AMOUNT', 'Сумма']] as const).map(([value, label]) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={editGreenwichRequestedDiscountType === value}
+                                  onClick={() => setEditGreenwichRequestedDiscountType(value)}
+                                  className={[
+                                    "rounded-md px-2 py-2 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600",
+                                    editGreenwichRequestedDiscountType === value
+                                      ? "bg-zinc-950 text-white"
+                                      : "text-zinc-600 hover:bg-white hover:text-zinc-950",
+                                  ].join(" ")}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium text-zinc-600">
+                                {editGreenwichRequestedDiscountType === "PERCENT" ? "Желаемая скидка" : "Желаемая сумма"}
+                              </span>
+                              <span className="relative block">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  min={0}
+                                  max={editGreenwichRequestedDiscountType === "PERCENT" ? 100 : editPricing?.rentalBeforeDiscount}
+                                  step={editGreenwichRequestedDiscountType === "PERCENT" ? 0.5 : 1}
+                                  value={editGreenwichRequestedDiscountType === "PERCENT" ? editGreenwichRequestedDiscountPercent : editGreenwichRequestedDiscountAmount}
+                                  onChange={(event) => {
+                                    const value = event.target.value === "" ? "" : Number(event.target.value);
+                                    if (editGreenwichRequestedDiscountType === "PERCENT") setEditGreenwichRequestedDiscountPercent(value);
+                                    else setEditGreenwichRequestedDiscountAmount(value);
+                                  }}
+                                  className={orderInputClass + " w-full pr-9 text-right font-black tabular-nums"}
+                                  placeholder={editGreenwichRequestedDiscountType === "PERCENT" ? "10" : "5000"}
+                                />
+                                <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm font-bold text-zinc-500">
+                                  {editGreenwichRequestedDiscountType === "PERCENT" ? "%" : "₽"}
+                                </span>
+                              </span>
+                            </label>
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium text-zinc-600">Почему нужна скидка</span>
+                              <textarea
+                                rows={3}
+                                maxLength={1000}
+                                value={editGreenwichDiscountRequestComment}
+                                onChange={(event) => setEditGreenwichDiscountRequestComment(event.target.value)}
+                                className={orderInputClass + " w-full resize-y"}
+                                placeholder="Например: большой объём заявки или регулярное мероприятие"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditGreenwichRequestedDiscountType("NONE");
+                                setEditGreenwichRequestedDiscountPercent("");
+                                setEditGreenwichRequestedDiscountAmount("");
+                                setEditGreenwichDiscountRequestComment("");
+                                setDiscountRequestOpen(false);
+                              }}
+                              className="text-xs font-semibold text-zinc-500 hover:text-rose-700"
+                            >
+                              Убрать запрос
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 ) : null}

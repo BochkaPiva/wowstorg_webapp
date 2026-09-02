@@ -76,8 +76,16 @@ function cell(text: string, width: number, options?: {
   });
 }
 
-function headerRow() {
-  const titles = ["№", "Позиция", "Кол-во", "Дней", "Собрано", "Комментарий", "Забрали"];
+function headerRow(labels?: { firstCheck: string; secondCheck: string }) {
+  const titles = [
+    "№",
+    "Позиция",
+    "Кол-во",
+    "Дней",
+    labels?.firstCheck ?? "Собрано",
+    "Комментарий",
+    labels?.secondCheck ?? "Забрали",
+  ];
   return new TableRow({
     tableHeader: true,
     cantSplit: true,
@@ -127,6 +135,9 @@ function formatMetaDate(value: Date | null | undefined) {
 
 export async function buildWarehouseChecklistDocx(args: {
   title: string;
+  documentTitle?: string;
+  footerLabel?: string;
+  columnLabels?: { firstCheck: string; secondCheck: string };
   customerName?: string | null;
   createdByName?: string | null;
   readyByDate?: Date | null;
@@ -138,7 +149,7 @@ export async function buildWarehouseChecklistDocx(args: {
   const lineCount = nonEmptySections.reduce((sum, section) => sum + section.lines.length, 0);
   const showSectionTitles = nonEmptySections.length > 1 || nonEmptySections.some((section) => section.title !== "Состав заявки");
 
-  const rows: TableRow[] = [headerRow()];
+  const rows: TableRow[] = [headerRow(args.columnLabels)];
   for (const section of nonEmptySections) {
     if (showSectionTitles) rows.push(sectionRow(section.title));
     rows.push(...section.lines.map(lineRow));
@@ -182,7 +193,7 @@ export async function buildWarehouseChecklistDocx(args: {
             alignment: AlignmentType.RIGHT,
             spacing: { before: 0, after: 0 },
             children: [
-              new TextRun({ text: "ВАУСТОРГ · складской чек-лист · ", font: "Calibri", size: 16, color: "777777" }),
+              new TextRun({ text: `ВАУСТОРГ · ${args.footerLabel ?? "складской чек-лист"} · `, font: "Calibri", size: 16, color: "777777" }),
               new TextRun({ children: [PageNumber.CURRENT], font: "Calibri", size: 16, color: "777777" }),
               new TextRun({ text: " / ", font: "Calibri", size: 16, color: "777777" }),
               new TextRun({ children: [PageNumber.TOTAL_PAGES], font: "Calibri", size: 16, color: "777777" }),
@@ -193,7 +204,7 @@ export async function buildWarehouseChecklistDocx(args: {
       children: [
         new Paragraph({
           spacing: { before: 0, after: 40 },
-          children: [new TextRun({ text: "ЧЕК-ЛИСТ КОМПЛЕКТАЦИИ", font: "Calibri", size: 22, bold: true, color: "6D28D9", characterSpacing: 30 })],
+          children: [new TextRun({ text: args.documentTitle ?? "ЧЕК-ЛИСТ КОМПЛЕКТАЦИИ", font: "Calibri", size: 22, bold: true, color: "6D28D9", characterSpacing: 30 })],
         }),
         new Paragraph({
           spacing: { before: 0, after: 80, line: 320 },

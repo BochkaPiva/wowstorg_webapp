@@ -2155,12 +2155,23 @@ export function ProjectEstimatePanel({
       const j = await res.json().catch(() => null);
       if (res.ok) {
         if (standalone) {
-          setEstimateDraftDirty(false);
-          setEstimateSaveStatus("SAVED");
-          setEstimateSaveMessage("Изменения сохранены.");
-          if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
-          load(selectedVersion);
-          refreshActivity();
+          setSavedEstimateSnapshot({
+            sections: cloneLocalDraftSections(snapshotSections),
+            customColumns: cloneEstimateCustomColumns(snapshotCustomColumns),
+            commissionEnabled: snapshotCommissionEnabled,
+            clientTaxEnabled: snapshotClientTaxEnabled,
+            clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+          });
+          setLastEstimateSavedAt(new Date());
+          if (estimateDraftRevisionRef.current === snapshotRevision) {
+            setEstimateDraftDirty(false);
+            setEstimateSaveStatus("SAVED");
+            setEstimateSaveMessage("Все изменения сохранены.");
+            if (estimateDraftStorageKey) window.localStorage.removeItem(estimateDraftStorageKey);
+          } else {
+            setEstimateSaveStatus("IDLE");
+            setEstimateSaveMessage("Есть новые изменения — сохраню их следом.");
+          }
           return;
         }
         if (typeof j?.revision === "number") {
@@ -4337,6 +4348,8 @@ function CompactEstimateTable({
     value: string;
   } | null>(null);
   const fillDragRef = React.useRef(fillDrag);
+  const checkboxDragCleanupRef = React.useRef<(() => void) | null>(null);
+  const checkboxDragSuppressChangeRef = React.useRef(false);
   const [columnWidths, setColumnWidths] = React.useState<Record<ProjectEstimateTableColumn, number>>(() => {
     const defaults = Object.fromEntries(COMPACT_TABLE_COLUMNS.map((column) => [column.key, column.defaultWidth])) as Record<ProjectEstimateTableColumn, number>;
     if (typeof window === "undefined") return defaults;
@@ -4358,6 +4371,8 @@ function CompactEstimateTable({
   React.useEffect(() => {
     fillDragRef.current = fillDrag;
   }, [fillDrag]);
+
+  React.useEffect(() => () => checkboxDragCleanupRef.current?.(), []);
 
   function beginFillDrag(
     event: React.PointerEvent<HTMLSpanElement>,
@@ -4497,6 +4512,57 @@ function CompactEstimateTable({
       else next.add(lineId);
       return next;
     });
+  }
+
+  function setLineSelected(lineId: string, selected: boolean) {
+    setSelectedLineIds((previous) => {
+      if (previous.has(lineId) === selected) return previous;
+      const next = new Set(previous);
+      if (selected) next.add(lineId);
+      else next.delete(lineId);
+      return next;
+    });
+  }
+
+  function beginLineCheckboxDrag(
+    event: React.PointerEvent<HTMLInputElement>,
+    lineId: string,
+  ) {
+    if (event.button !== 0 || busy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.focus({ preventScroll: true });
+
+    checkboxDragCleanupRef.current?.();
+    const nextSelected = !selectedLineIds.has(lineId);
+    const visited = new Set([lineId]);
+    checkboxDragSuppressChangeRef.current = true;
+    setLineSelected(lineId, nextSelected);
+    document.body.classList.add("project-estimate-checkbox-dragging");
+
+    const move = (moveEvent: PointerEvent) => {
+      const checkbox = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLInputElement>(
+        "[data-estimate-select-line-id]",
+      );
+      const hoveredLineId = checkbox?.dataset.estimateSelectLineId;
+      if (!hoveredLineId || visited.has(hoveredLineId)) return;
+      visited.add(hoveredLineId);
+      setLineSelected(hoveredLineId, nextSelected);
+    };
+    const finish = () => {
+      document.body.classList.remove("project-estimate-checkbox-dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      checkboxDragCleanupRef.current = null;
+      window.setTimeout(() => {
+        checkboxDragSuppressChangeRef.current = false;
+      }, 0);
+    };
+    checkboxDragCleanupRef.current = finish;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
   }
 
   function duplicateSelectedLines() {
@@ -4639,7 +4705,7 @@ function CompactEstimateTable({
                     checked={allSelected}
                     onChange={toggleAllLines}
                     disabled={lines.length === 0 || busy}
-                    className="h-4 w-4 rounded border-zinc-500 accent-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                    className="project-estimate-grid__checkbox"
                     aria-label={allSelected ? "Снять выбор со всех строк" : "Выбрать все строки"}
                   />
                 </th>
@@ -4693,13 +4759,24 @@ function CompactEstimateTable({
                 }`}
               >
                 {!readOnly ? (
-                  <td className="px-2 py-1.5 text-center">
+                  <td
+                    className="px-2 py-1.5 text-center"
+                    data-estimate-select-line-id={line.id}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedLineIds.has(line.id)}
-                      onChange={() => toggleLine(line.id)}
+                      onChange={() => {
+                        if (!checkboxDragSuppressChangeRef.current) toggleLine(line.id);
+                      }}
+                      onPointerDown={(event) => beginLineCheckboxDrag(event, line.id)}
+                      onClick={(event) => {
+                        if (checkboxDragSuppressChangeRef.current) event.preventDefault();
+                      }}
                       disabled={busy}
-                      className="h-4 w-4 rounded border-zinc-300 accent-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                      className="project-estimate-grid__checkbox"
+                      data-estimate-select-line-id={line.id}
+                      title="Нажмите или зажмите и проведите по строкам"
                       aria-label={`Выбрать строку ${rowIndex + 1}`}
                     />
                   </td>

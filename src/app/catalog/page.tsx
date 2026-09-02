@@ -997,11 +997,10 @@ export default function CatalogPage() {
             <div className="mk-headDino" aria-hidden="true">
               <Image src="/brand/dino-catalog.webp" alt="" fill sizes="(max-width: 1100px) 220px, 290px" priority className="mk-headDinoImage" />
             </div>
-            <button
-              type="button"
+            <Link
+              href={cartHref}
               className="mk-cartPill mk-headCart"
-              onClick={openMiniCart}
-              aria-haspopup="dialog"
+              aria-label={isProjectDemoCatalog ? "Открыть черновик" : "Перейти к оформлению корзины"}
             >
               <span className="mk-headCartIcon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -1010,7 +1009,7 @@ export default function CatalogPage() {
                 </svg>
               </span>
               <span className="mk-headCartCopy">
-                <span>{isProjectDemoCatalog ? "Черновик" : "Подборка"}</span>
+                <span>{isProjectDemoCatalog ? "Черновик" : "Корзина"}</span>
                 <small>
                   {cartTotalForPeriod > 0
                     ? `${Math.round(cartTotalForPeriod).toLocaleString("ru-RU")} ₽${isProjectDemoCatalog ? " / день" : ""}`
@@ -1019,7 +1018,7 @@ export default function CatalogPage() {
               </span>
               <strong>{cartTotalQty}</strong>
               <span className="mk-headCartArrow" aria-hidden="true">→</span>
-            </button>
+            </Link>
           </div>
 
           <div className="mk-headOperations">
@@ -1366,12 +1365,11 @@ export default function CatalogPage() {
 
       {cartFeedback && typeof document !== "undefined"
         ? createPortal(
-            <button
+            <div
               key={cartFeedback.key}
-              type="button"
               className="mk-cartFeedback"
-              onClick={openMiniCart}
-              aria-label={`${cartFeedback.label}. Открыть корзину`}
+              role="status"
+              aria-live="polite"
             >
               {cartFeedback.itemId ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -1381,10 +1379,10 @@ export default function CatalogPage() {
               )}
               <span>
                 <strong>{cartFeedback.label}</strong>
-                <small>Корзина не прерывает выбор · открыть</small>
+                <small>Добавлено в корзину</small>
               </span>
               <span className="mk-cartFeedbackCount" aria-hidden="true">{cartTotalQty}</span>
-            </button>,
+            </div>,
             document.body,
           )
         : null}

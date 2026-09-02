@@ -107,7 +107,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         })),
       });
 
-      await tx.projectEstimateVersion.updateMany({
+      const movedVersions = await tx.projectEstimateVersion.updateMany({
         where: { standaloneEstimateId: estimate.id },
         data: {
           standaloneEstimateId: null,
@@ -115,6 +115,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           includeInProjectTotals: true,
         },
       });
+      if (movedVersions.count < 1) throw new Error("ESTIMATE_VERSION_NOT_FOUND");
       await tx.standaloneEstimate.update({
         where: { id: estimate.id },
         data: {
@@ -147,7 +148,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         } as Prisma.InputJsonValue,
       });
       return created;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      maxWait: 5_000,
+      timeout: 15_000,
+    });
 
     return jsonOk({ project });
   } catch (error) {
@@ -159,6 +164,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
     if (error instanceof Error && error.message === "CUSTOMER_NOT_FOUND") {
       return jsonError(400, "Заказчик не найден");
+    }
+    if (error instanceof Error && error.message === "ESTIMATE_VERSION_NOT_FOUND") {
+      return jsonError(409, "В смете нет версии для переноса в проект");
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return jsonError(409, "Смета изменилась во время создания проекта. Повторите действие");
     }
     throw error;
   }

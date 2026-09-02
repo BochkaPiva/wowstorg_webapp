@@ -1,6 +1,6 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-08-28 — добавлено атомарное создание проектного пространства вместе с командой и стартовым layout.
+> **Дата сверки:** 2026-09-02 — преобразование независимой сметы защищено расширенным timeout и конфликтом `P2034`.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
@@ -32,7 +32,7 @@
 | `src/app/api/projects/[id]/estimate/route.ts` | нет (bulk-замена редактируемых разделов, timeout 45 с) |
 | `src/app/api/standalone-estimates/route.ts` | нет |
 | `src/app/api/standalone-estimates/[id]/estimate/route.ts` | нет |
-| `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** |
+| `src/app/api/standalone-estimates/[id]/convert/route.ts` | **да** (перенос версий и создание проекта атомарны; timeout 15 с, `P2034` возвращает 409) |
 | `src/app/api/tasks/checklist/[id]/route.ts` | нет (изменение/удаление подзадачи и запись события в журнал атомарны) |
 | `src/app/api/tasks/columns/[id]/tasks/route.ts` | нет (создание задачи и первая запись журнала атомарны) |
 | `src/app/api/tasks/tasks/[id]/checklist/route.ts` | нет (создание подзадачи и запись события атомарны) |

@@ -2215,7 +2215,6 @@ export function ProjectEstimatePanel({
 
   React.useEffect(() => {
     if (
-      standalone ||
       readOnly ||
       !data?.current ||
       !estimateDraftDirty ||
@@ -2228,7 +2227,7 @@ export function ProjectEstimatePanel({
     }
     const timer = window.setTimeout(() => autoSaveRef.current(), 1400);
     return () => window.clearTimeout(timer);
-  }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, readOnly, standalone]);
+  }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, readOnly]);
 
   function discardEstimateDraft() {
     if (!window.confirm("Сбросить несохранённые изменения сметы?")) return;
@@ -2425,7 +2424,7 @@ export function ProjectEstimatePanel({
             : "Сохранено автоматически";
 
   return (
-    <div className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""}`}>
+    <div className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""} ${standalone ? "project-estimate--standalone" : ""}`}>
       <UnitPresetDatalist />
 
       {loading ? (
@@ -2453,7 +2452,7 @@ export function ProjectEstimatePanel({
           <div className="project-estimate__toolbar border-b border-zinc-300 bg-white pb-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                {standalone ? (
+                {standalone && !workspaceMode ? (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-violet-700">Независимый расчёт</span>
@@ -2464,7 +2463,7 @@ export function ProjectEstimatePanel({
                     <div className="mt-1 text-xl font-black tracking-tight text-zinc-950">Смета</div>
                   </>
                 ) : null}
-                <div className={`${standalone ? "mt-2" : ""} flex flex-wrap items-center gap-2`}>
+                <div className={`${standalone && !workspaceMode ? "mt-2" : ""} flex flex-wrap items-center gap-2`}>
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
@@ -2502,7 +2501,11 @@ export function ProjectEstimatePanel({
                           <span className="min-w-0">
                             <span className="block font-semibold">{v.title?.trim() || `Смета ${v.versionNumber}`}</span>
                           <span className="block text-xs text-zinc-500">
-                            {v.includeInProjectTotals ? "Учитывается в финансах проекта" : "Не входит в итог проекта"}
+                            {standalone
+                              ? "Версия независимой сметы"
+                              : v.includeInProjectTotals
+                                ? "Учитывается в финансах проекта"
+                                : "Не входит в итог проекта"}
                           </span>
                         </span>
                           {v.includeInProjectTotals ? (
@@ -2563,11 +2566,22 @@ export function ProjectEstimatePanel({
                         ) : null}
                       </div>
                     ) : null}
-                    {!readOnly ? (
+                    {!readOnly && !standalone ? (
                       <div className="project-estimate__column-actions">
                         <button type="button" onClick={() => setCustomColumnsOpen((value) => !value)} aria-expanded={customColumnsOpen}>Колонки</button>
                         <button type="button" disabled={busy || estimateSaving || customColumns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT} onClick={() => { setCustomColumnsOpen(true); addCustomColumn(); }} aria-label="Добавить колонку">+</button>
                       </div>
+                    ) : null}
+                    {!readOnly && standalone ? (
+                      <button
+                        type="button"
+                        className="project-estimate__catalog-action"
+                        onClick={() => setStandaloneCatalogOpen((value) => !value)}
+                        aria-expanded={standaloneCatalogOpen}
+                      >
+                        <span aria-hidden>{standaloneCatalogOpen ? "×" : "+"}</span>
+                        {standaloneCatalogOpen ? "Закрыть каталог" : "Каталог"}
+                      </button>
                     ) : null}
                   </>
                 ) : null}
@@ -3592,7 +3606,7 @@ function StandaloneEstimateCatalog({
   }
 
   return (
-    <section className="overflow-hidden border border-violet-200 bg-white shadow-[0_16px_44px_rgba(76,29,149,0.08)]">
+    <section className="standalone-estimate-catalog overflow-hidden border border-violet-200 bg-white">
       <div className="grid gap-4 border-b border-violet-100 bg-[linear-gradient(105deg,#faf8ff_0%,#fff_55%,#fff8dc_100%)] p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">

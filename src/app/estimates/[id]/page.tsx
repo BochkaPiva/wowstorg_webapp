@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
@@ -39,6 +40,23 @@ async function responseMessage(response: Response) {
   return payload?.error?.message ?? "Не удалось выполнить действие";
 }
 
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function EstimateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M7 3.5h10A2.5 2.5 0 0 1 19.5 6v12A2.5 2.5 0 0 1 17 20.5H7A2.5 2.5 0 0 1 4.5 18V6A2.5 2.5 0 0 1 7 3.5Z" />
+      <path d="M8 8h8M8 12h3M14 12h2M8 16h3M14 16h2" />
+    </svg>
+  );
+}
+
 export default function StandaloneEstimatePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -51,7 +69,9 @@ export default function StandaloneEstimatePage() {
   const [customerId, setCustomerId] = React.useState("");
   const [newCustomerName, setNewCustomerName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [estimateGridEnabled, setEstimateGridEnabled] = React.useState(true);
+  const [editingTitle, setEditingTitle] = React.useState(false);
+  const [titleDraft, setTitleDraft] = React.useState("");
+  const [titleSaving, setTitleSaving] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -59,12 +79,9 @@ export default function StandaloneEstimatePage() {
     try {
       const response = await fetch(`/api/standalone-estimates/${id}`, { cache: "no-store" });
       if (!response.ok) throw new Error(await responseMessage(response));
-      const payload = await response.json() as {
-        estimate: EstimateDetails;
-        features?: { projectEstimateGridV2?: boolean };
-      };
+      const payload = await response.json() as { estimate: EstimateDetails };
       setEstimate(payload.estimate);
-      setEstimateGridEnabled(payload.features?.projectEstimateGridV2 ?? true);
+      setTitleDraft(payload.estimate.title);
       setCustomerId(payload.estimate.customer?.id ?? "");
       setNewCustomerName(payload.estimate.leadCustomerName ?? "");
     } catch (loadError) {
@@ -82,6 +99,47 @@ export default function StandaloneEstimatePage() {
         setCustomers(Array.isArray(payload?.customers) ? payload!.customers! : []);
       });
   }, [load]);
+
+  React.useEffect(() => {
+    if (!convertOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) setConvertOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [busy, convertOpen]);
+
+  async function saveTitle() {
+    if (!estimate || estimate.convertedAt || titleSaving) return;
+    const title = titleDraft.trim();
+    if (!title || title === estimate.title) {
+      setTitleDraft(estimate.title);
+      setEditingTitle(false);
+      return;
+    }
+    setTitleSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/standalone-estimates/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const payload = await response.json() as {
+        estimate: { title: string; updatedAt: string };
+      };
+      setEstimate((current) => current
+        ? { ...current, title: payload.estimate.title, updatedAt: payload.estimate.updatedAt }
+        : current);
+      setTitleDraft(payload.estimate.title);
+      setEditingTitle(false);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Не удалось переименовать смету");
+    } finally {
+      setTitleSaving(false);
+    }
+  }
 
   async function convert(event: React.FormEvent) {
     event.preventDefault();
@@ -109,6 +167,9 @@ export default function StandaloneEstimatePage() {
     }
   }
 
+  const customerName = estimate?.customer?.name ?? estimate?.leadCustomerName ?? "Заказчик не указан";
+  const readOnly = Boolean(estimate?.convertedAt);
+
   return (
     <AppShell title={estimate?.title ?? "Независимая смета"}>
       {loading ? (
@@ -116,93 +177,141 @@ export default function StandaloneEstimatePage() {
       ) : error && !estimate ? (
         <div className="border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-800">{error}</div>
       ) : estimate ? (
-        <main className="space-y-5">
-          <Link href="/work?view=estimates" className="inline-flex items-center gap-2 text-sm font-bold text-violet-700 hover:text-violet-900">
-            <span aria-hidden>←</span>
-            К рабочей очереди
-          </Link>
-
-          <section className="border border-zinc-300 border-t-4 border-t-yellow-400 bg-white p-5 sm:p-7">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="min-w-0">
-                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-violet-700">
-                  Независимая смета
+        <main className="standalone-estimate-page">
+          <section className="standalone-estimate-hero">
+            <div className="standalone-estimate-hero__mascot" aria-hidden="true">
+              <span>Считаем точно!</span>
+              <Image src="/project-mascot-v2.png" alt="" width={768} height={512} priority />
+            </div>
+            <div className="standalone-estimate-hero__surface">
+              <div className="standalone-estimate-hero__primary">
+                <div className="standalone-estimate-hero__crumbs">
+                  <Link href="/work?view=estimates" aria-label="К независимым сметам">←</Link>
+                  <span>Независимая смета</span>
+                  <i aria-hidden>/</i>
+                  <span>{readOnly ? "перенесена в проект" : "черновик"}</span>
                 </div>
-                <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950 sm:text-5xl">
-                  {estimate.title}
-                </h1>
-                <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-600">
-                  <span>
-                    Заказчик: <b className="text-zinc-950">{estimate.customer?.name ?? estimate.leadCustomerName ?? "пока не указан"}</b>
-                  </span>
-                  <span>
-                    Ответственный: <b className="text-zinc-950">{estimate.owner.displayName}</b>
-                  </span>
-                  <span>
-                    Обновлено: <b className="text-zinc-950">{new Date(estimate.updatedAt).toLocaleDateString("ru-RU")}</b>
-                  </span>
+
+                {editingTitle && !readOnly ? (
+                  <input
+                    value={titleDraft}
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                    onBlur={() => void saveTitle()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setTitleDraft(estimate.title);
+                        setEditingTitle(false);
+                      }
+                    }}
+                    className="standalone-estimate-hero__title standalone-estimate-hero__title-input"
+                    aria-label="Название сметы"
+                    maxLength={300}
+                    disabled={titleSaving}
+                    autoFocus
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="standalone-estimate-hero__title"
+                    onClick={() => !readOnly && setEditingTitle(true)}
+                    disabled={readOnly}
+                    title={readOnly ? undefined : "Нажмите, чтобы переименовать"}
+                  >
+                    {estimate.title}
+                  </button>
+                )}
+
+                <div className="standalone-estimate-hero__meta">
+                  <span><small>Заказчик</small><strong>{customerName}</strong></span>
+                  <span><small>Ответственный</small><strong>{estimate.owner.displayName}</strong></span>
+                  <span><small>Обновлено</small><strong>{formatDate(estimate.updatedAt)}</strong></span>
                 </div>
               </div>
-              {estimate.convertedProjectId ? (
-                <Link
-                  href={`/projects/${estimate.convertedProjectId}`}
-                  className="inline-flex min-h-12 items-center justify-center bg-zinc-950 px-5 text-sm font-black text-white hover:bg-violet-700"
-                >
-                  Открыть созданный проект
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConvertOpen(true)}
-                  className="inline-flex min-h-12 items-center justify-center bg-yellow-400 px-5 text-sm font-black text-zinc-950 transition-colors hover:bg-zinc-950 hover:text-white"
-                >
-                  Превратить в проект →
-                </button>
-              )}
+
+              <div className="standalone-estimate-hero__actions">
+                {estimate.convertedProjectId ? (
+                  <Link href={`/projects/${estimate.convertedProjectId}`}>
+                    Открыть проект <span aria-hidden>→</span>
+                  </Link>
+                ) : (
+                  <button type="button" onClick={() => setConvertOpen(true)}>
+                    Превратить в проект <span aria-hidden>→</span>
+                  </button>
+                )}
+              </div>
             </div>
           </section>
 
           {error ? (
-            <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</div>
+            <div className="standalone-estimate-alert" role="alert">
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} aria-label="Закрыть сообщение">×</button>
+            </div>
           ) : null}
 
-          <ProjectModuleBoundary title="Смета" resetKey={`${estimate.id}:estimate`}>
-            <ProjectEstimatePanel
-              projectId={estimate.id}
-              apiBase={`/api/standalone-estimates/${estimate.id}`}
-              standalone
-              readOnly={Boolean(estimate.convertedAt)}
-              estimateGridEnabled={estimateGridEnabled}
-            />
-          </ProjectModuleBoundary>
+          <section className="standalone-estimate-workspace">
+            <header>
+              <span className="standalone-estimate-workspace__icon"><EstimateIcon /></span>
+              <div>
+                <h2>Смета</h2>
+                <p>Строки, расходы и итоговый расчёт</p>
+              </div>
+              <span className="standalone-estimate-workspace__mode">
+                {readOnly ? "Только просмотр" : "Редактирование онлайн"}
+              </span>
+            </header>
+            <div className="standalone-estimate-workspace__body">
+              <ProjectModuleBoundary title="Смета" resetKey={`${estimate.id}:estimate`}>
+                <ProjectEstimatePanel
+                  projectId={estimate.id}
+                  apiBase={`/api/standalone-estimates/${estimate.id}`}
+                  standalone
+                  workspaceMode
+                  readOnly={readOnly}
+                  estimateGridEnabled
+                />
+              </ProjectModuleBoundary>
+            </div>
+          </section>
 
           {convertOpen ? (
             <div
-              className="fixed inset-0 z-[100] grid place-items-center bg-zinc-950/50 p-4 backdrop-blur-sm"
+              className="standalone-estimate-convert"
               onMouseDown={() => !busy && setConvertOpen(false)}
+              role="presentation"
             >
               <form
                 onSubmit={convert}
                 onMouseDown={(event) => event.stopPropagation()}
-                className="w-full max-w-xl border border-zinc-300 border-t-4 border-t-yellow-400 bg-white p-6 shadow-2xl"
+                className="standalone-estimate-convert__dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="standalone-estimate-convert-title"
               >
-                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-violet-700">Следующий этап</div>
-                <h2 className="mt-2 text-3xl font-black text-zinc-950">Создать полноценный проект</h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-600">
-                  Все разделы, строки, внутренние расходы и финансовые настройки сметы будут перенесены без повторного ввода.
+                <div className="standalone-estimate-convert__head">
+                  <div>
+                    <span>Следующий этап</span>
+                    <h2 id="standalone-estimate-convert-title">Создать проект</h2>
+                  </div>
+                  <button type="button" disabled={busy} onClick={() => setConvertOpen(false)} aria-label="Закрыть">×</button>
+                </div>
+                <p className="standalone-estimate-convert__copy">
+                  Версии, разделы, строки, расходы и финансовые настройки перейдут в новый проект без повторного ввода.
                 </p>
 
-                <label className="mt-6 block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-zinc-600">
-                    Существующий заказчик
-                  </span>
+                <label className="standalone-estimate-convert__field">
+                  <span>Существующий заказчик</span>
                   <select
                     value={customerId}
                     onChange={(event) => {
                       setCustomerId(event.target.value);
                       if (event.target.value) setNewCustomerName("");
                     }}
-                    className="min-h-12 w-full border border-zinc-300 bg-white px-3 text-base font-semibold text-zinc-950 outline-none focus:border-violet-600"
                   >
                     <option value="">Выбрать из списка…</option>
                     {customers.map((customer) => (
@@ -211,37 +320,26 @@ export default function StandaloneEstimatePage() {
                   </select>
                 </label>
 
-                <div className="my-4 flex items-center gap-3 text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  <span className="h-px flex-1 bg-zinc-200" />или новый<span className="h-px flex-1 bg-zinc-200" />
-                </div>
+                <div className="standalone-estimate-convert__divider"><span>или новый</span></div>
 
-                <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.14em] text-zinc-600">
-                    Новый заказчик
-                  </span>
+                <label className="standalone-estimate-convert__field">
+                  <span>Новый заказчик</span>
                   <input
                     value={newCustomerName}
                     disabled={Boolean(customerId)}
                     onChange={(event) => setNewCustomerName(event.target.value)}
                     placeholder="Название компании"
-                    className="min-h-12 w-full border border-zinc-300 px-3 text-base font-semibold text-zinc-950 outline-none placeholder:text-zinc-400 focus:border-violet-600 disabled:bg-zinc-100"
                   />
                 </label>
 
-                <div className="mt-7 flex flex-wrap justify-end gap-3">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setConvertOpen(false)}
-                    className="min-h-12 border border-zinc-300 bg-white px-5 text-sm font-black text-zinc-900 hover:border-zinc-950"
-                  >
-                    Отмена
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="min-h-12 bg-yellow-400 px-5 text-sm font-black text-zinc-950 hover:bg-zinc-950 hover:text-white disabled:opacity-50"
-                  >
+                <div className="standalone-estimate-convert__note">
+                  <strong>После создания</strong>
+                  <span>Смета станет основным финансовым документом проекта, а независимый расчёт останется в истории.</span>
+                </div>
+
+                <div className="standalone-estimate-convert__actions">
+                  <button type="button" disabled={busy} onClick={() => setConvertOpen(false)}>Отмена</button>
+                  <button type="submit" disabled={busy || (!customerId && !newCustomerName.trim())}>
                     {busy ? "Создаём…" : "Создать проект"}
                   </button>
                 </div>

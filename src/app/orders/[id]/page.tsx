@@ -231,10 +231,12 @@ function OrderDocumentMenu({
   orderId,
   estimateAvailable,
   isGreenwich,
+  showInternalEstimate,
 }: {
   orderId: string;
   estimateAvailable: boolean;
   isGreenwich: boolean;
+  showInternalEstimate: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ top: 0, left: 0 });
@@ -245,7 +247,7 @@ function OrderDocumentMenu({
     const rect = buttonRef.current?.getBoundingClientRect();
     if (rect) {
       const menuWidth = Math.min(288, window.innerWidth - 16);
-      const menuHeight = 144;
+      const menuHeight = showInternalEstimate ? 204 : 144;
       const top = rect.bottom + menuHeight + 12 <= window.innerHeight
         ? rect.bottom + 8
         : Math.max(8, rect.top - menuHeight - 8);
@@ -332,6 +334,18 @@ function OrderDocumentMenu({
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-yellow-100 font-black text-amber-950">✓</span>
                 <span className="min-w-0"><strong className="block text-sm">Чек-лист</strong><small className="block text-xs text-zinc-600">{isGreenwich ? "Получение и возврат" : "Сборка и выдача"} · Word</small></span>
               </a>
+              {showInternalEstimate ? (
+                <a
+                  href={`/api/orders/${orderId}/estimate/internal`}
+                  role="menuitem"
+                  download
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-zinc-900 transition-colors hover:bg-zinc-100"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-zinc-900 text-xs font-black text-white">ВН</span>
+                  <span className="min-w-0"><strong className="block text-sm">Внутренняя смета</strong><small className="block text-xs text-zinc-600">Расходы и маржа · Excel</small></span>
+                </a>
+              ) : null}
             </div>,
             document.body,
           )
@@ -1966,7 +1980,7 @@ export default function OrderDetailsPage() {
   const statusLabel = STATUS_LABEL[order.status] ?? order.status;
 
   const inner = (
-      <div className="order-detail space-y-5">
+      <div className="order-detail w-full min-w-0 space-y-5 overflow-x-clip">
         {!embed ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
@@ -2118,6 +2132,7 @@ export default function OrderDetailsPage() {
                   orderId={order.id}
                   estimateAvailable={Boolean(order.estimateFileKey)}
                   isGreenwich={Boolean(isGreenwich)}
+                  showInternalEstimate={Boolean(isWarehouse)}
                 />
               </div>
             </div>
@@ -2135,19 +2150,26 @@ export default function OrderDetailsPage() {
           {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
                 isGreenwich ? (
-                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-                    <div className="grid bg-zinc-200 sm:grid-cols-3">
-                      <div className="bg-white px-4 py-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">До налога</div>
-                        <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
+                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-3">
+                      <div>
+                        <div className="text-sm font-black text-zinc-950">Расчёт заявки</div>
+                        <div className="mt-0.5 text-xs text-zinc-500">Стоимость, налог и применённая скидка</div>
                       </div>
-                      <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
-                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Налог {Math.round(orderPricing.taxRate * 100)}%</div>
-                        <div className="mt-1 font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
+                      <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotal)}</div>
+                    </div>
+                    <div className="grid gap-px bg-zinc-200 sm:grid-cols-3">
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-violet-600" />До налога</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
                       </div>
-                      <div className="bg-white px-4 py-3 sm:border-l sm:border-zinc-200">
-                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-500">Подтверждённая скидка</div>
-                        <div className="mt-1 font-black tabular-nums text-emerald-700">
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-yellow-400" />Налог {Math.round(orderPricing.taxRate * 100)}%</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
+                      </div>
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Подтверждённая скидка</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-emerald-700">
                           {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
                         </div>
                       </div>
@@ -2236,15 +2258,6 @@ export default function OrderDetailsPage() {
                   </button>
                 </div>
               </div>
-            ) : null}
-            {isWarehouse ? (
-              <a
-                href={`/api/orders/${order.id}/estimate/internal`}
-                className={orderSecondaryButtonClass + " inline-flex items-center gap-1.5"}
-                download
-              >
-                Внутренняя смета ↓
-              </a>
             ) : null}
           </div> : null}
         </div>
@@ -2776,11 +2789,7 @@ export default function OrderDetailsPage() {
                 ) : null}
 
                 <div className="border-t border-zinc-200 p-4">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    {order.estimateFileKey ? <a href={`/api/orders/${order.id}/estimate`} className={orderSecondaryButtonClass + " justify-center text-center"} download>Клиентская смета ↓</a> : null}
-                    {isWarehouse ? <a href={`/api/orders/${order.id}/estimate/internal`} className={orderSecondaryButtonClass + " justify-center text-center"} download>Внутренняя смета ↓</a> : null}
-                  </div>
-                  <button ref={orderEditSaveRef} type="button" disabled={busy} onClick={saveOrderEdit} className={orderPrimaryButtonClass + " mt-3 w-full"}>
+                  <button ref={orderEditSaveRef} type="button" disabled={busy} onClick={saveOrderEdit} className={orderPrimaryButtonClass + " w-full"}>
                     {busy ? "Сохраняю…" : isServiceOnlyEdit ? "Сохранить услуги" : isGreenwich ? "Запросить изменения" : "Сохранить заявку"}
                   </button>
                   <button type="button" disabled={busy} onClick={() => { setIsEditing(false); setActionError(null); }} className="mt-2 w-full rounded-md px-4 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950">Отмена</button>

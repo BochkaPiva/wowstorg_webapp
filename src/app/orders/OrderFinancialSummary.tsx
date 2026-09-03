@@ -21,11 +21,13 @@ function SummaryRow({
   value,
   strong = false,
   total = false,
+  valueClassName = "",
 }: {
   label: string;
   value: string;
   strong?: boolean;
   total?: boolean;
+  valueClassName?: string;
 }) {
   return (
     <div
@@ -43,6 +45,7 @@ function SummaryRow({
         className={[
           "tabular-nums",
           total ? "font-black" : strong ? "font-extrabold" : "font-bold",
+          valueClassName,
         ].join(" ")}
       >
         {value}
@@ -69,21 +72,30 @@ export function OrderFinancialSummary({
     : 0;
 
   return (
-    <div className="mt-4 space-y-3">
-      {discountLabel ? (
-        <div className="inline-flex rounded-md bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
-          Скидка {discountLabel}
+    <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-3">
+        <div>
+          <div className="text-sm font-black text-zinc-950">Финансовый итог</div>
+          <div className="mt-0.5 text-xs text-zinc-500">Клиентский расчёт, внутренние расходы и результат</div>
         </div>
-      ) : null}
+        {discountLabel ? (
+          <div className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
+            Скидка {discountLabel}
+          </div>
+        ) : null}
+      </div>
 
       <div
         className={[
-          "grid gap-px overflow-hidden rounded-lg border border-zinc-300 bg-zinc-200",
+          "grid gap-px bg-zinc-200",
           showWarehouse ? "xl:grid-cols-[1.05fr_0.95fr_1fr]" : "md:grid-cols-1",
         ].join(" ")}
       >
-        <div className="bg-white p-4">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
+        <section className="bg-white p-4 sm:p-5">
+          <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
+            <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+            Клиент
+          </div>
           <div className="mt-3 space-y-2 text-sm">
             <SummaryRow label="Сумма до налога" value={`${formatMoneyRub(pricing.grandTotalBeforeTax)} ₽`} />
             <SummaryRow label={`Налог ${taxPercent}%`} value={`${formatMoneyRub(pricing.taxAmount)} ₽`} />
@@ -93,12 +105,15 @@ export function OrderFinancialSummary({
               total
             />
           </div>
-        </div>
+        </section>
 
         {warehouse ? (
           <>
-            <div className="bg-white p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
+            <section className="bg-white p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
+                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                Внутреннее
+              </div>
               <div className="mt-3 space-y-2 text-sm">
                 <SummaryRow
                   label="Себестоимость доп. услуг и скрытых трат"
@@ -125,25 +140,21 @@ export function OrderFinancialSummary({
               <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
                 Без себестоимости аренды реквизита.
               </p>
-            </div>
+            </section>
 
-            <div className="bg-white p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Маржа</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <div>
-                  <div className="text-xs font-semibold text-emerald-900">Оценка прибыли</div>
-                  <div className={`mt-1 text-xl font-black tabular-nums ${profitTone}`}>
-                    {formatMoneyRub(profit)} ₽
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-emerald-900">Рентабельность</div>
-                  <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">
-                    {formatPercent(warehouse.profitabilityPct, 2)}
-                  </div>
-                </div>
+            <section className="bg-white p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                Маржа
               </div>
-            </div>
+              <div className="mt-3 space-y-2 text-sm">
+                <SummaryRow label="Оценка прибыли" value={`${formatMoneyRub(profit)} ₽`} strong valueClassName={profitTone} />
+                <SummaryRow label="Рентабельность" value={formatPercent(warehouse.profitabilityPct, 2)} strong valueClassName="text-emerald-950" />
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+                После налогов и внутренних расходов.
+              </p>
+            </section>
           </>
         ) : null}
       </div>

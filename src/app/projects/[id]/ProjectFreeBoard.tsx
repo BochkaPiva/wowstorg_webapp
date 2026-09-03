@@ -222,10 +222,12 @@ export function ProjectFreeBoard({
   projectId,
   actorUserId,
   readOnly: projectReadOnly,
+  expanded = false,
 }: {
   projectId: string;
   actorUserId: string;
   readOnly: boolean;
+  expanded?: boolean;
 }) {
   const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 1200 });
   const mobile = useMobileBreakpoint();
@@ -252,6 +254,15 @@ export function ProjectFreeBoard({
   const [linkInsertAt, setLinkInsertAt] = React.useState<BoardInsertPoint | null>(null);
   const viewportRef = React.useRef<HTMLDivElement>(null);
   const panGestureRef = React.useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const touchPointersRef = React.useRef(new Map<number, { x: number; y: number }>());
+  const pinchGestureRef = React.useRef<{
+    distance: number;
+    centerX: number;
+    centerY: number;
+    zoom: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
   const selectionGestureRef = React.useRef<{
     pointerId: number;
     startClientX: number;
@@ -274,6 +285,7 @@ export function ProjectFreeBoard({
   const deletedRevisionByIdRef = React.useRef(new Map<string, number>());
   const lastHistoryCaptureRef = React.useRef<{ key: string; at: number } | null>(null);
   const readOnly = projectReadOnly || serverReadOnly;
+  const canvasEnabled = !mobile || expanded;
 
   const replaceItems = React.useCallback((next: ProjectFreeBoardItemInput[]) => {
     itemsRef.current = next;
@@ -816,6 +828,30 @@ export function ProjectFreeBoard({
     viewportRef.current?.focus({ preventScroll: true });
     const target = event.target as HTMLElement;
     const isInteractive = Boolean(target.closest("[data-board-item], button, input, textarea, select, a, label"));
+
+    if (event.pointerType === "touch") {
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPointersRef.current.size === 2) {
+        const [first, second] = Array.from(touchPointersRef.current.values());
+        const rect = event.currentTarget.getBoundingClientRect();
+        const centerX = (first.x + second.x) / 2 - rect.left;
+        const centerY = (first.y + second.y) / 2 - rect.top;
+        pinchGestureRef.current = {
+          distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+          centerX,
+          centerY,
+          zoom,
+          panX: pan.x,
+          panY: pan.y,
+        };
+        panGestureRef.current = null;
+        setIsPanning(true);
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        return;
+      }
+    }
+
     const wantsPan = event.button === 1 || (event.button === 0 && (spacePressed || !isInteractive));
     if (wantsPan) {
       setContextMenu(null);
@@ -852,6 +888,28 @@ export function ProjectFreeBoard({
   }, [pan.x, pan.y, readOnly, spacePressed, zoom]);
 
   const handleViewportPointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
+      touchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const pinch = pinchGestureRef.current;
+      if (pinch && touchPointersRef.current.size >= 2) {
+        const [first, second] = Array.from(touchPointersRef.current.values());
+        const rect = event.currentTarget.getBoundingClientRect();
+        const centerX = (first.x + second.x) / 2 - rect.left;
+        const centerY = (first.y + second.y) / 2 - rect.top;
+        const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+        const nextZoom = Math.max(0.35, Math.min(1.5, Number((pinch.zoom * distance / pinch.distance).toFixed(3))));
+        const canvasPointX = (pinch.centerX - pinch.panX) / pinch.zoom;
+        const canvasPointY = (pinch.centerY - pinch.panY) / pinch.zoom;
+        setZoom(nextZoom);
+        setPan({
+          x: centerX - canvasPointX * nextZoom,
+          y: centerY - canvasPointY * nextZoom,
+        });
+        event.preventDefault();
+        return;
+      }
+    }
+
     const gesture = panGestureRef.current;
     if (gesture && gesture.pointerId === event.pointerId) {
       setPan({
@@ -881,6 +939,14 @@ export function ProjectFreeBoard({
   }, [pan.x, pan.y, zoom]);
 
   const endViewportPan = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") {
+      touchPointersRef.current.delete(event.pointerId);
+      if (touchPointersRef.current.size < 2 && pinchGestureRef.current) {
+        pinchGestureRef.current = null;
+        panGestureRef.current = null;
+        setIsPanning(false);
+      }
+    }
     if (panGestureRef.current?.pointerId === event.pointerId) {
       panGestureRef.current = null;
       setIsPanning(false);
@@ -936,7 +1002,7 @@ export function ProjectFreeBoard({
 
   React.useEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || mobile || !loaded) return;
+    if (!viewport || !canvasEnabled || !loaded) return;
 
     const zoomBoard = (event: WheelEvent) => {
       // Chrome/Edge expose a touchpad pinch as a ctrl+wheel gesture. A native
@@ -965,7 +1031,7 @@ export function ProjectFreeBoard({
 
     viewport.addEventListener("wheel", zoomBoard, { passive: false });
     return () => viewport.removeEventListener("wheel", zoomBoard);
-  }, [loaded, mobile]);
+  }, [canvasEnabled, loaded]);
 
   const beginConnectorDrag = React.useCallback((
     event: React.PointerEvent<HTMLButtonElement>,
@@ -1022,7 +1088,7 @@ export function ProjectFreeBoard({
     event: React.PointerEvent<HTMLElement>,
     item: ProjectFreeBoardItemInput,
   ) => {
-    if (mobile || readOnly || spacePressed || event.button !== 0) return;
+    if ((mobile && !expanded) || readOnly || spacePressed || event.button !== 0) return;
     const target = event.target as HTMLElement;
     if (target.closest("input, textarea, select, button, a, label, [data-no-drag], [contenteditable='true'], .react-resizable-handle")) return;
     event.preventDefault();
@@ -1044,9 +1110,12 @@ export function ProjectFreeBoard({
     let lastDeltaX = 0;
     let lastDeltaY = 0;
     let historyCaptured = false;
+    let cancelledForPinch = false;
     setActiveItemId(item.id);
 
     const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerType === "touch" && touchPointersRef.current.size > 1) cancelledForPinch = true;
+      if (cancelledForPinch) return;
       const deltaX = Math.round((moveEvent.clientX - startX) / zoom / dragColumnStep);
       const deltaY = Math.round((moveEvent.clientY - startY) / zoom / dragRowStep);
       if (deltaX === lastDeltaX && deltaY === lastDeltaY) return;
@@ -1081,7 +1150,7 @@ export function ProjectFreeBoard({
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
     window.addEventListener("pointercancel", finish, { once: true });
-  }, [enqueueMany, mobile, pushHistory, readOnly, replaceItems, selectedIds, spacePressed, width, zoom]);
+  }, [enqueueMany, expanded, mobile, pushHistory, readOnly, replaceItems, selectedIds, spacePressed, width, zoom]);
 
   const commitGeometry = React.useCallback((_layout: Layout, oldItem: LayoutItem | null, newItem: LayoutItem | null) => {
     if (!newItem) return;
@@ -1563,7 +1632,7 @@ export function ProjectFreeBoard({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {!mobile ? (
+          {(!mobile || expanded) ? (
             <div className="flex items-center rounded-lg border border-zinc-200 bg-white p-0.5" aria-label="Масштаб доски">
               <button type="button" onClick={() => changeZoom(-1)} className="grid h-7 w-7 place-items-center rounded-md text-base font-semibold text-zinc-600 hover:bg-zinc-100" aria-label="Уменьшить масштаб">−</button>
               <button type="button" onClick={resetViewport} className="min-w-14 px-1.5 text-[11px] font-bold text-zinc-600 hover:text-violet-800" title="Вернуться к началу">{Math.round(zoom * 100)}%</button>
@@ -1583,7 +1652,7 @@ export function ProjectFreeBoard({
 
       {!loaded ? (
         <div className="grid min-h-72 place-items-center px-4 py-12 text-sm font-semibold text-zinc-500">Готовим рабочее пространство…</div>
-      ) : mobile ? (
+      ) : mobile && !expanded ? (
         <div className="project-free-board__mobile-list" data-empty={!boardItems.length || undefined}>
           {boardItems.length ? boardItems.map(renderItem) : <div className="p-8 text-center text-sm font-medium text-zinc-500">Добавьте первый блок кнопкой выше.</div>}
         </div>
@@ -1599,6 +1668,11 @@ export function ProjectFreeBoard({
             onPointerCancel={endViewportPan}
             onContextMenu={(event) => event.preventDefault()}
           >
+            {mobile && expanded ? (
+              <div className="project-free-board__touch-hint" aria-hidden>
+                Один палец — двигать поле · два — масштаб
+              </div>
+            ) : null}
             {mounted ? (
               <div
                 className="project-free-board-canvas absolute left-0 top-0"

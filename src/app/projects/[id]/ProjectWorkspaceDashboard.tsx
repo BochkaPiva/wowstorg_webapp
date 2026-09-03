@@ -109,7 +109,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
 export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: {
   projectId: string;
   widgets: ProjectWorkspaceWidgetInput[];
-  renderWidget: (type: ProjectWidgetType) => React.ReactNode;
+  renderWidget: (type: ProjectWidgetType, expanded: boolean) => React.ReactNode;
 }) {
   const [collapsedTypes, setCollapsedTypes] = React.useState<Set<ProjectWidgetType>>(new Set());
   const [expandedType, setExpandedType] = React.useState<ProjectWidgetType | null>(null);
@@ -173,7 +173,7 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
             onToggleExpanded={() => setExpandedType((current) => current === widget.type ? null : widget.type)}
             onConfigure={() => window.dispatchEvent(new CustomEvent("project-workspace:configure"))}
           >
-            {renderWidget(widget.type)}
+            {renderWidget(widget.type, expandedType === widget.type)}
           </WorkspaceWidget>
         ))}
       </div>

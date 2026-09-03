@@ -1037,6 +1037,7 @@ export default function OrderDetailsPage() {
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [dateDialogOpen, setDateDialogOpen] = React.useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = React.useState(false);
   const orderEditSaveRef = React.useRef<HTMLButtonElement | null>(null);
   const [showFloatingOrderSave, setShowFloatingOrderSave] = React.useState(false);
 
@@ -2803,7 +2804,7 @@ export default function OrderDetailsPage() {
               <div className={orderSectionHeaderClass + " flex flex-wrap items-center justify-between gap-2"}>
                 <div>
                   <div className="text-base font-black text-zinc-950">Состав заявки</div>
-                  <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз. · количества и согласование склада</div>
+                  <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз. · количество и стоимость</div>
                 </div>
                 {(canEditOrder || canEditOrderServicesOnly) ? (
                   <button type="button" onClick={startEditing} className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}>
@@ -2813,8 +2814,8 @@ export default function OrderDetailsPage() {
               </div>
               <div className="divide-y divide-zinc-200">
                     {order.lines.map((line, index) => (
-                      <div key={line.id} className="grid gap-4 px-4 py-4 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(260px,1.35fr)_repeat(3,minmax(72px,0.35fr))_minmax(100px,0.55fr)] lg:items-center">
-                        <div className="flex min-w-0 items-center gap-3">
+                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(260px,1.35fr)_repeat(3,minmax(72px,0.35fr))_minmax(100px,0.55fr)] lg:items-center lg:gap-4 lg:py-4">
+                        <div className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
                           <span className="hidden w-6 shrink-0 text-xs font-black tabular-nums text-zinc-300 sm:block">{String(index + 1).padStart(2, "0")}</span>
                           <ProductIdentity
                             itemId={line.item.id}
@@ -2824,16 +2825,16 @@ export default function OrderDetailsPage() {
                           />
                         </div>
                         {([
-                          ["Запрошено", line.requestedQty],
-                          ["Согласовано", line.approvedQty ?? "—"],
-                          ["Выдано", line.issuedQty ?? "—"],
-                        ] as const).map(([label, value]) => (
-                          <div key={label} className="border-l border-zinc-200 pl-3 lg:border-l-0 lg:pl-0">
+                          ["Запрошено", line.requestedQty, "block"],
+                          ["Согласовано", line.approvedQty ?? "—", "hidden lg:block"],
+                          ["Выдано", line.issuedQty ?? "—", "hidden lg:block"],
+                        ] as const).map(([label, value, visibility]) => (
+                          <div key={label} className={`${visibility} rounded-lg bg-zinc-50 px-3 py-2 lg:rounded-none lg:bg-transparent lg:p-0`}>
                             <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</div>
                             <div className="mt-1 font-black tabular-nums text-zinc-950">{value}</div>
                           </div>
                         ))}
-                        <div className="border-l border-zinc-200 pl-3 lg:border-l-0 lg:pl-0 lg:text-right">
+                        <div className="rounded-lg bg-zinc-50 px-3 py-2 text-right lg:rounded-none lg:bg-transparent lg:p-0">
                           <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Цена / сутки</div>
                           <div className="mt-1 text-sm text-zinc-700">
                           {(() => {
@@ -2858,7 +2859,7 @@ export default function OrderDetailsPage() {
                           </div>
                         </div>
                         {(line.greenwichComment || line.warehouseComment) ? (
-                          <div className="rounded-md bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600 lg:col-span-5">
+                          <div className="col-span-2 rounded-md bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600 lg:col-span-5">
                             {line.greenwichComment ? <span><strong className="text-zinc-800">Клиент:</strong> {line.greenwichComment}</span> : null}
                             {line.greenwichComment && line.warehouseComment ? <span className="mx-2 text-zinc-300">/</span> : null}
                             {line.warehouseComment ? <span><strong className="text-zinc-800">Склад:</strong> {line.warehouseComment}</span> : null}
@@ -2875,32 +2876,38 @@ export default function OrderDetailsPage() {
                   <div className="text-base font-black text-zinc-950">Дополнительные услуги</div>
                   <div className="mt-0.5 text-xs text-zinc-500">Логистика и работы, включённые в заявку</div>
                 </div>
-                <ul className="grid gap-px bg-zinc-200 sm:grid-cols-3">
+                <ul className="grid gap-2 p-3 sm:grid-cols-3 sm:p-4">
                   {order.deliveryEnabled ? (
-                    <li className="bg-white p-4">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
-                      <div className="mt-1 font-black text-zinc-950">Доставка</div>
-                      {order.deliveryComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.deliveryComment}</div> : null}
-                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.deliveryPrice != null ? `${order.deliveryPrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
-                      {isWarehouse && order.deliveryInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
+                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>→</span><div className="font-black text-zinc-950">Доставка</div></div>
+                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.deliveryPrice != null ? `${order.deliveryPrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
+                      </div>
+                      {order.deliveryComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.deliveryComment}</div> : null}
+                      {order.deliveryPrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
+                      {isWarehouse && order.deliveryInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                   {order.montageEnabled ? (
-                    <li className="bg-white p-4">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
-                      <div className="mt-1 font-black text-zinc-950">Монтаж</div>
-                      {order.montageComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.montageComment}</div> : null}
-                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.montagePrice != null ? `${order.montagePrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
-                      {isWarehouse && order.montageInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
+                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>+</span><div className="font-black text-zinc-950">Монтаж</div></div>
+                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.montagePrice != null ? `${order.montagePrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
+                      </div>
+                      {order.montageComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.montageComment}</div> : null}
+                      {order.montagePrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
+                      {isWarehouse && order.montageInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                   {order.demontageEnabled ? (
-                    <li className="bg-white p-4">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">Услуга</div>
-                      <div className="mt-1 font-black text-zinc-950">Демонтаж</div>
-                      {order.demontageComment ? <div className="mt-2 text-xs leading-5 text-zinc-500">{order.demontageComment}</div> : null}
-                      <div className="mt-3 font-black tabular-nums text-zinc-950">{order.demontagePrice != null ? `${order.demontagePrice.toLocaleString("ru-RU")} ₽` : "Цена не указана"}</div>
-                      {isWarehouse && order.demontageInternalCost != null ? <div className="mt-1 text-xs text-zinc-500">Внутр. {Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
+                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>←</span><div className="font-black text-zinc-950">Демонтаж</div></div>
+                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.demontagePrice != null ? `${order.demontagePrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
+                      </div>
+                      {order.demontageComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.demontageComment}</div> : null}
+                      {order.demontagePrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
+                      {isWarehouse && order.demontageInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
                   ) : null}
                 </ul>
@@ -3283,9 +3290,23 @@ export default function OrderDetailsPage() {
           isGreenwich && canCancel && !["ESTIMATE_SENT", "CHANGES_REQUESTED", "ISSUED"].includes(order.status)
             ? "!static !shadow-none"
             : "",
-        ].join(" ")}>
+        ].join(" ")} data-mobile-open={mobileActionsOpen ? "true" : "false"}>
+          <button
+            type="button"
+            className="order-actionbar__toggle"
+            aria-expanded={mobileActionsOpen}
+            onClick={() => setMobileActionsOpen((value) => !value)}
+          >
+            <span className="min-w-0 text-left">
+              <span className="block text-sm font-black text-zinc-950">Действия с заявкой</span>
+              <span className={`block truncate text-[11px] font-semibold ${sendEstimateBlocked ? "text-amber-700" : "text-zinc-500"}`}>
+                {sendEstimateBlocked ? "Нужно указать цены доп. услуг" : "Отправка, приёмка и отмена"}
+              </span>
+            </span>
+            <span className={`text-lg text-zinc-500 ${mobileActionsOpen ? "rotate-180" : ""}`} aria-hidden>⌃</span>
+          </button>
           {sendEstimateBlocked ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+            <div className="order-actionbar__notice rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
               <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
             </div>
           ) : null}
@@ -3429,7 +3450,7 @@ export default function OrderDetailsPage() {
                 type="button"
                 disabled={busy}
                 onClick={saveOrderEdit}
-                className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-lg border border-yellow-400 bg-yellow-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-sm transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50 sm:bottom-5 sm:right-5"
+                className="fixed bottom-[calc(10px+env(safe-area-inset-bottom))] left-3 right-3 z-40 inline-flex items-center justify-center gap-2 rounded-lg border border-yellow-400 bg-yellow-400 px-5 py-3 text-sm font-bold text-zinc-950 shadow-sm transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50 sm:bottom-5 sm:left-auto sm:right-5"
               >
                 {busy
                   ? "Сохраняю…"

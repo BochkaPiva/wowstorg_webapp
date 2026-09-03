@@ -1335,7 +1335,7 @@ export default function ProjectDetailPage() {
 
   const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
-  function renderWorkspaceWidget(type: ProjectWidgetType): React.ReactNode {
+  function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false): React.ReactNode {
     if (!project) return null;
     if (type === "ESTIMATE") {
       return (
@@ -1373,7 +1373,7 @@ export default function ProjectDetailPage() {
     if (type === "FREE_BOARD") {
       return (
         <ProjectModuleBoundary title="Свободная доска" resetKey={`${id}:free-board:inline`}>
-          <ProjectFreeBoard projectId={id} actorUserId={state.status === "authenticated" ? state.user.id : "anonymous"} readOnly={readOnly} />
+          <ProjectFreeBoard projectId={id} actorUserId={state.status === "authenticated" ? state.user.id : "anonymous"} readOnly={readOnly} expanded={expanded} />
         </ProjectModuleBoundary>
       );
     }

@@ -375,6 +375,47 @@ export async function notifyRentalDiscountApplied(order: OrderForNotify): Promis
   }
 }
 
+/** Wowstorg отклонил запрос скидки → ответственный сотрудник Grinvich. */
+export async function notifyDiscountRequestRejected(
+  order: OrderForNotify,
+  reason?: string | null,
+): Promise<void> {
+  try {
+    if (!shouldNotifyGreenwich(order)) return;
+    const blocks = [
+      orderHeader(order),
+      `Wowstorg не подтвердил запрошенную скидку. Текущая стоимость заявки не изменилась.`,
+      reason?.trim() ? `Комментарий: ${escapeTelegramHtml(reason.trim())}` : "",
+      link(`/orders/${order.id}`, "Открыть заявку"),
+    ].filter(Boolean);
+    await sendToOrderGreenwichUser(
+      order,
+      `↩️ <b>Запрос скидки отклонён</b>\n\n${blocks.join("\n\n")}`,
+    );
+  } catch (e) {
+    console.error("[notifyDiscountRequestRejected] unexpected error:", e);
+  }
+}
+
+/** Wowstorg принудительно перевёл заявку на складскую приёмку → Grinvich. */
+export async function notifyForcedReturnDeclared(order: OrderForNotify): Promise<void> {
+  try {
+    if (!shouldNotifyGreenwich(order)) return;
+    const blocks = [
+      orderHeader(order),
+      buildLinesBlock(order),
+      `Wowstorg перевёл заявку на приёмку. Склад может зафиксировать состояние возвращённых позиций.`,
+      link(`/orders/${order.id}`, "Открыть заявку"),
+    ].filter(Boolean);
+    await sendToOrderGreenwichUser(
+      order,
+      `📥 <b>Заявка переведена на приёмку</b>\n\n${blocks.join("\n\n")}`,
+    );
+  } catch (e) {
+    console.error("[notifyForcedReturnDeclared] unexpected error:", e);
+  }
+}
+
 function buildServicesBlock(o: OrderForNotify): string {
   const rows: string[] = [];
   if (o.deliveryEnabled) {

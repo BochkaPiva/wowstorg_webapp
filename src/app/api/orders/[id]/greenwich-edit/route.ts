@@ -35,6 +35,37 @@ const BodySchema = z.object({
 
 const EDITABLE_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 
+type DiscountRequestSnapshot = {
+  greenwichRequestedDiscountType?: string | null;
+  greenwichRequestedDiscountPercent?: unknown;
+  greenwichRequestedDiscountAmount?: unknown;
+  greenwichDiscountRequestComment?: string | null;
+};
+
+function discountRequestSignature(order: DiscountRequestSnapshot): string {
+  const type =
+    order.greenwichRequestedDiscountType === "PERCENT" ||
+    order.greenwichRequestedDiscountType === "AMOUNT"
+      ? order.greenwichRequestedDiscountType
+      : "NONE";
+  return JSON.stringify({
+    type,
+    percent: type === "PERCENT" ? Number(order.greenwichRequestedDiscountPercent ?? 0) : null,
+    amount: type === "AMOUNT" ? Number(order.greenwichRequestedDiscountAmount ?? 0) : null,
+    comment: (order.greenwichDiscountRequestComment ?? "").trim(),
+  });
+}
+
+function discountRequestLabel(order: DiscountRequestSnapshot): string {
+  if (order.greenwichRequestedDiscountType === "PERCENT") {
+    return `${Number(order.greenwichRequestedDiscountPercent ?? 0)}%`;
+  }
+  if (order.greenwichRequestedDiscountType === "AMOUNT") {
+    return `${Number(order.greenwichRequestedDiscountAmount ?? 0).toLocaleString("ru-RU")} ₽`;
+  }
+  return "без скидки";
+}
+
 export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
@@ -330,6 +361,15 @@ export async function PATCH(
     if (after && orderBefore) {
       const before = orderBefore;
       const afterOrder = after;
+      const beforeRequest = before as DiscountRequestSnapshot;
+      const requestChanged =
+        discountRequestSignature(beforeRequest) !== discountRequestSignature(afterOrder);
+      const requestRemoved =
+        requestChanged && afterOrder.greenwichRequestedDiscountType === "NONE";
+      const requestCreated =
+        requestChanged &&
+        beforeRequest.greenwichRequestedDiscountType === "NONE" &&
+        afterOrder.greenwichRequestedDiscountType !== "NONE";
       const resend = shouldRequestChanges;
       type Args = Parameters<typeof import("@/server/notifications/order-notifications").notifyGreenwichEdited>[0];
       const payload: Args = {
@@ -343,9 +383,18 @@ export async function PATCH(
         await notifyGreenwichEdited(payload);
         await notifyWarehouseOrderInApp({
           orderId: afterOrder.id,
-          title: afterOrder.greenwichRequestedDiscountType !== "NONE" ? "Greenwich запросил скидку" : "Greenwich обновил заявку",
-          body: `Заказчик: ${afterOrder.customer?.name ?? "—"}`,
-          type: afterOrder.greenwichRequestedDiscountType !== "NONE" ? "ORDER_DISCOUNT" : "ORDER_UPDATED",
+          title: requestRemoved
+            ? "Grinvich отозвал запрос скидки"
+            : requestCreated
+              ? "Grinvich запросил скидку"
+              : requestChanged
+                ? "Grinvich изменил запрос скидки"
+                : "Grinvich обновил заявку",
+          body:
+            requestChanged && !requestRemoved
+              ? `${discountRequestLabel(afterOrder)} · ${afterOrder.customer?.name ?? "—"}`
+              : `Заказчик: ${afterOrder.customer?.name ?? "—"}`,
+          type: requestChanged ? "ORDER_DISCOUNT" : "ORDER_UPDATED",
         });
       });
     }

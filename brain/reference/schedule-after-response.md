@@ -1,6 +1,6 @@
 # `scheduleAfterResponse` — где вызывается (сверка с кодом)
 
-> **Дата сверки:** 2026-08-24 — добавлены безопасные действия Grinvich из Telegram.
+> **Дата сверки:** 2026-09-03 — добавлены уведомления жизненного цикла скидки и технического перевода на приёмку.
 
 | Файл | Имя задачи (1-й аргумент) |
 |------|---------------------------|
@@ -9,6 +9,8 @@
 | `src/app/api/orders/[id]/cancel/route.ts` | `notifyOrderCancelled`, `recomputeGreenwichAchievementsOnCancel` |
 | `src/app/api/orders/[id]/check-in/route.ts` | `notifyCheckInClosed`, `recomputeGreenwichAchievementsOnClosed` |
 | `src/app/api/orders/[id]/dates/route.ts` | `notifyOrderDatesChanged` |
+| `src/app/api/orders/[id]/discount-request/reject/route.ts` | `notifyDiscountRequestRejected` |
+| `src/app/api/orders/[id]/force-return-declared/route.ts` | `notifyForcedReturnDeclared` |
 | `src/app/api/orders/[id]/greenwich-edit/route.ts` | `notifyGreenwichEdited` |
 | `src/app/api/orders/[id]/issue/route.ts` | `notifyIssued` |
 | `src/app/api/orders/[id]/quick-supplement/greenwich/route.ts` | `quick-supplement-greenwich-telegram` |
@@ -17,7 +19,7 @@
 | `src/app/api/orders/[id]/return-declared/route.ts` | `notifyReturnDeclared` |
 | `src/app/api/orders/[id]/send-estimate/route.ts` | `notifyEstimateSent` |
 | `src/app/api/orders/[id]/start-picking/route.ts` | `notifyStartPicking` |
-| `src/app/api/orders/[id]/warehouse-edit/route.ts` | `notifyProjectEstimateFromWarehouseEdit` |
+| `src/app/api/orders/[id]/warehouse-edit/route.ts` | `notifyProjectEstimateFromWarehouseEdit`, `notifyRentalDiscountApplied` |
 | `src/app/api/projects/[id]/route.ts` | `notifyProjectFieldChanges` |
 | `src/app/api/projects/[id]/contacts/route.ts` | `notifyProjectContactCreated` |
 | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` | `notifyProjectContactUpdated` |

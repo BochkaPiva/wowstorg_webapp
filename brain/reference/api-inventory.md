@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-09-02T08:08:22.344Z
-> **Файлов route.ts:** 142
+> **Сгенерировано:** 2026-09-03T02:41:52.752Z
+> **Файлов route.ts:** 144
 > Команда: `npm run brain:inventory`
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -64,9 +64,11 @@
 | POST | `/api/orders/[id]/cancel` | `src/app/api/orders/[id]/cancel/route.ts` |
 | POST | `/api/orders/[id]/check-in` | `src/app/api/orders/[id]/check-in/route.ts` |
 | POST, PATCH | `/api/orders/[id]/dates` | `src/app/api/orders/[id]/dates/route.ts` |
+| POST | `/api/orders/[id]/discount-request/reject` | `src/app/api/orders/[id]/discount-request/reject/route.ts` |
 | GET | `/api/orders/[id]/estimate/checklist` | `src/app/api/orders/[id]/estimate/checklist/route.ts` |
 | GET | `/api/orders/[id]/estimate/internal` | `src/app/api/orders/[id]/estimate/internal/route.ts` |
 | GET | `/api/orders/[id]/estimate` | `src/app/api/orders/[id]/estimate/route.ts` |
+| POST | `/api/orders/[id]/force-return-declared` | `src/app/api/orders/[id]/force-return-declared/route.ts` |
 | PATCH | `/api/orders/[id]/greenwich-edit` | `src/app/api/orders/[id]/greenwich-edit/route.ts` |
 | PATCH | `/api/orders/[id]/internal-note` | `src/app/api/orders/[id]/internal-note/route.ts` |
 | POST | `/api/orders/[id]/issue` | `src/app/api/orders/[id]/issue/route.ts` |

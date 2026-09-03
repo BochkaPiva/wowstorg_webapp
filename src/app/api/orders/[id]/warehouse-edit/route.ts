@@ -144,6 +144,7 @@ export async function PATCH(
   let wasCycleStatus = false;
   let projectIdForNotify: string | null = null;
   let rentalDiscountChanged = false;
+  let discountRequestAccepted = false;
 
   try {
     await prisma.$transaction(
@@ -395,6 +396,9 @@ export async function PATCH(
               rentalDiscountPercent: nextDiscount.rentalDiscountPercent,
               rentalDiscountAmount: nextDiscount.rentalDiscountAmount,
             });
+          discountRequestAccepted =
+            order.greenwichRequestedDiscountType !== "NONE" &&
+            nextDiscount.rentalDiscountType !== "NONE";
         }
         const existingClientLineSignature = JSON.stringify(
           order.lines.map((line) => ({
@@ -553,6 +557,14 @@ export async function PATCH(
                     nextDiscount.rentalDiscountType === "PERCENT" ? nextDiscount.rentalDiscountPercent : null,
                   rentalDiscountAmount:
                     nextDiscount.rentalDiscountType === "AMOUNT" ? nextDiscount.rentalDiscountAmount : null,
+                  ...(discountRequestAccepted
+                    ? {
+                        greenwichRequestedDiscountType: "NONE" as const,
+                        greenwichRequestedDiscountPercent: null,
+                        greenwichRequestedDiscountAmount: null,
+                        greenwichDiscountRequestComment: null,
+                      }
+                    : {}),
                 }
               : {}),
             ...(wasCycleStatus && clientFacingChanged
@@ -637,7 +649,7 @@ export async function PATCH(
     });
   }
 
-  if (rentalDiscountChanged) {
+  if (rentalDiscountChanged || discountRequestAccepted) {
     const orderForNotify = await prisma.order.findUnique({
       where: { id },
       include: {
@@ -660,7 +672,10 @@ export async function PATCH(
         await notifyOrderDiscountInApp({
           userId: orderForNotify.greenwichUserId,
           orderId: orderForNotify.id,
-          title: "Скидка по заявке применена",
+          title:
+            orderForNotify.rentalDiscountType === "NONE"
+              ? "Скидка по заявке снята"
+              : "Скидка по заявке установлена",
           body: `Заказчик: ${orderForNotify.customer?.name ?? "—"}`,
         });
       });

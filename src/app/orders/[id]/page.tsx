@@ -211,6 +211,135 @@ function CloseIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+function DownloadIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="m6 8 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function OrderDocumentMenu({
+  orderId,
+  estimateAvailable,
+  isGreenwich,
+}: {
+  orderId: string;
+  estimateAvailable: boolean;
+  isGreenwich: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [position, setPosition] = React.useState({ top: 0, left: 0 });
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+
+  function openMenu() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = Math.min(288, window.innerWidth - 16);
+      const menuHeight = 144;
+      const top = rect.bottom + menuHeight + 12 <= window.innerHeight
+        ? rect.bottom + 8
+        : Math.max(8, rect.top - menuHeight - 8);
+      const left = Math.min(
+        window.innerWidth - menuWidth - 8,
+        Math.max(8, rect.right - menuWidth),
+      );
+      setPosition({ top, left });
+    }
+    setOpen(true);
+  }
+
+  React.useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const closeOnViewportChange = () => setOpen(false);
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnViewportChange);
+    window.addEventListener("scroll", closeOnViewportChange, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnViewportChange);
+      window.removeEventListener("scroll", closeOnViewportChange, true);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white"
+        aria-label="Скачать документы заявки"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => open ? setOpen(false) : openMenu()}
+      >
+        <DownloadIcon />
+        <span>Скачать</span>
+        <ChevronDownIcon className={open ? "h-3.5 w-3.5 rotate-180" : "h-3.5 w-3.5"} />
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Документы заявки"
+              className="fixed z-50 w-72 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1.5 shadow-sm"
+              style={{ top: position.top, left: position.left }}
+            >
+              {estimateAvailable ? (
+                <a
+                  href={`/api/orders/${orderId}/estimate`}
+                  role="menuitem"
+                  download
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-zinc-900 transition-colors hover:bg-zinc-100"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-50 font-black text-violet-700">₽</span>
+                  <span className="min-w-0"><strong className="block text-sm">Смета</strong><small className="block text-xs text-zinc-600">Расчёт заявки · Excel</small></span>
+                </a>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-zinc-500" aria-disabled="true">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-zinc-100 font-black">₽</span>
+                  <span className="min-w-0"><strong className="block text-sm">Смета ещё не готова</strong><small className="block text-xs">Появится после расчёта</small></span>
+                </div>
+              )}
+              <a
+                href={`/api/orders/${orderId}/estimate/checklist`}
+                role="menuitem"
+                download
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-zinc-900 transition-colors hover:bg-zinc-100"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-yellow-100 font-black text-amber-950">✓</span>
+                <span className="min-w-0"><strong className="block text-sm">Чек-лист</strong><small className="block text-xs text-zinc-600">{isGreenwich ? "Получение и возврат" : "Сборка и выдача"} · Word</small></span>
+              </a>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function fmtDate(s: string) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
@@ -1368,6 +1497,37 @@ export default function OrderDetailsPage() {
     }
   }
 
+  function applyRequestedDiscount() {
+    if (!order || order.greenwichRequestedDiscountType === "NONE") return;
+    startEditing();
+    setEditRentalDiscountType(order.greenwichRequestedDiscountType);
+    setEditRentalDiscountPercent(
+      order.greenwichRequestedDiscountType === "PERCENT"
+        ? order.greenwichRequestedDiscountPercent ?? ""
+        : "",
+    );
+    setEditRentalDiscountAmount(
+      order.greenwichRequestedDiscountType === "AMOUNT"
+        ? order.greenwichRequestedDiscountAmount ?? ""
+        : "",
+    );
+  }
+
+  async function rejectRequestedDiscount() {
+    if (!order || order.greenwichRequestedDiscountType === "NONE") return;
+    if (!confirm("Отклонить запрос скидки? Сотрудник Grinvich получит уведомление.")) return;
+    await doAction("POST", `/api/orders/${orderId}/discount-request/reject`, {});
+  }
+
+  async function forceReturnDeclared() {
+    if (!order) return;
+    const confirmed = confirm(
+      "Технически перевести заявку на приёмку? Текущий этап будет пропущен, а все количества будут зафиксированы как возвращённые в норме.",
+    );
+    if (!confirmed) return;
+    await doAction("POST", `/api/orders/${orderId}/force-return-declared`, {});
+  }
+
   function hiddenExpensePayload() {
     return editHiddenExpenses
       .map((expense) => ({
@@ -1732,10 +1892,28 @@ export default function OrderDetailsPage() {
     );
   }
 
-  const canCancel =
+  const canCancel = Boolean(
     order &&
-    ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"].includes(order.status) &&
-    (isWarehouse || (isGreenwich && user && order.greenwichUserId === user.id));
+      order.status !== "CLOSED" &&
+      order.status !== "CANCELLED" &&
+      (isWarehouse ||
+        (isGreenwich &&
+          user &&
+          order.greenwichUserId === user.id &&
+          ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED"].includes(order.status))),
+  );
+  const canForceReturn = Boolean(
+    order &&
+      isWarehouse &&
+      !["RETURN_DECLARED", "CLOSED", "CANCELLED"].includes(order.status) &&
+      !(order.status === "ISSUED" && !order.greenwichUserId),
+  );
+  const canApplyRequestedDiscount = Boolean(
+    order &&
+      isWarehouse &&
+      order.greenwichRequestedDiscountType !== "NONE" &&
+      ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"].includes(order.status),
+  );
 
   const canSendEstimate =
     (order?.status === "SUBMITTED" || order?.status === "CHANGES_REQUESTED") &&
@@ -1809,122 +1987,139 @@ export default function OrderDetailsPage() {
               : "border-zinc-200",
           ].join(" ")}
         >
-          <div className="grid gap-6 border-b border-zinc-200 bg-white px-5 py-6 sm:px-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-            <div className="flex min-w-0 items-start gap-4">
-              {isGreenwich ? (
-                <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 text-sm font-black text-violet-700">
-                  {order.customer.logoUrl ? (
-                    <Image src={order.customer.logoUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
-                  ) : order.customer.name.slice(0, 2).toUpperCase()}
+          <div className="border-b border-zinc-200 bg-white">
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
+              <div className="min-w-0 px-5 py-6 sm:px-7 sm:py-7">
+                <div className="flex min-w-0 items-start gap-3.5 sm:gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 text-xs font-black text-violet-700 sm:h-14 sm:w-14 sm:text-sm">
+                    {order.customer.logoUrl ? (
+                      <Image src={order.customer.logoUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
+                    ) : order.customer.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold text-violet-700">Заявка №{order.id.slice(0, 8)}</span>
+                      <span className={[
+                        "rounded-full px-2.5 py-1 text-xs font-bold",
+                        order.status === "CANCELLED"
+                          ? "bg-rose-50 text-rose-800"
+                          : order.status === "CLOSED"
+                            ? "bg-violet-50 text-violet-800"
+                            : "bg-yellow-100 text-amber-950",
+                      ].join(" ")}>
+                        {statusLabel}
+                      </span>
+                      {isEditing ? (
+                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">Редактирование</span>
+                      ) : null}
+                    </div>
+                    <h1 className="mt-2 max-w-[24ch] break-words text-2xl font-black tracking-[-0.035em] text-zinc-950 sm:text-3xl">
+                      {isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}
+                    </h1>
+                  </div>
                 </div>
-              ) : null}
-              <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-700">Заявка</span>
-                <span className="h-1 w-1 rounded-full bg-zinc-300" aria-hidden="true" />
-                <span className={[
-                  "rounded-full px-2.5 py-1 text-xs font-bold",
-                  order.status === "CANCELLED"
-                    ? "bg-rose-50 text-rose-800"
-                    : order.status === "CLOSED"
-                      ? "bg-violet-50 text-violet-800"
-                      : "bg-yellow-100 text-amber-950",
-                ].join(" ")}>
-                  {statusLabel}
-                </span>
-              </div>
-              <h1 className="mt-2 truncate text-2xl font-black tracking-[-0.035em] text-zinc-950 sm:text-3xl">
-                {order.eventName || order.customer.name}
-              </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-600">
-                <span className="font-semibold text-zinc-900">{order.customer.name}</span>
-                {order.greenwichUser ? <span>{order.greenwichUser.displayName}</span> : null}
+
+                <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3 border-t border-zinc-200 pt-4 text-sm">
+                  <div className="min-w-[130px]">
+                    <div className="text-xs font-semibold text-zinc-500">Заказчик</div>
+                    <div className="mt-0.5 font-bold text-zinc-950">{order.customer.name}</div>
+                  </div>
+                  <div className="min-w-[150px]">
+                    <div className="text-xs font-semibold text-zinc-500">Оформил</div>
+                    <div className="mt-0.5 font-bold text-zinc-950">
+                      {order.greenwichUser?.displayName || order.createdBy.displayName}
+                    </div>
+                  </div>
+                  <div className="min-w-[130px]">
+                    <div className="text-xs font-semibold text-zinc-500">Создана</div>
+                    <div className="mt-0.5 font-bold text-zinc-950">{fmtDate(order.createdAt)}</div>
+                  </div>
+                </div>
+
                 {isWarehouse && order.greenwichUser?.ratingScore != null ? (
-                  <span>Рейтинг {order.greenwichUser.ratingScore}</span>
+                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-700">
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-1">Рейтинг {order.greenwichUser.ratingScore}</span>
+                    {order.greenwichMonthlyBonus ? (
+                      <span className="rounded-full bg-violet-100 px-2.5 py-1 font-bold text-violet-800">
+                        Бонус лидера +{order.greenwichMonthlyBonus.discountPercent}%
+                      </span>
+                    ) : null}
+                  </div>
                 ) : null}
-                {order.greenwichMonthlyBonus ? (
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 font-bold text-violet-800">
-                    Бонус лидера +{order.greenwichMonthlyBonus.discountPercent}%
-                  </span>
+                {order.parentOrderId ? (
+                  <p className="mt-4 text-sm font-semibold text-violet-700">
+                    Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
+                  </p>
                 ) : null}
-                <span>Создана {fmtDate(order.createdAt)}</span>
+                {isWarehouse && order.project ? (
+                  <p className="mt-3 text-sm text-zinc-700">
+                    <span className="text-zinc-500">В проекте: </span>
+                    <Link href={`/projects/${order.project.id}`} className="font-semibold text-violet-700 hover:text-violet-900">
+                      {order.project.title}
+                    </Link>
+                  </p>
+                ) : null}
               </div>
-              {order.parentOrderId ? (
-                <p className="mt-3 text-sm font-semibold text-violet-700">
-                  Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
-                </p>
-              ) : null}
-              {isWarehouse && order.project ? (
-                <p className="mt-3 text-sm text-zinc-700">
-                  <span className="text-zinc-500">В проекте: </span>
-                  <Link
-                    href={`/projects/${order.project.id}`}
-                    className="font-semibold text-violet-700 hover:text-violet-900"
-                  >
-                    {order.project.title}
-                  </Link>
-                </p>
-              ) : null}
+
+              <div className="relative min-h-[168px] overflow-hidden bg-violet-950 px-5 py-6 text-white sm:min-h-[188px] sm:px-7 lg:min-h-full">
+                <div className="absolute -left-12 -top-16 h-44 w-44 rounded-full border border-white/10" aria-hidden="true" />
+                <div className="absolute bottom-[-56px] left-[42%] h-44 w-44 rounded-full bg-yellow-400/90" aria-hidden="true" />
+                <div className="relative z-10 max-w-[58%] sm:max-w-[62%]">
+                  <div className="text-xs font-bold text-violet-200">
+                    {isEditing ? "Итого после изменений" : "Итого по заявке"}
+                  </div>
+                  {(isEditing ? editPricing : orderPricing) ? (
+                    <div className="mt-1 whitespace-nowrap text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
+                      {formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal)}
+                    </div>
+                  ) : null}
+                  <p className="mt-3 max-w-[20ch] text-xs leading-5 text-violet-200">
+                    {isEditing ? "Пересчёт происходит сразу по мере изменений." : "Сумма с учётом аренды, услуг и скидок."}
+                  </p>
+                </div>
+                <Image
+                  src="/brand/dino-order-detail.webp"
+                  alt="Динозавр ВАУСТОРГ с планшетом"
+                  width={1024}
+                  height={1536}
+                  className="pointer-events-none absolute -bottom-16 -right-7 h-[245px] w-[164px] object-contain object-bottom sm:-bottom-20 sm:-right-5 sm:h-[285px] sm:w-[190px]"
+                />
               </div>
             </div>
 
-            <div className="flex min-w-[270px] flex-col items-stretch gap-3 lg:items-end">
-              {(isEditing ? editPricing : orderPricing) ? (
-                <div className="text-left lg:text-right">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
-                    {isEditing ? "Итого после изменений" : "Итого по заявке"}
-                  </div>
-                  <div className="mt-1 whitespace-nowrap text-3xl font-black tracking-[-0.04em] text-zinc-950">
-                    {formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal)}
-                  </div>
+            <div className="grid border-t border-zinc-200 bg-zinc-50 sm:grid-cols-[0.72fr_1.55fr_auto] sm:items-stretch">
+              <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
+                <div className="text-xs font-semibold text-zinc-500">Готовность</div>
+                <div className="mt-1 font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
+              </div>
+              <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
+                <div className="text-xs font-semibold text-zinc-500">Период аренды</div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-black text-zinc-950">
+                  <span>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</span>
+                  <span aria-hidden="true">—</span>
+                  <span>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</span>
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">
+                    {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}
+                  </span>
                 </div>
-              ) : null}
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                {canChangeOrderDates ? (
-                  <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass}>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 px-5 py-3 sm:max-w-[340px] sm:justify-end sm:px-6">
+                {isEditing && canChangeOrderDates ? (
+                  <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>
                     Изменить даты
                   </button>
                 ) : null}
                 {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? (
-                  <button type="button" onClick={startEditing} className={orderPrimaryButtonClass}>
+                  <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>
                     {canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}
                   </button>
                 ) : null}
-                {order.estimateFileKey ? (
-                  <a href={`/api/orders/${order.id}/estimate`} className={orderSecondaryButtonClass} download>
-                    Смета ↓
-                  </a>
-                ) : null}
-                <a
-                  href={`/api/orders/${order.id}/estimate/checklist`}
-                  className={orderSecondaryButtonClass}
-                  title={isGreenwich ? "Скачать чек-лист получения и возврата в Word" : "Скачать складской чек-лист в Word"}
-                  download
-                >
-                  Чек-лист ↓
-                </a>
+                <OrderDocumentMenu
+                  orderId={order.id}
+                  estimateAvailable={Boolean(order.estimateFileKey)}
+                  isGreenwich={Boolean(isGreenwich)}
+                />
               </div>
-            </div>
-          </div>
-
-          <div className="grid border-b border-zinc-200 bg-[#f7f6f2] sm:grid-cols-[0.8fr_2fr_auto]">
-            <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Готовность</div>
-              <div className="mt-1 font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
-            </div>
-            <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Период аренды</div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 font-black text-zinc-950">
-                {fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} —{" "}
-                {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}
-                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">
-                  {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}
-                </span>
-              </div>
-            </div>
-            <div className="px-5 py-4 sm:px-7">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Ответственный</div>
-              <div className="mt-1 whitespace-nowrap font-black text-zinc-950">{order.createdBy.displayName}</div>
             </div>
           </div>
 
@@ -2021,6 +2216,25 @@ export default function OrderDetailsPage() {
                 {order.greenwichDiscountRequestComment ? (
                   <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">{order.greenwichDiscountRequestComment}</p>
                 ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canApplyRequestedDiscount ? (
+                    <button
+                      type="button"
+                      onClick={applyRequestedDiscount}
+                      className={orderPrimaryButtonClass + " px-3 py-2 text-xs"}
+                    >
+                      Установить скидку
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void rejectRequestedDiscount()}
+                    className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}
+                  >
+                    Отклонить запрос
+                  </button>
+                </div>
               </div>
             ) : null}
             {isWarehouse ? (
@@ -3052,6 +3266,7 @@ export default function OrderDetailsPage() {
           (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser) ||
           (isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id) ||
           (isWarehouse && order.status === "ISSUED") ||
+          canForceReturn ||
           canCancel
         ) ? (
         <div className={[
@@ -3164,13 +3379,32 @@ export default function OrderDetailsPage() {
               {busy ? "…" : "На приёмку"}
             </button>
           )}
+          {canForceReturn && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void forceReturnDeclared()}
+              className={orderSecondaryButtonClass + " text-xs text-zinc-600"}
+              title="Техническое действие Wowstorg: пропустить этапы и открыть складскую приёмку"
+            >
+              {busy ? "…" : "Сразу на приёмку"}
+            </button>
+          )}
           {canCancel && (
             <button
               type="button"
               disabled={busy}
               onClick={() => {
-                if (!confirm("Отменить заявку? Она попадёт в архив.")) return;
-                doAction("POST", `/api/orders/${orderId}/cancel`);
+                const highRisk = ["PICKING", "ISSUED", "RETURN_DECLARED"].includes(order.status);
+                const message = highRisk
+                  ? "Отменить заявку после передачи в складской контур? Резерв будет освобождён, но заявка и вся история сохранятся в архиве."
+                  : "Отменить заявку? Она попадёт в архив без удаления данных.";
+                if (!confirm(message)) return;
+                doAction(
+                  "POST",
+                  `/api/orders/${orderId}/cancel`,
+                  highRisk ? { confirmInventoryRelease: true } : {},
+                );
               }}
               className={orderDangerButtonClass}
             >
@@ -3205,6 +3439,6 @@ export default function OrderDetailsPage() {
   return embed ? (
     <div className="w-full max-w-5xl mx-auto p-2 sm:p-4">{inner}</div>
   ) : (
-    <AppShell title={`Заявка ${order.id.slice(0, 8)}`} backHref={backHref}>{inner}</AppShell>
+    <AppShell title={`Заявка · ${order.eventName || order.customer.name}`} backHref={backHref}>{inner}</AppShell>
   );
 }

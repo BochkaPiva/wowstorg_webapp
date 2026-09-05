@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import "../../inventory.css";
 
 type Item = { id: string; name: string; isActive: boolean; available?: number };
 type KitLine = { itemId: string; defaultQty: number };
@@ -131,7 +132,7 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
 
   return (
     <AppShell title="Инвентарь · Пакет">
-      <div className="space-y-4 max-w-4xl">
+      <div className="inventory-workspace inventory-editor space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/inventory/packages"
@@ -144,7 +145,7 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
               type="button"
               onClick={save}
               disabled={busy || loading || !kitName.trim()}
-              className="rounded-lg border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inv-button inv-primary"
             >
               {busy ? "Сохраняю…" : "Сохранить"}
             </button>
@@ -165,7 +166,7 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
         ) : (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="inventory-form-section">
               <div className="text-base font-semibold text-zinc-900">Основные данные</div>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
@@ -191,7 +192,7 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="inventory-form-section">
               <div className="text-base font-semibold text-zinc-900">Состав</div>
               <p className="mt-1 text-xs text-zinc-500">Добавляйте позиции через поиск ниже. В составе пакета отображаются только выбранные позиции.</p>
 

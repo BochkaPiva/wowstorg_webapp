@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import "../../inventory.css";
 
 type Item = { id: string; name: string; isActive: boolean };
 type ApiError = { error?: { message?: string } };
@@ -117,7 +118,7 @@ export default function CollectionEditPage({ params }: { params: Promise<{ id: s
 
   return (
     <AppShell title="Инвентарь · Категория">
-      <div className="space-y-4 max-w-4xl">
+      <div className="inventory-workspace inventory-editor space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/inventory/collections"
@@ -130,7 +131,7 @@ export default function CollectionEditPage({ params }: { params: Promise<{ id: s
               type="button"
               onClick={save}
               disabled={busy || loading || !collectionName.trim()}
-              className="rounded-lg border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inv-button inv-primary"
             >
               {busy ? "Сохраняю…" : "Сохранить"}
             </button>
@@ -151,7 +152,7 @@ export default function CollectionEditPage({ params }: { params: Promise<{ id: s
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>
         ) : (
           <>
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="inventory-form-section">
               <div className="text-base font-semibold text-zinc-900">Данные категории</div>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
@@ -183,7 +184,7 @@ export default function CollectionEditPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div className="inventory-form-section">
               <div className="text-base font-semibold text-zinc-900">Позиции в категории</div>
               <div className="mt-3">
                 <input

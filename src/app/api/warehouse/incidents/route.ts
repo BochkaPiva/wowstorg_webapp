@@ -6,6 +6,7 @@ import { jsonError, jsonOk } from "@/server/http";
 
 const QuerySchema = z.object({
   condition: z.enum(["NEEDS_REPAIR", "BROKEN"]).optional(),
+  status: z.enum(["OPEN", "CLOSED"]).default("OPEN"),
 });
 
 export async function GET(req: Request) {
@@ -15,17 +16,18 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const parsed = QuerySchema.safeParse({
     condition: url.searchParams.get("condition") ?? undefined,
+    status: url.searchParams.get("status") ?? undefined,
   });
   if (!parsed.success) return jsonError(400, "Invalid query");
 
   const incidents = await prisma.incident.findMany({
     where: {
-      status: "OPEN",
+      status: parsed.data.status,
       ...(parsed.data.condition ? { condition: parsed.data.condition } : {}),
     },
     orderBy: [{ createdAt: "desc" }],
     include: {
-      order: { select: { id: true, customer: { select: { name: true } } } },
+      order: { select: { id: true, eventName: true, createdBy: { select: { displayName: true } }, customer: { select: { name: true } } } },
       orderLine: { select: { id: true, itemId: true, item: { select: { name: true } } } },
     },
   });
@@ -41,11 +43,12 @@ export async function GET(req: Request) {
         remainingQty: Math.max(0, i.qty - i.repairedQty - i.utilizedQty),
         comment: i.comment,
         createdAt: i.createdAt,
-        order: i.order ? { id: i.order.id, customerName: i.order.customer.name } : null,
+        resolvedAt: i.resolvedAt,
+        order: i.order ? { id: i.order.id, customerName: i.order.customer.name, eventName: i.order.eventName, employeeName: i.order.createdBy.displayName } : null,
         item: i.orderLine?.item ? { id: i.orderLine.itemId, name: i.orderLine.item.name } : null,
         orderLineId: i.orderLineId,
       }))
-      .filter((i) => i.remainingQty > 0),
+      .filter((i) => parsed.data.status === "CLOSED" || i.remainingQty > 0),
   });
 }
 

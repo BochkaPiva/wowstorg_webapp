@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { getLinkedBalances } from "@/server/inventory-balances";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -40,15 +42,16 @@ export async function POST(
       const remaining = inc.qty - inc.repairedQty - inc.utilizedQty;
       if (qty > remaining) throw new Error("EXCEEDS_REMAINING");
       const itemId = inc.orderLine.itemId;
+      const linked = await getLinkedBalances(tx, itemId);
 
       // возвращаем в доступные (уменьшаем соответствующее “ведро”)
       if (inc.condition === "NEEDS_REPAIR") {
         const item = await tx.item.findUnique({ where: { id: itemId }, select: { inRepair: true } });
-        if (!item || item.inRepair < qty) throw new Error("ITEM_BUCKET_UNDERFLOW");
+        if (!item || item.inRepair < Math.max(qty, linked.inRepair)) throw new Error("ITEM_BUCKET_UNDERFLOW");
         await tx.item.update({ where: { id: itemId }, data: { inRepair: { decrement: qty } } });
       } else {
         const item = await tx.item.findUnique({ where: { id: itemId }, select: { broken: true } });
-        if (!item || item.broken < qty) throw new Error("ITEM_BUCKET_UNDERFLOW");
+        if (!item || item.broken < Math.max(qty, linked.broken)) throw new Error("ITEM_BUCKET_UNDERFLOW");
         await tx.item.update({ where: { id: itemId }, data: { broken: { decrement: qty } } });
       }
 
@@ -63,8 +66,9 @@ export async function POST(
             : {}),
         },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return jsonError(409, "Остатки изменились. Обновите список и повторите операцию.");
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "NOT_FOUND") return jsonError(404, "Не найдено");
     if (msg === "NOT_OPEN") return jsonError(400, "Запись уже закрыта");

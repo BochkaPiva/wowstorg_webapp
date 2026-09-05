@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import "@/app/inventory/inventory.css";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
@@ -23,6 +25,8 @@ export default function WarehouseLossesBasePage() {
   const user = state.status === "authenticated" ? state.user : null;
   const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
+  const [query, setQuery] = React.useState("");
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
   const [rows, setRows] = React.useState<LossRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -35,9 +39,10 @@ export default function WarehouseLossesBasePage() {
     setError(null);
     try {
       const res = await fetch("/api/warehouse/losses", { cache: "no-store" });
+      if (!res.ok) throw new Error("Не удалось загрузить утерянное");
       const data = (await res.json()) as { losses?: LossRow[] };
       setRows(data.losses ?? []);
-    } finally {
+    } catch (e) { setError(e instanceof Error ? e.message : "Ошибка сети"); } finally {
       setLoading(false);
     }
   }, [state.status, user?.role]);
@@ -49,10 +54,11 @@ export default function WarehouseLossesBasePage() {
   async function act(id: string, action: "found" | "write-off") {
     const raw = (qtyById[id] ?? "").trim();
     const n = raw === "" ? NaN : Number(raw);
-    if (!Number.isFinite(n) || n <= 0) {
+    if (!Number.isInteger(n) || n <= 0 || n > (rows.find(r => r.id === id)?.remainingQty ?? 0)) {
       setError("Укажите количество (целое число больше 0)");
       return;
     }
+    setConfirmId(null);
     setBusyId(id);
     setError(null);
     try {
@@ -87,7 +93,9 @@ export default function WarehouseLossesBasePage() {
   }
 
   return (
-    <AppShell title="Утерянный реквизит">
+    <AppShell title="Утерянный реквизит"><div className="inventory-workspace">
+      <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Утерянное</h1><p>Найденное возвращается в остаток. Списание уменьшает общее количество.</p></div><button className="inv-button" disabled={loading || !!busyId} onClick={() => void load()}>Обновить</button></header>
+      <div className="inventory-filters"><input aria-label="Поиск утерянного" placeholder="Позиция или заказчик" value={query} onChange={e => setQuery(e.target.value)} /></div>
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
           {error}
@@ -101,17 +109,17 @@ export default function WarehouseLossesBasePage() {
           <div className="text-sm text-zinc-600">Пусто.</div>
         ) : (
           <div className="space-y-3">
-            {rows.map((r) => (
-              <div key={r.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+            {rows.filter(r => [r.item.name, r.order?.customerName].join(" ").toLowerCase().includes(query.trim().toLowerCase())).map((r) => (
+              <div key={r.id} className="inventory-record rounded-xl border border-zinc-200 bg-white">
+                <div className="inventory-record-main">
                   <div>
-                    <div className="text-sm font-semibold text-zinc-900">{r.item.name}</div>
+                    <div className="text-sm font-semibold text-zinc-900"><Link href={`/inventory/positions/${r.item.id}`}>{r.item.name}</Link></div>
                     <div className="mt-1 text-xs text-zinc-600">
                       Остаток: <span className="font-semibold">{r.remainingQty}</span> из {r.qty}
                       {r.order ? (
                         <>
                           {" "}
-                          · заявка <span className="font-mono">{r.order.id.slice(0, 8)}</span> · {r.order.customerName}
+                          · <Link className="inventory-source" href={`/orders/${r.order.id}`}>Заявка {r.order.id.slice(0, 8)} · {r.order.customerName}</Link>
                         </>
                       ) : null}
                     </div>
@@ -128,32 +136,34 @@ export default function WarehouseLossesBasePage() {
                         setQtyById((p) => ({ ...p, [r.id]: v }));
                       }}
                       className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                      aria-label={`Количество: ${r.item.name}`}
                       placeholder="Кол-во"
                       inputMode="numeric"
                     />
                     <button
                       type="button"
-                      disabled={busyId === r.id}
+                      disabled={!!busyId}
                       onClick={() => act(r.id, "found")}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                      className="inv-button"
                     >
                       {busyId === r.id ? "…" : "Найдено"}
                     </button>
                     <button
                       type="button"
-                      disabled={busyId === r.id}
-                      onClick={() => act(r.id, "write-off")}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      disabled={!!busyId}
+                      onClick={() => setConfirmId(r.id)}
+                      className="inv-button inv-danger"
                     >
                       {busyId === r.id ? "…" : "Списать"}
                     </button>
                   </div>
                 </div>
+                {confirmId === r.id && <div className="inventory-confirm"><div><strong>Подтвердите списание</strong><p>Общее количество уменьшится на указанное число. Отменить это действие в интерфейсе нельзя.</p></div><button className="inv-button inv-danger" disabled={!!busyId} onClick={() => void act(r.id, "write-off")}>Списать {qtyById[r.id] || "…"} шт.</button><button className="inv-button" onClick={() => setConfirmId(null)}>Отмена</button></div>}
               </div>
             ))}
           </div>
         )}
-      </div>
+      </div></div>
     </AppShell>
   );
 }

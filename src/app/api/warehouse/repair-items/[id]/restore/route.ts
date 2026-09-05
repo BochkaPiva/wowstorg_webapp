@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { getLinkedBalances, unlinkedQuantity } from "@/server/inventory-balances";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -36,20 +38,22 @@ export async function POST(
         where: { id },
         select: { id: true, inRepair: true, broken: true, isActive: true },
       });
-      if (!item || !item.isActive) throw new Error("NOT_FOUND");
+      if (!item) throw new Error("NOT_FOUND");
 
       const bucketValue = condition === "NEEDS_REPAIR" ? item.inRepair : item.broken;
-      if (qty > bucketValue) throw new Error("EXCEEDS_BUCKET");
+      const linked = await getLinkedBalances(tx, id);
+      if (qty > unlinkedQuantity(bucketValue, linked[bucketField])) throw new Error("EXCEEDS_BUCKET");
 
       await tx.item.update({
         where: { id },
         data: { [bucketField]: { decrement: qty } },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return jsonError(409, "Остатки изменились. Обновите список и повторите операцию.");
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "NOT_FOUND") return jsonError(404, "Позиция не найдена");
-    if (msg === "EXCEEDS_BUCKET") return jsonError(400, "Количество больше доступного в этом статусе");
+    if (msg === "EXCEEDS_BUCKET") return jsonError(409, "Количество превышает остаток вне заявок. Реквизит из заявки обрабатывайте через соответствующий инцидент.");
     return jsonError(400, "Нельзя выполнить операцию");
   }
 

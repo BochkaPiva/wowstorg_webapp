@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import "../inventory.css";
 
 type Package = {
   id: string;
@@ -50,30 +51,11 @@ export default function InventoryPackagesPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/inventory/items"
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-              >
-                ← В инвентарь
-              </Link>
-              <Link
-                href="/inventory/packages/new"
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100"
-              >
-                + Новый пакет
-              </Link>
-            </div>
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              Обновить
-            </button>
-          </div>
+        <div className="inventory-workspace space-y-4">
+          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Пакеты</h1><p>Готовые комплекты и их состав.</p></div><div className="flex flex-wrap gap-2">
+          <Link href="/inventory/packages/new" className="inv-button inv-primary">+ Новый пакет</Link>
+
+          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div></header>
 
           {loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>
@@ -88,7 +70,7 @@ export default function InventoryPackagesPage() {
                   key={p.id}
                   href={`/inventory/packages/${p.id}`}
                   className={[
-                    "block rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                    "block rounded-xl border bg-white p-4 hover:border-violet-300",
                     !p.isActive ? "border-zinc-200/60 opacity-80" : "border-zinc-200 hover:border-violet-200",
                   ].join(" ")}
                 >

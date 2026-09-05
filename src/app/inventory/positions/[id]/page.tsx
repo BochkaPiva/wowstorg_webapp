@@ -142,6 +142,7 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedUpdatedAt: item?.updatedAt,
           name: form.name,
           description: form.description.trim() ? form.description.trim() : null,
           type: form.type,

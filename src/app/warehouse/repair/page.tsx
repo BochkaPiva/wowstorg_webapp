@@ -1,333 +1,120 @@
 "use client";
 
 import React, { Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import "@/app/inventory/inventory.css";
 
-type IncidentRow = {
-  id: string;
-  condition: "NEEDS_REPAIR" | "BROKEN";
-  qty: number;
-  repairedQty: number;
-  utilizedQty: number;
-  remainingQty: number;
-  comment?: string | null;
-  createdAt: string;
-  order?: { id: string; customerName: string } | null;
+type Incident = {
+  id: string; qty: number; remainingQty: number; repairedQty: number; utilizedQty: number;
+  comment?: string | null; createdAt: string; resolvedAt?: string | null;
+  order?: { id: string; customerName: string; eventName?: string | null; employeeName: string } | null;
   item?: { id: string; name: string } | null;
 };
-
-type RepairItemRow = {
-  id: string;
-  name: string;
-  qty: number;
-  condition: "NEEDS_REPAIR" | "BROKEN";
-  total: number;
-  inRepair: number;
-  broken: number;
-};
-
-function conditionRu(c: "NEEDS_REPAIR" | "BROKEN") {
-  return c === "NEEDS_REPAIR" ? "Требует ремонта" : "Сломано";
-}
+type Row = { key: string; id: string; itemId?: string; name: string; qty: number; manual: boolean; incident?: Incident };
+type Action = { row: Row; kind: "restore" | "write-off"; qty: string };
+const date = (value: string) => new Date(value).toLocaleDateString("ru-RU");
 
 function RepairPageInner() {
   const searchParams = useSearchParams();
   const { state } = useAuth();
-  const user = state.status === "authenticated" ? state.user : null;
-  const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
-
-  const [tab, setTab] = React.useState<"NEEDS_REPAIR" | "BROKEN">("NEEDS_REPAIR");
-
-  React.useEffect(() => {
-    const c = searchParams.get("condition");
-    if (c === "NEEDS_REPAIR" || c === "BROKEN") {
-      setTab(c);
-    }
-  }, [searchParams]);
-  const [rows, setRows] = React.useState<IncidentRow[]>([]);
-  const [itemRows, setItemRows] = React.useState<RepairItemRow[]>([]);
+  const allowed = state.status === "authenticated" && state.user.role === "WOWSTORG";
+  const [condition, setCondition] = React.useState("NEEDS_REPAIR");
+  const [history, setHistory] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [source, setSource] = React.useState("all");
+  const [rows, setRows] = React.useState<Row[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [busyId, setBusyId] = React.useState<string | null>(null);
-  const [busyItemId, setBusyItemId] = React.useState<string | null>(null);
-  const [qtyById, setQtyById] = React.useState<Record<string, string>>({});
-  const [itemQtyById, setItemQtyById] = React.useState<Record<string, string>>({});
-  const [error, setError] = React.useState<string | null>(null);
-
-  const load = React.useCallback(async () => {
-    if (state.status !== "authenticated" || user?.role !== "WOWSTORG") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [incRes, itemsRes] = await Promise.all([
-        fetch(`/api/warehouse/incidents?condition=${tab}`, { cache: "no-store" }),
-        fetch(`/api/warehouse/repair-items?condition=${tab}`, { cache: "no-store" }),
-      ]);
-      const incData = (await incRes.json().catch(() => null)) as { incidents?: IncidentRow[] } | null;
-      const itemsData = (await itemsRes.json().catch(() => null)) as { items?: RepairItemRow[] } | null;
-      setRows(incData?.incidents ?? []);
-      setItemRows(itemsData?.items ?? []);
-    } catch (e) {
-      console.error("warehouse repair load failed", e);
-      setRows([]);
-      setItemRows([]);
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, [state.status, user?.role, tab]);
-
+  const [busy, setBusy] = React.useState(false);
+  const [action, setAction] = React.useState<Action | null>(null);
+  const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+  const [discrepancies, setDiscrepancies] = React.useState<{ id: string; name: string; recorded: number; linked: number }[]>([]);
+  const sequence = React.useRef(0);
   React.useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function act(id: string, action: "repair" | "utilize") {
-    const raw = (qtyById[id] ?? "").trim();
-    const n = raw === "" ? NaN : Number(raw);
-    if (!Number.isFinite(n) || n <= 0) {
-      setError("Укажите количество (целое число больше 0)");
-      return;
-    }
-    setBusyId(id);
-    setError(null);
+    const value = searchParams.get("condition");
+    if (value === "BROKEN" || value === "NEEDS_REPAIR") setCondition(value);
+  }, [searchParams]);
+  const load = React.useCallback(async () => {
+    if (!allowed) return;
+    const request = ++sequence.current;
+    setLoading(true);
+    setError("");
     try {
-      const res = await fetch(`/api/warehouse/incidents/${id}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qty: Math.floor(n) }),
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        try {
-          const j = JSON.parse(text) as { error?: { message?: string } };
-          setError(j?.error?.message ?? "Ошибка операции");
-        } catch {
-          setError("Ошибка операции");
-        }
-        return;
-      }
-      setQtyById((p) => ({ ...p, [id]: "" }));
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  }
+      const responses = await Promise.all([
+        fetch(`/api/warehouse/incidents?condition=${condition}&status=${history ? "CLOSED" : "OPEN"}`, { cache: "no-store" }),
+        ...(!history ? [fetch(`/api/warehouse/repair-items?condition=${condition}`, { cache: "no-store" })] : []),
+      ]);
+      if (responses.some(r => !r.ok)) throw new Error("Не удалось загрузить ремонт. Повторите попытку.");
+      const [incidents, items] = await Promise.all(responses.map(r => r.json()));
+      if (request !== sequence.current) return;
+      setDiscrepancies(items?.discrepancies ?? []);
+      setRows([
+        ...(incidents.incidents as Incident[]).map(i => ({ key: "order-" + i.id, id: i.id, itemId: i.item?.id, name: i.item?.name ?? "Позиция", qty: i.remainingQty, manual: false, incident: i })),
+        ...((items?.items ?? []) as { id: string; name: string; qty: number }[]).map(i => ({ key: "manual-" + i.id, id: i.id, itemId: i.id, name: i.name, qty: i.qty, manual: true })),
+      ]);
+    } catch (e) {
+      if (request === sequence.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally { if (request === sequence.current) setLoading(false); }
+  }, [allowed, condition, history]);
+  React.useEffect(() => { setAction(null); void load(); return () => { sequence.current++; }; }, [load]);
 
-  async function actOnItem(
-    itemId: string,
-    action: "restore" | "write-off",
-  ) {
-    const raw = (itemQtyById[itemId] ?? "").trim();
-    const n = raw === "" ? NaN : Number(raw);
-    if (!Number.isFinite(n) || n <= 0) {
-      setError("Укажите количество (целое число больше 0)");
-      return;
-    }
-    setBusyItemId(itemId);
-    setError(null);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!action || busy) return;
+    const qty = Number(action.qty);
+    if (!Number.isInteger(qty) || qty < 1 || qty > action.row.qty) { setError("Укажите целое количество от 1 до " + action.row.qty); return; }
+    setBusy(true); setError(""); setNotice("");
     try {
-      const res = await fetch(`/api/warehouse/repair-items/${itemId}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qty: Math.floor(n), condition: tab }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        try {
-          const j = JSON.parse(text) as { error?: { message?: string } };
-          setError(j?.error?.message ?? "Ошибка");
-        } catch {
-          setError("Ошибка операции");
-        }
-        return;
-      }
-      setItemQtyById((p) => ({ ...p, [itemId]: "" }));
+      const { row, kind } = action;
+      const endpoint = row.manual ? `repair-items/${row.id}/${kind}` : `incidents/${row.id}/${kind === "restore" ? "repair" : "utilize"}`;
+      const response = await fetch("/api/warehouse/" + endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qty, condition }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? "Не удалось выполнить операцию");
+      setAction(null);
+      setNotice(`${row.name}: ${kind === "restore" ? "восстановлено" : "списано"} ${qty} шт.`);
       await load();
-    } finally {
-      setBusyItemId(null);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : "Ошибка операции"); }
+    finally { setBusy(false); }
   }
 
-  if (forbidden) {
-    return (
-      <AppShell title="База ремонта">
-        <div className="text-sm text-zinc-600">Доступно только для сотрудников склада.</div>
-      </AppShell>
-    );
-  }
-
-  return (
-    <AppShell title="Ремонт / сломано">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("NEEDS_REPAIR")}
-          className={[
-            "rounded-lg px-3 py-2 text-sm font-semibold border",
-            tab === "NEEDS_REPAIR"
-              ? "border-violet-300 bg-violet-600 text-white"
-              : "border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-          ].join(" ")}
-        >
-          Требует ремонта
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("BROKEN")}
-          className={[
-            "rounded-lg px-3 py-2 text-sm font-semibold border",
-            tab === "BROKEN"
-              ? "border-violet-300 bg-violet-600 text-white"
-              : "border-zinc-200 bg-white text-zinc-800 hover:bg-violet-50",
-          ].join(" ")}
-        >
-          Сломано
-        </button>
-      </div>
-
-      {error ? (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-          {error}
+  const query = search.trim().toLocaleLowerCase("ru");
+  const visible = rows.filter(row => (source === "all" || (source === "manual") === row.manual) &&
+    [row.name, row.incident?.order?.customerName, row.incident?.order?.eventName, row.incident?.order?.employeeName, row.incident?.comment].filter(Boolean).join(" ").toLocaleLowerCase("ru").includes(query));
+  return <AppShell title="Ремонт и поломки">
+    {!allowed ? <p>Раздел доступен сотрудникам склада.</p> : <div className="inventory-workspace">
+      <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Ремонт и поломки</h1><p>Один случай — один источник. Восстановление возвращает доступность, списание уменьшает общий остаток.</p></div><button className="inv-button" onClick={() => void load()} disabled={loading || busy}>Обновить</button></header>
+      <div className="inventory-toolbar">
+        <div className="inventory-segments" aria-label="Состояние">
+          <button aria-pressed={condition === "NEEDS_REPAIR"} disabled={busy} onClick={() => setCondition("NEEDS_REPAIR")}>Требует ремонта</button>
+          <button aria-pressed={condition === "BROKEN"} disabled={busy} onClick={() => setCondition("BROKEN")}>Сломано</button>
         </div>
-      ) : null}
-
-      <div className="mt-4">
-        {loading ? (
-          <ListSkeleton rows={6} />
-        ) : null}
-
-        {!loading && itemRows.length > 0 ? (
-          <div className="mb-6">
-            <h3 className="text-sm font-semibold text-zinc-700 mb-2">По позициям (вне заявок)</h3>
-            <p className="text-xs text-zinc-500 mb-2">
-              Реквизит, отмеченный как «{conditionRu(tab).toLowerCase()}» в карточке позиции. Укажите количество:{" "}
-              <span className="text-zinc-600">«Вернуть в каталог»</span> — убирает штуки из этого статуса (они снова
-              доступны как обычный остаток).{" "}
-              <span className="text-zinc-600">«Списать навсегда»</span> — безвозвратно уменьшает общее количество по
-              позиции ровно на введённое число; карточка позиции остаётся.
-            </p>
-            <div className="space-y-2">
-              {itemRows.map((r) => (
-                <div key={r.id} className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-medium text-zinc-900">{r.name}</div>
-                    <div className="mt-1 text-xs text-zinc-600">
-                      В статусе: <span className="font-semibold">{r.qty}</span> шт. · Всего:{" "}
-                      <span className="font-semibold">{r.total}</span> шт.
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      value={itemQtyById[r.id] ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v !== "" && !/^\d*$/.test(v)) return;
-                        setItemQtyById((p) => ({ ...p, [r.id]: v }));
-                      }}
-                      className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                      placeholder="Кол-во"
-                      inputMode="numeric"
-                    />
-                    <button
-                      type="button"
-                      disabled={busyItemId === r.id}
-                      onClick={() => actOnItem(r.id, "restore")}
-                      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                    >
-                      {busyItemId === r.id ? "…" : "Вернуть в каталог"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyItemId === r.id}
-                      onClick={() => actOnItem(r.id, "write-off")}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                    >
-                      {busyItemId === r.id ? "…" : "Списать навсегда"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {!loading ? <h3 className="text-sm font-semibold text-zinc-700 mb-2">По заявкам</h3> : null}
-        {!loading && rows.length === 0 && itemRows.length === 0 ? (
-          <div className="text-sm text-zinc-600">Пусто.</div>
-        ) : !loading && rows.length > 0 ? (
-          <div className="space-y-3">
-            {rows.map((r) => (
-              <div key={r.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-zinc-900">
-                      {r.item?.name ?? "Позиция"} · {conditionRu(r.condition)}
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-600">
-                      Остаток: <span className="font-semibold">{r.remainingQty}</span> из {r.qty}
-                      {r.order ? (
-                        <>
-                          {" "}
-                          · заявка <span className="font-mono">{r.order.id.slice(0, 8)}</span> · {r.order.customerName}
-                        </>
-                      ) : null}
-                    </div>
-                    {r.comment ? (
-                      <div className="mt-2 text-sm text-zinc-700 whitespace-pre-wrap">{r.comment}</div>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      value={qtyById[r.id] ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v !== "" && !/^\d*$/.test(v)) return;
-                        setQtyById((p) => ({ ...p, [r.id]: v }));
-                      }}
-                      className="w-24 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                      placeholder="Кол-во"
-                      inputMode="numeric"
-                    />
-                    <button
-                      type="button"
-                      disabled={busyId === r.id}
-                      onClick={() => act(r.id, "repair")}
-                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-                    >
-                      {busyId === r.id ? "…" : "Починить"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === r.id}
-                      onClick={() => act(r.id, "utilize")}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                    >
-                      {busyId === r.id ? "…" : "Утилизировать"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        <div className="inventory-segments" aria-label="Период">
+          <button aria-pressed={!history} disabled={busy} onClick={() => setHistory(false)}>В работе</button>
+          <button aria-pressed={history} disabled={busy} onClick={() => setHistory(true)}>История заявок</button>
+        </div>
       </div>
-    </AppShell>
-  );
+      <div className="inventory-filters"><input aria-label="Поиск по ремонту" placeholder="Позиция, заказчик, мероприятие или сотрудник" value={search} onChange={e => setSearch(e.target.value)} /><select aria-label="Источник" value={source} onChange={e => setSource(e.target.value)}><option value="all">Все источники</option><option value="order">Из заявок</option><option value="manual">Без заявки</option></select></div>
+      {error && <div className="inventory-message inventory-error" role="alert">{error}</div>}
+      {notice && <div className="inventory-message" role="status">{notice}</div>}
+      {!loading && discrepancies.length > 0 && <div className="inventory-message inventory-error" role="alert"><strong>Нужна сверка остатков</strong><p>Открытых случаев больше, чем числится в ремонте. Операции по этим позициям заблокированы до сверки:</p><ul>{discrepancies.map(item => <li key={item.id}>{item.name}: в остатке {item.recorded}, по заявкам {item.linked}.</li>)}</ul></div>}
+      {loading ? <ListSkeleton rows={4} /> : <>
+        <div className="inventory-caption">{visible.length} записей{!history && ` · ${visible.reduce((n, r) => n + r.qty, 0)} шт. в работе`}</div>
+        <div className="inventory-list">{visible.map(row => <article className="inventory-record" key={row.key}>
+          <div className="inventory-record-main"><div><span className="inventory-badge">{row.manual ? "Без заявки" : "Из заявки"}</span><h2>{row.itemId ? <Link href={`/inventory/positions/${row.itemId}`}>{row.name}</Link> : row.name}</h2>
+          {row.incident?.order ? <><Link className="inventory-source" href={`/orders/${row.incident.order.id}`}>{row.incident.order.eventName || row.incident.order.customerName} · {row.incident.order.customerName}</Link><p>Оформил: {row.incident.order.employeeName} · {date(row.incident.createdAt)}</p></> : <p>Количество отмечено в карточке позиции, без привязки к заявке.</p>}
+          {row.incident?.comment && <p className="inventory-comment">{row.incident.comment}</p>}
+          {row.incident && <p>Восстановлено: {row.incident.repairedQty} · Списано: {row.incident.utilizedQty}{row.incident.resolvedAt && ` · Закрыто ${date(row.incident.resolvedAt)}`}</p>}
+          </div><div className="inventory-record-actions">{!history && <><strong className="inventory-quantity">{row.qty}<small>шт. в работе</small></strong><button className="inv-button" disabled={busy} onClick={() => { setError(""); setAction({ row, kind: "restore", qty: String(row.qty) }); }}>Восстановить</button><button className="inv-button inv-danger" disabled={busy} onClick={() => { setError(""); setAction({ row, kind: "write-off", qty: "1" }); }}>Списать</button></>}</div></div>
+          {action?.row.key === row.key && <form className="inventory-confirm" onSubmit={submit}><div><strong>{action.kind === "restore" ? "Вернуть в доступный остаток" : "Списать безвозвратно"}</strong><p>{action.kind === "restore" ? "Общее количество не изменится." : "Общее количество уменьшится. Карточка позиции и история заявки сохранятся."}</p></div><label>Количество<input autoFocus type="number" min="1" max={row.qty} step="1" value={action.qty} disabled={busy} onChange={e => setAction({ ...action, qty: e.target.value })} /></label><button className="inv-button inv-primary" disabled={busy}>{busy ? "Сохраняем…" : "Подтвердить"}</button><button type="button" className="inv-button" disabled={busy} onClick={() => setAction(null)}>Отмена</button></form>}
+        </article>)}</div>
+        {!visible.length && <div className="inventory-empty">{search || source !== "all" ? "По выбранным фильтрам ничего не найдено." : history ? "Закрытых случаев из заявок пока нет." : "В этом разделе нет незавершённых случаев."}</div>}
+      </>}
+      <p className="inventory-caption">История показывает закрытые поломки из заявок. Старые ручные изменения без заявки не содержат сведений о заказчике.</p>
+    </div>}
+  </AppShell>;
 }
-
-export default function WarehouseRepairBasePage() {
-  return (
-    <Suspense
-      fallback={
-        <AppShell title="Ремонт / сломано">
-          <ListSkeleton rows={6} />
-        </AppShell>
-      }
-    >
-      <RepairPageInner />
-    </Suspense>
-  );
-}
+export default function WarehouseRepairBasePage() { return <Suspense fallback={<AppShell title="Ремонт и поломки"><ListSkeleton rows={4} /></AppShell>}><RepairPageInner /></Suspense>; }

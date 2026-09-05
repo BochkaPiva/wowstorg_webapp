@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import "../../inventory.css";
 
 type ItemType = "ASSET" | "BULK" | "CONSUMABLE";
 
@@ -56,7 +57,7 @@ export default function NewWarehouseItemPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4 max-w-3xl">
+        <div className="inventory-workspace inventory-editor space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href="/inventory/warehouse-items"
@@ -66,7 +67,7 @@ export default function NewWarehouseItemPage() {
             </Link>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="inventory-form-section">
             <div className="text-base font-semibold text-zinc-900">Складской реквизит</div>
             <div className="mt-1 text-sm text-zinc-600">
               Это внутренний реквизит склада, он не показывается в каталоге. Фото не требуется.
@@ -128,7 +129,7 @@ export default function NewWarehouseItemPage() {
                 type="button"
                 disabled={busy || !name.trim()}
                 onClick={create}
-                className="rounded-lg border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                className="inv-button inv-primary"
               >
                 {busy ? "Создаю…" : "Создать"}
               </button>

@@ -6,6 +6,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import "../inventory.css";
 
 type RentItem = {
   itemId: string;
@@ -84,23 +85,8 @@ export default function InRentPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href="/inventory/items"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              ← В инвентарь
-            </Link>
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              Обновить
-            </button>
-          </div>
-
+        <div className="inventory-workspace space-y-4">
+          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>В аренде</h1><p>Выданный реквизит, ожидаемые возвраты и просрочки.</p></div><div className="flex flex-wrap gap-2"><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div></header>
           {loading ? (
             <ListSkeleton rows={6} />
           ) : error ? (

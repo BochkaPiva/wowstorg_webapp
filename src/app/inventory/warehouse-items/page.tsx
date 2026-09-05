@@ -6,6 +6,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import "../inventory.css";
 
 type Item = {
   id: string;
@@ -78,7 +79,7 @@ export default function WarehouseItemsPage() {
   }, [forbidden]);
 
   async function patchTotal(id: string, newTotal: number) {
-    if (newTotal < 0) return;
+    if (!Number.isInteger(newTotal) || newTotal < 0 || busyId) return;
     setBusyId(id);
     setError(null);
     setEditTotalId(null);
@@ -86,7 +87,7 @@ export default function WarehouseItemsPage() {
       const res = await fetch(`/api/inventory/positions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ total: newTotal }),
+        body: JSON.stringify({ total: newTotal, expectedUpdatedAt: items.find(item => item.id === id)?.updatedAt }),
       });
       const txt = await res.text();
       const data = txt ? (JSON.parse(txt) as { error?: { message?: string } }) : {};
@@ -94,9 +95,7 @@ export default function WarehouseItemsPage() {
         setError(data?.error?.message ?? "Не удалось обновить");
         return;
       }
-      setItems((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, total: newTotal } : p)),
-      );
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -122,31 +121,8 @@ export default function WarehouseItemsPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/inventory/items"
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-              >
-                ← В инвентарь
-              </Link>
-              <Link
-                href="/inventory/warehouse-items/new"
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100"
-              >
-                + Новый складской реквизит
-              </Link>
-            </div>
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              Обновить
-            </button>
-          </div>
-
+        <div className="inventory-workspace space-y-4">
+          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Складской реквизит</h1><p>Внутренние инструменты и расходники. Не показываются в каталоге.</p></div><div className="flex flex-wrap gap-2"><Link href="/inventory/warehouse-items/new" className="inv-button inv-primary">+ Новая позиция</Link><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div></header>
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div className="md:col-span-2">
@@ -229,7 +205,7 @@ export default function WarehouseItemsPage() {
                           <div className="mt-1 text-sm text-zinc-600 line-clamp-2">{p.description}</div>
                         ) : null}
                         <div className={["mt-2 text-xs", isZero ? "text-red-700" : "text-zinc-600"].join(" ")}>
-                          Доступно: <strong>{avail}</strong> / {p.total}
+                          Исправно: <strong>{avail}</strong> / {p.total}
                         </div>
                       </div>
 

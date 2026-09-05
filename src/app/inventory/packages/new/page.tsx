@@ -5,6 +5,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import "../../inventory.css";
 
 type Item = { id: string; name: string; isActive: boolean };
 type CatalogItemsResponse = {
@@ -99,7 +100,7 @@ export default function NewPackagePage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4 max-w-4xl">
+        <div className="inventory-workspace inventory-editor space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href="/inventory/packages"
@@ -109,7 +110,7 @@ export default function NewPackagePage() {
             </Link>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="inventory-form-section">
             <div className="text-base font-semibold text-zinc-900">Основные данные</div>
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
@@ -135,7 +136,7 @@ export default function NewPackagePage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <div className="inventory-form-section">
             <div className="text-base font-semibold text-zinc-900">Состав пакета</div>
             <div className="mt-3">
               <div className="text-sm text-zinc-600">
@@ -168,7 +169,7 @@ export default function NewPackagePage() {
               type="button"
               disabled={busy || !name.trim()}
               onClick={create}
-              className="rounded-lg border border-violet-200 bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              className="inv-button inv-primary"
             >
               {busy ? "Создаю…" : "Создать пакет"}
             </button>

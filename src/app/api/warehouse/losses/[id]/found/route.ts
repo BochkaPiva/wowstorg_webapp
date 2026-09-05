@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -39,8 +40,13 @@ export async function POST(
       const remaining = loss.qty - loss.foundQty - loss.writtenOffQty;
       if (qty > remaining) throw new Error("EXCEEDS_REMAINING");
 
+      const openLosses = await tx.lossRecord.findMany({
+        where: { itemId: loss.itemId, status: "OPEN" },
+        select: { qty: true, foundQty: true, writtenOffQty: true },
+      });
+      const recordedMissing = openLosses.reduce((sum, row) => sum + Math.max(0, row.qty - row.foundQty - row.writtenOffQty), 0);
       const item = await tx.item.findUnique({ where: { id: loss.itemId }, select: { missing: true } });
-      if (!item || item.missing < qty) throw new Error("ITEM_BUCKET_UNDERFLOW");
+      if (!item || item.missing < Math.max(qty, recordedMissing)) throw new Error("ITEM_BUCKET_UNDERFLOW");
       await tx.item.update({ where: { id: loss.itemId }, data: { missing: { decrement: qty } } });
 
       const nextFound = loss.foundQty + qty;
@@ -54,8 +60,9 @@ export async function POST(
             : {}),
         },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return jsonError(409, "Остатки изменились. Обновите список и повторите.");
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "NOT_FOUND") return jsonError(404, "Не найдено");
     if (msg === "NOT_OPEN") return jsonError(400, "Запись уже закрыта");

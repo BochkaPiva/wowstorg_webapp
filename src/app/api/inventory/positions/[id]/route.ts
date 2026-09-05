@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { getLinkedBalances } from "@/server/inventory-balances";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
@@ -7,6 +8,7 @@ import { deleteItemPhoto } from "@/server/file-storage";
 import { jsonError, jsonOk } from "@/server/http";
 
 const UpdateSchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
   name: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(4000).nullable().optional(),
   type: z.enum(["ASSET", "BULK", "CONSUMABLE"]).optional(),
@@ -83,19 +85,27 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const data = parsed.data;
 
-  const existing = await prisma.item.findUnique({
+  try {
+  await prisma.$transaction(async (tx) => {
+  const existing = await tx.item.findUnique({
     where: { id },
-    select: { id: true, total: true, inRepair: true, broken: true, missing: true },
+    select: { id: true, total: true, inRepair: true, broken: true, missing: true, updatedAt: true },
   });
-  if (!existing) return jsonError(404, "Not found");
+  if (!existing) throw new Error("Позиция не найдена");
+  if (data.expectedUpdatedAt && existing.updatedAt.toISOString() !== data.expectedUpdatedAt) throw new Error("STALE");
 
   const nextTotal = data.total ?? existing.total;
   const nextInRepair = data.inRepair ?? existing.inRepair;
   const nextBroken = data.broken ?? existing.broken;
   const nextMissing = data.missing ?? existing.missing;
   if (nextInRepair + nextBroken + nextMissing > nextTotal) {
-    return jsonError(400, "Сумма «ремонт + сломано + утеряно» не может превышать общее количество");
+    throw new Error("Сумма «ремонт + сломано + утеряно» не может превышать общее количество");
   }
+  const linked = await getLinkedBalances(tx, id);
+  if (nextInRepair < linked.inRepair || nextBroken < linked.broken || nextMissing < linked.missing) {
+    throw new Error("В остатках есть незакрытые случаи из заявок. Завершите ремонт или возврат в соответствующем разделе инвентаря.");
+  }
+
 
   const updateData: Prisma.ItemUpdateInput = {
     ...(data.name != null ? { name: data.name } : {}),
@@ -118,42 +128,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     ...(data.isActive != null ? { isActive: data.isActive } : {}),
   };
 
-  await prisma.$transaction(async (tx) => {
     await tx.item.update({ where: { id }, data: updateData });
 
-    // Синхронизация «утеряно» с базой утерь: запись без заявки (ручное редактирование позиции).
-    const manualLoss = await tx.lossRecord.findFirst({
-      where: { itemId: id, orderId: null, status: "OPEN" },
-      select: { id: true },
-    });
-    if (nextMissing === 0) {
-      if (manualLoss) {
-        await tx.lossRecord.update({
-          where: { id: manualLoss.id },
-          data: { qty: 0, foundQty: 0, writtenOffQty: 0, status: "FOUND", resolvedAt: new Date() },
-        });
-      }
-    } else {
-      if (manualLoss) {
-        await tx.lossRecord.update({
-          where: { id: manualLoss.id },
-          data: { qty: nextMissing, foundQty: 0, writtenOffQty: 0 },
-        });
-      } else {
-        await tx.lossRecord.create({
-          data: {
-            itemId: id,
-            orderId: null,
-            orderLineId: null,
-            qty: nextMissing,
-            foundQty: 0,
-            writtenOffQty: 0,
-            status: "OPEN",
-          },
-        });
-      }
+    // Only new manually recorded losses create cases. Never reset resolved history.
+    if (data.missing !== undefined && nextMissing !== existing.missing) {
+      if (nextMissing < existing.missing) throw new Error("Возвращайте или списывайте утерянное через раздел «Утерянное», чтобы сохранить историю.");
+      await tx.lossRecord.create({ data: {
+        itemId: id, qty: nextMissing - existing.missing, status: "OPEN",
+      } });
     }
-
     if (data.categoryIds) {
       await tx.itemCategory.deleteMany({ where: { itemId: id } });
       if (data.categoryIds.length) {
@@ -175,7 +158,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         });
       }
     }
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return jsonError(409, "Остатки изменились. Обновите карточку и повторите.");
+    if (e instanceof Error && e.message === "STALE") return jsonError(409, "Карточка уже изменилась. Обновите её перед сохранением.");
+    if (e instanceof Prisma.PrismaClientKnownRequestError) return jsonError(409, "Не удалось сохранить изменения: проверьте связанные данные и обновите карточку.");
+    return jsonError(400, e instanceof Error ? e.message : "Не удалось сохранить позицию");
+  }
 
   return jsonOk({ ok: true });
 }

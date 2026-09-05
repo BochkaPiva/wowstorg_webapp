@@ -7,6 +7,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
+import "../inventory.css";
 
 import "./position-edit.css";
 
@@ -76,40 +77,11 @@ export default function InventoryPositionsPage() {
       {forbidden ? (
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/inventory/items"
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-              >
-                ← В инвентарь
-              </Link>
-              <Link
-                href="/inventory/positions/new"
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100"
-              >
-                + Новая позиция
-              </Link>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/api/inventory/positions/export"
-                className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-violet-200/70 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-200/80"
-              >
-                <span aria-hidden="true">↓</span>
-                Скачать реквизит
-              </Link>
-              <button
-                type="button"
-                onClick={load}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-              >
-                Обновить
-              </button>
-            </div>
-          </div>
+        <div className="inventory-workspace space-y-4">
+          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Позиции</h1><p>Каталог реквизита: цены, состояние и общий остаток.</p></div><div className="flex flex-wrap gap-2">
+          <Link href="/inventory/positions/new" className="inv-button inv-primary">+ Новая позиция</Link>
+          <Link href="/api/inventory/positions/export" className="inv-button">↓ Скачать</Link>
+          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div></header>
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] lg:items-end">
@@ -197,11 +169,11 @@ export default function InventoryPositionsPage() {
                     key={p.id}
                     href={`/inventory/positions/${p.id}`}
                     className={[
-                      "block rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                      "block rounded-xl border bg-white p-4 hover:border-violet-300",
                       !p.isActive ? "border-zinc-200/60 opacity-80" : "border-zinc-200 hover:border-violet-200",
                     ].join(" ")}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="inventory-position-row">
                       <div className="flex min-w-0 items-start gap-3">
                         <div
                           className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50"
@@ -242,7 +214,7 @@ export default function InventoryPositionsPage() {
 
                         <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-600">
                           <span className="rounded-md bg-zinc-50 border border-zinc-200 px-2 py-1">
-                            Доступно сейчас: <strong className="text-zinc-900">{avail}</strong> / {p.total}
+                            Исправно: <strong className="text-zinc-900">{avail}</strong> / {p.total}
                           </span>
                           {(p.inRepair + p.broken + p.missing) > 0 ? (
                             <span className="rounded-md bg-zinc-50 border border-zinc-200 px-2 py-1">

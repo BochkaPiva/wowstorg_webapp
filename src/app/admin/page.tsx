@@ -1,86 +1,73 @@
 "use client";
 
 import Link from "next/link";
-
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import styles from "./admin-index.module.css";
 
-function AdminCard({
-  href,
-  title,
-  description,
-}: {
-  href: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-    >
-      <div className="text-base font-semibold tracking-tight">{title}</div>
-      <div className="mt-1 text-sm text-zinc-600">{description}</div>
-      <div className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-violet-700">
-        Открыть <span className="transition group-hover:translate-x-0.5">→</span>
-      </div>
-    </Link>
-  );
-}
+const groups = [
+  {
+    id: "people",
+    title: "Люди и отношения",
+    links: [
+      { href: "/admin/users", title: "Пользователи", description: "Учётные записи, роли, блокировка и сброс паролей." },
+      { href: "/admin/customers", title: "Заказчики", description: "Данные заказчиков для оформления заявок." },
+      { href: "/admin/loyalty", title: "Лояльность Grinvich", description: "Рейтинг, скидки и персональные предложения." },
+    ],
+  },
+  {
+    id: "control",
+    title: "Аналитика и контроль",
+    links: [
+      { href: "/admin/analytics", title: "Аналитика", description: "Аренда, прибыль и востребованность реквизита." },
+      { href: "/admin/quality", title: "Качество сервиса", description: "Оценки заявок, отзывы Grinvich и рейтинг команды." },
+      { href: "/admin/inventory-audit", title: "Аудит инвентаря", description: "Расхождения в остатках и история проверок." },
+    ],
+  },
+];
 
 export default function AdminIndexPage() {
   const { state } = useAuth();
-  const forbidden =
-    state.status === "authenticated" && state.user.role !== "WOWSTORG";
+  const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
   return (
-    <AppShell title="Админка">
-      {forbidden ? (
-        <div className="text-sm text-zinc-600">
-          Этот раздел доступен только Wowstorg (склад).
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <AdminCard
-            href="/admin/users"
-            title="Пользователи"
-            description="Создание, роли, блокировка, сброс пароля."
-          />
-          <AdminCard
-            href="/admin/customers"
-            title="Заказчики"
-            description="Справочник заказчиков для заявок."
-          />
-          <AdminCard
-            href="/admin/analytics"
-            title="Аналитика"
-            description="Топ реквизита по сдачам и прибыли, топ заказчиков."
-          />
-          <AdminCard
-            href="/admin/telegram"
-            title="Telegram"
-            description="Статус бота, тест в чат склада и в личку."
-          />
-          <AdminCard
-            href="/admin/loyalty"
-            title="Лояльность Grinvich"
-            description="Рейтинг, уровни скидок, персональные предложения и предупреждения."
-          />
-          <AdminCard
-            href="/admin/quality"
-            title="Качество сервиса"
-            description="Оценки закрытых заявок, комментарии Grinvich и средний рейтинг Wowstorg."
-          />
-          <AdminCard
-            href="/admin/inventory-audit"
-            title="Аудит инвентаря"
-            description="Проверка расхождений, история запусков, детализация по позициям."
-          />
-          <AdminCard
-            href="/admin/order-cleanup"
-            title="Очистка заявок"
-            description="Полное удаление тестовых заявок и быстрых доп.-выдач."
-          />
+    <AppShell title="Администрирование">
+      {forbidden ? <p>Этот раздел доступен только сотрудникам ВАУСТОРГ.</p> : (
+        <div className={styles.workspace}>
+          <header className={styles.heading}>
+            <h2>Администрирование</h2>
+            <p>Команда, заказчики и контроль работы — выберите нужный раздел.</p>
+          </header>
+
+          <div className={styles.groups}>
+            {groups.map(group => (
+              <section key={group.id} aria-labelledby={group.id}>
+                <h3 id={group.id} className={styles.sectionTitle}>{group.title}</h3>
+                <div className={styles.list}>
+                  {group.links.map(link => (
+                    <Link key={link.href} href={link.href} className={styles.link}>
+                      <div><strong>{link.title}</strong><p>{link.description}</p></div>
+                      <span className={styles.arrow} aria-hidden="true">↗</span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <section className={styles.technical} aria-labelledby="admin-tools">
+            <h3 id="admin-tools" className={styles.sectionTitle}>Служебные инструменты</h3>
+            <div className={styles.tools}>
+              <Link href="/admin/telegram" className={styles.link}>
+                <div><strong>Telegram</strong><p>Статус бота и проверка доставки уведомлений.</p></div>
+                <span className={styles.arrow} aria-hidden="true">↗</span>
+              </Link>
+              <Link href="/admin/order-cleanup" className={`${styles.link} ${styles.cleanup}`}>
+                <div><strong>Очистка заявок</strong><p>Безвозвратное удаление тестовых заявок и дополнительных выдач.</p></div>
+                <span className={styles.arrow} aria-hidden="true">↗</span>
+              </Link>
+            </div>
+          </section>
         </div>
       )}
     </AppShell>

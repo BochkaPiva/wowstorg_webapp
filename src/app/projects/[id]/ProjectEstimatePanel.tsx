@@ -4772,7 +4772,7 @@ function CompactEstimateTable({
   const [rowHeights, setRowHeights] = React.useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
     try {
-      return JSON.parse(localStorage.getItem("project-estimate-grid-row-heights:v1") ?? "{}") as Record<string, number>;
+      return JSON.parse(localStorage.getItem("project-estimate-grid-row-heights:v2") ?? "{}") as Record<string, number>;
     } catch {
       return {};
     }
@@ -4834,7 +4834,7 @@ function CompactEstimateTable({
   function persistRowHeights(next: Record<string, number>) {
     setRowHeights(next);
     try {
-      localStorage.setItem("project-estimate-grid-row-heights:v1", JSON.stringify(next));
+      localStorage.setItem("project-estimate-grid-row-heights:v2", JSON.stringify(next));
     } catch {
       // Row sizes remain available for the current session.
     }
@@ -4857,7 +4857,7 @@ function CompactEstimateTable({
       window.removeEventListener("pointerup", finish);
       setRowHeights((current) => {
         try {
-          localStorage.setItem("project-estimate-grid-row-heights:v1", JSON.stringify(current));
+          localStorage.setItem("project-estimate-grid-row-heights:v2", JSON.stringify(current));
         } catch {
           // Row sizes remain available for the current session.
         }
@@ -4880,6 +4880,11 @@ function CompactEstimateTable({
     });
     const contentHeight = Math.max(40, ...measuredHeights);
     persistRowHeights({ ...rowHeights, [lineId]: Math.min(320, contentHeight) });
+  }
+
+  function autoSizeTextarea(field: HTMLTextAreaElement) {
+    field.style.height = "0px";
+    field.style.height = `${Math.max(36, field.scrollHeight)}px`;
   }
 
   function selectRow(event: React.MouseEvent, rowIndex: number) {
@@ -5221,12 +5226,12 @@ function CompactEstimateTable({
         {!workspaceMode ? <div className="text-xs font-semibold tabular-nums text-zinc-500">{lines.length} строк</div> : null}
       </div> : null}
 
-      <div className={`${workspaceMode ? "max-h-[22rem]" : "max-h-[70vh]"} overflow-auto`}>
+      <div className={workspaceMode ? "overflow-x-auto overflow-y-hidden" : "max-h-[70vh] overflow-auto"}>
         <table
           className="w-full table-fixed border-collapse text-left text-xs"
           style={{ minWidth: `${284 + Object.values(columnWidths).reduce((sum, width) => sum + width, 0) + customColumns.reduce((sum, column) => sum + column.width, 0)}px` }}
         >
-          <thead className="sticky top-0 z-10 bg-zinc-100 text-zinc-700 shadow-[0_1px_0_#d4d4d8]">
+          <thead className={`${workspaceMode ? "" : "sticky top-0 z-10"} bg-zinc-100 text-zinc-700 shadow-[0_1px_0_#d4d4d8]`}>
             <tr>
               {!readOnly ? (
                 <th className="w-11 px-2 py-2 text-center">
@@ -5377,9 +5382,11 @@ function CompactEstimateTable({
                             <EstimateCellDropdown value={value} disabled={busy} ariaLabel={`${column.label}, строка ${rowIndex + 1}`} className={paymentStatusTextClass(value)} sectionId={sectionId} lineId={line.id} rowIndex={rowIndex} columnKey={column.key} options={[{ value: "", label: "—" }, { value: PAYMENT_STATUS_PAID, label: PAYMENT_STATUS_PAID }, { value: PAYMENT_STATUS_UNPAID, label: PAYMENT_STATUS_UNPAID }]} onChange={(next) => onSave(sectionId, line.id, { paymentStatus: next || null })} onNavigateKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)} />
                           ) : ["name", "description", "contractorNote", "contractorRequisites"].includes(column.key) ? (
                             <textarea
+                              ref={(field) => { if (field) autoSizeTextarea(field); }}
                               value={value}
                               rows={1}
                               onChange={(event) => onSave(sectionId, line.id, { [column.key]: event.target.value })}
+                              onInput={(event) => autoSizeTextarea(event.currentTarget)}
                               onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
                               onPaste={(event) => {
                                 const text = event.clipboardData.getData("text/plain");

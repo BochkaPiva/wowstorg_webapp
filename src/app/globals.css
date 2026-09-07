@@ -480,6 +480,10 @@ tbody tr:hover {
   margin: 0 auto;
 }
 
+.app-content:has(.project-detail-page) {
+  padding-bottom: 8px;
+}
+
 .app-drawer {
   position: fixed;
   inset: 0;
@@ -3662,8 +3666,8 @@ body.project-estimate-checkbox-dragging * {
 
 .project-estimate-grid__textarea {
   display: block;
-  height: 100%;
-  overflow: auto;
+  height: auto;
+  overflow: hidden;
   white-space: pre-wrap;
 }
 

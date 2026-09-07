@@ -1268,6 +1268,9 @@ tbody tr:hover {
 
 .project-estimate-section-drag-shell {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   transition: opacity 160ms ease-out, transform 160ms ease-out;
 }
 

@@ -953,6 +953,9 @@ export function ProjectEstimatePanel({
   const [estimateConflictDetected, setEstimateConflictDetected] = React.useState(false);
   const [lastEstimateSavedAt, setLastEstimateSavedAt] = React.useState<Date | null>(null);
   const [showFloatingSave, setShowFloatingSave] = React.useState(false);
+  const [draggingSectionId, setDraggingSectionId] = React.useState<string | null>(null);
+  const [dragOverSectionId, setDragOverSectionId] = React.useState<string | null>(null);
+  const sectionDragRef = React.useRef<{ sectionId: string; pointerId: number; targetId: string } | null>(null);
   const effectiveEstimateViewMode = estimateGridEnabled ? "TABLE" : "CARDS";
   const estimateDraftRevisionRef = React.useRef(0);
   const serverEstimateRevisionRef = React.useRef(0);
@@ -1785,31 +1788,46 @@ export function ProjectEstimatePanel({
     });
   }
 
-  async function moveSection(sectionId: string, direction: -1 | 1) {
+  async function reorderSection(sectionId: string, targetSectionId: string) {
     if (readOnly || busy) return;
     const ordered = sortSectionsBySortOrder(renderedSections);
     const currentIndex = ordered.findIndex((section) => section.id === sectionId);
-    const targetIndex = currentIndex + direction;
+    const targetIndex = ordered.findIndex((section) => section.id === targetSectionId);
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
-
-    const currentSection = ordered[currentIndex];
-    const targetSection = ordered[targetIndex];
-    const currentOrder = currentSection.sortOrder;
-    const targetOrder = targetSection.sortOrder;
-    const changedOrders = new Map<string, number>();
-
-    if (currentOrder !== targetOrder && currentOrder >= 0 && targetOrder >= 0) {
-      changedOrders.set(currentSection.id, targetOrder);
-      changedOrders.set(targetSection.id, currentOrder);
-    } else {
-      const swapped = [...ordered];
-      [swapped[currentIndex], swapped[targetIndex]] = [swapped[targetIndex], swapped[currentIndex]];
-      swapped.forEach((section, index) => changedOrders.set(section.id, (index + 1) * 10));
-    }
-
-    const persistedChanges = ordered
-      .filter((section) => changedOrders.has(section.id) && !section.id.startsWith("draft-"))
+    if (currentIndex === targetIndex) return;
+    const moved = [...ordered];
+    const [currentSection] = moved.splice(currentIndex, 1);
+    moved.splice(targetIndex, 0, currentSection);
+    const changedOrders = new Map(moved.map((section, index) => [section.id, (index + 1) * 10]));
+    const persistedChanges = moved
+      .filter((section) =>
+        section.kind !== "DRAFT_REQUISITE"
+        && !section.id.startsWith("draft-")
+        && changedOrders.get(section.id) !== section.sortOrder,
+      )
       .map((section) => ({ id: section.id, sortOrder: changedOrders.get(section.id)! }));
+
+    setData((prev) => {
+      if (!prev?.current) return prev;
+      return {
+        ...prev,
+        current: {
+          ...prev.current,
+          sections: prev.current.sections.map((section) => ({
+            ...section,
+            sortOrder: changedOrders.get(section.id) ?? section.sortOrder,
+          })),
+        },
+      };
+    });
+    if (localSectionsDraft.length > 0) {
+      mutateLocalSections((prev) =>
+        sortSectionsBySortOrder(prev.map((section) => ({
+          ...section,
+          sortOrder: changedOrders.get(section.id) ?? section.sortOrder,
+        }))),
+      );
+    }
 
     setBusy(true);
     try {
@@ -1825,41 +1843,74 @@ export function ProjectEstimatePanel({
       const failedResponse = responses.find((response) => !response.ok);
       if (failedResponse) {
         const payload = await failedResponse.json().catch(() => null);
-        window.alert(payload?.error?.message ?? "Не удалось изменить порядок разделов");
+        setError(payload?.error?.message ?? "Не удалось сохранить порядок разделов");
+        await load(selectedVersion);
         return;
       }
-
-      setData((prev) => {
-        if (!prev?.current) return prev;
-        return {
-          ...prev,
-          current: {
-            ...prev.current,
-            sections: prev.current.sections.map((section) => {
-              const sortOrder = changedOrders.get(section.id);
-              return sortOrder == null ? section : { ...section, sortOrder };
-            }),
-          },
-        };
-      });
-
-      const localChanged = localSectionsDraft.some((section) => changedOrders.has(section.id));
-      if (localChanged) {
-        mutateLocalSections((prev) =>
-          sortSectionsBySortOrder(
-            prev.map((section) => {
-              const sortOrder = changedOrders.get(section.id);
-              return sortOrder == null ? section : { ...section, sortOrder };
-            }),
-          ),
-        );
-      }
+      setError(null);
       refreshActivity();
     } catch {
-      window.alert("Не удалось изменить порядок разделов");
+      setError("Не удалось сохранить порядок разделов");
+      await load(selectedVersion);
     } finally {
       setBusy(false);
     }
+  }
+
+  function moveSection(sectionId: string, direction: -1 | 1) {
+    const ordered = sortSectionsBySortOrder(renderedSections);
+    const currentIndex = ordered.findIndex((section) => section.id === sectionId);
+    const target = ordered[currentIndex + direction];
+    if (currentIndex < 0 || !target || target.kind === "DRAFT_REQUISITE") return;
+    void reorderSection(sectionId, target.id);
+  }
+
+  function startSectionDrag(sectionId: string, event: React.PointerEvent<HTMLButtonElement>) {
+    if (readOnly || busy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sectionDragRef.current = { sectionId, pointerId: event.pointerId, targetId: sectionId };
+    setDraggingSectionId(sectionId);
+    setDragOverSectionId(sectionId);
+  }
+
+  function moveSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = sectionDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const candidate = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-estimate-section-id]");
+    const targetId = candidate?.dataset.estimateSectionId;
+    const targetSection = renderedSections.find((section) => section.id === targetId);
+    if (targetId && targetSection?.kind !== "DRAFT_REQUISITE") {
+      drag.targetId = targetId;
+      setDragOverSectionId(targetId);
+    }
+    if (event.clientY < 88) window.scrollBy({ top: -12, behavior: "auto" });
+    if (event.clientY > window.innerHeight - 88) window.scrollBy({ top: 12, behavior: "auto" });
+  }
+
+  function finishSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = sectionDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    sectionDragRef.current = null;
+    setDraggingSectionId(null);
+    setDragOverSectionId(null);
+    if (drag.sectionId !== drag.targetId) void reorderSection(drag.sectionId, drag.targetId);
+  }
+
+  function cancelSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (sectionDragRef.current?.pointerId !== event.pointerId) return;
+    sectionDragRef.current = null;
+    setDraggingSectionId(null);
+    setDragOverSectionId(null);
   }
 
   function addLineInternalExpense(sectionId: string, lineId: string) {
@@ -2846,7 +2897,7 @@ export function ProjectEstimatePanel({
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-black text-zinc-950">{workspaceMode ? `${renderedSections.length} ${renderedSections.length === 1 ? "раздел" : "раздела"}` : "Разделы сметы"}</div>
                   <EstimateHelpLegend title="Порядок разделов">
-                    Открывай только нужные разделы. Стрелки справа меняют порядок; новый раздел добавляется в конец сметы.
+                    Потяни раздел за ручку из шести точек. С клавиатуры выбери ручку и используй стрелки вверх или вниз. Demo-реквизит всегда остаётся последним.
                   </EstimateHelpLegend>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -2921,10 +2972,16 @@ export function ProjectEstimatePanel({
               ) : null}
 
               <div className="project-estimate__sections space-y-3">
-                {renderedSections.map((sec, sectionIndex) =>
-                  isRequisiteSectionWithOrder(sec) ? (
+                {renderedSections.map((sec, sectionIndex) => (
+                  <div
+                    key={sec.id}
+                    data-estimate-section-id={sec.id}
+                    className="project-estimate-section-drag-shell"
+                    data-dragging={draggingSectionId === sec.id ? "true" : undefined}
+                    data-drag-over={dragOverSectionId === sec.id && draggingSectionId !== sec.id ? "true" : undefined}
+                  >
+                  {isRequisiteSectionWithOrder(sec) ? (
                     <RequisiteSectionEditor
-                      key={sec.id}
                       sec={sec}
                       projectId={projectId}
                       orderId={sec.linkedOrderId}
@@ -2934,8 +2991,12 @@ export function ProjectEstimatePanel({
                       onPatchSection={patchSection}
                       onDeleteSection={deleteServerSection}
                       canMoveUp={sectionIndex > 0}
-                      canMoveDown={sectionIndex < renderedSections.length - 1}
+                      canMoveDown={sectionIndex < renderedSections.length - 1 && renderedSections[sectionIndex + 1]?.kind !== "DRAFT_REQUISITE"}
                       onMove={(direction) => void moveSection(sec.id, direction)}
+                      onDragPointerDown={(event) => startSectionDrag(sec.id, event)}
+                      onDragPointerMove={moveSectionDrag}
+                      onDragPointerUp={finishSectionDrag}
+                      onDragPointerCancel={cancelSectionDrag}
                       onDone={() => {
                         load(selectedVersion);
                         refreshActivity();
@@ -2943,7 +3004,6 @@ export function ProjectEstimatePanel({
                     />
                   ) : (
                     <EstimateSectionBlock
-                      key={sec.id}
                       sec={sec}
                       orderMeta={sec.linkedOrderId ? orderMetaById.get(sec.linkedOrderId) ?? null : null}
                       readOnly={readOnly}
@@ -2951,8 +3011,12 @@ export function ProjectEstimatePanel({
                       onPatchSection={patchSection}
                       onDeleteSection={deleteSection}
                       canMoveUp={sectionIndex > 0}
-                      canMoveDown={sectionIndex < renderedSections.length - 1}
+                      canMoveDown={sectionIndex < renderedSections.length - 1 && renderedSections[sectionIndex + 1]?.kind !== "DRAFT_REQUISITE"}
                       onMove={(direction) => void moveSection(sec.id, direction)}
+                      onDragPointerDown={sec.kind === "DRAFT_REQUISITE" ? undefined : (event) => startSectionDrag(sec.id, event)}
+                      onDragPointerMove={moveSectionDrag}
+                      onDragPointerUp={finishSectionDrag}
+                      onDragPointerCancel={cancelSectionDrag}
                       defaultOpen={sectionIndex === 0}
                       workspaceMode={workspaceMode}
                     >
@@ -3019,8 +3083,9 @@ export function ProjectEstimatePanel({
                         )
                       )}
                     </EstimateSectionBlock>
-                  ),
-                )}
+                  )}
+                  </div>
+                ))}
               </div>
 
               {!readOnly && !workspaceMode ? (
@@ -3843,6 +3908,10 @@ function EstimateSectionBlock({
   canMoveUp = false,
   canMoveDown = false,
   onMove,
+  onDragPointerDown,
+  onDragPointerMove,
+  onDragPointerUp,
+  onDragPointerCancel,
 }: {
   sec: EstSection | LocalDraftSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
@@ -3860,6 +3929,10 @@ function EstimateSectionBlock({
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onMove?: (direction: -1 | 1) => void;
+  onDragPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerMove?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerUp?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerCancel?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
@@ -4033,37 +4106,33 @@ function EstimateSectionBlock({
                 <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
               </div>
             </div>
-            {!readOnly && onMove ? (
-              <div className="flex overflow-hidden rounded-md border border-zinc-200 bg-white" aria-label="Порядок раздела">
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onMove(-1);
-                  }}
-                  disabled={busy || !canMoveUp}
-                  title="Переместить раздел выше"
-                  aria-label="Переместить раздел выше"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center border-l border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onMove(1);
-                  }}
-                  disabled={busy || !canMoveDown}
-                  title="Переместить раздел ниже"
-                  aria-label="Переместить раздел ниже"
-                >
-                  ↓
-                </button>
-              </div>
+            {!readOnly && onMove && onDragPointerDown ? (
+              <button
+                type="button"
+                className="project-estimate-section__drag-handle"
+                onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                onPointerDown={onDragPointerDown}
+                onPointerMove={onDragPointerMove}
+                onPointerUp={onDragPointerUp}
+                onPointerCancel={onDragPointerCancel}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowUp" && canMoveUp) {
+                    event.preventDefault(); event.stopPropagation(); onMove(-1);
+                  }
+                  if (event.key === "ArrowDown" && canMoveDown) {
+                    event.preventDefault(); event.stopPropagation(); onMove(1);
+                  }
+                }}
+                disabled={busy}
+                title="Перетащить раздел"
+                aria-label="Изменить порядок раздела. Перетащите или используйте стрелки вверх и вниз"
+              >
+                <svg aria-hidden="true" viewBox="0 0 12 18" width="12" height="18" fill="currentColor">
+                  <circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>
+                  <circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/>
+                  <circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/>
+                </svg>
+              </button>
             ) : null}
             {!readOnly && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !editingTitle ? (
               <>
@@ -5623,6 +5692,10 @@ function RequisiteSectionEditor({
   canMoveUp,
   canMoveDown,
   onMove,
+  onDragPointerDown,
+  onDragPointerMove,
+  onDragPointerUp,
+  onDragPointerCancel,
   onDone,
 }: {
   sec: EstSection;
@@ -5636,6 +5709,10 @@ function RequisiteSectionEditor({
   canMoveUp: boolean;
   canMoveDown: boolean;
   onMove: (direction: -1 | 1) => void;
+  onDragPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onDone: () => void;
 }) {
   const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
@@ -6190,6 +6267,10 @@ function RequisiteSectionEditor({
       canMoveUp={canMoveUp}
       canMoveDown={canMoveDown}
       onMove={onMove}
+      onDragPointerDown={onDragPointerDown}
+      onDragPointerMove={onDragPointerMove}
+      onDragPointerUp={onDragPointerUp}
+      onDragPointerCancel={onDragPointerCancel}
     >
       {loading ? (
         <ProjectModuleContentSkeleton rows={3} />

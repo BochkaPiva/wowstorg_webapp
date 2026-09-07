@@ -63,7 +63,7 @@ export default function AdminIndexPage() {
                 <span className={styles.arrow} aria-hidden="true">↗</span>
               </Link>
               <Link href="/admin/order-cleanup" className={`${styles.link} ${styles.cleanup}`}>
-                <div><strong>Очистка заявок</strong><p>Безвозвратное удаление тестовых заявок и дополнительных выдач.</p></div>
+                <div><strong>Очистка данных</strong><p>Безвозвратное удаление заявок и завершённых проектов с проверкой связей.</p></div>
                 <span className={styles.arrow} aria-hidden="true">↗</span>
               </Link>
             </div>

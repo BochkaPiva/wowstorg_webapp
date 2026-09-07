@@ -7,6 +7,11 @@ import {
   ORDER_CLEANUP_SORT_VALUES,
   previewOrderCleanupSelection,
 } from "@/server/admin/order-cleanup";
+import {
+  listProjectsForCleanup,
+  PROJECT_CLEANUP_SORT_VALUES,
+  previewProjectCleanupSelection,
+} from "@/server/admin/project-cleanup";
 import { prisma } from "@/server/db";
 
 const STATUS_VALUES = [
@@ -24,10 +29,17 @@ const STATUS_VALUES = [
 const SOURCE_VALUES = ["all", "GREENWICH_INTERNAL", "WOWSTORG_EXTERNAL"] as const;
 
 const QuerySchema = z.object({
+  entity: z.enum(["orders", "projects"]).optional().default("orders"),
   q: z.string().trim().max(120).optional(),
   source: z.enum(SOURCE_VALUES).optional().default("all"),
   sort: z.enum(ORDER_CLEANUP_SORT_VALUES).optional().default("readyBy_asc"),
   status: z.string().trim().max(500).optional(),
+  selected: z.string().trim().max(10_000).optional(),
+});
+
+const ProjectQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  sort: z.enum(PROJECT_CLEANUP_SORT_VALUES).optional().default("updated_desc"),
   selected: z.string().trim().max(10_000).optional(),
 });
 
@@ -50,6 +62,20 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
+  if (url.searchParams.get("entity") === "projects") {
+    const projectParsed = ProjectQuerySchema.safeParse({
+      q: url.searchParams.get("q") ?? undefined,
+      sort: url.searchParams.get("sort") ?? undefined,
+      selected: url.searchParams.get("selected") ?? undefined,
+    });
+    if (!projectParsed.success) return jsonError(400, "Некорректные параметры запроса", projectParsed.error.flatten());
+    const selectedIds = parseIdList(projectParsed.data.selected);
+    const [projects, preview] = await Promise.all([
+      listProjectsForCleanup(prisma, projectParsed.data),
+      selectedIds.length ? previewProjectCleanupSelection(prisma, selectedIds) : Promise.resolve(null),
+    ]);
+    return jsonOk({ projects, preview });
+  }
   const parsed = QuerySchema.safeParse({
     q: url.searchParams.get("q") ?? undefined,
     source: url.searchParams.get("source") ?? undefined,

@@ -3495,7 +3495,7 @@ body.project-estimate-checkbox-dragging * {
 }
 
 .project-workspace-index {
-  top: 0;
+  top: 72px;
   gap: 3px;
   margin: 0;
   padding: 5px;
@@ -3503,6 +3503,108 @@ body.project-estimate-checkbox-dragging * {
   border-radius: 11px;
   background: rgb(248 248 247 / 92%);
   box-shadow: 0 1px 2px rgb(24 24 27 / 0.025);
+}
+
+.project-estimate__history-actions {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 32px);
+  overflow: hidden;
+  border: 1px solid #d4d4d8;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.project-estimate__history-actions button {
+  display: grid;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #3f3f46;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.project-estimate__history-actions button + button {
+  border-left: 1px solid #e4e4e7;
+}
+
+.project-estimate__history-actions button:hover:not(:disabled),
+.project-estimate__history-actions button:focus-visible:not(:disabled) {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.project-estimate__history-actions button:disabled {
+  cursor: not-allowed;
+  color: #d4d4d8;
+}
+
+.project-estimate-grid__row--selected > td {
+  background-color: #f5f3ff !important;
+}
+
+.project-estimate-grid__row--fill-range > td {
+  box-shadow: inset 0 1px #a78bfa, inset 0 -1px #a78bfa;
+}
+
+.project-estimate-grid__row-index {
+  min-width: 48px;
+}
+
+.project-estimate-grid__row-fill-handle {
+  position: absolute;
+  z-index: 24;
+  top: 50%;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  background: #6d28d9;
+  cursor: crosshair;
+  touch-action: none;
+  transform: translateY(-50%);
+}
+
+.project-estimate-grid__row-resize-handle {
+  position: absolute;
+  z-index: 22;
+  right: 0;
+  bottom: -3px;
+  left: 0;
+  height: 7px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.project-estimate-grid__row-resize-handle:hover,
+.project-estimate-grid__row-resize-handle:focus-visible {
+  background: rgb(124 58 237 / 22%);
+}
+
+.project-estimate-grid__textarea {
+  display: block;
+  height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.project-estimate-grid [data-estimate-grid-row] > td,
+.project-estimate-grid__cell-editor {
+  height: inherit;
+}
+
+body.project-estimate-row-resizing,
+body.project-estimate-row-resizing * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 639px) {
+  .project-workspace-index {
+    top: 62px;
+  }
 }
 
 .project-workspace-index a,

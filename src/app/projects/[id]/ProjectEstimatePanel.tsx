@@ -965,6 +965,11 @@ export function ProjectEstimatePanel({
   const restoredEstimateScrollKeyRef = React.useRef<string | null>(null);
   const estimateSaveInFlightRef = React.useRef(false);
   const autoSaveRef = React.useRef<() => void>(() => undefined);
+  const localSectionsDraftRef = React.useRef<LocalDraftSection[]>([]);
+  const estimateUndoRef = React.useRef<LocalDraftSection[][]>([]);
+  const estimateRedoRef = React.useRef<LocalDraftSection[][]>([]);
+  const estimateHistoryGroupRef = React.useRef<{ key: string; at: number } | null>(null);
+  const [estimateHistoryVersion, setEstimateHistoryVersion] = React.useState(0);
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -981,6 +986,7 @@ export function ProjectEstimatePanel({
 
   estimateDraftDirtyRef.current = estimateDraftDirty;
   estimateConflictRef.current = estimateConflictDetected;
+  localSectionsDraftRef.current = localSectionsDraft;
 
   React.useEffect(() => {
     if (!titleDialog) return;
@@ -1137,6 +1143,13 @@ export function ProjectEstimatePanel({
   }, [load, selectedVersion]);
 
   const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
+
+  React.useEffect(() => {
+    estimateUndoRef.current = [];
+    estimateRedoRef.current = [];
+    estimateHistoryGroupRef.current = null;
+    setEstimateHistoryVersion((value) => value + 1);
+  }, [currentVersionNumber]);
 
   React.useEffect(() => {
     if (
@@ -1312,8 +1325,27 @@ export function ProjectEstimatePanel({
     return () => observer.disconnect();
   }, [data?.current, estimateDraftDirty, readOnly]);
 
-  function mutateLocalSections(mutator: (prev: LocalDraftSection[]) => LocalDraftSection[]) {
-    setLocalSectionsDraft((prev) => mutator(prev));
+  function mutateLocalSections(
+    mutator: (prev: LocalDraftSection[]) => LocalDraftSection[],
+    historyGroup?: string,
+  ) {
+    const previous = localSectionsDraftRef.current;
+    const next = mutator(previous);
+    if (next === previous) return;
+    const now = Date.now();
+    const previousGroup = estimateHistoryGroupRef.current;
+    const grouped = Boolean(historyGroup && previousGroup?.key === historyGroup && now - previousGroup.at < 1200);
+    if (!grouped) {
+      estimateUndoRef.current = [
+        ...estimateUndoRef.current.slice(-59),
+        cloneLocalDraftSections(previous),
+      ];
+    }
+    estimateHistoryGroupRef.current = historyGroup ? { key: historyGroup, at: now } : null;
+    estimateRedoRef.current = [];
+    localSectionsDraftRef.current = next;
+    setLocalSectionsDraft(next);
+    setEstimateHistoryVersion((value) => value + 1);
     estimateDraftRevisionRef.current += 1;
     setEstimateDraftDirty(true);
     if (!estimateConflictRef.current) {
@@ -1321,6 +1353,39 @@ export function ProjectEstimatePanel({
       setEstimateSaveMessage(null);
     }
   }
+
+  function restoreEstimateHistory(direction: "UNDO" | "REDO") {
+    if (readOnly || busy || estimateSaving) return;
+    const source = direction === "UNDO" ? estimateUndoRef.current : estimateRedoRef.current;
+    const target = source.pop();
+    if (!target) return;
+    const current = cloneLocalDraftSections(localSectionsDraftRef.current);
+    estimateHistoryGroupRef.current = null;
+    const destination = direction === "UNDO" ? estimateRedoRef.current : estimateUndoRef.current;
+    destination.push(current);
+    if (destination.length > 60) destination.splice(0, destination.length - 60);
+    const restored = cloneLocalDraftSections(target);
+    localSectionsDraftRef.current = restored;
+    setLocalSectionsDraft(restored);
+    setEstimateHistoryVersion((value) => value + 1);
+    markEstimateDraftDirty();
+  }
+
+  React.useEffect(() => {
+    if (readOnly) return;
+    const handleHistoryShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLocaleLowerCase();
+      const undo = key === "z" && !event.shiftKey;
+      const redo = (key === "z" && event.shiftKey) || key === "y";
+      if (!undo && !redo) return;
+      if (!(event.target instanceof Element) || !event.target.closest("[data-project-estimate-editor]")) return;
+      event.preventDefault();
+      restoreEstimateHistory(redo ? "REDO" : "UNDO");
+    };
+    window.addEventListener("keydown", handleHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleHistoryShortcut);
+  });
 
   function mutateCustomColumns(
     mutator: (prev: ProjectEstimateCustomColumn[]) => ProjectEstimateCustomColumn[],
@@ -1593,17 +1658,45 @@ export function ProjectEstimatePanel({
   }
 
   function saveLine(sectionId: string, lineId: string, patch: Record<string, unknown>) {
+    mutateLocalSections(
+      (prev) =>
+        prev.map((section) =>
+          section.id === sectionId
+            ? {
+                ...section,
+                lines: section.lines.map((line) =>
+                  line.id === lineId ? patchLocalDraftLine(line, patch) : line,
+                ),
+              }
+            : section,
+        ),
+      `cell:${sectionId}:${lineId}:${Object.keys(patch).sort().join(",")}`,
+    );
+  }
+
+  function fillLocalRows(sectionId: string, sourceLineId: string, targetLineIds: string[]) {
+    const targets = new Set(targetLineIds);
+    if (targets.size === 0) return;
     mutateLocalSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              lines: section.lines.map((line) =>
-                line.id === lineId ? patchLocalDraftLine(line, patch) : line,
-              ),
-            }
-          : section,
-      ),
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        const source = section.lines.find((line) => line.id === sourceLineId);
+        if (!source) return section;
+        const values = localDraftLineValuesForFill(source);
+        return {
+          ...section,
+          lines: section.lines.map((line) =>
+            targets.has(line.id)
+              ? {
+                  ...line,
+                  ...values,
+                  internalExpenses: values.internalExpenses.map((expense) => ({ ...expense, id: makeTempId("expense") })),
+                  customValues: { ...values.customValues },
+                }
+              : line,
+          ),
+        };
+      }),
     );
   }
 
@@ -2108,6 +2201,16 @@ export function ProjectEstimatePanel({
     const hasIncompleteLine = snapshotSections.some((section) =>
       section.lines.some((line) => !line.name.trim()),
     );
+    const hasPendingCellFormula = snapshotSections.some((section) =>
+      section.lines.some((line) =>
+        [line.qty, line.unitPriceClient, line.costInternal].some((value) => value?.trim().startsWith("=")),
+      ),
+    );
+    if (hasPendingCellFormula) {
+      setEstimateSaveStatus("PAUSED");
+      setEstimateSaveMessage("Завершите формулу клавишей Enter или исправьте её перед сохранением.");
+      return;
+    }
     if (hasIncompleteLine) {
       setEstimateSaveStatus("PAUSED");
       setEstimateSaveMessage("Автосохранение продолжится после заполнения названия новой строки.");
@@ -2484,9 +2587,11 @@ export function ProjectEstimatePanel({
           : estimateDraftDirty
             ? "Есть изменения"
             : "Сохранено автоматически";
+  const canUndoEstimate = estimateHistoryVersion >= 0 && estimateUndoRef.current.length > 0;
+  const canRedoEstimate = estimateHistoryVersion >= 0 && estimateRedoRef.current.length > 0;
 
   return (
-    <div className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""} ${standalone ? "project-estimate--standalone" : ""}`}>
+    <div data-project-estimate-editor className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""} ${standalone ? "project-estimate--standalone" : ""}`}>
       <UnitPresetDatalist />
 
       {loading ? (
@@ -2597,6 +2702,28 @@ export function ProjectEstimatePanel({
               </div>
 
               <div className="project-estimate__actions flex flex-wrap items-start gap-2 lg:justify-end">
+                {!readOnly ? (
+                  <div className="project-estimate__history-actions" role="group" aria-label="История изменений сметы">
+                    <button
+                      type="button"
+                      disabled={!canUndoEstimate || busy || estimateSaving}
+                      onClick={() => restoreEstimateHistory("UNDO")}
+                      title="Отменить (Ctrl+Z)"
+                      aria-label="Отменить последнее изменение"
+                    >
+                      ↶
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canRedoEstimate || busy || estimateSaving}
+                      onClick={() => restoreEstimateHistory("REDO")}
+                      title="Вернуть отменённое (Ctrl+Shift+Z)"
+                      aria-label="Вернуть отменённое изменение"
+                    >
+                      ↷
+                    </button>
+                  </div>
+                ) : null}
                 {workspaceMode ? (
                   <>
                     <div className="project-estimate__quick-totals" aria-label="Финансы выбранной сметы">
@@ -3046,6 +3173,7 @@ export function ProjectEstimatePanel({
                             onInsert={insertEmptyLine}
                             onAdd={() => addEmptyLine(sec.id)}
                             onPaste={pasteLocalTable}
+                            onFillRows={fillLocalRows}
                             workspaceMode={workspaceMode}
                           />
                         ) : (
@@ -4189,6 +4317,99 @@ const PAYMENT_STATUS_UNPAID = "Не оплачено";
 /** Уникальный id datalist для комбобокса статуса (input list=… + datalist). */
 const paymentStatusDatalistId = (suffix: string) => `project-estimate-pst-${suffix}`;
 
+function calculateEstimateCellFormula(raw: string): { value?: string; error?: string } | null {
+  const source = raw.trim();
+  if (!source.startsWith("=")) return null;
+  const expression = source.slice(1).replaceAll(",", ".");
+  if (!expression || expression.length > 120) return { error: "Формула слишком длинная" };
+  let cursor = 0;
+  const skipSpaces = () => {
+    while (/\s/.test(expression[cursor] ?? "")) cursor += 1;
+  };
+  const parseNumber = (): number => {
+    skipSpaces();
+    const start = cursor;
+    while (/[0-9.]/.test(expression[cursor] ?? "")) cursor += 1;
+    const token = expression.slice(start, cursor);
+    if (!token || (token.match(/\./g)?.length ?? 0) > 1) throw new Error("number");
+    const value = Number(token);
+    if (!Number.isFinite(value)) throw new Error("number");
+    return value;
+  };
+  const parseFactor = (): number => {
+    skipSpaces();
+    const char = expression[cursor];
+    if (char === "+" || char === "-") {
+      cursor += 1;
+      const value = parseFactor();
+      return char === "-" ? -value : value;
+    }
+    if (char === "(") {
+      cursor += 1;
+      const value = parseExpression();
+      skipSpaces();
+      if (expression[cursor] !== ")") throw new Error("parenthesis");
+      cursor += 1;
+      return value;
+    }
+    return parseNumber();
+  };
+  const parseTerm = (): number => {
+    let value = parseFactor();
+    while (true) {
+      skipSpaces();
+      const operator = expression[cursor];
+      if (operator !== "*" && operator !== "/") break;
+      cursor += 1;
+      const operand = parseFactor();
+      if (operator === "/" && operand === 0) throw new Error("division");
+      value = operator === "*" ? value * operand : value / operand;
+    }
+    return value;
+  };
+  const parseExpression = (): number => {
+    let value = parseTerm();
+    while (true) {
+      skipSpaces();
+      const operator = expression[cursor];
+      if (operator !== "+" && operator !== "-") break;
+      cursor += 1;
+      const operand = parseTerm();
+      value = operator === "+" ? value + operand : value - operand;
+    }
+    return value;
+  };
+  try {
+    const result = parseExpression();
+    skipSpaces();
+    if (cursor !== expression.length || !Number.isFinite(result)) throw new Error("syntax");
+    return { value: String(Math.round((result + Number.EPSILON) * 1_000_000) / 1_000_000) };
+  } catch {
+    return { error: "Проверьте числа, скобки и знаки + − × ÷" };
+  }
+}
+
+function localDraftLineValuesForFill(source: LocalDraftLine): Omit<LocalDraftLine, "id" | "position" | "lineNumber"> {
+  return {
+    name: source.name,
+    description: source.description,
+    lineType: source.lineType,
+    costClient: source.costClient,
+    costInternal: source.costInternal,
+    unit: source.unit,
+    qty: source.qty,
+    unitPriceClient: source.unitPriceClient,
+    paymentMethod: source.paymentMethod,
+    paymentStatus: source.paymentStatus,
+    contractorNote: source.contractorNote,
+    contractorRequisites: source.contractorRequisites,
+    internalExpenses: source.internalExpenses.map((expense) => ({ ...expense, id: makeTempId("expense") })),
+    customValues: { ...source.customValues },
+    orderLineId: null,
+    itemId: source.itemId,
+  };
+}
+
 /** Сумма клиенту: только qty×цена; иначе наследованный costClient (старые строки). */
 function displayLocalLineClientSum(line: {
   costClient?: string | null;
@@ -4386,6 +4607,7 @@ function CompactEstimateTable({
   onInsert,
   onAdd,
   onPaste,
+  onFillRows,
   workspaceMode = false,
 }: {
   sectionId: string;
@@ -4406,6 +4628,7 @@ function CompactEstimateTable({
     startColumn: ProjectEstimateTableColumn,
     text: string,
   ) => void;
+  onFillRows: (sectionId: string, sourceLineId: string, targetLineIds: string[]) => void;
   workspaceMode?: boolean;
 }) {
   const [selectedLineIds, setSelectedLineIds] = React.useState<Set<string>>(() => new Set());
@@ -4417,8 +4640,19 @@ function CompactEstimateTable({
     value: string;
   } | null>(null);
   const fillDragRef = React.useRef(fillDrag);
+  const [rowFillDrag, setRowFillDrag] = React.useState<{ sourceRow: number; targetRow: number } | null>(null);
+  const rowFillDragRef = React.useRef(rowFillDrag);
+  const rowSelectionAnchorRef = React.useRef<number | null>(null);
   const checkboxDragCleanupRef = React.useRef<(() => void) | null>(null);
   const checkboxDragSuppressChangeRef = React.useRef(false);
+  const [rowHeights, setRowHeights] = React.useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("project-estimate-grid-row-heights:v1") ?? "{}") as Record<string, number>;
+    } catch {
+      return {};
+    }
+  });
   const [columnWidths, setColumnWidths] = React.useState<Record<ProjectEstimateTableColumn, number>>(() => {
     const defaults = Object.fromEntries(COMPACT_TABLE_COLUMNS.map((column) => [column.key, column.defaultWidth])) as Record<ProjectEstimateTableColumn, number>;
     if (typeof window === "undefined") return defaults;
@@ -4440,6 +4674,10 @@ function CompactEstimateTable({
   React.useEffect(() => {
     fillDragRef.current = fillDrag;
   }, [fillDrag]);
+
+  React.useEffect(() => {
+    rowFillDragRef.current = rowFillDrag;
+  }, [rowFillDrag]);
 
   React.useEffect(() => () => checkboxDragCleanupRef.current?.(), []);
 
@@ -4516,6 +4754,99 @@ function CompactEstimateTable({
     window.addEventListener("pointerup", finish, { once: true });
   }
 
+  function persistRowHeights(next: Record<string, number>) {
+    setRowHeights(next);
+    try {
+      localStorage.setItem("project-estimate-grid-row-heights:v1", JSON.stringify(next));
+    } catch {
+      // Row sizes remain available for the current session.
+    }
+  }
+
+  function beginRowResize(event: React.PointerEvent<HTMLSpanElement>, lineId: string, rowIndex: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    const row = document.querySelector<HTMLTableRowElement>(`[data-estimate-grid-row="${sectionId}:${rowIndex}"]`);
+    const startY = event.clientY;
+    const startHeight = rowHeights[lineId] ?? Math.round(row?.getBoundingClientRect().height ?? 40);
+    document.body.classList.add("project-estimate-row-resizing");
+    const move = (moveEvent: PointerEvent) => {
+      const height = Math.max(40, Math.min(320, startHeight + moveEvent.clientY - startY));
+      setRowHeights((current) => ({ ...current, [lineId]: height }));
+    };
+    const finish = () => {
+      document.body.classList.remove("project-estimate-row-resizing");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      setRowHeights((current) => {
+        try {
+          localStorage.setItem("project-estimate-grid-row-heights:v1", JSON.stringify(current));
+        } catch {
+          // Row sizes remain available for the current session.
+        }
+        return current;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  }
+
+  function autoFitRow(lineId: string, rowIndex: number) {
+    const row = document.querySelector<HTMLTableRowElement>(`[data-estimate-grid-row="${sectionId}:${rowIndex}"]`);
+    if (!row) return;
+    const contentHeight = Math.max(
+      40,
+      ...Array.from(row.querySelectorAll<HTMLTextAreaElement>("textarea")).map((field) => field.scrollHeight + 8),
+    );
+    persistRowHeights({ ...rowHeights, [lineId]: Math.min(320, contentHeight) });
+  }
+
+  function selectRow(event: React.MouseEvent, rowIndex: number) {
+    const line = lines[rowIndex];
+    if (!line) return;
+    if (event.shiftKey && rowSelectionAnchorRef.current != null) {
+      const from = Math.min(rowSelectionAnchorRef.current, rowIndex);
+      const to = Math.max(rowSelectionAnchorRef.current, rowIndex);
+      setSelectedLineIds(new Set(lines.slice(from, to + 1).map((item) => item.id)));
+      return;
+    }
+    rowSelectionAnchorRef.current = rowIndex;
+    if (event.ctrlKey || event.metaKey) toggleLine(line.id);
+    else setSelectedLineIds(new Set([line.id]));
+  }
+
+  function beginRowFillDrag(event: React.PointerEvent<HTMLSpanElement>, sourceRow: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    const initial = { sourceRow, targetRow: sourceRow };
+    rowFillDragRef.current = initial;
+    setRowFillDrag(initial);
+    document.body.classList.add("project-estimate-fill-dragging");
+    const move = (moveEvent: PointerEvent) => {
+      const row = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLElement>("[data-estimate-grid-row]");
+      const nextRow = Number(row?.dataset.estimateGridRowIndex);
+      if (!Number.isInteger(nextRow) || nextRow < 0 || nextRow >= lines.length) return;
+      const next = { sourceRow, targetRow: nextRow };
+      rowFillDragRef.current = next;
+      setRowFillDrag(next);
+    };
+    const finish = () => {
+      document.body.classList.remove("project-estimate-fill-dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      const current = rowFillDragRef.current;
+      if (current && current.targetRow !== current.sourceRow) {
+        const from = Math.min(current.sourceRow, current.targetRow);
+        const to = Math.max(current.sourceRow, current.targetRow);
+        onFillRows(sectionId, lines[current.sourceRow]!.id, lines.slice(from, to + 1).filter((_, index) => from + index !== current.sourceRow).map((line) => line.id));
+      }
+      rowFillDragRef.current = null;
+      setRowFillDrag(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  }
+
   React.useEffect(() => {
     const availableIds = new Set(lines.map((line) => line.id));
     setSelectedLineIds((previous) => {
@@ -4532,15 +4863,15 @@ function CompactEstimateTable({
   }, [bulkNotice]);
 
   const focusCell = React.useCallback((rowIndex: number, column: string) => {
-    const cell = document.querySelector<HTMLInputElement | HTMLSelectElement>(
+    const cell = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
       `[data-estimate-section="${sectionId}"][data-estimate-row="${rowIndex}"][data-estimate-column="${column}"]`,
     );
     cell?.focus();
-    if (cell instanceof HTMLInputElement) cell.select();
+    if (cell instanceof HTMLInputElement || cell instanceof HTMLTextAreaElement) cell.select();
   }, [sectionId]);
 
   function handleCellKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    event: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
     rowIndex: number,
     column: string,
   ) {
@@ -4548,6 +4879,7 @@ function CompactEstimateTable({
     const isVerticalArrow = event.key === "ArrowUp" || event.key === "ArrowDown";
     const isHorizontalArrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
     if (!isEnter && !isVerticalArrow && !isHorizontalArrow) return;
+    if (event.currentTarget instanceof HTMLTextAreaElement && isEnter && event.altKey) return;
     event.preventDefault();
     if (isHorizontalArrow) {
       const navigationColumns = [
@@ -4568,6 +4900,18 @@ function CompactEstimateTable({
         ? rowIndex - 1
         : rowIndex + 1;
     if (nextIndex >= 0 && nextIndex < lines.length) focusCell(nextIndex, column);
+  }
+
+  function commitCellFormula(lineId: string, column: ProjectEstimateTableColumn, value: string) {
+    if (column !== "qty" && column !== "unitPriceClient" && column !== "costInternal") return;
+    const result = calculateEstimateCellFormula(value);
+    if (!result) return;
+    if (result.error) {
+      setBulkNotice(`Ошибка формулы: ${result.error}`);
+      return;
+    }
+    onSave(sectionId, lineId, { [column]: result.value ?? "" });
+    setBulkNotice("Формула рассчитана");
   }
 
   function toggleAllLines() {
@@ -4753,7 +5097,7 @@ function CompactEstimateTable({
           <div className="project-estimate-grid__hint">
             <div className="text-xs font-black text-zinc-900">Табличный режим</div>
             <div className="text-[11px] text-zinc-500">
-              Enter — следующая строка · можно вставлять диапазон из Excel или Google Sheets
+              Ctrl+Z — отменить · Ctrl+Shift+Z — вернуть · Alt+Enter — новая строка в ячейке · формулы начинаются с =
             </div>
           </div>
         )}
@@ -4823,8 +5167,15 @@ function CompactEstimateTable({
             {lines.map((line, rowIndex) => (
               <tr
                 key={line.id}
+                data-estimate-grid-row={`${sectionId}:${rowIndex}`}
+                data-estimate-grid-row-index={rowIndex}
+                style={rowHeights[line.id] ? { height: rowHeights[line.id] } : undefined}
                 className={`group border-t border-zinc-200 transition-colors hover:bg-violet-50/35 ${
-                  dirtyLineIds.has(line.id) ? "bg-amber-50/70" : "bg-white"
+                  selectedLineIds.has(line.id) ? "project-estimate-grid__row--selected" : dirtyLineIds.has(line.id) ? "bg-amber-50/70" : "bg-white"
+                } ${
+                  rowFillDrag && rowIndex >= Math.min(rowFillDrag.sourceRow, rowFillDrag.targetRow) && rowIndex <= Math.max(rowFillDrag.sourceRow, rowFillDrag.targetRow)
+                    ? "project-estimate-grid__row--fill-range"
+                    : ""
                 }`}
               >
                 {!readOnly ? (
@@ -4850,7 +5201,43 @@ function CompactEstimateTable({
                     />
                   </td>
                 ) : null}
-                <td className="px-2 py-1.5 text-center font-bold tabular-nums text-zinc-400">{rowIndex + 1}</td>
+                <td className="project-estimate-grid__row-index relative px-1 py-1 text-center font-bold tabular-nums text-zinc-400">
+                  {readOnly ? rowIndex + 1 : (
+                    <button
+                      type="button"
+                      onClick={(event) => selectRow(event, rowIndex)}
+                      className="h-8 w-full rounded text-[11px] font-bold tabular-nums hover:bg-violet-100 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400"
+                      title="Выбрать строку; Shift — выбрать диапазон"
+                      aria-label={`Выбрать всю строку ${rowIndex + 1}`}
+                    >
+                      {rowIndex + 1}
+                    </button>
+                  )}
+                  {!readOnly ? (
+                    <>
+                      {selectedCount === 1 && selectedLineIds.has(line.id) ? (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="project-estimate-grid__row-fill-handle"
+                          onPointerDown={(event) => beginRowFillDrag(event, rowIndex)}
+                          title="Потяните вверх или вниз, чтобы скопировать всю строку"
+                          aria-label={`Протянуть строку ${rowIndex + 1}`}
+                        />
+                      ) : null}
+                      <span
+                        role="separator"
+                        aria-orientation="horizontal"
+                        tabIndex={0}
+                        className="project-estimate-grid__row-resize-handle"
+                        onPointerDown={(event) => beginRowResize(event, line.id, rowIndex)}
+                        onDoubleClick={() => autoFitRow(line.id, rowIndex)}
+                        title="Потяните для изменения высоты; двойной клик — по содержимому"
+                        aria-label={`Изменить высоту строки ${rowIndex + 1}`}
+                      />
+                    </>
+                  ) : null}
+                </td>
                 {COMPACT_TABLE_COLUMNS.map((column) => {
                   const rawValue = line[column.key];
                   const value = rawValue == null ? "" : String(rawValue);
@@ -4869,7 +5256,7 @@ function CompactEstimateTable({
                       {readOnly ? (
                         <div className="min-h-8 px-2 py-2 text-zinc-800">{value || "—"}</div>
                       ) : (
-                        <div className="group/cell relative">
+                        <div className="project-estimate-grid__cell-editor group/cell relative">
                           {column.key === "unit" ? (
                             <>
                               <select
@@ -4926,11 +5313,35 @@ function CompactEstimateTable({
                             </select>
                             <span className="project-estimate-grid__select-chevron" aria-hidden>⌄</span>
                             </>
+                          ) : ["name", "description", "contractorNote", "contractorRequisites"].includes(column.key) ? (
+                            <textarea
+                              value={value}
+                              rows={1}
+                              onChange={(event) => onSave(sectionId, line.id, { [column.key]: event.target.value })}
+                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                              onPaste={(event) => {
+                                const text = event.clipboardData.getData("text/plain");
+                                if (!text) return;
+                                if (!text.includes("\t") && !text.includes("\n")) return;
+                                event.preventDefault();
+                                onPaste(sectionId, line.id, column.key, text);
+                              }}
+                              data-estimate-section={sectionId}
+                              data-estimate-line={line.id}
+                              data-estimate-row={rowIndex}
+                              data-estimate-column={column.key}
+                              className="project-estimate-grid__textarea min-h-9 w-full resize-none border border-transparent bg-transparent px-2 py-2 text-xs leading-5 text-zinc-900 outline-none transition focus:border-violet-500 focus:bg-white focus:shadow-[inset_0_0_0_1px_#8b5cf6]"
+                              aria-label={`${column.label}, строка ${rowIndex + 1}`}
+                            />
                           ) : (
                             <input
                               value={value}
                               onChange={(event) => onSave(sectionId, line.id, { [column.key]: event.target.value })}
-                              onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
+                              onBlur={() => commitCellFormula(line.id, column.key, value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") commitCellFormula(line.id, column.key, value);
+                                handleCellKeyDown(event, rowIndex, column.key);
+                              }}
                               onPaste={(event) => {
                                 const text = event.clipboardData.getData("text/plain");
                                 if (!text) return;
@@ -5023,10 +5434,23 @@ function CompactEstimateTable({
                           </div>
                         ) : (
                           <input
-                            type={column.type === "DATE" ? "date" : column.type === "NUMBER" ? "number" : "text"}
+                            type={column.type === "DATE" ? "date" : "text"}
                             value={value}
                             onChange={(event) => patchValue(event.target.value)}
-                            onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.id)}
+                            onBlur={() => {
+                              if (column.type !== "NUMBER") return;
+                              const result = calculateEstimateCellFormula(value);
+                              if (result?.error) setBulkNotice(`Ошибка формулы: ${result.error}`);
+                              else if (result?.value != null) patchValue(result.value);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && column.type === "NUMBER") {
+                                const result = calculateEstimateCellFormula(value);
+                                if (result?.error) setBulkNotice(`Ошибка формулы: ${result.error}`);
+                                else if (result?.value != null) patchValue(result.value);
+                              }
+                              handleCellKeyDown(event, rowIndex, column.id);
+                            }}
                             data-estimate-section={sectionId}
                             data-estimate-line={line.id}
                             data-estimate-row={rowIndex}

@@ -20,6 +20,15 @@ export async function GET(
         id: true,
         archivedAt: true,
         status: true,
+        widgets: {
+          where: { isVisible: true },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: {
+            type: true,
+            width: true,
+            sortOrder: true,
+          },
+        },
         contacts: {
           where: { isActive: true },
           orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -52,6 +61,9 @@ export async function GET(
             contacts: { where: { isActive: true } },
             tasks: { where: { archivedAt: null } },
             orders: true,
+            projectFiles: true,
+            scheduleDays: true,
+            workspaceItems: { where: { deletedAt: null } },
           },
         },
       },
@@ -71,6 +83,7 @@ export async function GET(
       status: project.status,
       archived: project.archivedAt != null,
       counts: project._count,
+      widgets: project.widgets,
       contacts: project.contacts,
       tasks: project.tasks.map((task) => ({
         ...task,

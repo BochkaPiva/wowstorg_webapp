@@ -350,6 +350,7 @@ model User {
   taskChecklistAssignments       WorkTaskChecklistAssignee[]
   taskActivities                 WorkTaskActivity[]           @relation("task_activity_actor")
   orderServiceFeedbacks          OrderServiceFeedback[]       @relation("order_service_feedback_author")
+  customerMerges                 CustomerMerge[]              @relation("customer_merge_actor")
 
   @@index([role, isActive])
 }
@@ -592,13 +593,20 @@ model OrderStageReminder {
 }
 
 model Customer {
-  id            String    @id @default(cuid())
-  name          String
-  isActive      Boolean   @default(true)
-  notes         String?
-  logoKey       String?   @unique
-  logoMimeType  String?
-  logoUpdatedAt DateTime?
+  id             String    @id @default(cuid())
+  name           String
+  /// Нормализованный ключ защищает от дублей по регистру, пробелам и пунктуации.
+  normalizedName String?   @unique
+  isActive       Boolean   @default(true)
+  notes          String?
+  logoKey        String?   @unique
+  logoMimeType   String?
+  logoUpdatedAt  DateTime?
+
+  /// После объединения карточка остаётся в истории, но больше не используется в новых сущностях.
+  mergedIntoId    String?
+  mergedInto      Customer?  @relation("customer_merge_chain", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedCustomers Customer[] @relation("customer_merge_chain")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -606,8 +614,48 @@ model Customer {
   orders              Order[]
   projects            Project[]
   standaloneEstimates StandaloneEstimate[]
+  aliases             CustomerAlias[]
+  mergesAsSource      CustomerMerge[]      @relation("customer_merge_source")
+  mergesAsTarget      CustomerMerge[]      @relation("customer_merge_target")
 
   @@index([isActive, name])
+  @@index([mergedIntoId])
+}
+
+/// Прежние и альтернативные написания, которые должны находить основную карточку.
+model CustomerAlias {
+  id             String   @id @default(cuid())
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name           String
+  normalizedName String
+  createdAt      DateTime @default(now())
+
+  @@unique([customerId, name])
+  @@index([customerId])
+  @@index([normalizedName])
+}
+
+/// Неизменяемый журнал ручного объединения заказчиков.
+model CustomerMerge {
+  id                       String   @id @default(cuid())
+  sourceCustomerId         String
+  sourceCustomer           Customer @relation("customer_merge_source", fields: [sourceCustomerId], references: [id], onDelete: Restrict)
+  targetCustomerId         String
+  targetCustomer           Customer @relation("customer_merge_target", fields: [targetCustomerId], references: [id], onDelete: Restrict)
+  actorUserId              String
+  actor                    User     @relation("customer_merge_actor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  sourceName               String
+  targetName               String
+  movedOrders              Int
+  movedProjects            Int
+  movedStandaloneEstimates Int
+  snapshot                 Json?
+  createdAt                DateTime @default(now())
+
+  @@index([sourceCustomerId, createdAt])
+  @@index([targetCustomerId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 /// Проект мероприятия (WOWSTORG): заявки реквизита, смета, контакты — в следующих фазах.

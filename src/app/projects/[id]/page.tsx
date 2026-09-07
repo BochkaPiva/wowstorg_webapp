@@ -1597,48 +1597,51 @@ export default function ProjectDetailPage() {
               </div>
 
               <div className="project-detail-hero__actions">
-                  {isWorkspaceV2 ? (
-                    <ProjectWorkspaceSettings
-                      projectId={id}
-                      revision={project.revision}
-                      owner={project.owner}
-                      members={project.members}
-                      widgets={project.widgets}
-                      readOnly={readOnly}
-                      onSaved={applySavedWorkspace}
-                    />
-                  ) : null}
-                    <Link
-                      href={buildProjectCatalogHref({
-                        projectId: id,
-                        mode: projectHasConfirmedDates ? "dated" : "demo",
-                        estimateVersionId: activeEstimateVersionId,
-                      })}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        openProjectCatalogEntry();
-                      }}
-                      className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
-                      aria-disabled={readOnly}
-                    >
-                      Каталог → реквизит
-                    </Link>
-                    {!readOnly ? (
-                      <button
-                        type="button"
-                        onClick={() => openArchiveModal()}
-                        disabled={archiveBusy || !canArchiveProject}
-                        className="project-detail-hero__complete"
-                        title={
-                          canArchiveProject
-                            ? undefined
-                            : "Сначала завершите или отмените все заявки, привязанные к проекту"
-                        }
-                      >
-                        Завершить проект
-                      </button>
-                    ) : null}
+                {isWorkspaceV2 ? (
+                  <ProjectWorkspaceSettings
+                    projectId={id}
+                    revision={project.revision}
+                    owner={project.owner}
+                    members={project.members}
+                    widgets={project.widgets}
+                    readOnly={readOnly}
+                    onSaved={applySavedWorkspace}
+                  />
+                ) : null}
+                <Link
+                  href={buildProjectCatalogHref({
+                    projectId: id,
+                    mode: projectHasConfirmedDates ? "dated" : "demo",
+                    estimateVersionId: activeEstimateVersionId,
+                  })}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openProjectCatalogEntry();
+                  }}
+                  className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                  aria-disabled={readOnly}
+                >
+                  Каталог → реквизит
+                </Link>
               </div>
+
+              {!readOnly ? (
+                <div className="project-detail-hero__complete-slot">
+                  <button
+                    type="button"
+                    onClick={() => openArchiveModal()}
+                    disabled={archiveBusy || !canArchiveProject}
+                    className="project-detail-hero__complete"
+                    title={
+                      canArchiveProject
+                        ? undefined
+                        : "Сначала завершите или отмените все заявки, привязанные к проекту"
+                    }
+                  >
+                    Завершить проект
+                  </button>
+                </div>
+              ) : null}
             </div>
           </section>
 

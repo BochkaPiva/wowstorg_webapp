@@ -5,6 +5,7 @@ import { requireRole } from "@/server/auth/require";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
+import { findOrCreateCustomerByIdentity } from "@/server/customers/identity";
 
 const ConvertSchema = z
   .object({
@@ -51,24 +52,14 @@ export async function POST(
 
         let customerId = parsed.data.customerId?.trim() || "";
         if (customerId) {
-          const customer = await tx.customer.findUnique({
-            where: { id: customerId },
+          const customer = await tx.customer.findFirst({
+            where: { id: customerId, mergedIntoId: null },
             select: { id: true },
           });
           if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
         } else {
           const name = parsed.data.customerName!.trim();
-          const existing = await tx.customer.findFirst({
-            where: { name: { equals: name, mode: "insensitive" } },
-            select: { id: true },
-          });
-          customerId = existing?.id
-            ?? (
-              await tx.customer.create({
-                data: { name },
-                select: { id: true },
-              })
-            ).id;
+          customerId = (await findOrCreateCustomerByIdentity(tx, name)).id;
         }
 
         const updated = await tx.project.update({

@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     const estimate = await prisma.$transaction(async (tx) => {
       const customerId = parsed.data.customerId?.trim() || null;
       if (customerId) {
-        const exists = await tx.customer.findUnique({
-          where: { id: customerId },
+        const exists = await tx.customer.findFirst({
+          where: { id: customerId, mergedIntoId: null },
           select: { id: true },
         });
         if (!exists) throw new Error("CUSTOMER_NOT_FOUND");

@@ -2,6 +2,7 @@ import { Prisma, ProjectActivityKind, type OrderSource, type Role } from "@prism
 
 import { validateRentalPartCombo, type RentalPartOfDay } from "@/lib/rental-days";
 import { utcTodayDateOnlyString } from "@/server/dates";
+import { findOrCreateCustomerByIdentity } from "@/server/customers/identity";
 import { makeEstimateArtifactsForOrder } from "@/server/orders/estimate-artifacts";
 import { calcOrderPricing, validateOrderDiscount, type OrderDiscountType } from "@/server/orders/order-pricing";
 import type { OrderServicePaymentMethod } from "@/lib/order-service-internal-costs";
@@ -256,22 +257,10 @@ export async function createOrderInTransaction(
     orderProjectId = project.id;
   } else if (hasCustomerName) {
     const name = input.customerName!.trim();
-    const existing = await tx.customer.findFirst({
-      where: { name: { equals: name, mode: "insensitive" } },
-      select: { id: true },
-    });
-    if (existing) {
-      customerIdToUse = existing.id;
-    } else {
-      const created = await tx.customer.create({
-        data: { name },
-        select: { id: true },
-      });
-      customerIdToUse = created.id;
-    }
+    customerIdToUse = (await findOrCreateCustomerByIdentity(tx, name)).id;
   } else {
     const customer = await tx.customer.findFirst({
-      where: { id: input.customerId!.trim(), isActive: true },
+      where: { id: input.customerId!.trim(), isActive: true, mergedIntoId: null },
       select: { id: true },
     });
     if (!customer) throw new CreateOrderError("CUSTOMER_NOT_FOUND");

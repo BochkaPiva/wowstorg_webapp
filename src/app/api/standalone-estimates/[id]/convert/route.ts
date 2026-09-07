@@ -13,6 +13,7 @@ import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
 import { buildInitialProjectWidgets } from "@/lib/projects/project-widget-registry";
 import { ensureDefaultProjectFolders } from "@/server/projects/project-files";
+import { findOrCreateCustomerByIdentity } from "@/server/customers/identity";
 
 const ConvertSchema = z.object({
   customerId: z.string().trim().min(1).optional(),
@@ -53,23 +54,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
       let customerId = parsed.data.customerId?.trim() || "";
       if (customerId) {
-        const customer = await tx.customer.findUnique({
-          where: { id: customerId },
+        const customer = await tx.customer.findFirst({
+          where: { id: customerId, mergedIntoId: null },
           select: { id: true },
         });
         if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
       } else {
         const name = parsed.data.customerName!.trim();
-        const existing = await tx.customer.findFirst({
-          where: { name: { equals: name, mode: "insensitive" } },
-          select: { id: true },
-        });
-        customerId = existing?.id ?? (
-          await tx.customer.create({
-            data: { name },
-            select: { id: true },
-          })
-        ).id;
+        customerId = (await findOrCreateCustomerByIdentity(tx, name)).id;
       }
 
       const created = await tx.project.create({

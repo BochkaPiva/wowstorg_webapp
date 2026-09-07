@@ -14,6 +14,7 @@ import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
 import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import { useAuth } from "@/app/providers";
 import { withDetailReturn } from "@/lib/detail-return";
+import { PROJECT_WIDGET_REGISTRY } from "@/lib/projects/project-widget-registry";
 
 import "./work.css";
 
@@ -106,7 +107,15 @@ type ProjectPreview = {
   id: string;
   status: ProjectStatus;
   archived: boolean;
-  counts: { contacts: number; tasks: number; orders: number };
+  counts: {
+    contacts: number;
+    tasks: number;
+    orders: number;
+    projectFiles: number;
+    scheduleDays: number;
+    workspaceItems: number;
+  };
+  widgets: Array<{ type: string; width: number; sortOrder: number }>;
   contacts: Array<{
     id: string;
     fullName: string;
@@ -221,6 +230,97 @@ function period(item: WorkItem) {
   if (!item.startDate) return "Дата не назначена";
   if (!item.endDate || item.endDate === item.startDate) return dateRu(item.startDate);
   return `${dateRu(item.startDate)} — ${dateRu(item.endDate)}`;
+}
+
+const PROJECT_WIDGET_BY_TYPE = new Map<string, (typeof PROJECT_WIDGET_REGISTRY)[number]>(
+  PROJECT_WIDGET_REGISTRY.map((definition) => [definition.type, definition]),
+);
+
+function projectWidgetAnchor(type: string) {
+  return `project-widget-${type.toLowerCase().replaceAll("_", "-")}`;
+}
+
+function ProjectModulePreview({
+  href,
+  item,
+  preview,
+  widget,
+}: {
+  href: string;
+  item: WorkItem;
+  preview: ProjectPreview;
+  widget: ProjectPreview["widgets"][number];
+}) {
+  const definition = PROJECT_WIDGET_BY_TYPE.get(widget.type);
+  const title = definition?.title ?? "Рабочий блок";
+  const eyebrow = definition?.eyebrow ?? "Проект";
+  const span = widget.width === 6 || widget.width === 8 || widget.width === 12 ? widget.width : 4;
+  const openTasks = preview.tasks.filter((task) => !task.completedAt && !task.column.isDone).slice(0, 3);
+
+  let body: React.ReactNode;
+  if (widget.type === "ESTIMATE") {
+    body = preview.estimate ? (
+      <dl className="work-projectModule__metrics">
+        <div><dt>Клиенту</dt><dd>{money(preview.estimate.financials.revenueTotal)}</dd></div>
+        <div><dt>Затраты</dt><dd>{money(preview.estimate.financials.internalSubtotal)}</dd></div>
+        <div><dt>Маржа</dt><dd>{money(preview.estimate.financials.marginAfterTax)} · {Math.round(preview.estimate.financials.marginAfterTaxPct)}%</dd></div>
+      </dl>
+    ) : <p>Основная смета ещё не создана.</p>;
+  } else if (widget.type === "TASKS") {
+    body = openTasks.length ? (
+      <ul className="work-projectModule__list">
+        {openTasks.map((task) => (
+          <li key={task.id}>
+            <span>{task.title}</span>
+            <small>{task.column.title}{task.dueDate ? ` · до ${dateRu(task.dueDate)}` : ""}</small>
+          </li>
+        ))}
+      </ul>
+    ) : <p>Открытых задач нет.</p>;
+  } else if (widget.type === "CONTACTS") {
+    body = preview.contacts.length ? (
+      <ul className="work-projectModule__list">
+        {preview.contacts.slice(0, 3).map((contact) => (
+          <li key={contact.id}>
+            <span>{contact.fullName}</span>
+            <small>{contact.roleNote || contact.phone || contact.email || "Без примечания"}</small>
+          </li>
+        ))}
+      </ul>
+    ) : <p>Контакты ещё не добавлены.</p>;
+  } else if (widget.type === "NOTES") {
+    body = (
+      <div className="work-projectModule__notes">
+        <p>{item.summary || "Внутреннее резюме пока не заполнено."}</p>
+        {item.blockers ? <strong>Блокер: {item.blockers}</strong> : <small>Критичных блокеров нет</small>}
+      </div>
+    );
+  } else if (widget.type === "ORDERS") {
+    body = <p><strong>{preview.counts.orders}</strong> {preview.counts.orders === 1 ? "связанная заявка" : "связанных заявок"}</p>;
+  } else if (widget.type === "SCHEDULE") {
+    body = <p><strong>{preview.counts.scheduleDays}</strong> {preview.counts.scheduleDays === 1 ? "день в тайминге" : "дней в тайминге"}<small>{period(item)}</small></p>;
+  } else if (widget.type === "FILES") {
+    body = <p><strong>{preview.counts.projectFiles}</strong> {preview.counts.projectFiles === 1 ? "рабочий файл" : "рабочих файлов"}</p>;
+  } else if (widget.type === "FREE_BOARD") {
+    body = <p><strong>{preview.counts.workspaceItems}</strong> {preview.counts.workspaceItems === 1 ? "элемент на доске" : "элементов на доске"}</p>;
+  } else if (widget.type === "HISTORY") {
+    body = <p>Последнее обновление<small>{dateRu(item.updatedAt.slice(0, 10))}</small></p>;
+  } else {
+    body = <p>Откройте блок в полной карточке проекта.</p>;
+  }
+
+  return (
+    <Link
+      href={`${href}#${projectWidgetAnchor(widget.type)}`}
+      className={`work-projectModule work-projectModule--span${span}`}
+    >
+      <header>
+        <span><small>{eyebrow}</small><strong>{title}</strong></span>
+        <i aria-hidden="true">→</i>
+      </header>
+      {body}
+    </Link>
+  );
 }
 
 function initials(value: string) {
@@ -1141,19 +1241,11 @@ export default function WorkQueuePage() {
                             </aside>
                           </div>
                         ) : item.kind === "PROJECT" ? (
-                          <div className="work-brief">
-                            <section>
-                              <h3>Коротко</h3>
-                              <p>{item.summary || "Внутреннее резюме пока не заполнено."}</p>
-                            </section>
-                            <section data-warning={Boolean(item.blockers) || undefined}>
-                              <h3>Блокеры</h3>
-                              <p>{item.blockers || "Критичных блокеров нет."}</p>
-                            </section>
-                            <section>
-                              <h3>Следующий ориентир</h3>
-                              <p>{PHASE_LABEL[item.phase]} · {item.ball === "CLIENT" ? "мяч у клиента" : item.ball === "WOWSTORG" ? "мяч у Wowstorg" : "контроль команды"}</p>
-                            </section>
+                          <div className="work-projectPulse">
+                            <span>Сейчас в работе</span>
+                            <strong>{PHASE_LABEL[item.phase]}</strong>
+                            <small>{item.ball === "CLIENT" ? "Мяч у клиента" : item.ball === "WOWSTORG" ? "Мяч у Wowstorg" : "Контроль команды"}</small>
+                            {item.blockers ? <em>Есть блокер</em> : null}
                           </div>
                         ) : (
                           <div className="work-estimatePreview">
@@ -1188,51 +1280,35 @@ export default function WorkQueuePage() {
                             </div>
                           ) : preview ? (
                             <div className="work-projectPreview">
-                              <section>
-                                <h3>Финансы сметы</h3>
-                                {preview.estimate ? (
-                                  <dl>
-                                    <div><dt>Клиенту</dt><dd>{money(preview.estimate.financials.revenueTotal)}</dd></div>
-                                    <div><dt>Затраты</dt><dd>{money(preview.estimate.financials.internalSubtotal)}</dd></div>
-                                    <div><dt>Маржа после налога</dt><dd>{money(preview.estimate.financials.marginAfterTax)} · {Math.round(preview.estimate.financials.marginAfterTaxPct)}%</dd></div>
-                                  </dl>
-                                ) : <p>Основная смета ещё не создана.</p>}
-                              </section>
-                              <section>
-                                <h3>Ближайшие задачи · {preview.counts.tasks}</h3>
-                                {preview.tasks.length ? (
-                                  <ul>
-                                    {preview.tasks.slice(0, 4).map((task) => (
-                                      <li key={task.id}>
-                                        <span>{task.title}</span>
-                                        <small>{task.column.title}{task.dueDate ? ` · до ${dateRu(task.dueDate)}` : ""}</small>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : <p>Открытых задач нет.</p>}
-                              </section>
-                              <section>
-                                <h3>Контакты · {preview.counts.contacts}</h3>
-                                {preview.contacts.length ? (
-                                  <ul>
-                                    {preview.contacts.slice(0, 4).map((contact) => (
-                                      <li key={contact.id}>
-                                        <span>{contact.fullName}</span>
-                                        <small>{contact.roleNote || contact.phone || contact.email || "Без примечания"}</small>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : <p>Контакты ещё не добавлены.</p>}
-                              </section>
+                              <nav className="work-projectPreview__nav" aria-label="Активные блоки проекта">
+                                <span>Активные блоки</span>
+                                <div>
+                                  {(preview.widgets.length ? preview.widgets : [
+                                    { type: "ESTIMATE", width: 12, sortOrder: 0 },
+                                    { type: "ORDERS", width: 4, sortOrder: 1 },
+                                  ]).map((widget) => (
+                                    <Link key={widget.type} href={`${href}#${projectWidgetAnchor(widget.type)}`}>
+                                      {PROJECT_WIDGET_BY_TYPE.get(widget.type)?.title ?? widget.type}
+                                    </Link>
+                                  ))}
+                                </div>
+                              </nav>
+                              <div className="work-projectPreview__grid">
+                                {(preview.widgets.length ? preview.widgets : [
+                                  { type: "ESTIMATE", width: 12, sortOrder: 0 },
+                                  { type: "ORDERS", width: 4, sortOrder: 1 },
+                                ]).map((widget) => (
+                                  <ProjectModulePreview
+                                    key={widget.type}
+                                    href={href}
+                                    item={item}
+                                    preview={preview}
+                                    widget={widget}
+                                  />
+                                ))}
+                              </div>
                             </div>
                           ) : null
-                        ) : null}
-
-                        {item.kind === "PROJECT" && !item.orders.length ? (
-                          <div className="work-emptyState">
-                            <strong>Заявок пока нет</strong>
-                            <span>{item.estimate ? `Создана версия сметы №${item.estimate.versionNumber}` : "Откройте карточку, чтобы начать расчёт."}</span>
-                          </div>
                         ) : null}
 
                         <div className="work-revealActions">

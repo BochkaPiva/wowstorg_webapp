@@ -44,6 +44,7 @@
 |------|----------|
 | Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) (спека), [`projects-foundation.md`](./projects-foundation.md) (риски, зависимости, фазы), [`projects-predeploy-checklist.md`](./projects-predeploy-checklist.md) (бакет + env), [`projects-post-implementation-checklist.md`](./projects-post-implementation-checklist.md) (статус MVP + чеклист перед продом) |
 | Админ-аналитика | [`admin-analytics.md`](./admin-analytics.md) (редизайн, формулы, вкладки, Excel) |
+| Единая идентичность заказчика | [`customer-identity.md`](./customer-identity.md) (нормализация, поиск дублей, безопасное объединение и LTV) |
 | Центр уведомлений | [`notifications-center.md`](./notifications-center.md) (in-app уведомления, колокольчик, задел под browser push) |
 | Утро/вечер на границах аренды | [`rental-part-of-day.md`](./rental-part-of-day.md) (план в [`docs/RENTAL_PART_OF_DAY_PLAN.md`](../../docs/RENTAL_PART_OF_DAY_PLAN.md)) |
 | Связанные позиции / рекомендации в корзине | [`catalog-related-items.md`](./catalog-related-items.md) (план в [`docs/CATALOG_RELATED_ITEMS_PLAN.md`](../../docs/CATALOG_RELATED_ITEMS_PLAN.md)) |

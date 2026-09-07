@@ -2,6 +2,7 @@ import { Prisma, ProjectActivityKind, ProjectBall, ProjectMode, ProjectStatus } 
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
+import { findOrCreateCustomerByIdentity } from "@/server/customers/identity";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
 import { appendProjectActivityLog } from "@/server/projects/activity-log";
@@ -482,22 +483,10 @@ export async function POST(req: Request) {
 
       if (!customerId && projectMode === ProjectMode.FULL) {
         const name = parsed.data.customerName!.trim();
-        const existing = await tx.customer.findFirst({
-          where: { name: { equals: name, mode: "insensitive" } },
-          select: { id: true },
-        });
-        if (existing) {
-          customerId = existing.id;
-        } else {
-          const created = await tx.customer.create({
-            data: { name },
-            select: { id: true },
-          });
-          customerId = created.id;
-        }
+        customerId = (await findOrCreateCustomerByIdentity(tx, name)).id;
       } else if (customerId) {
-        const customer = await tx.customer.findUnique({
-          where: { id: customerId },
+        const customer = await tx.customer.findFirst({
+          where: { id: customerId, mergedIntoId: null },
           select: { id: true },
         });
         if (!customer) {

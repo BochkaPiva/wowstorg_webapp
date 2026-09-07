@@ -95,8 +95,8 @@ export async function PATCH(
       ? undefined
       : parsed.data.customerId?.trim() || null;
   if (customerId) {
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, mergedIntoId: null },
       select: { id: true },
     });
     if (!customer) return jsonError(400, "Заказчик не найден");

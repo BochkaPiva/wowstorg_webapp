@@ -1,8 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/server/db";
 import { requireRole } from "@/server/auth/require";
 import { jsonError, jsonOk } from "@/server/http";
+import { findCustomerByIdentity, normalizeCustomerName } from "@/server/customers/identity";
 
 const UpdateSchema = z.object({
   name: z.string().trim().min(2).max(200).optional(),
@@ -28,29 +30,69 @@ export async function PATCH(
   const parsed = UpdateSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
-  const customer = await prisma.customer.findUnique({ where: { id } });
-  if (!customer) return jsonError(404, "Заказчик не найден");
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.findUnique({ where: { id } });
+      if (!customer) throw new Error("CUSTOMER_NOT_FOUND");
+      if (customer.mergedIntoId) throw new Error("CUSTOMER_ALREADY_MERGED");
 
-  const data: Record<string, unknown> = {};
-  if (parsed.data.name !== undefined) data.name = parsed.data.name;
-  if (parsed.data.notes !== undefined) data.notes = parsed.data.notes;
-  if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+      const data: Prisma.CustomerUpdateInput = {};
+      if (parsed.data.name !== undefined) {
+        const name = parsed.data.name.trim();
+        const normalizedName = normalizeCustomerName(name);
+        if (!normalizedName) throw new Error("CUSTOMER_NAME_INVALID");
+        const conflict = await findCustomerByIdentity(tx, name, {
+          excludeCustomerId: id,
+          includeInactive: true,
+        });
+        if (conflict) throw new Error(`CUSTOMER_DUPLICATE:${conflict.id}:${conflict.name}`);
 
-  const updated = await prisma.customer.update({
-    where: { id },
-    data,
-    select: { id: true, name: true, isActive: true, notes: true, logoKey: true, logoUpdatedAt: true },
-  });
+        const oldNormalizedName = customer.normalizedName ?? normalizeCustomerName(customer.name);
+        data.name = name;
+        data.normalizedName = normalizedName;
+        if (oldNormalizedName && oldNormalizedName !== normalizedName) {
+          const existingAlias = await tx.customerAlias.findFirst({
+            where: { customerId: id, name: customer.name },
+          });
+          if (!existingAlias) {
+            await tx.customerAlias.create({
+              data: { customerId: id, name: customer.name, normalizedName: oldNormalizedName },
+            });
+          }
+        }
+      }
+      if (parsed.data.notes !== undefined) data.notes = parsed.data.notes;
+      if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
 
-  return jsonOk({
-    customer: {
-      id: updated.id,
-      name: updated.name,
-      isActive: updated.isActive,
-      notes: updated.notes,
-      logoUrl: updated.logoKey
-        ? `/api/customers/${updated.id}/logo?v=${updated.logoUpdatedAt?.getTime() ?? 0}`
-        : null,
-    },
-  });
+      return tx.customer.update({
+        where: { id },
+        data,
+        select: { id: true, name: true, isActive: true, notes: true, logoKey: true, logoUpdatedAt: true },
+      });
+    });
+
+    return jsonOk({
+      customer: {
+        id: updated.id,
+        name: updated.name,
+        isActive: updated.isActive,
+        notes: updated.notes,
+        logoUrl: updated.logoKey
+          ? `/api/customers/${updated.id}/logo?v=${updated.logoUpdatedAt?.getTime() ?? 0}`
+          : null,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CUSTOMER_NOT_FOUND") return jsonError(404, "Заказчик не найден");
+    if (error instanceof Error && error.message === "CUSTOMER_ALREADY_MERGED") return jsonError(409, "Карточка уже объединена с другим заказчиком");
+    if (error instanceof Error && error.message === "CUSTOMER_NAME_INVALID") return jsonError(400, "Название должно содержать буквы или цифры");
+    if (error instanceof Error && error.message.startsWith("CUSTOMER_DUPLICATE:")) {
+      const [, customerId, ...nameParts] = error.message.split(":");
+      return jsonError(409, `Заказчик «${nameParts.join(":")}» уже существует`, { customerId });
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return jsonError(409, "Заказчик или алиас с таким названием уже существует");
+    }
+    throw error;
+  }
 }

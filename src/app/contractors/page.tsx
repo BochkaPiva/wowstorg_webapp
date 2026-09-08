@@ -23,6 +23,8 @@ export default function ContractorsPage() {
   const [search, setSearch] = React.useState("");
   const [modal, setModal] = React.useState<"contractor" | "category" | "offer" | null>(null);
   const [editingOffer, setEditingOffer] = React.useState<Offer | null>(null);
+  const [contractorPhoto, setContractorPhoto] = React.useState<File | null>(null);
+  const [contractorPhotoPreview, setContractorPhotoPreview] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -46,15 +48,61 @@ export default function ContractorsPage() {
   });
   const selected = contractors.find((contractor) => contractor.id === selectedId) ?? null;
 
+  React.useEffect(() => () => {
+    if (contractorPhotoPreview) URL.revokeObjectURL(contractorPhotoPreview);
+  }, [contractorPhotoPreview]);
+
+  function closeModal() {
+    setModal(null);
+    setEditingOffer(null);
+    setError(null);
+    setContractorPhoto(null);
+    setContractorPhotoPreview(null);
+  }
+
+  function chooseContractorPhoto(file: File | null) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Для фотографии подойдут PNG, JPEG или WebP");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Фотография должна быть не больше 10 МБ");
+      return;
+    }
+    setError(null);
+    setContractorPhoto(file);
+    setContractorPhotoPreview(URL.createObjectURL(file));
+  }
+
   async function submitContractor(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(null);
     const data = new FormData(event.currentTarget);
-    const response = await fetch("/api/contractors", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-      name: data.get("name"), shortDescription: data.get("description") || null, websiteUrl: data.get("website") || null, city: data.get("city") || null,
-      contact: data.get("phone") || data.get("email") ? { personName: data.get("person") || null, phone: data.get("phone") || null, email: data.get("email") || null } : undefined,
-    }) });
-    if (!response.ok) { setError(await readError(response)); setBusy(false); return; }
-    const body = await response.json() as { contractor: { id: string } }; await load(); setSelectedId(body.contractor.id); setModal(null); setBusy(false);
+    try {
+      const response = await fetch("/api/contractors", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        name: data.get("name"), shortDescription: data.get("description") || null, websiteUrl: data.get("website") || null, city: data.get("city") || null,
+        contact: data.get("phone") || data.get("email") ? { personName: data.get("person") || null, phone: data.get("phone") || null, email: data.get("email") || null } : undefined,
+      }) });
+      if (!response.ok) { setError(await readError(response)); return; }
+      const body = await response.json() as { contractor: { id: string } };
+      let photoError: string | null = null;
+      if (contractorPhoto) {
+        const photoForm = new FormData();
+        photoForm.set("file", contractorPhoto);
+        const photoResponse = await fetch(`/api/contractors/${body.contractor.id}/assets/upload`, { method: "POST", body: photoForm });
+        if (!photoResponse.ok) photoError = await readError(photoResponse);
+      }
+      await load();
+      setSelectedId(body.contractor.id);
+      setModal(null);
+      setContractorPhoto(null);
+      setContractorPhotoPreview(null);
+      if (photoError) setError(`Карточка создана, но фотография не загрузилась: ${photoError}`);
+    } catch {
+      setError("Не удалось создать карточку. Проверьте соединение и попробуйте ещё раз.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitCategory(event: React.FormEvent<HTMLFormElement>) {
@@ -111,9 +159,9 @@ export default function ContractorsPage() {
         </div> : <div className={styles.empty}>Добавьте первого подрядчика — он сразу появится в конструкторах проектов.</div>}
       </section>
     </div>
-    {modal ? <div className={styles.modal} role="dialog" aria-modal="true"><div className={styles.dialog}><div className={styles.dialogHead}><h3>{modal === "contractor" ? "Новый подрядчик" : modal === "category" ? "Новая категория" : `${editingOffer ? "Изменить услугу" : "Новая услуга"} · ${selected?.name}`}</h3><button className={styles.quiet} onClick={() => { setModal(null); setEditingOffer(null); setError(null); }}>Закрыть</button></div>
+    {modal ? <div className={styles.modal} role="dialog" aria-modal="true"><div className={styles.dialog}><div className={styles.dialogHead}><div><h3>{modal === "contractor" ? "Новый подрядчик" : modal === "category" ? "Новая категория" : `${editingOffer ? "Изменить услугу" : "Новая услуга"} · ${selected?.name}`}</h3>{modal === "contractor" ? <p>Контакты и фотография сразу попадут в каталог проекта.</p> : null}</div><button className={styles.closeButton} type="button" aria-label="Закрыть" onClick={closeModal}>×</button></div>
       {error ? <div className={styles.error}>{error}</div> : null}
-      {modal === "contractor" ? <form className={styles.form} onSubmit={submitContractor}><label>Название<input className={styles.input} name="name" required /></label><label>Чем полезен<textarea className={styles.textarea} name="description" /></label><div className={styles.formGrid}><label>Город<input className={styles.input} name="city" /></label><label>Сайт<input className={styles.input} name="website" type="url" placeholder="https://" /></label><label>Контактное лицо<input className={styles.input} name="person" /></label><label>Телефон<input className={styles.input} name="phone" /></label></div><label>Email<input className={styles.input} name="email" type="email" /></label><button className={styles.primary} disabled={busy}>{busy ? "Сохраняю…" : "Создать карточку"}</button></form> : null}
+      {modal === "contractor" ? <form className={styles.form} onSubmit={submitContractor}><label className={styles.photoPicker}><input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { chooseContractorPhoto(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />{contractorPhotoPreview ? <Image src={contractorPhotoPreview} alt="Предпросмотр фотографии подрядчика" fill sizes="112px" unoptimized /> : <span className={styles.photoPlaceholder}><span className={styles.photoPlus}>+</span><strong>Добавить фото</strong><small>PNG, JPEG или WebP · до 10 МБ</small></span>}<span className={styles.photoEdit}>{contractorPhotoPreview ? "Заменить" : "Выбрать"}</span></label><label>Название<input className={styles.input} name="name" required autoFocus /></label><label>Чем полезен<textarea className={styles.textarea} name="description" /></label><div className={styles.formGrid}><label>Город<input className={styles.input} name="city" /></label><label>Сайт<input className={styles.input} name="website" type="url" placeholder="https://" /></label><label>Контактное лицо<input className={styles.input} name="person" /></label><label>Телефон<input className={styles.input} name="phone" /></label></div><label>Email<input className={styles.input} name="email" type="email" /></label><button className={styles.primary} disabled={busy}>{busy ? contractorPhoto ? "Создаю и загружаю фото…" : "Создаю…" : "Создать карточку"}</button></form> : null}
       {modal === "category" ? <form className={styles.form} onSubmit={submitCategory}><label>Название<input className={styles.input} name="name" required placeholder="Например, Ведущие" /></label><label>Описание<textarea className={styles.textarea} name="description" /></label><button className={styles.primary} disabled={busy}>{busy ? "Сохраняю…" : "Добавить категорию"}</button></form> : null}
       {modal === "offer" ? <form key={editingOffer?.id ?? "new-offer"} className={styles.form} onSubmit={submitOffer}><div className={styles.formGrid}><label>Категория<select className={styles.select} name="categoryId" required defaultValue={editingOffer?.category.id ?? ""}><option value="">Выберите</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Модель цены<select className={styles.select} name="priceType" defaultValue={editingOffer?.priceType ?? "FIXED"}>{Object.entries(CONTRACTOR_PRICE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><label>Название услуги<input className={styles.input} name="title" required defaultValue={editingOffer?.title ?? ""} /></label><label>Что входит<textarea className={styles.textarea} name="description" defaultValue={editingOffer?.description ?? ""} /></label><div className={styles.formGrid}><label>Цена клиенту<input className={styles.input} name="clientPrice" type="number" min="0" step="0.01" defaultValue={editingOffer?.clientPrice ?? ""} /></label><label>Верхняя граница<input className={styles.input} name="clientPriceMax" type="number" min="0" step="0.01" defaultValue={editingOffer?.clientPriceMax ?? ""} /></label><label>Внутренняя стоимость<input className={styles.input} name="internalCost" type="number" min="0" step="0.01" defaultValue={editingOffer?.internalCost ?? ""} /></label><label>Единица<input className={styles.input} name="unitLabel" placeholder="мероприятие, час, человек" defaultValue={editingOffer?.unitLabel ?? ""} /></label></div><button className={styles.primary} disabled={busy}>{busy ? "Сохраняю…" : editingOffer ? "Сохранить и подтвердить цену" : "Добавить предложение"}</button></form> : null}
     </div></div> : null}

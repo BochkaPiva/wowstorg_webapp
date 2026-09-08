@@ -53,6 +53,19 @@
 .dialog { width: min(600px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto; border-radius: 16px; background: #fff; padding: 22px; box-shadow: 0 24px 80px rgb(0 0 0 / .18); }
 .dialogHead { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .dialogHead h3 { margin: 0; font-size: 22px; }
+.dialogHead p { margin: 5px 0 0; color: #6f6962; font-size: 13px; }
+.closeButton { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border: 1px solid #ded9d1; border-radius: 9px; background: #fff; color: #5f5953; font: inherit; font-size: 21px; line-height: 1; cursor: pointer; }
+.closeButton:hover { border-color: #bfb8ae; background: #f8f7f4; color: #1b1814; }
+.closeButton:focus-visible { outline: 3px solid #e8d8ff; outline-offset: 2px; }
+.photoPicker { position: relative; display: grid !important; place-items: center; min-height: 144px; overflow: hidden; border: 1px dashed #bcb3a8; border-radius: 12px; background: #f8f7f4; color: #4c4640 !important; cursor: pointer; }
+.photoPicker:hover { border-color: #7130c5; background: #f6f0ff; }
+.photoPicker:focus-within { outline: 3px solid #eadcff; outline-offset: 2px; }
+.photoPicker > input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.photoPicker img { object-fit: cover; }
+.photoPlaceholder { display: grid; place-items: center; gap: 3px; padding: 22px; text-align: center; }
+.photoPlaceholder small { color: #777069; font-weight: 600; }
+.photoPlus { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 3px; border-radius: 999px; background: #6a27bb; color: #fff; font-size: 22px; font-weight: 500; }
+.photoEdit { position: absolute; right: 9px; bottom: 9px; z-index: 1; border-radius: 999px; background: #171512; padding: 6px 10px; color: #fff; font-size: 11px; font-weight: 800; }
 .error { border: 1px solid #f1b5a8; border-radius: 10px; background: #fff1ed; padding: 10px 12px; color: #952f18; font-size: 13px; }
 @media (max-width: 900px) { .hero { grid-template-columns: 1fr; background: #fff; } .heroActions { justify-content: flex-start; } .toolbar { grid-template-columns: 1fr; } .workspace { grid-template-columns: 1fr; } .list { border-right: 0; border-bottom: 1px solid #e5e1da; max-height: 330px; overflow-y: auto; } }
 @media (max-width: 560px) { .hero, .detail { padding: 18px; } .formGrid, .offer { grid-template-columns: 1fr; } .detailHead { grid-template-columns: 72px minmax(0, 1fr); } .detailHead > button { grid-column: 1 / -1; } .photo { width: 72px; height: 72px; } .price { text-align: left; } .workspace { border-radius: 12px; } }

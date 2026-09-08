@@ -13,7 +13,27 @@ type Contractor = { id: string; name: string; shortDescription: string | null; w
 
 function money(value: number | null) { return value == null ? "По запросу" : new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value); }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("ru-RU"); }
+function offerPrice(offer: Offer) {
+  if (offer.priceType === "ON_REQUEST") return "По запросу";
+  const base = money(offer.clientPrice);
+  if (offer.priceType === "FROM") return `от ${base}`;
+  if (offer.priceType === "RANGE" && offer.clientPriceMax != null) return `${base} — ${money(offer.clientPriceMax)}`;
+  return offer.unitLabel ? `${base} / ${offer.unitLabel}` : base;
+}
+function freshnessCopy(value: ReturnType<typeof priceFreshness>) {
+  if (value === "FRESH") return "Актуально";
+  if (value === "AGING") return "Пора проверить";
+  if (value === "STALE") return "Устарело";
+  return "Не подтверждено";
+}
 async function readError(response: Response) { const body = await response.json().catch(() => null) as { error?: { message?: string } } | null; return body?.error?.message ?? "Не удалось выполнить действие"; }
+
+function ContractorPhoto({ src, name }: { src: string | null; name: string }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
+  if (!src || failed) return <span className={styles.cardMonogram}>{initials(name)}</span>;
+  return <Image src={src} alt="" fill sizes="(max-width: 720px) 100vw, 420px" unoptimized onError={() => setFailed(true)} />;
+}
 
 export default function ContractorsPage() {
   const [categories, setCategories] = React.useState<Category[]>([]);
@@ -125,16 +145,16 @@ export default function ContractorsPage() {
     await load(); setModal(null); setEditingOffer(null); setBusy(false);
   }
 
-  async function uploadPhoto(file: File) {
-    if (!selected) return; setBusy(true); setError(null); const form = new FormData(); form.set("file", file);
-    const response = await fetch(`/api/contractors/${selected.id}/assets/upload`, { method: "POST", body: form });
+  async function uploadPhoto(contractorId: string, file: File) {
+    setBusy(true); setError(null); const form = new FormData(); form.set("file", file);
+    const response = await fetch(`/api/contractors/${contractorId}/assets/upload`, { method: "POST", body: form });
     if (!response.ok) setError(await readError(response)); else await load();
     setBusy(false);
   }
 
-  async function confirmOffer(offer: Offer) {
-    if (!selected) return; setBusy(true); setError(null);
-    const response = await fetch(`/api/contractors/${selected.id}/offers/${offer.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: offer.revision, confirmPrice: true }) });
+  async function confirmOffer(contractorId: string, offer: Offer) {
+    setBusy(true); setError(null);
+    const response = await fetch(`/api/contractors/${contractorId}/offers/${offer.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: offer.revision, confirmPrice: true }) });
     if (!response.ok) setError(await readError(response)); else await load();
     setBusy(false);
   }
@@ -142,7 +162,7 @@ export default function ContractorsPage() {
   return <AppShell title="Подрядчики">
     <div className={styles.page}>
       <section className={styles.hero}>
-        <div><h2>Каталог для быстрых концепций</h2><p>Единая база локаций, ведущих, шоу, техники и кейтеринга. Цена с датой подтверждения сразу доступна в конструкторе проекта.</p></div>
+        <div><h2>Подрядчики и услуги</h2><p>Фото, предложения и актуальные цены в одном каталоге. Всё, что видно здесь, доступно в конструкторе проекта.</p></div>
         <div className={styles.heroActions}><button className={styles.secondary} onClick={() => setModal("category")}>Новая категория</button><button className={styles.primary} onClick={() => setModal("contractor")}>Добавить подрядчика</button></div>
       </section>
       {error ? <div className={styles.error} role="alert">{error}</div> : null}
@@ -150,14 +170,47 @@ export default function ContractorsPage() {
         <input className={styles.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название, услуга или специализация" aria-label="Поиск подрядчиков" />
         <div className={styles.chips}><button className={styles.chip} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div>
       </section>
-      <section className={styles.workspace}>
-        <div className={styles.list}><div className={styles.listHeader}>{filtered.length} подрядчиков</div>{filtered.map((contractor) => <button key={contractor.id} className={styles.row} data-active={contractor.id === selectedId} onClick={() => setSelectedId(contractor.id)}><span className={styles.monogram}>{initials(contractor.name)}</span><span><span className={styles.rowTitle}>{contractor.name}</span><span className={styles.rowMeta}>{contractor.city || contractor.shortDescription || "Описание не заполнено"}</span></span><span className={styles.count}>{contractor.offers.length}</span></button>)}</div>
-        {selected ? <div className={styles.detail}>
-          <div className={styles.detailHead}><label className={styles.photo} title="Загрузить фотографию">{selected.photoUrl ? <Image src={selected.photoUrl} alt="" fill sizes="96px" unoptimized /> : initials(selected.name)}<input className={styles.photoInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(file); event.currentTarget.value = ""; }} /></label><div><h3>{selected.name}</h3><p>{selected.shortDescription || "Добавьте короткое описание, чтобы быстрее выбирать подрядчика во время звонка."}</p><div className={styles.contacts}>{selected.websiteUrl ? <a href={selected.websiteUrl} target="_blank" rel="noreferrer">Сайт ↗</a> : null}{selected.contacts[0]?.phone ? <a href={`tel:${selected.contacts[0].phone}`}>{selected.contacts[0].phone}</a> : null}{selected.contacts[0]?.email ? <a href={`mailto:${selected.contacts[0].email}`}>{selected.contacts[0].email}</a> : null}</div></div><button className={styles.primary} onClick={() => { setEditingOffer(null); setModal("offer"); }}>Добавить услугу</button></div>
-          <div className={styles.offersHead}><h4>Предложения</h4><span>{selected.offers.length}</span></div>
-          {selected.offers.length ? selected.offers.map((offer) => { const freshness = priceFreshness(offer.priceConfirmedAt); return <article key={offer.id} className={styles.offer}><div><div className={styles.offerCategory}>{offer.category.name}</div><div className={styles.offerTitle}>{offer.title}</div>{offer.description ? <div className={styles.offerDescription}>{offer.description}</div> : null}<button className={styles.quiet} onClick={() => { setEditingOffer(offer); setModal("offer"); }}>Изменить</button></div><div><div className={styles.price}>{offer.priceType === "FROM" ? "от " : ""}{money(offer.clientPrice)}{offer.priceType === "RANGE" && offer.clientPriceMax != null ? ` — ${money(offer.clientPriceMax)}` : ""}</div><div className={styles.freshness} data-state={freshness}>{freshness === "FRESH" ? "Цена актуальна" : freshness === "AGING" ? "Стоит перепроверить" : freshness === "STALE" ? "Цена устарела" : "Цена не подтверждена"}</div>{freshness !== "FRESH" ? <button className={styles.quiet} disabled={busy} onClick={() => void confirmOffer(offer)}>Подтвердить сегодня</button> : null}</div></article>; }) : <div className={styles.empty}>Услуг пока нет. Добавьте хотя бы одно предложение с ориентиром по цене.</div>}
-        </div> : <div className={styles.empty}>Добавьте первого подрядчика — он сразу появится в конструкторах проектов.</div>}
-      </section>
+      <div className={styles.catalogSummary}><strong>{filtered.length}</strong><span>{filtered.length === 1 ? "подрядчик" : "подрядчиков"}</span><span>·</span><span>{filtered.reduce((sum, contractor) => sum + contractor.offers.length, 0)} предложений</span></div>
+      {filtered.length ? <section className={styles.catalogGrid} aria-label="Каталог подрядчиков">
+        {filtered.map((contractor) => <article key={contractor.id} className={styles.contractorCard}>
+          <div className={styles.cardMedia}>
+            <ContractorPhoto src={contractor.photoUrl} name={contractor.name} />
+            <label className={styles.changePhoto} title="Заменить фотографию">
+              <span>{contractor.photoUrl ? "Заменить фото" : "Добавить фото"}</span>
+              <input className={styles.photoInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(contractor.id, file); event.currentTarget.value = ""; }} />
+            </label>
+          </div>
+          <div className={styles.cardBody}>
+            <div className={styles.cardHead}>
+              <div><h3>{contractor.name}</h3><p>{contractor.shortDescription || "Описание пока не добавлено"}</p></div>
+              {contractor.city ? <span className={styles.city}>{contractor.city}</span> : null}
+            </div>
+            <div className={styles.contacts}>
+              {contractor.websiteUrl ? <a href={contractor.websiteUrl} target="_blank" rel="noreferrer">Сайт ↗</a> : null}
+              {contractor.contacts[0]?.phone ? <a href={`tel:${contractor.contacts[0].phone}`}>{contractor.contacts[0].phone}</a> : null}
+              {contractor.contacts[0]?.email ? <a href={`mailto:${contractor.contacts[0].email}`}>Email</a> : null}
+            </div>
+            <div className={styles.offerList}>
+              {contractor.offers.length ? contractor.offers.map((offer) => {
+                const freshness = priceFreshness(offer.priceConfirmedAt);
+                return <div key={offer.id} className={styles.offerRow}>
+                  <button className={styles.offerMain} type="button" onClick={() => { setSelectedId(contractor.id); setEditingOffer(offer); setModal("offer"); }}>
+                    <span className={styles.offerCategory}>{offer.category.name}</span>
+                    <strong>{offer.title}</strong>
+                    {offer.description ? <span className={styles.offerDescription}>{offer.description}</span> : null}
+                  </button>
+                  <div className={styles.offerSide}>
+                    <strong>{offerPrice(offer)}</strong>
+                    <span className={styles.freshness} data-state={freshness}>{freshnessCopy(freshness)}</span>
+                    {freshness !== "FRESH" ? <button className={styles.confirmPrice} disabled={busy} onClick={() => void confirmOffer(contractor.id, offer)}>Подтвердить цену</button> : null}
+                  </div>
+                </div>;
+              }) : <div className={styles.noOffers}><span>Услуг пока нет</span><button onClick={() => { setSelectedId(contractor.id); setEditingOffer(null); setModal("offer"); }}>Добавить первую</button></div>}
+            </div>
+            <button className={styles.addOfferButton} onClick={() => { setSelectedId(contractor.id); setEditingOffer(null); setModal("offer"); }}>+ Добавить услугу</button>
+          </div>
+        </article>)}
+      </section> : <div className={styles.catalogEmpty}><strong>Ничего не найдено</strong><span>Измените запрос или выберите другую категорию.</span></div>}
     </div>
     {modal ? <div className={styles.modal} role="dialog" aria-modal="true"><div className={styles.dialog}><div className={styles.dialogHead}><div><h3>{modal === "contractor" ? "Новый подрядчик" : modal === "category" ? "Новая категория" : `${editingOffer ? "Изменить услугу" : "Новая услуга"} · ${selected?.name}`}</h3>{modal === "contractor" ? <p>Контакты и фотография сразу попадут в каталог проекта.</p> : null}</div><button className={styles.closeButton} type="button" aria-label="Закрыть" onClick={closeModal}>×</button></div>
       {error ? <div className={styles.error}>{error}</div> : null}

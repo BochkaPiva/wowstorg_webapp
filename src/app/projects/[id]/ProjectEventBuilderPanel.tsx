@@ -4,13 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import React from "react";
 
-import { priceFreshness, proposalLineTotal } from "@/lib/contractor-offers";
+import { priceFreshness, proposalLineTotal, type ContractorPriceType } from "@/lib/contractor-offers";
 import styles from "./ProjectEventBuilderPanel.module.css";
 
 type SelectionRole = "PRIMARY" | "ALTERNATIVE" | "OPTIONAL" | "EXCLUDED";
 type AssetSnapshot = { id?: string; url: string; caption?: string | null; focalX?: string | null; focalY?: string | null };
 type ProposalItem = {
   id: string;
+  offerId: string | null;
   selectionRole: SelectionRole;
   qty: number;
   clientUnitPrice: number | null;
@@ -26,7 +27,7 @@ type ProposalSection = { id: string; title: string; description: string | null; 
 type ProposalVariant = { id: string; title: string; description: string | null; isRecommended: boolean; sections: ProposalSection[] };
 type Proposal = { id: string; title: string; status: string; revision: number; variants: ProposalVariant[] };
 type Category = { id: string; name: string };
-type CatalogOffer = { id: string; title: string; description: string | null; clientPrice: number | null; internalCost: number | null; unitLabel: string | null; priceConfirmedAt: string | null; category: Category };
+type CatalogOffer = { id: string; title: string; description: string | null; priceType: ContractorPriceType; clientPrice: number | null; clientPriceMax: number | null; internalCost: number | null; unitLabel: string | null; priceConfirmedAt: string | null; category: Category };
 type Contractor = { id: string; name: string; shortDescription: string | null; photoUrl: string | null; offers: CatalogOffer[] };
 
 const ROLE_LABEL: Record<SelectionRole, string> = {
@@ -61,15 +62,25 @@ function freshnessLabel(value: ReturnType<typeof priceFreshness>) {
   return "Без проверки";
 }
 
+function catalogPrice(offer: CatalogOffer) {
+  if (offer.priceType === "ON_REQUEST") return "По запросу";
+  const base = money(offer.clientPrice);
+  if (offer.priceType === "FROM") return `от ${base}`;
+  if (offer.priceType === "RANGE" && offer.clientPriceMax != null) return `${base} — ${money(offer.clientPriceMax)}`;
+  return offer.unitLabel ? `${base} / ${offer.unitLabel}` : base;
+}
+
 async function apiError(response: Response) {
   const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
   return body?.error?.message ?? "Не удалось сохранить изменение";
 }
 
 function Thumbnail({ src, name, size = 44 }: { src?: string | null; name: string; size?: number }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
   return <span className={styles.thumbnail} style={{ width: size, height: size }}>
-    {src
-      ? <Image src={src} alt="" width={size} height={size} sizes={`${size}px`} unoptimized />
+    {src && !failed
+      ? <Image src={src} alt="" width={size} height={size} sizes={`${size}px`} unoptimized onError={() => setFailed(true)} />
       : <span>{initials(name)}</span>}
   </span>;
 }
@@ -93,6 +104,7 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const catalogRef = React.useRef<HTMLElement>(null);
 
   const load = React.useCallback(async () => {
     const [proposalResponse, categoriesResponse, contractorsResponse] = await Promise.all([
@@ -128,6 +140,16 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
       setTargetSectionId(activeVariant.sections[0]?.id ?? null);
     }
   }, [activeVariant, targetSectionId]);
+
+  function openCatalogFor(sectionId?: string) {
+    if (sectionId) setTargetSectionId(sectionId);
+    setSectionComposerOpen(false);
+    setCatalogOpen(true);
+    window.requestAnimationFrame(() => catalogRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    }));
+  }
 
   async function createProposal() {
     setBusy(true);
@@ -189,7 +211,9 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
       setError("Сначала выберите раздел концепции");
       return;
     }
-    await mutate({ action: "ADD_CATALOG_ITEM", sectionId: targetSectionId, offerId, selectionRole: "PRIMARY" });
+    const selectedOffer = contractors.flatMap((contractor) => contractor.offers.map((offer) => ({ ...offer, contractorName: contractor.name }))).find((offer) => offer.id === offerId);
+    const okay = await mutate({ action: "ADD_CATALOG_ITEM", sectionId: targetSectionId, offerId, selectionRole: "PRIMARY" });
+    if (okay) setNotice(`${selectedOffer?.title ?? "Позиция"} добавлена в раздел «${targetSection?.title ?? "Концепция"}».`);
   }
 
   async function addManualItem() {
@@ -294,20 +318,19 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
         </button>)}
       </div>
       <div className={styles.tools}>
-        <Link className={styles.toolButton} href="/contractors">База подрядчиков</Link>
+        {!readOnly ? <button className={styles.browseButton} onClick={() => catalogOpen ? setCatalogOpen(false) : openCatalogFor()} disabled={!activeVariant?.sections.length}>
+          {catalogOpen ? "Скрыть подбор" : "+ Добавить позиции"}
+        </button> : null}
         {!readOnly ? <button className={styles.toolButton} onClick={() => {
           setSectionComposerOpen((value) => !value);
           setCatalogOpen(false);
-        }}>+ Раздел</button> : null}
+        }}>+ Новый раздел</button> : null}
         {!readOnly ? <button className={styles.toolButton} onClick={() => void mutate({
           action: "ADD_VARIANT",
           title: `Вариант ${proposal.variants.length + 1}`,
           sourceVariantId: activeVariant?.id,
-        })} disabled={busy}>Сделать копию</button> : null}
-        <button className={styles.catalogToggle} data-active={catalogOpen} onClick={() => {
-          setCatalogOpen((value) => !value);
-          setSectionComposerOpen(false);
-        }}>{catalogOpen ? "Скрыть каталог" : "Открыть каталог"}</button>
+        })} disabled={busy}>Копия варианта</button> : null}
+        <Link className={styles.toolButton} href="/contractors">Каталог подрядчиков ↗</Link>
       </div>
     </div>
 
@@ -321,13 +344,60 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
       <button className={styles.iconButton} aria-label="Закрыть добавление раздела" onClick={() => setSectionComposerOpen(false)}>×</button>
     </div> : null}
 
-    <div className={styles.layout} data-catalog-open={catalogOpen}>
-      <div className={styles.canvas}>
+    {catalogOpen && activeVariant?.sections.length ? <section ref={catalogRef} className={styles.catalogPanel} aria-label="Добавление позиций в концепцию">
+      <div className={styles.catalogPanelHead}>
+        <div>
+          <h4>Добавить в концепцию</h4>
+          <p>Выберите готовую услугу или создайте свою позицию.</p>
+        </div>
+        <button className={styles.iconButton} aria-label="Закрыть подбор" onClick={() => setCatalogOpen(false)}>×</button>
+      </div>
+      <div className={styles.catalogControls}>
+        <label className={styles.targetSelect}><span>Добавляем в</span><select className={styles.field} value={targetSectionId ?? ""} onChange={(event) => setTargetSectionId(event.target.value)}>
+          {activeVariant.sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}
+        </select></label>
+        <input className={styles.field} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Найти подрядчика или услугу" aria-label="Поиск в каталоге" />
+        <select className={styles.field} value={catalogCategory} onChange={(event) => setCatalogCategory(event.target.value)} aria-label="Категория каталога">
+          <option value="">Все категории</option>
+          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+        {!readOnly ? <button className={styles.manualToggle} onClick={() => setManualComposerOpen((value) => !value)}>+ Своя позиция</button> : null}
+      </div>
+
+      {manualComposerOpen && !readOnly ? <div className={styles.manual}>
+        <input className={styles.field} value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} placeholder="Название своей позиции" autoFocus />
+        <input className={styles.field} value={manualPrice} onChange={(event) => setManualPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Цена клиенту" />
+        <button className={styles.primaryCompact} disabled={!targetSectionId || !manualTitle.trim() || busy} onClick={addManualItem}>Добавить</button>
+      </div> : null}
+
+      <div className={styles.catalogGrid}>
+        {offers.map((offer) => {
+          const freshness = priceFreshness(offer.priceConfirmedAt);
+          const alreadyAdded = targetSection?.items.some((item) => item.offerId === offer.id) ?? false;
+          return <article key={offer.id} className={styles.catalogCard}>
+            <Thumbnail src={offer.photoUrl} name={offer.contractorName} size={68} />
+            <div className={styles.catalogCardBody}>
+              <span className={styles.catalogCategory}>{offer.category.name}</span>
+              <strong>{offer.title}</strong>
+              <span className={styles.catalogVendor}>{offer.contractorName}</span>
+              {offer.description ? <p>{offer.description}</p> : null}
+            </div>
+            <div className={styles.catalogCardSide}>
+              <strong>{catalogPrice(offer)}</strong>
+              <span className={styles.freshness} data-state={freshness}>{freshnessLabel(freshness)}</span>
+              {!readOnly ? <button className={styles.addOffer} disabled={!targetSectionId || busy || alreadyAdded} onClick={() => void addOffer(offer.id)}>{alreadyAdded ? "Добавлено" : "Добавить"}</button> : null}
+            </div>
+          </article>;
+        })}
+        {!offers.length ? <div className={styles.catalogEmpty}><strong>Ничего не найдено</strong><span>Измените поиск или категорию.</span></div> : null}
+      </div>
+    </section> : null}
+
+    <div className={styles.canvas}>
         {activeVariant?.sections.map((section, sectionIndex) => <section
           key={section.id}
           className={styles.section}
-          data-selected={section.id === targetSectionId}
-          onClick={() => setTargetSectionId(section.id)}
+          data-targeted={catalogOpen && section.id === targetSectionId}
         >
           <div className={styles.sectionHead}>
             <div className={styles.sectionIdentity}>
@@ -335,7 +405,7 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
               <div><h4>{section.title}</h4><p>{section.category?.name ?? "Свободный раздел"} · {section.items.length}</p></div>
             </div>
             <div className={styles.sectionActions}>
-              {section.id === targetSectionId ? <span className={styles.targetBadge}>Выбран</span> : null}
+              {!readOnly ? <button className={styles.addToSection} onClick={() => openCatalogFor(section.id)}>+ Добавить</button> : null}
               {!readOnly ? <button className={styles.iconButton} aria-label={`Удалить раздел ${section.title}`} onClick={(event) => {
                 event.stopPropagation();
                 void mutate({ action: "REMOVE_SECTION", sectionId: section.id });
@@ -344,31 +414,31 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
           </div>
 
           {section.items.length ? <div className={styles.items}>{section.items.map((item) => <div key={item.id} className={styles.item} data-role={item.selectionRole}>
-            <Thumbnail src={item.assetSnapshot?.[0]?.url} name={item.contractorNameSnapshot} />
+            <Thumbnail src={item.assetSnapshot?.[0]?.url} name={item.contractorNameSnapshot} size={48} />
             <div className={styles.itemTitle}>
               <strong>{item.offerTitleSnapshot}</strong>
               <span>{item.contractorNameSnapshot}{item.unitLabel ? ` · ${item.unitLabel}` : ""}</span>
+              {item.offerDescriptionSnapshot ? <p>{item.offerDescriptionSnapshot}</p> : null}
             </div>
-            <input className={styles.field} type="number" min="0.01" step="0.01" defaultValue={item.qty} disabled={readOnly} aria-label={`Количество ${item.offerTitleSnapshot}`} title="Количество" onBlur={(event) => {
+            <label className={styles.inlineField}><span>Количество</span><input className={styles.field} type="number" min="0.01" step="0.01" defaultValue={item.qty} disabled={readOnly} aria-label={`Количество ${item.offerTitleSnapshot}`} onBlur={(event) => {
               const qty = Number(event.currentTarget.value);
               if (qty > 0 && qty !== item.qty) void mutate({ action: "UPDATE_ITEM", itemId: item.id, qty });
-            }} />
-            <input className={styles.field} type="number" min="0" step="0.01" defaultValue={item.clientUnitPrice ?? ""} disabled={readOnly} aria-label={`Цена ${item.offerTitleSnapshot}`} title="Цена клиенту за единицу" placeholder="Цена" onBlur={(event) => {
+            }} /></label>
+            <label className={styles.inlineField}><span>Цена клиенту</span><input className={styles.field} type="number" min="0" step="0.01" defaultValue={item.clientUnitPrice ?? ""} disabled={readOnly} aria-label={`Цена ${item.offerTitleSnapshot}`} placeholder="Цена" onBlur={(event) => {
               const value = event.currentTarget.value.trim();
               const price = value ? Number(value) : null;
               if (price !== item.clientUnitPrice) void mutate({ action: "UPDATE_ITEM", itemId: item.id, clientUnitPrice: price });
-            }} />
-            <select className={styles.field} value={item.selectionRole} disabled={readOnly} aria-label={`Роль ${item.offerTitleSnapshot}`} onChange={(event) => void mutate({ action: "UPDATE_ITEM", itemId: item.id, selectionRole: event.target.value })}>
+            }} /></label>
+            <label className={styles.inlineField}><span>Вариант</span><select className={styles.field} value={item.selectionRole} disabled={readOnly} aria-label={`Роль ${item.offerTitleSnapshot}`} onChange={(event) => void mutate({ action: "UPDATE_ITEM", itemId: item.id, selectionRole: event.target.value })}>
               {Object.entries(ROLE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            </select></label>
             <div className={styles.itemPrice}>{money(proposalLineTotal(item.clientUnitPrice, item.qty))}</div>
             {!readOnly ? <button className={styles.removeItem} aria-label={`Удалить ${item.offerTitleSnapshot}`} onClick={() => void mutate({ action: "REMOVE_ITEM", itemId: item.id })}>×</button> : null}
           </div>)}</div> : <button className={styles.emptySection} type="button" onClick={() => {
-            setTargetSectionId(section.id);
-            setCatalogOpen(true);
+            openCatalogFor(section.id);
           }}>
-            <span>Добавить позиции</span>
-            <small>Выберите подрядчика из каталога</small>
+            <span>Добавить подрядчика или услугу</span>
+            <small>Откроется каталог с фото и ценами</small>
           </button>}
         </section>)}
 
@@ -383,49 +453,6 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
           <div><span>Расходы</span><strong>{money(internalTotal)}</strong></div>
           <div data-tone={clientTotal - internalTotal >= 0 ? "positive" : "negative"}><span>Маржа</span><strong>{money(clientTotal - internalTotal)}</strong></div>
         </div>
-      </div>
-
-      {catalogOpen ? <aside className={styles.sidebar} aria-label="Каталог предложений">
-        <div className={styles.sidebarHead}>
-          <div><h4>Каталог</h4><p>{targetSection ? `В раздел «${targetSection.title}»` : "Выберите раздел"}</p></div>
-          <button className={styles.iconButton} aria-label="Скрыть каталог" onClick={() => setCatalogOpen(false)}>×</button>
-        </div>
-        <div className={styles.catalogFilter}>
-          <input className={styles.field} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Поиск" aria-label="Поиск в каталоге" />
-          <select className={styles.field} value={catalogCategory} onChange={(event) => setCatalogCategory(event.target.value)} aria-label="Категория каталога">
-            <option value="">Все категории</option>
-            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>
-        </div>
-
-        {!readOnly ? <div className={styles.manualBlock}>
-          <button className={styles.manualToggle} onClick={() => setManualComposerOpen((value) => !value)}>+ Своя позиция</button>
-          {manualComposerOpen ? <div className={styles.manual}>
-            <input className={styles.field} value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} placeholder="Название" autoFocus />
-            <input className={styles.field} value={manualPrice} onChange={(event) => setManualPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Цена" />
-            <button className={styles.primaryCompact} disabled={!targetSectionId || !manualTitle.trim() || busy} onClick={addManualItem}>Добавить</button>
-          </div> : null}
-        </div> : null}
-
-        <div className={styles.catalog}>
-          {offers.map((offer) => {
-            const freshness = priceFreshness(offer.priceConfirmedAt);
-            return <article key={offer.id} className={styles.offer}>
-              <Thumbnail src={offer.photoUrl} name={offer.contractorName} />
-              <div className={styles.offerBody}>
-                <div className={styles.offerTitle}>{offer.title}</div>
-                <div className={styles.offerVendor}>{offer.contractorName} · {offer.category.name}</div>
-                <div className={styles.offerMeta}>
-                  <span className={styles.offerPrice}>{money(offer.clientPrice)}</span>
-                  <span className={styles.freshness} data-state={freshness}>{freshnessLabel(freshness)}</span>
-                </div>
-              </div>
-              {!readOnly ? <button className={styles.addOffer} aria-label={`Добавить ${offer.title}`} disabled={!targetSectionId || busy} onClick={() => void addOffer(offer.id)}>+</button> : null}
-            </article>;
-          })}
-          {!offers.length ? <div className={styles.catalogEmpty}>Подходящих предложений нет.</div> : null}
-        </div>
-      </aside> : null}
     </div>
   </div>;
 }

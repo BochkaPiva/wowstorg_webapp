@@ -2614,7 +2614,7 @@ body.project-estimate-fill-dragging * {
 
 .project-workspace-widget {
   min-width: 0;
-  scroll-margin-top: 84px;
+  scroll-margin-top: 112px;
   border: 1px solid var(--project-line);
   border-radius: 10px;
   background: #fff;
@@ -3718,6 +3718,7 @@ body.project-estimate-cell-selecting * {
 
 .project-workspace-widget {
   overflow: visible;
+  scroll-margin-top: 112px;
   border-color: var(--project-line);
   border-radius: 14px;
   box-shadow: 0 1px 2px rgb(24 24 27 / 0.035);

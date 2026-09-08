@@ -4,6 +4,7 @@ import Image from "next/image";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { CONTRACTOR_PRICE_TYPE_LABEL, priceFreshness, type ContractorPriceType } from "@/lib/contractor-offers";
 import styles from "./contractors.module.css";
 
@@ -32,7 +33,20 @@ function ContractorPhoto({ src, name }: { src: string | null; name: string }) {
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => setFailed(false), [src]);
   if (!src || failed) return <span className={styles.cardMonogram}>{initials(name)}</span>;
-  return <Image src={src} alt="" fill sizes="(max-width: 720px) 100vw, 420px" unoptimized onError={() => setFailed(true)} />;
+  return <Image className={styles.cardPhoto} src={src} alt={`Фотография подрядчика ${name}`} fill sizes="(max-width: 720px) 100vw, 420px" unoptimized onError={() => setFailed(true)} />;
+}
+
+function ContractorCatalogSkeleton() {
+  return <LoadingRegion className={styles.catalogSkeleton} label="Загрузка каталога подрядчиков">
+    {Array.from({ length: 3 }, (_, index) => <article className={styles.skeletonCard} key={index}>
+      <Skeleton className={styles.skeletonMedia} />
+      <div className={styles.skeletonBody}>
+        <Skeleton className={styles.skeletonTitle} />
+        <Skeleton className={styles.skeletonDescription} />
+        <div className={styles.skeletonOffers}><Skeleton /><Skeleton /></div>
+      </div>
+    </article>)}
+  </LoadingRegion>;
 }
 
 export default function ContractorsPage() {
@@ -46,6 +60,7 @@ export default function ContractorsPage() {
   const [contractorPhoto, setContractorPhoto] = React.useState<File | null>(null);
   const [contractorPhotoPreview, setContractorPhotoPreview] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
@@ -60,7 +75,11 @@ export default function ContractorsPage() {
     setSelectedId((current) => current && contractorsData.contractors.some((item) => item.id === current) ? current : contractorsData.contractors[0]?.id ?? null);
   }, []);
 
-  React.useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Ошибка загрузки")); }, [load]);
+  React.useEffect(() => {
+    void load()
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, [load]);
   const filtered = contractors.filter((contractor) => {
     const needle = search.trim().toLocaleLowerCase("ru-RU");
     return (!needle || `${contractor.name} ${contractor.shortDescription ?? ""} ${contractor.offers.map((offer) => offer.title).join(" ")}`.toLocaleLowerCase("ru-RU").includes(needle))
@@ -170,8 +189,9 @@ export default function ContractorsPage() {
         <input className={styles.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название, услуга или специализация" aria-label="Поиск подрядчиков" />
         <div className={styles.chips}><button className={styles.chip} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div>
       </section>
-      <div className={styles.catalogSummary}><strong>{filtered.length}</strong><span>{filtered.length === 1 ? "подрядчик" : "подрядчиков"}</span><span>·</span><span>{filtered.reduce((sum, contractor) => sum + contractor.offers.length, 0)} предложений</span></div>
-      {filtered.length ? <section className={styles.catalogGrid} aria-label="Каталог подрядчиков">
+      {loading ? <ContractorCatalogSkeleton /> : <>
+        <div className={styles.catalogSummary}><strong>{filtered.length}</strong><span>{filtered.length === 1 ? "подрядчик" : "подрядчиков"}</span><span>·</span><span>{filtered.reduce((sum, contractor) => sum + contractor.offers.length, 0)} предложений</span></div>
+        {filtered.length ? <section className={styles.catalogGrid} aria-label="Каталог подрядчиков">
         {filtered.map((contractor) => <article key={contractor.id} className={styles.contractorCard}>
           <div className={styles.cardMedia}>
             <ContractorPhoto src={contractor.photoUrl} name={contractor.name} />
@@ -210,7 +230,8 @@ export default function ContractorsPage() {
             <button className={styles.addOfferButton} onClick={() => { setSelectedId(contractor.id); setEditingOffer(null); setModal("offer"); }}>+ Добавить услугу</button>
           </div>
         </article>)}
-      </section> : <div className={styles.catalogEmpty}><strong>Ничего не найдено</strong><span>Измените запрос или выберите другую категорию.</span></div>}
+        </section> : <div className={styles.catalogEmpty}><strong>Ничего не найдено</strong><span>Измените запрос или выберите другую категорию.</span></div>}
+      </>}
     </div>
     {modal ? <div className={styles.modal} role="dialog" aria-modal="true"><div className={styles.dialog}><div className={styles.dialogHead}><div><h3>{modal === "contractor" ? "Новый подрядчик" : modal === "category" ? "Новая категория" : `${editingOffer ? "Изменить услугу" : "Новая услуга"} · ${selected?.name}`}</h3>{modal === "contractor" ? <p>Контакты и фотография сразу попадут в каталог проекта.</p> : null}</div><button className={styles.closeButton} type="button" aria-label="Закрыть" onClick={closeModal}>×</button></div>
       {error ? <div className={styles.error}>{error}</div> : null}

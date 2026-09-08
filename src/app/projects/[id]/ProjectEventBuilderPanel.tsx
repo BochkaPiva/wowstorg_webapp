@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import React from "react";
 
+import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { priceFreshness, proposalLineTotal, type ContractorPriceType } from "@/lib/contractor-offers";
 import styles from "./ProjectEventBuilderPanel.module.css";
 
@@ -85,6 +86,37 @@ function Thumbnail({ src, name, size = 44 }: { src?: string | null; name: string
   </span>;
 }
 
+function PlusIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" /></svg>;
+}
+
+function ChevronIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 7.5 5 5 5-5" /></svg>;
+}
+
+function MoreIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.2" /><circle cx="10" cy="10" r="1.2" /><circle cx="16" cy="10" r="1.2" /></svg>;
+}
+
+function EventBuilderSkeleton() {
+  return <LoadingRegion className={styles.builderSkeleton} label="Загрузка конструктора мероприятия">
+    <div className={styles.skeletonTop}>
+      <div><Skeleton /><Skeleton /></div>
+      <div><Skeleton /><Skeleton /><Skeleton /></div>
+    </div>
+    <div className={styles.skeletonToolbar}><Skeleton /><Skeleton /><Skeleton /></div>
+    <div className={styles.skeletonPicker}>
+      <Skeleton />
+      <div><Skeleton /><Skeleton /><Skeleton /></div>
+      <div><Skeleton /><Skeleton /></div>
+    </div>
+    <div className={styles.skeletonSection}>
+      <div><Skeleton /><Skeleton /></div>
+      <Skeleton />
+    </div>
+  </LoadingRegion>;
+}
+
 export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
@@ -97,7 +129,7 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
   const [newSectionCategory, setNewSectionCategory] = React.useState("");
   const [manualTitle, setManualTitle] = React.useState("");
   const [manualPrice, setManualPrice] = React.useState("");
-  const [catalogOpen, setCatalogOpen] = React.useState(true);
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [sectionComposerOpen, setSectionComposerOpen] = React.useState(false);
   const [manualComposerOpen, setManualComposerOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -145,10 +177,10 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
     if (sectionId) setTargetSectionId(sectionId);
     setSectionComposerOpen(false);
     setCatalogOpen(true);
-    window.requestAnimationFrame(() => catalogRef.current?.scrollIntoView({
+    window.setTimeout(() => catalogRef.current?.scrollIntoView({
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "start",
-    }));
+    }), 0);
   }
 
   async function createProposal() {
@@ -261,7 +293,7 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
     setBusy(false);
   }
 
-  if (loading) return <div className={styles.loading}>Загружаю конструктор…</div>;
+  if (loading) return <EventBuilderSkeleton />;
   if (!proposal) return <div className={styles.empty}>
     <div className={styles.emptyInner}>
       <h3>Соберите первый вариант</h3>
@@ -318,19 +350,24 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
         </button>)}
       </div>
       <div className={styles.tools}>
-        {!readOnly ? <button className={styles.browseButton} onClick={() => catalogOpen ? setCatalogOpen(false) : openCatalogFor()} disabled={!activeVariant?.sections.length}>
-          {catalogOpen ? "Скрыть подбор" : "+ Добавить позиции"}
-        </button> : null}
-        {!readOnly ? <button className={styles.toolButton} onClick={() => {
+        {!readOnly ? <button className={styles.newSectionAction} onClick={() => {
           setSectionComposerOpen((value) => !value);
           setCatalogOpen(false);
-        }}>+ Новый раздел</button> : null}
-        {!readOnly ? <button className={styles.toolButton} onClick={() => void mutate({
-          action: "ADD_VARIANT",
-          title: `Вариант ${proposal.variants.length + 1}`,
-          sourceVariantId: activeVariant?.id,
-        })} disabled={busy}>Копия варианта</button> : null}
-        <Link className={styles.toolButton} href="/contractors">Каталог подрядчиков ↗</Link>
+        }}><PlusIcon /><span>Раздел</span></button> : null}
+        <details className={styles.moreMenu}>
+          <summary aria-label="Действия с вариантом"><MoreIcon /></summary>
+          <div className={styles.moreMenuPopover}>
+            {!readOnly ? <button onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              void mutate({
+                action: "ADD_VARIANT",
+                title: `Вариант ${proposal.variants.length + 1}`,
+                sourceVariantId: activeVariant?.id,
+              });
+            }} disabled={busy}>Дублировать вариант</button> : null}
+            <Link href="/contractors">Открыть каталог подрядчиков</Link>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -344,13 +381,25 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
       <button className={styles.iconButton} aria-label="Закрыть добавление раздела" onClick={() => setSectionComposerOpen(false)}>×</button>
     </div> : null}
 
+    {!readOnly ? <button
+      className={styles.catalogDisclosure}
+      type="button"
+      aria-expanded={catalogOpen}
+      disabled={!activeVariant?.sections.length}
+      onClick={() => catalogOpen ? setCatalogOpen(false) : openCatalogFor()}
+    >
+      <span className={styles.disclosureIcon}><PlusIcon /></span>
+      <span className={styles.disclosureCopy}>
+        <strong>Подбор предложений</strong>
+        <span>{activeVariant?.sections.length ? `Добавить подрядчика или услугу в «${targetSection?.title ?? activeVariant.sections[0]?.title}»` : "Сначала создайте раздел концепции"}</span>
+      </span>
+      <span className={styles.disclosureChevron} data-open={catalogOpen}><ChevronIcon /></span>
+    </button> : null}
+
     {catalogOpen && activeVariant?.sections.length ? <section ref={catalogRef} className={styles.catalogPanel} aria-label="Добавление позиций в концепцию">
-      <div className={styles.catalogPanelHead}>
-        <div>
-          <h4>Добавить в концепцию</h4>
-          <p>Выберите готовую услугу или создайте свою позицию.</p>
-        </div>
-        <button className={styles.iconButton} aria-label="Закрыть подбор" onClick={() => setCatalogOpen(false)}>×</button>
+      <div className={styles.catalogPanelIntro}>
+        <strong>Выберите готовое предложение</strong>
+        <span>Фото, состав и актуальная цена видны сразу.</span>
       </div>
       <div className={styles.catalogControls}>
         <label className={styles.targetSelect}><span>Добавляем в</span><select className={styles.field} value={targetSectionId ?? ""} onChange={(event) => setTargetSectionId(event.target.value)}>
@@ -405,7 +454,7 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
               <div><h4>{section.title}</h4><p>{section.category?.name ?? "Свободный раздел"} · {section.items.length}</p></div>
             </div>
             <div className={styles.sectionActions}>
-              {!readOnly ? <button className={styles.addToSection} onClick={() => openCatalogFor(section.id)}>+ Добавить</button> : null}
+              {catalogOpen && section.id === targetSectionId ? <span className={styles.targetBadge}>Добавляем сюда</span> : null}
               {!readOnly ? <button className={styles.iconButton} aria-label={`Удалить раздел ${section.title}`} onClick={(event) => {
                 event.stopPropagation();
                 void mutate({ action: "REMOVE_SECTION", sectionId: section.id });

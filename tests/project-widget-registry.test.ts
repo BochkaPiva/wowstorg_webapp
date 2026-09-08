@@ -14,6 +14,7 @@ import {
 describe("project widget registry", () => {
   it("always keeps mandatory modules and registry order", () => {
     expect(normalizeProjectWidgetTypes(["FILES", "ESTIMATE", "FILES"])).toEqual([
+      "EVENT_BUILDER",
       "ESTIMATE",
       "ORDERS",
       "FILES",
@@ -23,12 +24,13 @@ describe("project widget registry", () => {
   it("packs initial widgets into the 12-column grid", () => {
     const widgets = buildInitialProjectWidgets(["TASKS", "SCHEDULE", "FILES"]);
     expect(widgets.every((widget) => widget.x >= 0 && widget.x + widget.width <= 12)).toBe(true);
-    expect(widgets.map((widget) => widget.type)).toEqual(["ESTIMATE", "ORDERS", "TASKS", "SCHEDULE", "FILES"]);
+    expect(widgets.map((widget) => widget.type)).toEqual(["EVENT_BUILDER", "ESTIMATE", "ORDERS", "TASKS", "SCHEDULE", "FILES"]);
   });
 
   it("keeps the recommended command-center composition stable", () => {
     const widgets = buildRecommendedProjectWorkspaceDraft();
     expect(widgets.map(({ type, width, heightPreset }) => ({ type, width, heightPreset }))).toEqual([
+      { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
       { type: "ESTIMATE", width: 12, heightPreset: "LARGE" },
       { type: "ORDERS", width: 4, heightPreset: "COMPACT" },
       { type: "SCHEDULE", width: 4, heightPreset: "COMPACT" },

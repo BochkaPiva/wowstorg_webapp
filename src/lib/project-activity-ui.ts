@@ -19,6 +19,9 @@ export const PROJECT_ACTIVITY_KIND_LABEL: Record<ProjectActivityKind, string> = 
   PROJECT_FILE_UPLOADED: "Загружен файл",
   PROJECT_FILE_DELETED: "Удалён файл",
   PROJECT_ESTIMATE_VERSION_CREATED: "Новая версия сметы",
+  PROJECT_PROPOSAL_CREATED: "Создана концепция мероприятия",
+  PROJECT_PROPOSAL_UPDATED: "Обновлена концепция мероприятия",
+  PROJECT_PROPOSAL_TRANSFERRED: "Концепция перенесена в смету",
 };
 
 export const PROJECT_PATCH_FIELD_LABEL: Record<string, string> = {

@@ -220,6 +220,43 @@ enum ProjectContactCategory {
   OTHER
 }
 
+enum ContractorOfferPriceType {
+  FIXED
+  FROM
+  RANGE
+  PER_PERSON
+  PER_HOUR
+  PER_DAY
+  PER_UNIT
+  ON_REQUEST
+}
+
+enum ProjectProposalStatus {
+  DRAFT
+  READY
+  SENT
+  APPROVED
+  ARCHIVED
+}
+
+enum ProjectProposalItemKind {
+  CATALOG
+  MANUAL
+}
+
+enum ProjectProposalSelectionRole {
+  PRIMARY
+  ALTERNATIVE
+  OPTIONAL
+  EXCLUDED
+}
+
+enum ProjectProposalSnapshotReason {
+  MANUAL
+  EXPORT
+  SENT
+}
+
 enum ProjectActivityKind {
   PROJECT_CREATED
   PROJECT_UPDATED
@@ -237,6 +274,9 @@ enum ProjectActivityKind {
   PROJECT_FILE_UPLOADED
   PROJECT_FILE_DELETED
   PROJECT_ESTIMATE_VERSION_CREATED
+  PROJECT_PROPOSAL_CREATED
+  PROJECT_PROPOSAL_UPDATED
+  PROJECT_PROPOSAL_TRANSFERRED
 }
 
 /// Раздел сметы проекта: универсальный (LOCAL), подрядчики (CONTRACTOR) или реквизит по заявке (REQUISITE).
@@ -306,51 +346,60 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ordersCreated                  Order[]                      @relation("order_created_by")
-  ordersGreenwich                Order[]                      @relation("order_greenwich_user")
-  orderHiddenExpensesCreated     OrderHiddenExpense[]         @relation("order_hidden_expense_created_by")
-  greenwichRating                GreenwichRating?
-  greenwichRatingEvents          GreenwichRatingEvent[]
-  greenwichOffers                GreenwichPersonalOffer[]     @relation("greenwich_offer_recipient")
-  greenwichOffersCreated         GreenwichPersonalOffer[]     @relation("greenwich_offer_creator")
-  greenwichMonthlyBonuses        GreenwichMonthlyBonus[]      @relation("greenwich_bonus_recipient")
-  greenwichMonthlyBonusEvents    GreenwichMonthlyBonusEvent[]
-  stageReminders                 OrderStageReminder[]         @relation("stage_reminder_recipient")
-  sessions                       Session[]
-  achievementProgress            AchievementProgress[]
-  achievementUnlocks             AchievementUnlock[]
-  towerStats                     UserTowerStats?
-  inAppNotifications             InAppNotification[]
-  browserPushSubscriptions       BrowserPushSubscription[]
-  inventoryAuditRuns             InventoryAuditRun[]
-  projectsOwned                  Project[]                    @relation("project_owner")
-  projectsCreated                Project[]                    @relation("project_created_by")
-  projectMemberships             ProjectMember[]              @relation("project_member_user")
-  projectMembershipsAdded        ProjectMember[]              @relation("project_member_added_by")
-  projectWidgetsCreated          ProjectWidget[]              @relation("project_widget_created_by")
-  projectWidgetsUpdated          ProjectWidget[]              @relation("project_widget_updated_by")
-  projectWorkspaceItemsCreated   ProjectWorkspaceItem[]       @relation("project_workspace_item_created_by")
-  projectWorkspaceItemsUpdated   ProjectWorkspaceItem[]       @relation("project_workspace_item_updated_by")
-  projectMutationReceipts        ProjectMutationReceipt[]     @relation("project_mutation_receipt_actor")
-  projectWorkspaceTemplates      ProjectWorkspaceTemplate[]   @relation("project_workspace_template_owner")
-  standaloneEstimatesOwned       StandaloneEstimate[]         @relation("standalone_estimate_owner")
-  projectActivityLogs            ProjectActivityLog[]
-  projectCommunicationEntries    ProjectCommunicationEntry[]
-  projectFilesUploaded           ProjectFile[]
-  projectEstimateVersionsCreated ProjectEstimateVersion[]
-  projectDraftOrdersCreated      ProjectDraftOrder[]          @relation("project_draft_order_created_by")
-  projectDraftOrdersUpdated      ProjectDraftOrder[]          @relation("project_draft_order_updated_by")
-  taskBoardsCreated              WorkTaskBoard[]              @relation("task_board_created_by")
-  taskColumnsCreated             WorkTaskColumn[]             @relation("task_column_created_by")
-  tasksCreated                   WorkTask[]                   @relation("task_created_by")
-  tasksAssigned                  WorkTask[]                   @relation("task_assigned_to")
-  taskAssignments                WorkTaskAssignee[]
-  taskChecklistItemsCreated      WorkTaskChecklistItem[]      @relation("task_checklist_created_by")
-  taskChecklistItemsAssigned     WorkTaskChecklistItem[]      @relation("task_checklist_assigned_to")
-  taskChecklistAssignments       WorkTaskChecklistAssignee[]
-  taskActivities                 WorkTaskActivity[]           @relation("task_activity_actor")
-  orderServiceFeedbacks          OrderServiceFeedback[]       @relation("order_service_feedback_author")
-  customerMerges                 CustomerMerge[]              @relation("customer_merge_actor")
+  ordersCreated                   Order[]                       @relation("order_created_by")
+  ordersGreenwich                 Order[]                       @relation("order_greenwich_user")
+  orderHiddenExpensesCreated      OrderHiddenExpense[]          @relation("order_hidden_expense_created_by")
+  greenwichRating                 GreenwichRating?
+  greenwichRatingEvents           GreenwichRatingEvent[]
+  greenwichOffers                 GreenwichPersonalOffer[]      @relation("greenwich_offer_recipient")
+  greenwichOffersCreated          GreenwichPersonalOffer[]      @relation("greenwich_offer_creator")
+  greenwichMonthlyBonuses         GreenwichMonthlyBonus[]       @relation("greenwich_bonus_recipient")
+  greenwichMonthlyBonusEvents     GreenwichMonthlyBonusEvent[]
+  stageReminders                  OrderStageReminder[]          @relation("stage_reminder_recipient")
+  sessions                        Session[]
+  achievementProgress             AchievementProgress[]
+  achievementUnlocks              AchievementUnlock[]
+  towerStats                      UserTowerStats?
+  inAppNotifications              InAppNotification[]
+  browserPushSubscriptions        BrowserPushSubscription[]
+  inventoryAuditRuns              InventoryAuditRun[]
+  projectsOwned                   Project[]                     @relation("project_owner")
+  projectsCreated                 Project[]                     @relation("project_created_by")
+  projectMemberships              ProjectMember[]               @relation("project_member_user")
+  projectMembershipsAdded         ProjectMember[]               @relation("project_member_added_by")
+  projectWidgetsCreated           ProjectWidget[]               @relation("project_widget_created_by")
+  projectWidgetsUpdated           ProjectWidget[]               @relation("project_widget_updated_by")
+  projectWorkspaceItemsCreated    ProjectWorkspaceItem[]        @relation("project_workspace_item_created_by")
+  projectWorkspaceItemsUpdated    ProjectWorkspaceItem[]        @relation("project_workspace_item_updated_by")
+  projectMutationReceipts         ProjectMutationReceipt[]      @relation("project_mutation_receipt_actor")
+  projectWorkspaceTemplates       ProjectWorkspaceTemplate[]    @relation("project_workspace_template_owner")
+  standaloneEstimatesOwned        StandaloneEstimate[]          @relation("standalone_estimate_owner")
+  projectActivityLogs             ProjectActivityLog[]
+  projectCommunicationEntries     ProjectCommunicationEntry[]
+  projectFilesUploaded            ProjectFile[]
+  projectEstimateVersionsCreated  ProjectEstimateVersion[]
+  projectDraftOrdersCreated       ProjectDraftOrder[]           @relation("project_draft_order_created_by")
+  projectDraftOrdersUpdated       ProjectDraftOrder[]           @relation("project_draft_order_updated_by")
+  taskBoardsCreated               WorkTaskBoard[]               @relation("task_board_created_by")
+  taskColumnsCreated              WorkTaskColumn[]              @relation("task_column_created_by")
+  tasksCreated                    WorkTask[]                    @relation("task_created_by")
+  tasksAssigned                   WorkTask[]                    @relation("task_assigned_to")
+  taskAssignments                 WorkTaskAssignee[]
+  taskChecklistItemsCreated       WorkTaskChecklistItem[]       @relation("task_checklist_created_by")
+  taskChecklistItemsAssigned      WorkTaskChecklistItem[]       @relation("task_checklist_assigned_to")
+  taskChecklistAssignments        WorkTaskChecklistAssignee[]
+  taskActivities                  WorkTaskActivity[]            @relation("task_activity_actor")
+  orderServiceFeedbacks           OrderServiceFeedback[]        @relation("order_service_feedback_author")
+  customerMerges                  CustomerMerge[]               @relation("customer_merge_actor")
+  contractorsCreated              Contractor[]                  @relation("contractor_created_by")
+  contractorsUpdated              Contractor[]                  @relation("contractor_updated_by")
+  contractorOfferPricesConfirmed  ContractorOffer[]             @relation("contractor_offer_price_confirmed_by")
+  contractorPriceHistoryCreated   ContractorOfferPriceHistory[] @relation("contractor_price_history_actor")
+  contractorAssetsUploaded        ContractorAsset[]             @relation("contractor_asset_uploaded_by")
+  projectProposalsCreated         ProjectProposal[]             @relation("project_proposal_created_by")
+  projectProposalsUpdated         ProjectProposal[]             @relation("project_proposal_updated_by")
+  projectProposalSnapshotsCreated ProjectProposalSnapshot[]     @relation("project_proposal_snapshot_created_by")
+  projectProposalTransfers        ProjectProposalEstimateLink[] @relation("project_proposal_transfer_actor")
 
   @@index([role, isActive])
 }
@@ -710,6 +759,7 @@ model Project {
   widgets                  ProjectWidget[]
   workspaceItems           ProjectWorkspaceItem[]
   mutationReceipts         ProjectMutationReceipt[]
+  proposals                ProjectProposal[]
   sourceStandaloneEstimate StandaloneEstimate?           @relation("standalone_estimate_converted_project")
 
   @@index([customerId])
@@ -849,6 +899,286 @@ model ProjectMutationReceipt {
   @@unique([projectId, actorUserId, mutationId])
   @@index([createdAt])
   @@index([actorUserId])
+}
+
+/// Управляемая категория предложения подрядчика. Не enum: состав редактируется без деплоя.
+model ContractorCategory {
+  id             String   @id @default(cuid())
+  name           String
+  normalizedName String   @unique
+  description    String?
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  offers           ContractorOffer[]
+  proposalSections ProjectProposalSection[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// Глобальная карточка подрядчика WOWSTORG. Цены живут в ContractorOffer.
+model Contractor {
+  id               String   @id @default(cuid())
+  name             String
+  normalizedName   String   @unique
+  shortDescription String?
+  websiteUrl       String?
+  city             String?
+  internalNotes    String?
+  isActive         Boolean  @default(true)
+  revision         Int      @default(0)
+  createdById      String
+  updatedById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdBy     User                  @relation("contractor_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy     User                  @relation("contractor_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  contacts      ContractorContact[]
+  assets        ContractorAsset[]
+  offers        ContractorOffer[]
+  proposalItems ProjectProposalItem[]
+
+  @@index([isActive, name])
+  @@index([city])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model ContractorContact {
+  id           String   @id @default(cuid())
+  contractorId String
+  personName   String?
+  role         String?
+  phone        String?
+  email        String?
+  telegram     String?
+  isPrimary    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+
+  @@index([contractorId, sortOrder])
+}
+
+model ContractorAsset {
+  id           String   @id @default(cuid())
+  contractorId String
+  kind         String   @default("PHOTO")
+  storageKey   String   @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  caption      String?
+  sortOrder    Int      @default(0)
+  focalX       Decimal? @db.Decimal(5, 4)
+  focalY       Decimal? @db.Decimal(5, 4)
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation("contractor_asset_uploaded_by", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([contractorId, kind, sortOrder])
+  @@index([uploadedById])
+}
+
+model ContractorOffer {
+  id                 String                   @id @default(cuid())
+  contractorId       String
+  categoryId         String
+  title              String
+  description        String?
+  priceType          ContractorOfferPriceType @default(FIXED)
+  clientPrice        Decimal?                 @db.Decimal(14, 2)
+  clientPriceMax     Decimal?                 @db.Decimal(14, 2)
+  internalCost       Decimal?                 @db.Decimal(14, 2)
+  currencyCode       String                   @default("RUB") @db.VarChar(3)
+  unitLabel          String?
+  minimumQty         Decimal?                 @db.Decimal(14, 4)
+  maximumQty         Decimal?                 @db.Decimal(14, 4)
+  includesText       String?
+  excludesText       String?
+  sourceUrl          String?
+  sourceNote         String?
+  priceConfirmedAt   DateTime?
+  validUntil         DateTime?
+  priceConfirmedById String?
+  isActive           Boolean                  @default(true)
+  revision           Int                      @default(0)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  contractor       Contractor                    @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  category         ContractorCategory            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  priceConfirmedBy User?                         @relation("contractor_offer_price_confirmed_by", fields: [priceConfirmedById], references: [id], onDelete: SetNull)
+  priceHistory     ContractorOfferPriceHistory[]
+  proposalItems    ProjectProposalItem[]
+
+  @@index([contractorId, isActive])
+  @@index([categoryId, isActive])
+  @@index([priceConfirmedAt])
+  @@index([priceConfirmedById])
+}
+
+/// Append-only история изменения и подтверждения цены.
+model ContractorOfferPriceHistory {
+  id             String                   @id @default(cuid())
+  offerId        String
+  actorUserId    String
+  reason         String
+  priceType      ContractorOfferPriceType
+  clientPrice    Decimal?                 @db.Decimal(14, 2)
+  clientPriceMax Decimal?                 @db.Decimal(14, 2)
+  internalCost   Decimal?                 @db.Decimal(14, 2)
+  unitLabel      String?
+  note           String?
+  createdAt      DateTime                 @default(now())
+
+  offer ContractorOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  actor User            @relation("contractor_price_history_actor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([offerId, createdAt])
+  @@index([actorUserId])
+}
+
+model ProjectProposal {
+  id          String                @id @default(cuid())
+  projectId   String
+  title       String
+  status      ProjectProposalStatus @default(DRAFT)
+  revision    Int                   @default(0)
+  isCurrent   Boolean               @default(true)
+  clientIntro String?
+  clientOutro String?
+  expiresAt   DateTime?
+  createdById String
+  updatedById String
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  project   Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User                      @relation("project_proposal_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User                      @relation("project_proposal_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  variants  ProjectProposalVariant[]
+  snapshots ProjectProposalSnapshot[]
+
+  @@index([projectId, isCurrent, updatedAt])
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model ProjectProposalVariant {
+  id            String   @id @default(cuid())
+  proposalId    String
+  title         String
+  description   String?
+  sortOrder     Int      @default(0)
+  isRecommended Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  proposal ProjectProposal          @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  sections ProjectProposalSection[]
+
+  @@index([proposalId, sortOrder])
+}
+
+model ProjectProposalSection {
+  id                   String   @id @default(cuid())
+  variantId            String
+  categoryId           String?
+  categoryNameSnapshot String?
+  title                String
+  description          String?
+  sortOrder            Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  variant  ProjectProposalVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  category ContractorCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  items    ProjectProposalItem[]
+
+  @@index([variantId, sortOrder])
+  @@index([categoryId])
+}
+
+model ProjectProposalItem {
+  id                       String                       @id @default(cuid())
+  sectionId                String
+  contractorId             String?
+  offerId                  String?
+  kind                     ProjectProposalItemKind      @default(CATALOG)
+  selectionRole            ProjectProposalSelectionRole @default(PRIMARY)
+  sortOrder                Int                          @default(0)
+  qty                      Decimal                      @default(1) @db.Decimal(14, 4)
+  clientUnitPrice          Decimal?                     @db.Decimal(14, 2)
+  internalUnitCost         Decimal?                     @db.Decimal(14, 2)
+  unitLabel                String?
+  clientNote               String?
+  internalNote             String?
+  contractorNameSnapshot   String
+  offerTitleSnapshot       String
+  offerDescriptionSnapshot String?
+  priceTypeSnapshot        ContractorOfferPriceType
+  currencyCodeSnapshot     String                       @default("RUB") @db.VarChar(3)
+  sourcePriceConfirmedAt   DateTime?
+  sourceOfferRevision      Int?
+  assetSnapshot            Json?
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+
+  section       ProjectProposalSection        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  contractor    Contractor?                   @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  offer         ContractorOffer?              @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  estimateLinks ProjectProposalEstimateLink[]
+
+  @@index([sectionId, sortOrder])
+  @@index([contractorId])
+  @@index([offerId])
+}
+
+model ProjectProposalSnapshot {
+  id              String                        @id @default(cuid())
+  proposalId      String
+  versionNumber   Int
+  reason          ProjectProposalSnapshotReason
+  clientData      Json
+  internalSummary Json
+  checksum        String
+  createdById     String
+  createdAt       DateTime                      @default(now())
+
+  proposal  ProjectProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  createdBy User            @relation("project_proposal_snapshot_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([proposalId, versionNumber])
+  @@index([createdById])
+}
+
+model ProjectProposalEstimateLink {
+  id                     String   @id @default(cuid())
+  proposalItemId         String?
+  estimateVersionId      String
+  estimateLineId         String?
+  sourceSnapshot         Json
+  sourceProposalRevision Int
+  transferredById        String
+  transferredAt          DateTime @default(now())
+
+  proposalItem    ProjectProposalItem?   @relation(fields: [proposalItemId], references: [id], onDelete: SetNull)
+  estimateVersion ProjectEstimateVersion @relation(fields: [estimateVersionId], references: [id], onDelete: Cascade)
+  estimateLine    ProjectEstimateLine?   @relation(fields: [estimateLineId], references: [id], onDelete: SetNull)
+  transferredBy   User                   @relation("project_proposal_transfer_actor", fields: [transferredById], references: [id], onDelete: Restrict)
+
+  @@unique([proposalItemId, estimateVersionId])
+  @@index([estimateVersionId])
+  @@index([estimateLineId])
+  @@index([transferredById])
 }
 
 /// Независимая смета: быстрый расчёт без проектной карточки, контактов, задач и дат.
@@ -1333,6 +1663,7 @@ model ProjectEstimateVersion {
   sections      ProjectEstimateSection[]
   draftOrders   ProjectDraftOrder[]
   customColumns ProjectEstimateCustomColumn[]
+  proposalLinks ProjectProposalEstimateLink[]
 
   @@unique([projectId, versionNumber])
   @@unique([standaloneEstimateId, versionNumber])
@@ -1398,8 +1729,9 @@ model ProjectEstimateLine {
   orderLineId String?
   orderLine   OrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
 
-  itemId String?
-  item   Item?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  itemId        String?
+  item          Item?                         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  proposalLinks ProjectProposalEstimateLink[]
 
   @@index([sectionId, position])
   @@index([orderLineId])

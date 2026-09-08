@@ -56,6 +56,10 @@ const ProjectContactsPanel = dynamic(
   () => import("./ProjectContactsPanel").then((module) => module.ProjectContactsPanel),
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Контакты" /> },
 );
+const ProjectEventBuilderPanel = dynamic(
+  () => import("./ProjectEventBuilderPanel").then((module) => module.ProjectEventBuilderPanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Конструктор мероприятия" /> },
+);
 const ProjectEstimatePanel = dynamic(
   () => import("./ProjectEstimatePanel").then((module) => module.ProjectEstimatePanel),
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Сметы проекта" /> },
@@ -1337,6 +1341,13 @@ export default function ProjectDetailPage() {
 
   function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false): React.ReactNode {
     if (!project) return null;
+    if (type === "EVENT_BUILDER") {
+      return (
+        <ProjectModuleBoundary title="Конструктор мероприятия" resetKey={`${id}:event-builder:inline`}>
+          <ProjectEventBuilderPanel projectId={id} readOnly={readOnly} />
+        </ProjectModuleBoundary>
+      );
+    }
     if (type === "ESTIMATE") {
       return (
         <ProjectModuleBoundary title="Сметы проекта" resetKey={`${id}:estimate:inline`}>

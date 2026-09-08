@@ -16,7 +16,7 @@ describe("project workspace templates", () => {
 
     const stored = serializeProjectWorkspaceTemplateWidgets(draft);
 
-    expect(stored).toHaveLength(9);
+    expect(stored).toHaveLength(10);
     expect(stored.find((widget) => widget.type === "ESTIMATE")?.isVisible).toBe(true);
     expect(stored.every((widget, index) => widget.sortOrder === index && widget.y === index)).toBe(true);
   });
@@ -29,5 +29,5 @@ describe("project workspace templates", () => {
 });
 
 function draftOrder(index: number) {
-  return 8 - index;
+  return 9 - index;
 }

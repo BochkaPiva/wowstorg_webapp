@@ -25,6 +25,7 @@ export function resolveProjectWorkspaceView(
 const LEGACY_LAYOUT: ReadonlyArray<
   Pick<ProjectWorkspaceWidgetInput, "type" | "width" | "heightPreset">
 > = [
+  { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
   { type: "TASKS", width: 12, heightPreset: "MEDIUM" },
   { type: "NOTES", width: 6, heightPreset: "COMPACT" },
   { type: "CONTACTS", width: 6, heightPreset: "COMPACT" },

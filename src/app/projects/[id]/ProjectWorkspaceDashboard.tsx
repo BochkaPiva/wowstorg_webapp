@@ -17,6 +17,7 @@ const WIDTH_CLASS: Record<4 | 6 | 8 | 12, string> = {
 };
 
 const ICON_PATH: Record<ProjectWidgetType, React.ReactNode> = {
+  EVENT_BUILDER: <path d="M5 4h14v16H5V4zm3 3v2h8V7H8zm0 4v2h5v-2H8zm0 4v2h8v-2H8zM3 7h2v2H3V7zm16 6h2v2h-2v-2z" />,
   ESTIMATE: <path d="M7 3h10v4H7zM7 10h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zM7 14h2v2H7zm4 0h2v2h-2zm4 0h2v2H7z" />,
   ORDERS: <path d="M9 4h6l1 2h3v15H5V6h3l1-2zm0 7h6V9H9v2zm0 4h6v-2H9v2zm0 4h4v-2H9v2z" />,
   TASKS: <path d="M4 6h3v3H4V6zm5 0h11v2H9V6zM4 11h3v3H4v-3zm5 0h11v2H9v-2zM4 16h3v3H4v-3zm5 0h11v2H9v-2z" />,

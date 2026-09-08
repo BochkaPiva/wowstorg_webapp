@@ -30,7 +30,7 @@ describe("project workspace rollout", () => {
   it("keeps the fallback deterministic and exposes every existing module", () => {
     const widgets = buildLegacyProjectWorkspaceDraft();
 
-    expect(widgets).toHaveLength(9);
+    expect(widgets).toHaveLength(10);
     expect(widgets.every((widget) => widget.isVisible)).toBe(true);
     expect(widgets.every((widget, index) => widget.sortOrder === index && widget.y === index)).toBe(true);
     expect(widgets.find((widget) => widget.type === "ESTIMATE")?.width).toBe(12);

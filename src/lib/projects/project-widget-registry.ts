@@ -1,4 +1,5 @@
 export const PROJECT_WIDGET_TYPES = [
+  "EVENT_BUILDER",
   "ESTIMATE",
   "ORDERS",
   "TASKS",
@@ -18,7 +19,7 @@ export type ProjectWidgetDefinition = {
   title: string;
   description: string;
   eyebrow: string;
-  icon: "calculator" | "clipboard" | "tasks" | "board" | "calendar" | "files" | "contacts" | "notes" | "history";
+  icon: "proposal" | "calculator" | "clipboard" | "tasks" | "board" | "calendar" | "files" | "contacts" | "notes" | "history";
   mandatory: boolean;
   allowedWidths: readonly (4 | 6 | 8 | 12)[];
   allowedHeights: readonly ProjectWidgetHeightPreset[];
@@ -27,6 +28,18 @@ export type ProjectWidgetDefinition = {
 };
 
 export const PROJECT_WIDGET_REGISTRY: readonly ProjectWidgetDefinition[] = [
+  {
+    type: "EVENT_BUILDER",
+    title: "Конструктор мероприятия",
+    description: "Варианты концепции, подрядчики и быстрый перенос в смету.",
+    eyebrow: "Концепция",
+    icon: "proposal",
+    mandatory: true,
+    allowedWidths: [12],
+    allowedHeights: ["LARGE", "AUTO"],
+    defaultWidth: 12,
+    defaultHeight: "LARGE",
+  },
   {
     type: "ESTIMATE",
     title: "Смета",

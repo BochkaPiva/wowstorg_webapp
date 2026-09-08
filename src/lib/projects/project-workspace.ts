@@ -72,6 +72,7 @@ export function buildRecommendedProjectWorkspaceDraft(): ProjectWorkspaceWidgetI
     width: ProjectWorkspaceWidgetInput["width"];
     heightPreset: ProjectWorkspaceWidgetInput["heightPreset"];
   }> = [
+    { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
     { type: "ESTIMATE", width: 12, heightPreset: "LARGE" },
     { type: "ORDERS", width: 4, heightPreset: "COMPACT" },
     { type: "SCHEDULE", width: 4, heightPreset: "COMPACT" },

@@ -20,6 +20,7 @@ const commonItems: NavItem[] = [
 const warehouseItems: NavItem[] = [
   { href: "/work", label: "Рабочая очередь" },
   { href: "/projects", label: "Все проекты" },
+  { href: "/contractors", label: "Подрядчики" },
   { href: "/warehouse/queue", label: "Все заявки" },
   { href: "/tasks", label: "Задачи" },
 ];

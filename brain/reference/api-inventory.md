@@ -1,9 +1,9 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-09-07T17:40:04.893Z
-> **Файлов route.ts:** 145
-> Команда: `npm run brain:inventory`
-> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).
+> **Сгенерировано:** 2026-09-07T22:49:39.203Z  
+> **Файлов route.ts:** 155  
+> Команда: `npm run brain:inventory`  
+> См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
 
 | HTTP | Путь (App Router) | Файл |
@@ -34,6 +34,13 @@
 | GET | `/api/catalog/items` | `src/app/api/catalog/items/route.ts` |
 | GET | `/api/catalog/kits` | `src/app/api/catalog/kits/route.ts` |
 | GET | `/api/catalog/related` | `src/app/api/catalog/related/route.ts` |
+| GET, POST | `/api/contractor-categories` | `src/app/api/contractor-categories/route.ts` |
+| GET, DELETE | `/api/contractors/[contractorId]/assets/[assetId]` | `src/app/api/contractors/[contractorId]/assets/[assetId]/route.ts` |
+| POST | `/api/contractors/[contractorId]/assets/upload` | `src/app/api/contractors/[contractorId]/assets/upload/route.ts` |
+| PATCH | `/api/contractors/[contractorId]/offers/[offerId]` | `src/app/api/contractors/[contractorId]/offers/[offerId]/route.ts` |
+| POST | `/api/contractors/[contractorId]/offers` | `src/app/api/contractors/[contractorId]/offers/route.ts` |
+| PATCH | `/api/contractors/[contractorId]` | `src/app/api/contractors/[contractorId]/route.ts` |
+| GET, POST | `/api/contractors` | `src/app/api/contractors/route.ts` |
 | GET, POST, DELETE | `/api/customers/[id]/logo` | `src/app/api/customers/[id]/logo/route.ts` |
 | PATCH | `/api/customers/[id]` | `src/app/api/customers/[id]/route.ts` |
 | GET, POST | `/api/customers/merge` | `src/app/api/customers/merge/route.ts` |
@@ -105,6 +112,9 @@
 | POST | `/api/projects/[id]/files/upload` | `src/app/api/projects/[id]/files/upload/route.ts` |
 | POST | `/api/projects/[id]/orders/link` | `src/app/api/projects/[id]/orders/link/route.ts` |
 | GET | `/api/projects/[id]/orders/linkable` | `src/app/api/projects/[id]/orders/linkable/route.ts` |
+| PATCH | `/api/projects/[id]/proposals/[proposalId]/structure` | `src/app/api/projects/[id]/proposals/[proposalId]/structure/route.ts` |
+| POST | `/api/projects/[id]/proposals/[proposalId]/transfer-to-estimate` | `src/app/api/projects/[id]/proposals/[proposalId]/transfer-to-estimate/route.ts` |
+| GET, POST | `/api/projects/[id]/proposals` | `src/app/api/projects/[id]/proposals/route.ts` |
 | GET, PATCH | `/api/projects/[id]` | `src/app/api/projects/[id]/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/schedule/days/[dayId]` | `src/app/api/projects/[id]/schedule/days/[dayId]/route.ts` |
 | POST | `/api/projects/[id]/schedule/days/[dayId]/slots` | `src/app/api/projects/[id]/schedule/days/[dayId]/slots/route.ts` |

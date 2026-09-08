@@ -16,5 +16,7 @@
 | 010 | [010-greenwich-monthly-bonus-redemption.md](./010-greenwich-monthly-bonus-redemption.md) | Аккаунтный месячный бонус и атомарное погашение |
 | 011 | [011-order-quality-feedback-and-dirty-returns.md](./011-order-quality-feedback-and-dirty-returns.md) | Оценка закрытых заявок и загрязнение возврата |
 | 012 | [012-modular-project-workspace.md](./012-modular-project-workspace.md) | Модульное рабочее пространство проекта |
+| 013 | [013-completed-project-hard-delete.md](./013-completed-project-hard-delete.md) | Безвозвратное удаление завершённых проектов |
+| 014 | [014-event-proposal-builder-boundaries.md](./014-event-proposal-builder-boundaries.md) | Границы каталога подрядчиков, проектного КП и сметы (предложено) |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

@@ -199,17 +199,35 @@ tbody tr:hover {
   background: var(--wow-ink);
   color: #f5f5f2;
   border-right: 1px solid #242423;
+  scrollbar-color: #3b3b38 transparent;
+  scrollbar-width: thin;
+}
+
+.app-sidebar::-webkit-scrollbar,
+.app-drawer__panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-sidebar::-webkit-scrollbar-track,
+.app-drawer__panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-sidebar::-webkit-scrollbar-thumb,
+.app-drawer__panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #3b3b38;
 }
 
 .app-brand {
   position: relative;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 52px minmax(0, 1fr);
   grid-template-rows: auto auto;
   column-gap: 12px;
   align-items: center;
-  min-height: 88px;
-  padding: 16px 18px;
+  min-height: 94px;
+  padding: 18px;
   color: #f5f5f2;
   text-decoration: none;
   border-bottom: 1px solid #292928;
@@ -217,8 +235,8 @@ tbody tr:hover {
 
 .app-brand__mark {
   grid-row: 1 / 3;
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   overflow: hidden;
   border-radius: 50%;
   background: var(--wow-yellow);
@@ -228,9 +246,9 @@ tbody tr:hover {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 50% 7%;
-  transform: scale(2.55) translateY(10%);
-  transform-origin: center top;
+  object-position: 50% 12%;
+  transform: scale(1.32);
+  transform-origin: 50% 18%;
 }
 
 .app-brand__name {
@@ -253,13 +271,13 @@ tbody tr:hover {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 12px 24px;
+  gap: 22px;
+  padding: 20px 12px 24px;
 }
 
 .app-nav__group {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 
 .app-nav__group--last {
@@ -267,10 +285,34 @@ tbody tr:hover {
 }
 
 .app-nav__label {
-  padding: 0 10px 7px;
-  color: #777772;
-  font-size: 0.7rem;
-  font-weight: 650;
+  padding: 0 10px 6px;
+  color: #85857f;
+  font-size: 0.62rem;
+  font-weight: 720;
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.app-nav__cluster {
+  display: grid;
+  gap: 3px;
+}
+
+.app-nav__subgroup {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  margin: 1px 0 5px 13px;
+  padding-left: 12px;
+}
+
+.app-nav__subgroup::before {
+  position: absolute;
+  inset: 4px auto 4px 0;
+  width: 1px;
+  background: #343432;
+  content: "";
 }
 
 .app-nav__link {
@@ -290,6 +332,37 @@ tbody tr:hover {
   transition: color 160ms var(--wow-ease), background-color 160ms var(--wow-ease);
 }
 
+.app-nav__link--primary {
+  font-weight: 650;
+}
+
+.app-nav__link--secondary {
+  min-height: 32px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  color: #a7a7a2;
+  font-size: 0.76rem;
+  font-weight: 510;
+}
+
+.app-nav__link--secondary::before {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 4px;
+  order: -1;
+  border-radius: 50%;
+  background: #53534f;
+  content: "";
+}
+
+.app-nav__link--secondary > span:first-child {
+  margin-right: auto;
+}
+
+.app-nav__link--secondary .app-nav__marker {
+  display: none;
+}
+
 .app-nav__link:hover {
   background: #1c1c1b;
   color: #ffffff;
@@ -299,6 +372,10 @@ tbody tr:hover {
   background: var(--wow-yellow);
   color: var(--wow-ink);
   font-weight: 720;
+}
+
+.app-nav__link--secondary[data-active="true"]::before {
+  background: var(--wow-ink);
 }
 
 .app-nav__marker {

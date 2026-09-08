@@ -9,7 +9,11 @@ import { InAppNotifications } from "@/app/_ui/InAppNotifications";
 import { AppWorkspaceSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
-type NavItem = { href: string; label: string };
+type NavItem = {
+  href: string;
+  label: string;
+  level?: "primary" | "secondary";
+};
 
 const commonItems: NavItem[] = [
   { href: "/home", label: "Главная" },
@@ -17,22 +21,18 @@ const commonItems: NavItem[] = [
   { href: "/cart", label: "Корзина" },
 ];
 
-const warehouseItems: NavItem[] = [
-  { href: "/work", label: "Рабочая очередь" },
-  { href: "/projects", label: "Все проекты" },
-  { href: "/contractors", label: "Подрядчики" },
-  { href: "/warehouse/queue", label: "Все заявки" },
-  { href: "/tasks", label: "Задачи" },
+const workQueueItems: NavItem[] = [
+  { href: "/projects", label: "Все проекты", level: "secondary" },
+  { href: "/warehouse/queue", label: "Все заявки", level: "secondary" },
 ];
 
 const inventoryItems: NavItem[] = [
-  { href: "/inventory/items", label: "Инвентарь" },
-  { href: "/inventory/positions", label: "Позиции" },
-  { href: "/inventory/collections", label: "Категории" },
-  { href: "/inventory/packages", label: "Пакеты" },
-  { href: "/inventory/warehouse-items", label: "Складской реквизит" },
-  { href: "/inventory/repair", label: "Ремонт и поломки" },
-  { href: "/inventory/losses", label: "Утерянное" },
+  { href: "/inventory/positions", label: "Позиции", level: "secondary" },
+  { href: "/inventory/collections", label: "Категории", level: "secondary" },
+  { href: "/inventory/packages", label: "Пакеты", level: "secondary" },
+  { href: "/inventory/warehouse-items", label: "Складской реквизит", level: "secondary" },
+  { href: "/inventory/repair", label: "Ремонт и поломки", level: "secondary" },
+  { href: "/inventory/losses", label: "Утерянное", level: "secondary" },
 ];
 
 function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
@@ -42,7 +42,7 @@ function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
     <Link
       href={item.href}
       onClick={onClick}
-      className="app-nav__link"
+      className={`app-nav__link app-nav__link--${item.level ?? "primary"}`}
       data-active={active || undefined}
       aria-current={active ? "page" : undefined}
     >
@@ -56,7 +56,7 @@ function Brand() {
   return (
     <Link href="/home" className="app-brand" aria-label="ВАУСТОРГ, на главную">
       <span className="app-brand__mark" aria-hidden="true">
-        <Image src="/brand/dino-catalog.webp" width={48} height={48} alt="" />
+        <Image src="/brand/dino-order-detail.webp" width={52} height={52} alt="" />
       </span>
       <span className="app-brand__name">ВАУСТОРГ</span>
       <span className="app-brand__caption">рабочее пространство</span>
@@ -77,13 +77,26 @@ function Navigation({ role, onNavigate }: { role: string; onNavigate?: () => voi
         <>
           <div className="app-nav__group">
             <div className="app-nav__label">Работа</div>
-            {warehouseItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+            <div className="app-nav__cluster">
+              <NavLink item={{ href: "/work", label: "Рабочая очередь" }} onClick={onNavigate} />
+              <div className="app-nav__subgroup" role="group" aria-label="Рабочая очередь">
+                {workQueueItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+              </div>
+            </div>
+            <NavLink item={{ href: "/contractors", label: "Подрядчики" }} onClick={onNavigate} />
+            <NavLink item={{ href: "/tasks", label: "Задачи" }} onClick={onNavigate} />
           </div>
           <div className="app-nav__group">
             <div className="app-nav__label">Склад</div>
-            {inventoryItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+            <div className="app-nav__cluster">
+              <NavLink item={{ href: "/inventory/items", label: "Инвентарь" }} onClick={onNavigate} />
+              <div className="app-nav__subgroup" role="group" aria-label="Инвентарь">
+                {inventoryItems.map((item) => <NavLink key={item.href} item={item} onClick={onNavigate} />)}
+              </div>
+            </div>
           </div>
           <div className="app-nav__group app-nav__group--last">
+            <div className="app-nav__label">Система</div>
             <NavLink item={{ href: "/admin", label: "Администрирование" }} onClick={onNavigate} />
           </div>
         </>

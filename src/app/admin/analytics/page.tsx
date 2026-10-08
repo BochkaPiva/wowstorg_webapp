@@ -5,9 +5,9 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { DashboardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import type { AdminAnalyticsData } from "@/server/admin-analytics";
-import { isAnalyticsDate } from "@/lib/analytics-presentation";
+import { isAnalyticsDate, updateAnalyticsScope } from "@/lib/analytics-presentation";
 import { AnalyticsOverview } from "./AnalyticsOverview";
-import { AnalyticsBonuses, AnalyticsCustomers, AnalyticsProjects, AnalyticsRequisites } from "./AnalyticsSections";
+import { AnalyticsDataQuality, AnalyticsBonuses, AnalyticsCustomers, AnalyticsProjects, AnalyticsRequisites } from "./AnalyticsSections";
 import { AnalyticsReconciliation } from "./AnalyticsReconciliation";
 import s from "./analytics.module.css";
 
@@ -28,7 +28,7 @@ const TAB_META: Array<{
     label: "Сводка бизнеса",
     shortLabel: "Обзор",
     description: "Факт, прогноз, структура результата и точки управленческого внимания.",
-    basis: "Факт заявок — по дате завершения; прогноз — по пересечению периода аренды. Проекты — по датам мероприятия.",
+    basis: "Факт заявок — по дате завершения; прогноз — по пересечению периода аренды. Факт проектов — по окончанию мероприятия; прогноз — по пересечению дат.",
   },
   {
     id: "bonuses",
@@ -56,14 +56,14 @@ const TAB_META: Array<{
     label: "Проекты",
     shortLabel: "Проекты",
     description: "Воронка, финансовый прогноз, зрелость процессов и проектные риски.",
-    basis: "В период попадают проекты, чьи даты мероприятия пересекают интервал.",
+    basis: "Завершённые — по окончанию мероприятия (или началу, если окончания нет); остальные — по пересечению дат.",
   },
   {
     id: "customers",
     label: "Клиенты",
     shortLabel: "Клиенты",
     description: "Повторные продажи, ценность клиентской базы и качество портфеля.",
-    basis: "Проекты — по мероприятию, отдельные заявки — по дате завершения.",
+    basis: "Общий период с обзором: завершённые проекты и отдельные заявки по дате окончания; прогноз — отдельно.",
   },
 ];
 
@@ -130,7 +130,7 @@ export default function AdminAnalyticsPage() {
 
   React.useEffect(() => {
     try {
-      const raw = window.localStorage.getItem("wowstorg.analytics.scopes.v2");
+      const raw = window.localStorage.getItem("wowstorg.analytics.scopes.v3") ?? window.localStorage.getItem("wowstorg.analytics.scopes.v2");
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<Record<Tab, Scope>>;
         setScopes(current => {
@@ -139,7 +139,7 @@ export default function AdminAnalyticsPage() {
             const saved = parsed[tab.id];
             if (saved && isAnalyticsDate(saved.from) && isAnalyticsDate(saved.to)) next[tab.id] = saved;
           }
-          return next;
+          return updateAnalyticsScope(next, "overview", next.overview);
         });
       }
     } catch { /* Local preferences must not block analytics. */ }
@@ -147,7 +147,7 @@ export default function AdminAnalyticsPage() {
   }, []);
   React.useEffect(() => {
     if (!ready) return;
-    try { window.localStorage.setItem("wowstorg.analytics.scopes.v2", JSON.stringify(scopes)); } catch { /* Optional persistence. */ }
+    try { window.localStorage.setItem("wowstorg.analytics.scopes.v3", JSON.stringify(scopes)); } catch { /* Optional persistence. */ }
   }, [scopes, ready]);
 
   React.useEffect(() => {
@@ -178,13 +178,14 @@ export default function AdminAnalyticsPage() {
   const exportSection = ({ overview: "global", requisites: "requisites", projects: "projects", customers: "customers", bonuses: "global", reconciliation: "global" } as const)[activeTab];
 
   return <AppShell title="Админка · Аналитика">{forbidden ? <div>Раздел доступен только команде Wowstorg.</div> : <section className={s.page} aria-label="Аналитика бизнеса">
-    <header className={s.header}><div className={s.headingGroup}><h1>{activeTab === "overview" ? "Результаты бизнеса" : activeMeta.label}</h1><details className={s.datePicker}><summary>{formatDate(scope.from || null)} — {formatDate(scope.to || null)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></summary><div className={s.datePopup}><div className={s.period}><label>С<input type="date" aria-label="Начало периода" value={scope.from} onChange={event => setScopes(current => ({ ...current, [activeTab]: { ...scope, from: event.target.value } }))} /></label><label>По<input type="date" aria-label="Конец периода" value={scope.to} onChange={event => setScopes(current => ({ ...current, [activeTab]: { ...scope, to: event.target.value } }))} /></label></div><p className={s.note}>{activeMeta.basis}</p></div></details></div><div className={s.controls}>
-      <select className={s.field} aria-label="Быстрый выбор периода" value="" onChange={event => setScopes(current => ({ ...current, [activeTab]: presetScope(event.target.value as PeriodPreset) }))}><option value="" disabled>Выбрать период</option><option value="month">Этот месяц</option><option value="previousMonth">Прошлый месяц</option><option value="quarter">Квартал</option><option value="30days">30 дней</option><option value="year">Этот год</option></select>
+    <header className={s.header}><div className={s.headingGroup}><h1>{activeTab === "overview" ? "Результаты бизнеса" : activeMeta.label}</h1><details className={s.datePicker}><summary>{formatDate(scope.from || null)} — {formatDate(scope.to || null)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></summary><div className={s.datePopup}><div className={s.period}><label>С<input type="date" aria-label="Начало периода" value={scope.from} onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, { ...scope, from: event.target.value }))} /></label><label>По<input type="date" aria-label="Конец периода" value={scope.to} onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, { ...scope, to: event.target.value }))} /></label></div><p className={s.note}>{activeMeta.basis}</p></div></details></div><div className={s.controls}>
+      <select className={s.field} aria-label="Быстрый выбор периода" value="" onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, presetScope(event.target.value as PeriodPreset)))}><option value="" disabled>Выбрать период</option><option value="month">Этот месяц</option><option value="previousMonth">Прошлый месяц</option><option value="quarter">Квартал</option><option value="30days">30 дней</option><option value="year">Этот год</option></select>
       {activeTab !== "reconciliation" && <><button type="button" className={s.button} disabled={loading || scopeError} onClick={refresh}>Обновить</button><a className={s.primary} href={scopeError || !data ? undefined : `/api/admin/analytics/export?${new URLSearchParams({ section: exportSection, ...scope })}`} aria-disabled={scopeError || !data}>Экспорт Excel</a></>}
     </div></header>
     <nav className={s.tabs} aria-label="Разделы аналитики">{["overview", "projects", "customers", "requisites", "bonuses", "reconciliation"].map(id => TAB_META.find(tab => tab.id === id)!).map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => { setActiveTab(tab.id); setError(null); }}>{tab.shortLabel}</button>)}</nav>
     {scopeError ? <div className={s.error}>Укажите обе даты; начало периода не должно быть позже конца.</div> : activeTab === "reconciliation" && ready && state.status === "authenticated" ? <AnalyticsReconciliation scope={scope} /> : error ? <div className={s.error}>{error}<button className={s.button} onClick={refresh} type="button">Повторить</button></div> : !ready || !data ? <DashboardSkeleton /> : <>
       {loading && <span className={s.note} role="status">Обновляем данные…</span>}
+      {activeTab !== "bonuses" && <AnalyticsDataQuality data={data} />}
       {activeTab === "overview" && <AnalyticsOverview data={data} scope={scope} onProjects={() => setActiveTab("projects")} />}
       {activeTab === "bonuses" && <AnalyticsBonuses data={data} />}
       {activeTab === "requisites" && <AnalyticsRequisites data={data} scope={scope} />}

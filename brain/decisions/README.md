@@ -19,5 +19,6 @@
 | 013 | [013-completed-project-hard-delete.md](./013-completed-project-hard-delete.md) | Безвозвратное удаление завершённых проектов |
 | 014 | [014-event-proposal-builder-boundaries.md](./014-event-proposal-builder-boundaries.md) | Границы каталога подрядчиков, проектного КП и сметы (предложено) |
 | 015 | [015-standalone-proposal-workspace.md](./015-standalone-proposal-workspace.md) | Самостоятельное КП и единый редактор |
+| 016 | [016-analytics-financial-fact-recognition.md](./016-analytics-financial-fact-recognition.md) | Общий период, единая дата финансового факта и точность агрегатов |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

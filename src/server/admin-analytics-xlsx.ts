@@ -1,7 +1,8 @@
 import ExcelJS from "exceljs";
 
-import type { AdminAnalyticsData, ProjectAnalyticsRow } from "@/server/admin-analytics";
-import { analyticsCustomerRows, isActiveAnalyticsProject } from "@/lib/analytics-presentation";
+import { projectActualDate, sumAnalyticsMoney } from "@/lib/analytics-finance";
+import type { AdminAnalyticsData } from "@/server/admin-analytics";
+import { analyticsCustomerRows } from "@/lib/analytics-presentation";
 
 export type AdminAnalyticsExportSection = "global" | "requisites" | "projects" | "customers";
 
@@ -33,7 +34,7 @@ function argb(hex: string) {
 }
 
 function money(value: number) {
-  return Math.round(value);
+  return value;
 }
 
 function setCols(ws: ExcelJS.Worksheet, widths: number[]) {
@@ -120,7 +121,7 @@ function addKpiCard(ws: ExcelJS.Worksheet, row: number, col: number, title: stri
   const valueCell = ws.getCell(row + 1, col);
   valueCell.value = value;
   valueCell.font = { name: "Calibri", size: 22, bold: true, color: argb(COLORS.ink) };
-  valueCell.numFmt = typeof value === "number" ? "#,##0 ₽" : "@";
+  valueCell.numFmt = typeof value === "number" ? "#,##0.00 ₽" : "@";
 
   const noteCell = ws.getCell(row + 2, col);
   noteCell.value = note;
@@ -168,7 +169,7 @@ function addTable(
       cell.alignment = { vertical: "middle", horizontal: cIdx === 0 ? "left" : "right", wrapText: true };
       if (rIdx % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: argb(COLORS.slateSoft) };
       if (typeof value === "number") {
-        cell.numFmt = options?.currencyColumns?.includes(cIdx) ? "#,##0 ₽" : "#,##0";
+        cell.numFmt = options?.currencyColumns?.includes(cIdx) ? "#,##0.00 ₽" : "#,##0";
         if (options?.percentColumns?.includes(cIdx)) cell.numFmt = "0.0%";
         const badNegative = value < 0 && !options?.negativeGoodColumns?.includes(cIdx);
         if (badNegative) cell.font = { name: "Calibri", size: 11, bold: true, color: argb(COLORS.red) };
@@ -187,7 +188,7 @@ function addOverviewSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
 
   addKpiCard(ws, 6, 1, "Факт прибыль", data.overview.finance.fact.profitTotal, `Выручка ${money(data.overview.finance.fact.revenueTotal).toLocaleString("ru-RU")} ₽`, "emerald");
   addKpiCard(ws, 6, 5, "Прогноз прибыль", data.overview.finance.forecast.profitTotal, `Выручка ${money(data.overview.finance.forecast.revenueTotal).toLocaleString("ru-RU")} ₽`, "violet");
-  addKpiCard(ws, 6, 9, "Бонусы 15%", data.overview.finance.bonuses.factPool, `${money(data.overview.finance.bonuses.factPerPerson).toLocaleString("ru-RU")} ₽ на человека`, "amber");
+  addKpiCard(ws, 6, 9, "Бонусы 15%", data.overview.finance.bonuses.factPool, data.overview.finance.bonuses.factShares.map(value => `${money(value).toLocaleString("ru-RU")} ₽`).join(" + "), "amber");
 
   addSectionTitle(ws, 11, "Структура результата", 11);
   addTable(
@@ -263,61 +264,25 @@ function addFactForecastSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   );
 }
 
-function projectEventMonth(project: ProjectAnalyticsRow) {
-  return (project.eventStartDate ?? project.eventEndDate ?? project.createdAt).slice(0, 7);
-}
-
 function addDynamicsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Динамика");
   styleSheet(ws);
-  setCols(ws, [14, 18, 18, 18, 18, 16, 16, 18]);
+  setCols(ws, [14, 18, 18, 18, 18, 18, 18, 14]);
   addReportHeader(ws, "Динамика по месяцам", data, 8);
-
-  const monthMap = new Map<string, { orderRevenue: number; orderCount: number; projectRevenue: number; projectProfit: number; projectCount: number }>();
-  for (const row of data.requisites.breakdowns.revenueByMonth) {
-    monthMap.set(row.month, {
-      ...(monthMap.get(row.month) ?? { orderRevenue: 0, orderCount: 0, projectRevenue: 0, projectProfit: 0, projectCount: 0 }),
-      orderRevenue: row.revenue,
-      orderCount: row.orders,
-    });
+  const groups = new Map<string, typeof data.facts>();
+  for (const fact of data.facts) {
+    const month = fact.date.slice(0, 7);
+    const group = groups.get(month) ?? []; group.push(fact); groups.set(month, group);
   }
-  for (const project of data.projects.rows.filter((p) => p.status === "COMPLETED")) {
-    const month = projectEventMonth(project);
-    const prev = monthMap.get(month) ?? { orderRevenue: 0, orderCount: 0, projectRevenue: 0, projectProfit: 0, projectCount: 0 };
-    prev.projectRevenue += project.financials.revenueTotal;
-    prev.projectProfit += project.financials.marginAfterTax;
-    prev.projectCount += 1;
-    monthMap.set(month, prev);
-  }
-
-  const rows = [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, value], idx, all) => {
-      const totalRevenue = value.orderRevenue + value.projectRevenue;
-      const prevTotal = idx > 0 ? all[idx - 1][1].orderRevenue + all[idx - 1][1].projectRevenue : 0;
-      const delta = prevTotal > 0 ? totalRevenue - prevTotal : 0;
-      const deltaPct = prevTotal > 0 ? delta / prevTotal : 0;
-      return [month, totalRevenue, delta, deltaPct, value.orderRevenue, value.projectRevenue, value.projectProfit, value.orderCount + value.projectCount];
-    });
-
-  addTable(ws, 6, ["Месяц", "Выручка факт", "К прошлому", "%", "Заявки", "Проекты", "Прибыль проектов", "Сделок"], rows, {
-    currencyColumns: [1, 2, 4, 5, 6],
-    percentColumns: [3],
-  });
-  if (rows.length > 0) {
-    const firstDataRow = 7;
-    const lastDataRow = firstDataRow + rows.length - 1;
-    ws.addConditionalFormatting({
-      ref: `B${firstDataRow}:B${lastDataRow}`,
-      rules: [{ type: "dataBar", priority: 1, showValue: true, cfvo: [{ type: "min" }, { type: "max" }] }],
-    });
-    ws.addConditionalFormatting({
-      ref: `G${firstDataRow}:G${lastDataRow}`,
-      rules: [{ type: "dataBar", priority: 2, showValue: true, cfvo: [{ type: "min" }, { type: "max" }] }],
-    });
-  }
-  ws.getCell(5, 1).value = rows.length > 1 ? "Сравнение строится к предыдущему месяцу внутри выбранного периода." : "Для сравнения с предыдущим месяцем выберите период от двух месяцев.";
-  ws.getCell(5, 1).font = { name: "Calibri", size: 10, color: argb(COLORS.muted) };
+  const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([month, facts]) => [
+    month, sumAnalyticsMoney(facts.map(fact => fact.revenue)),
+    sumAnalyticsMoney(facts.map(fact => fact.profit)),
+    sumAnalyticsMoney(facts.filter(fact => fact.source === "ORDER").map(fact => fact.revenue)),
+    sumAnalyticsMoney(facts.filter(fact => fact.source === "PROJECT").map(fact => fact.revenue)),
+    facts.filter(fact => fact.source === "ORDER").length,
+    facts.filter(fact => fact.source === "PROJECT").length, facts.length,
+  ]);
+  addTable(ws, 6, ["Месяц", "Выручка · факт", "Прибыль · факт", "Выручка заявок", "Выручка проектов", "Заявок", "Проектов", "Работ"], rows, { currencyColumns: [1, 2, 3, 4] });
 }
 
 function addRequisitesSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
@@ -359,7 +324,7 @@ function addProjectsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   addTable(
     ws,
     6,
-    ["Проект", "Заказчик", "Статус", "Выручка", "Внутр.", "Комиссия", "Налог", "Прибыль", "Маржа %", "Дата"],
+    ["Проект", "Заказчик", "Статус", "Бюджет смет", "Расходы с условным налогом", "Комиссия", "Расчётный налог", "Прибыль", "Маржа %", "Дата окончания / начала"],
     data.projects.rows
       .filter((p) => p.status !== "CANCELLED")
       .sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal)
@@ -368,12 +333,12 @@ function addProjectsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
         p.customerName,
         p.status,
         p.financials.revenueTotal,
-        p.financials.internalSubtotal,
+        p.financials.internalExpensesTotal,
         p.financials.commission,
         p.financials.tax,
         p.financials.marginAfterTax,
         p.financials.marginAfterTaxPct / 100,
-        p.eventStartDate ?? p.eventEndDate ?? "",
+        projectActualDate(p) ?? "",
       ]),
     { currencyColumns: [3, 4, 5, 6, 7], percentColumns: [8] },
   );
@@ -387,73 +352,39 @@ function addCustomersSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   addTable(
     ws,
     6,
-    ["Заказчик", "Проектов", "Активные проекты", "Завершённые работы", "Активные проекты · прогноз", "Факт самостоятельных заявок", "Средняя смета проекта", "Маржа только проектов"],
+    ["Заказчик", "Проектов", "Закрытых заявок", "Выручка · факт", "Факт проектов", "Факт самостоятельных заявок", "В работе · прогноз", "Средний бюджет проекта"],
     analyticsCustomerRows(data).map((r) => [
       r.customerName,
       r.projectsCount,
-      r.projects.filter(isActiveAnalyticsProject).length,
+      r.closedOrdersCount,
       r.actualRevenue,
-      r.activeRevenue,
+      r.actualProjects,
       r.closedOrdersFactRevenue,
+      r.activeRevenue,
       r.averageEstimatedProject,
-      r.projectMargin == null ? null : r.projectMargin / 100,
     ]),
-    { currencyColumns: [3, 4, 5, 6], percentColumns: [7] },
+    { currencyColumns: [3, 4, 5, 6, 7] },
   );
 }
 
 function addInventoryProfitabilitySheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Реквизит");
   styleSheet(ws);
-  setCols(ws, [34, 14, 16, 16, 4, 34, 12, 16, 16, 16]);
-  addReportHeader(ws, "Аналитика реквизита", data, 10);
+  setCols(ws, [34, 18, 16, 16, 16, 18, 18]);
+  addReportHeader(ws, "Спрос и выручка всех позиций", data, 7);
+  addTable(ws, 6, ["Позиция", "Самостоятельный прокат", "Выдано самостоятельно", "Выдано в проектах", "Всего в парке", "Закупка за единицу", "Стоимость парка"],
+    data.requisites.items.map(item => [item.itemName, item.revenue, item.issuedQty, item.linkedIssuedQty, item.totalQty, item.unitPurchasePrice, item.purchaseCost]),
+    { currencyColumns: [1, 5, 6] });
+}
 
-  addKpiCard(ws, 6, 1, "Выручка реквизита", data.requisites.kpi.itemsRevenue, `${data.requisites.tops.topByRevenue.length} позиций в топе`, "violet");
-  addKpiCard(ws, 6, 5, "Валовая прибыль", data.requisites.profitability.summary.totalGrossProfit, `${data.requisites.profitability.summary.itemsWithRevenue} позиций с выручкой`, "emerald");
-  addKpiCard(
-    ws,
-    6,
-    8,
-    "ROI реквизита",
-    data.requisites.profitability.summary.totalRoiPercent == null
-      ? "—"
-      : `${Math.round(data.requisites.profitability.summary.totalRoiPercent)}%`,
-    "Только позиции с ценой покупки",
-    "amber",
-  );
-
-  addSectionTitle(ws, 11, "Топ реквизита", 10);
-  addTable(
-    ws,
-    12,
-    ["Позиция", "Выручка", "Выдано, шт.", "Комментарий"],
-    data.requisites.tops.topByRevenue.map((item) => {
-      const issued = data.requisites.tops.topByIssued.find((row) => row.itemId === item.itemId)?.issuedQty ?? 0;
-      return [item.itemName, item.revenue, issued, issued > 0 ? "Есть выдачи за период" : ""];
-    }),
-    { currencyColumns: [1] },
-  );
-
-  const profitabilityStartRow = 15 + data.requisites.tops.topByRevenue.length;
-  addSectionTitle(ws, profitabilityStartRow, "Рентабельность реквизита с закупочной ценой", 10);
-  addTable(
-    ws,
-    profitabilityStartRow + 1,
-    ["Позиция", "Кол-во", "Закуп/шт", "Закуп всего", "Выручка", "Валовая прибыль", "Окупаемость", "ROI %"],
-    data.requisites.profitability.rows
-      .filter((r) => r.unitPurchasePrice > 0)
-      .map((r) => [
-        r.itemName,
-        r.totalQty,
-        r.unitPurchasePrice,
-        r.purchaseCost,
-        r.revenue,
-        r.grossProfit,
-        r.paybackRatio ?? null,
-        r.roiPercent == null ? null : r.roiPercent / 100,
-      ]),
-    { currencyColumns: [2, 3, 4, 5], percentColumns: [7] },
-  );
+function addUnassignedSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
+  if (!data.projects.unassigned.length) return;
+  const ws = wb.addWorksheet("Без дат — вне итогов");
+  styleSheet(ws); setCols(ws, [36, 26, 20, 20, 20]);
+  addReportHeader(ws, "Не распределено по датам — вне финансовых итогов", data, 5);
+  addTable(ws, 6, ["Проект", "Клиент", "Статус", "Бюджет смет", "Расчётная прибыль"],
+    data.projects.unassigned.map(project => [project.title, project.customerName, project.status, project.financials.revenueTotal, project.financials.marginAfterTax]),
+    { currencyColumns: [3, 4] });
 }
 
 function addMethodologySheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
@@ -502,6 +433,7 @@ export async function buildAdminAnalyticsXlsx(
     addMethodologySheet(wb, data);
   }
 
+  if (section !== "requisites") addUnassignedSheet(wb, data);
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }

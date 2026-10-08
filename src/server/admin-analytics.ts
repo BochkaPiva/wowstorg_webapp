@@ -20,7 +20,9 @@ import {
   getProjectEstimateLineInternalTotal,
 } from "@/lib/project-estimate-line-totals";
 import { prisma } from "@/server/db";
-import { orderRentalPeriodWhere } from "@/server/analytics/period-filters";
+import { orderRentalPeriodWhere, projectFactPeriodWhere } from "@/server/analytics/period-filters";
+import { roundMoney } from "@/lib/money";
+import { analyticsBonusPool, analyticsFactTimeline, projectActualDate, splitAnalyticsMoney, sumAnalyticsMoney, type AnalyticsFinancialFact } from "@/lib/analytics-finance";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
 
 export type AnalyticsScope = { from?: string; to?: string };
@@ -36,6 +38,12 @@ export type AnalyticsPeriod = {
 };
 
 export type RequisiteAnalyticsData = {
+  facts: AnalyticsFinancialFact[];
+  items: Array<{
+    itemId: string; itemName: string; revenue: number; issuedQty: number; linkedIssuedQty: number;
+    purchaseCost: number | null; unitPurchasePrice: number | null; totalQty: number;
+    paybackRatio: number | null; internalOnly: boolean; isActive: boolean;
+  }>;
   kpi: {
     ordersTotal: number;
     ordersClosed: number;
@@ -52,6 +60,7 @@ export type RequisiteAnalyticsData = {
     ordersTotal: number;
     totalRevenue: number;
     profitEstimate: number;
+    customerTotals: Array<{ customerId: string; customerName: string; revenue: number; orders: number }>;
   };
   breakdowns: {
     byStatus: Array<{ status: string; count: number }>;
@@ -127,6 +136,9 @@ export type ProjectAnalyticsRow = {
   eventDateConfirmed: boolean;
   ordersCount: number;
   estimateVersionsCount: number;
+  includedEstimatesCount: number;
+  hasFinancialData: boolean;
+  /** Legacy name: true when any version is included in project totals. */
   hasPrimaryEstimate: boolean;
   hasLinkedOrder: boolean;
   daysSinceActivity: number;
@@ -137,6 +149,7 @@ export type ProjectAnalyticsRow = {
 };
 
 export type ProjectAnalyticsData = {
+  unassigned: ProjectAnalyticsRow[];
   kpi: {
     projectsTotal: number;
     activeProjects: number;
@@ -201,6 +214,9 @@ export type CustomerAnalyticsData = {
     averageProjectRevenue: number;
     averageMarginAfterTaxPercent: number;
     closedOrdersFactRevenue: number;
+    closedOrdersCount: number;
+    activeOrdersRevenue: number;
+    activeOrdersCount: number;
     ltvMixed: number;
     repeat: boolean;
     completionRatePercent: number;
@@ -248,8 +264,10 @@ export type OverviewAnalyticsData = {
       recipients: number;
       factPool: number;
       factPerPerson: number;
+      factShares: number[];
       forecastPool: number;
       forecastPerPerson: number;
+      forecastShares: number[];
     };
     ownership: {
       linkedOrdersExcluded: number;
@@ -276,6 +294,7 @@ export type OverviewAnalyticsData = {
 };
 
 export type AdminAnalyticsData = {
+  facts: AnalyticsFinancialFact[];
   period: AnalyticsPeriod;
   overview: OverviewAnalyticsData;
   requisites: RequisiteAnalyticsData;
@@ -291,10 +310,6 @@ function parseDateOnlyStart(value: string): Date {
 function parseDateOnlyEndExclusive(value: string): Date {
   const d = new Date(`${value}T00:00:00.000Z`);
   return new Date(d.getTime() + 24 * 60 * 60 * 1000);
-}
-
-function monthKey(date: Date): string {
-  return date.toISOString().slice(0, 7);
 }
 
 function ymd(date: Date | null | undefined): string | null {
@@ -380,6 +395,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   };
 
   const orderMoneySelect = {
+    id: true,
     source: true,
     startDate: true,
     endDate: true,
@@ -422,7 +438,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     },
   } satisfies Prisma.OrderSelect;
 
-  const [orders, closedOrders, forecastOrders, linkedOrdersExcluded, linkedClosedOrdersExcluded, trackedItems] = await Promise.all([
+  const [orders, closedOrders, forecastOrders, linkedOrdersExcluded, linkedClosedOrders, catalogItems] = await Promise.all([
     prisma.order.findMany({
       where: standaloneOrderWhere,
       select: { id: true, status: true, source: true },
@@ -438,11 +454,11 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     prisma.order.count({
       where: linkedOrderWhere,
     }),
-    prisma.order.count({
+    prisma.order.findMany({
       where: { status: "CLOSED", ...linkedOrderWhere },
+      select: { lines: { select: { itemId: true, requestedQty: true, issuedQty: true } } },
     }),
     prisma.item.findMany({
-      where: { purchasePricePerUnit: { not: null } },
       select: {
         id: true,
         name: true,
@@ -468,15 +484,18 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
   const itemIssued = new Map<string, number>();
   const itemRevenue = new Map<string, { name: string; revenue: number }>();
   const customerTotal = new Map<string, { name: string; total: number }>();
-  const revenueByMonth = new Map<string, { revenue: number; profit: number; orders: number }>();
   const revenueByItemForProfitability = new Map<string, number>();
+  const facts: AnalyticsFinancialFact[] = [];
+  const forecastCustomers = new Map<string, { customerId: string; customerName: string; revenue: number; orders: number }>();
+  const linkedIssued = new Map<string, number>();
+  for (const order of linkedClosedOrders) for (const line of order.lines) {
+    linkedIssued.set(line.itemId, (linkedIssued.get(line.itemId) ?? 0) + (line.issuedQty ?? line.requestedQty));
+  }
 
   let totalItemsRevenue = 0;
   let totalServiceRevenue = 0;
-  let totalTaxAmount = 0;
   let totalRentalDays = 0;
-  let totalProfitEstimate = 0;
-  let forecastRevenue = 0;
+    let forecastRevenue = 0;
   let forecastProfitEstimate = 0;
 
   for (const order of closedOrders) {
@@ -518,7 +537,6 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       })),
     });
     totalRentalDays += pricing.days;
-    totalProfitEstimate += profitEstimate.profitEstimate;
     const orderItemsRevenue = pricing.rentalSubtotalAfterDiscount;
 
     for (const [idx, line] of order.lines.entries()) {
@@ -539,12 +557,13 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     const services = pricing.servicesTotal;
     totalServiceRevenue += services;
     totalItemsRevenue += orderItemsRevenue;
-    totalTaxAmount += pricing.taxAmount;
 
     const orderRevenue = pricing.grandTotal;
+    facts.push({ source: "ORDER", id: order.id, customerId: order.customerId, customerName: order.customer.name,
+      date: order.endDate.toISOString().slice(0, 10), revenue: roundMoney(orderRevenue), profit: roundMoney(profitEstimate.profitEstimate) });
     customerTotal.set(order.customerId, {
       name: order.customer.name,
-      total: (customerTotal.get(order.customerId)?.total ?? 0) + orderRevenue,
+      total: sumAnalyticsMoney([customerTotal.get(order.customerId)?.total ?? 0, orderRevenue]),
     });
 
     sourceMap.set(order.source, {
@@ -552,12 +571,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       revenue: (sourceMap.get(order.source)?.revenue ?? 0) + orderRevenue,
     });
 
-    const mk = monthKey(order.endDate);
-    revenueByMonth.set(mk, {
-      revenue: (revenueByMonth.get(mk)?.revenue ?? 0) + orderRevenue,
-      profit: (revenueByMonth.get(mk)?.profit ?? 0) + profitEstimate.profitEstimate,
-      orders: (revenueByMonth.get(mk)?.orders ?? 0) + 1,
-    });
+
   }
 
   for (const order of forecastOrders) {
@@ -597,8 +611,11 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         internalPaymentMethod: expense.internalPaymentMethod,
       })),
     });
-    forecastRevenue += pricing.grandTotal;
-    forecastProfitEstimate += profitEstimate.profitEstimate;
+    forecastRevenue = sumAnalyticsMoney([forecastRevenue, pricing.grandTotal]);
+    forecastProfitEstimate = sumAnalyticsMoney([forecastProfitEstimate, profitEstimate.profitEstimate]);
+    const customer = forecastCustomers.get(order.customerId) ?? { customerId: order.customerId, customerName: order.customer.name, revenue: 0, orders: 0 };
+    customer.revenue = sumAnalyticsMoney([customer.revenue, pricing.grandTotal]); customer.orders += 1;
+    forecastCustomers.set(order.customerId, customer);
   }
 
   const topByIssued = [...itemIssued.entries()]
@@ -606,15 +623,15 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     .sort((a, b) => b.issuedQty - a.issuedQty)
     .slice(0, 20);
   const topByRevenue = [...itemRevenue.entries()]
-    .map(([itemId, v]) => ({ itemId, itemName: v.name, revenue: Math.round(v.revenue) }))
+    .map(([itemId, v]) => ({ itemId, itemName: v.name, revenue: roundMoney(v.revenue) }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 20);
   const topCustomers = [...customerTotal.entries()]
-    .map(([customerId, v]) => ({ customerId, customerName: v.name, total: Math.round(v.total) }))
+    .map(([customerId, v]) => ({ customerId, customerName: v.name, total: roundMoney(v.total) }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 20);
 
-  const profitabilityRows = trackedItems
+  const profitabilityRows = catalogItems.filter(it => it.purchasePricePerUnit != null)
     .map((it) => {
       const unitCost = Number(it.purchasePricePerUnit ?? 0);
       const purchaseCost = unitCost * it.total;
@@ -628,9 +645,9 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
         itemType: it.type,
         totalQty: it.total,
         unitPurchasePrice: round2(unitCost),
-        purchaseCost: Math.round(purchaseCost),
-        revenue: Math.round(revenue),
-        grossProfit: Math.round(grossProfit),
+        purchaseCost: roundMoney(purchaseCost),
+        revenue: roundMoney(revenue),
+        grossProfit: roundMoney(grossProfit),
         paybackRatio: paybackRatio == null ? null : Math.round(paybackRatio * 10000) / 10000,
         roiPercent: roiPercent == null ? null : round2(roiPercent),
         internalOnly: it.internalOnly,
@@ -639,7 +656,7 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     })
     .sort((a, b) => b.revenue - a.revenue || (b.roiPercent ?? -Infinity) - (a.roiPercent ?? -Infinity));
 
-  const totalRevenueWithTax = Math.round(totalItemsRevenue + totalServiceRevenue + totalTaxAmount);
+  const totalRevenueWithTax = sumAnalyticsMoney(facts.map(fact => fact.revenue));
   const totalProfitabilityRevenue = profitabilityRows.reduce((s, r) => s + r.revenue, 0);
   const totalPurchaseCost = profitabilityRows.reduce((s, r) => s + r.purchaseCost, 0);
   const totalGrossProfit = totalProfitabilityRevenue - totalPurchaseCost;
@@ -648,51 +665,56 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
     totalPurchaseCost > 0 ? ((totalProfitabilityRevenue - totalPurchaseCost) / totalPurchaseCost) * 100 : null;
 
   return {
+    facts,
+    items: catalogItems.map(item => {
+      const revenue = roundMoney(itemRevenue.get(item.id)?.revenue ?? 0);
+      const unitPurchasePrice = item.purchasePricePerUnit == null ? null : Number(item.purchasePricePerUnit);
+      const purchaseCost = unitPurchasePrice == null ? null : roundMoney(unitPurchasePrice * item.total);
+      return { itemId: item.id, itemName: item.name, revenue,
+        issuedQty: itemIssued.get(item.id) ?? 0, linkedIssuedQty: linkedIssued.get(item.id) ?? 0,
+        unitPurchasePrice, purchaseCost, totalQty: item.total,
+        paybackRatio: purchaseCost != null && purchaseCost > 0 ? revenue / purchaseCost : null,
+        internalOnly: item.internalOnly, isActive: item.isActive };
+    }).sort((a, b) => b.revenue - a.revenue || a.itemName.localeCompare(b.itemName, "ru")),
     kpi: {
       ordersTotal: orders.length,
       ordersClosed: closedOrders.length,
       totalRevenue: totalRevenueWithTax,
-      itemsRevenue: Math.round(totalItemsRevenue),
-      servicesRevenue: Math.round(totalServiceRevenue),
-      profitEstimate: Math.round(totalProfitEstimate),
-      averageOrderRevenue: closedOrders.length > 0 ? Math.round(totalRevenueWithTax / closedOrders.length) : 0,
+      itemsRevenue: roundMoney(totalItemsRevenue),
+      servicesRevenue: roundMoney(totalServiceRevenue),
+      profitEstimate: sumAnalyticsMoney(facts.map(fact => fact.profit)),
+      averageOrderRevenue: closedOrders.length > 0 ? roundMoney(totalRevenueWithTax / closedOrders.length) : 0,
       averageRentalDays: closedOrders.length > 0 ? round2(totalRentalDays / closedOrders.length) : 0,
       linkedOrdersExcluded,
-      linkedClosedOrdersExcluded,
+      linkedClosedOrdersExcluded: linkedClosedOrders.length,
     },
     forecast: {
       ordersTotal: forecastOrders.length,
-      totalRevenue: Math.round(forecastRevenue),
-      profitEstimate: Math.round(forecastProfitEstimate),
+      totalRevenue: roundMoney(forecastRevenue),
+      profitEstimate: roundMoney(forecastProfitEstimate),
+      customerTotals: [...forecastCustomers.values()],
     },
     breakdowns: {
       byStatus: [...statusMap.entries()]
         .map(([status, count]) => ({ status, count }))
         .sort((a, b) => b.count - a.count),
       bySource: [...sourceMap.entries()]
-        .map(([source, v]) => ({ source, count: v.count, revenue: Math.round(v.revenue) }))
+        .map(([source, v]) => ({ source, count: v.count, revenue: roundMoney(v.revenue) }))
         .sort((a, b) => b.revenue - a.revenue),
-      revenueByMonth: [...revenueByMonth.entries()]
-        .map(([month, v]) => ({
-          month,
-          revenue: Math.round(v.revenue),
-          profit: Math.round(v.profit),
-          orders: v.orders,
-        }))
-        .sort((a, b) => a.month.localeCompare(b.month)),
+      revenueByMonth: analyticsFactTimeline(facts).map(({ month, revenue, profit, orders }) => ({ month, revenue, profit, orders })),
     },
     tops: {
       topByIssued,
       topByRevenue,
       topCustomers,
       customerTotals: [...customerTotal.entries()]
-        .map(([customerId, v]) => ({ customerId, customerName: v.name, total: Math.round(v.total) }))
+        .map(([customerId, v]) => ({ customerId, customerName: v.name, total: roundMoney(v.total) }))
         .sort((a, b) => b.total - a.total),
     },
     services: {
-      deliveryRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.deliveryEnabled && o.deliveryPrice != null ? Number(o.deliveryPrice) : 0), 0)),
-      montageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.montageEnabled && o.montagePrice != null ? Number(o.montagePrice) : 0), 0)),
-      demontageRevenue: Math.round(closedOrders.reduce((s, o) => s + (o.demontageEnabled && o.demontagePrice != null ? Number(o.demontagePrice) : 0), 0)),
+      deliveryRevenue: roundMoney(closedOrders.reduce((s, o) => s + (o.deliveryEnabled && o.deliveryPrice != null ? Number(o.deliveryPrice) : 0), 0)),
+      montageRevenue: roundMoney(closedOrders.reduce((s, o) => s + (o.montageEnabled && o.montagePrice != null ? Number(o.montagePrice) : 0), 0)),
+      demontageRevenue: roundMoney(closedOrders.reduce((s, o) => s + (o.demontageEnabled && o.demontagePrice != null ? Number(o.demontagePrice) : 0), 0)),
       deliveryOrders: closedOrders.filter((o) => o.deliveryEnabled && (o.deliveryPrice != null ? Number(o.deliveryPrice) : 0) > 0).length,
       montageOrders: closedOrders.filter((o) => o.montageEnabled && (o.montagePrice != null ? Number(o.montagePrice) : 0) > 0).length,
       demontageOrders: closedOrders.filter((o) => o.demontageEnabled && (o.demontagePrice != null ? Number(o.demontagePrice) : 0) > 0).length,
@@ -701,9 +723,9 @@ async function getRequisiteAnalytics(scope: AnalyticsScope): Promise<RequisiteAn
       summary: {
         trackedItems: profitabilityRows.length,
         itemsWithRevenue: profitabilityRows.filter((r) => r.revenue > 0).length,
-        totalRevenue: Math.round(totalProfitabilityRevenue),
-        totalPurchaseCost: Math.round(totalPurchaseCost),
-        totalGrossProfit: Math.round(totalGrossProfit),
+        totalRevenue: roundMoney(totalProfitabilityRevenue),
+        totalPurchaseCost: roundMoney(totalPurchaseCost),
+        totalGrossProfit: roundMoney(totalGrossProfit),
         totalPaybackRatio: totalPaybackRatio == null ? null : Math.round(totalPaybackRatio * 10000) / 10000,
         totalRoiPercent: totalRoiPercent == null ? null : round2(totalRoiPercent),
       },
@@ -717,7 +739,11 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   const projects = await prisma.project.findMany({
     where: {
       AND: [
-        projectEventPeriodWhere(scope),
+        { OR: [
+          { status: "COMPLETED", ...projectFactPeriodWhere(scope) },
+          { status: { not: "COMPLETED" }, ...projectEventPeriodWhere(scope) },
+          { status: { not: "CANCELLED" }, eventStartDate: null, eventEndDate: null },
+        ] },
         { mode: "FULL", customerId: { not: null } },
       ],
     },
@@ -930,16 +956,16 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   }
 
   function sumFinancials(financials: ProjectFinancials[]): ProjectFinancials {
-    const clientSubtotal = financials.reduce((sum, item) => sum + item.clientSubtotal, 0);
-    const internalSubtotal = financials.reduce((sum, item) => sum + item.internalSubtotal, 0);
-    const cashInternalCostTax = financials.reduce((sum, item) => sum + item.cashInternalCostTax, 0);
-    const internalExpensesTotal = financials.reduce((sum, item) => sum + item.internalExpensesTotal, 0);
-    const commission = financials.reduce((sum, item) => sum + item.commission, 0);
-    const clientChargeTax = financials.reduce((sum, item) => sum + item.clientChargeTax, 0);
-    const revenueTotal = financials.reduce((sum, item) => sum + item.revenueTotal, 0);
-    const tax = financials.reduce((sum, item) => sum + item.tax, 0);
-    const grossMargin = financials.reduce((sum, item) => sum + item.grossMargin, 0);
-    const marginAfterTax = financials.reduce((sum, item) => sum + item.marginAfterTax, 0);
+    const clientSubtotal = sumAnalyticsMoney(financials.map(item => item.clientSubtotal));
+    const internalSubtotal = sumAnalyticsMoney(financials.map(item => item.internalSubtotal));
+    const cashInternalCostTax = sumAnalyticsMoney(financials.map(item => item.cashInternalCostTax));
+    const internalExpensesTotal = sumAnalyticsMoney(financials.map(item => item.internalExpensesTotal));
+    const commission = sumAnalyticsMoney(financials.map(item => item.commission));
+    const clientChargeTax = sumAnalyticsMoney(financials.map(item => item.clientChargeTax));
+    const revenueTotal = sumAnalyticsMoney(financials.map(item => item.revenueTotal));
+    const tax = sumAnalyticsMoney(financials.map(item => item.tax));
+    const grossMargin = sumAnalyticsMoney(financials.map(item => item.grossMargin));
+    const marginAfterTax = sumAnalyticsMoney(financials.map(item => item.marginAfterTax));
     const marginAfterTaxPct = revenueTotal > 0 ? round2((marginAfterTax / revenueTotal) * 100) : 0;
     return {
       clientSubtotal,
@@ -963,7 +989,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     return daysSince(lastStatusLog?.createdAt ?? project.createdAt, now);
   }
 
-  const rows: ProjectAnalyticsRow[] = projects.flatMap((project) => {
+  const allRows: ProjectAnalyticsRow[] = projects.flatMap((project) => {
     if (!project.customerId || !project.customer) return [];
     const includedVersions = project.estimateVersions.filter((version) => version.includeInProjectTotals);
     const financials =
@@ -981,13 +1007,13 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
 
     if (active && daysSinceActivity >= 14) risks.push("Нет активности 14+ дней");
     else if (active && daysSinceActivity >= 7) risks.push("Нет активности 7+ дней");
-    if (active && !hasPrimaryEstimate) risks.push("Нет основной сметы");
+    if (active && !hasPrimaryEstimate) risks.push("Нет учитываемой сметы");
     if (active && !hasLinkedOrder) risks.push("Нет связанной заявки");
     if (active && !project.eventDateConfirmed) risks.push("Дата не подтверждена");
-    if (hasPrimaryEstimate && financials.revenueTotal > 0 && financials.marginAfterTaxPct < 15) {
+    if (!archived && project.status !== "CANCELLED" && hasPrimaryEstimate && financials.revenueTotal > 0 && financials.marginAfterTaxPct < 15) {
       risks.push("Маржа ниже 15%");
     }
-    if (hasPrimaryEstimate && financials.marginAfterTax < 0) risks.push("Отрицательная маржа");
+    if (!archived && project.status !== "CANCELLED" && hasPrimaryEstimate && financials.marginAfterTax < 0) risks.push("Отрицательная маржа");
     if (active && currentStatusAgeDays >= 14) risks.push("Долго в одном статусе");
 
     let healthScore = 100;
@@ -1016,6 +1042,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       eventDateConfirmed: project.eventDateConfirmed,
       ordersCount: project.orders.length,
       estimateVersionsCount: project.estimateVersions.length,
+      includedEstimatesCount: includedVersions.length,
+      hasFinancialData: includedVersions.length > 0 || project.draftOrders.some(draft => draft.lines.some(line => line.pricePerDaySnapshot != null)),
       hasPrimaryEstimate,
       hasLinkedOrder,
       daysSinceActivity,
@@ -1026,6 +1054,9 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     }];
   });
 
+  // Undated work is a data-quality issue, never an inferred dated financial fact.
+  const unassigned = allRows.filter(row => !projectActualDate(row) && row.status !== "CANCELLED");
+  const rows = allRows.filter(row => projectActualDate(row) != null);
   const total = rows.length;
   const activeProjects = rows.filter((p) => !p.archived && p.status !== "COMPLETED" && p.status !== "CANCELLED").length;
   const completedProjects = rows.filter((p) => p.status === "COMPLETED").length;
@@ -1037,10 +1068,10 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
   const withPrimaryEstimate = rows.filter((p) => p.hasPrimaryEstimate).length;
   const withLinkedOrder = rows.filter((p) => p.hasLinkedOrder).length;
   const confirmedDates = rows.filter((p) => p.eventDateConfirmed).length;
-  const forecastRevenueTotal = Math.round(forecastRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
-  const forecastMarginAfterTax = Math.round(forecastRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
-  const actualRevenueTotal = Math.round(actualRows.reduce((sum, p) => sum + p.financials.revenueTotal, 0));
-  const actualMarginAfterTax = Math.round(actualRows.reduce((sum, p) => sum + p.financials.marginAfterTax, 0));
+  const forecastRevenueTotal = sumAnalyticsMoney(forecastRows.map(p => p.financials.revenueTotal));
+  const forecastMarginAfterTax = sumAnalyticsMoney(forecastRows.map(p => p.financials.marginAfterTax));
+  const actualRevenueTotal = sumAnalyticsMoney(actualRows.map(p => p.financials.revenueTotal));
+  const actualMarginAfterTax = sumAnalyticsMoney(actualRows.map(p => p.financials.marginAfterTax));
   const marginRows = financialRows.filter((p) => p.financials.revenueTotal > 0);
   const averageMarginAfterTaxPercent =
     marginRows.length > 0 ? round2(marginRows.reduce((sum, p) => sum + p.financials.marginAfterTaxPct, 0) / marginRows.length) : 0;
@@ -1088,12 +1119,12 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       forecastMarginAfterTax,
       actualRevenueTotal,
       actualMarginAfterTax,
-      averageForecastRevenue: forecastRows.length > 0 ? Math.round(forecastRevenueTotal / forecastRows.length) : 0,
+      averageForecastRevenue: forecastRows.length > 0 ? roundMoney(forecastRevenueTotal / forecastRows.length) : 0,
       averageMarginAfterTaxPercent,
       averageOrdersPerProject: total > 0 ? round2(rows.reduce((sum, p) => sum + p.ordersCount, 0) / total) : 0,
       averageEstimateVersions: total > 0 ? round2(rows.reduce((sum, p) => sum + p.estimateVersionsCount, 0) / total) : 0,
-      stale7Days: rows.filter((p) => p.daysSinceActivity >= 7).length,
-      stale14Days: rows.filter((p) => p.daysSinceActivity >= 14).length,
+      stale7Days: forecastRows.filter((p) => p.daysSinceActivity >= 7).length,
+      stale14Days: forecastRows.filter((p) => p.daysSinceActivity >= 14).length,
       lowMarginProjects: lowMargin.length,
     },
     funnel: {
@@ -1110,7 +1141,8 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     topByRevenue: [...financialRows].sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal).slice(0, 20),
     topByMargin: [...financialRows].sort((a, b) => b.financials.marginAfterTax - a.financials.marginAfterTax).slice(0, 20),
     lowMargin: lowMargin.slice(0, 20),
-    risks: [...rows].filter((p) => p.risks.length > 0).sort((a, b) => a.healthScore - b.healthScore).slice(0, 30),
+    risks: [...rows].filter((p) => p.risks.length > 0).sort((a, b) => a.healthScore - b.healthScore),
+    unassigned,
     rows,
   };
 }
@@ -1121,6 +1153,9 @@ function getCustomerAnalytics(
 ): CustomerAnalyticsData {
   const byCustomer = new Map<CustomerAnalyticsData["rows"][number]["customerId"], CustomerAnalyticsData["rows"][number]>();
   const closedOrderRevenueByCustomer = new Map<string, number>();
+  const forecastByCustomer = new Map(requisites.forecast.customerTotals.map(row => [row.customerId, row]));
+  const closedCounts = new Map<string, number>();
+  for (const fact of requisites.facts) closedCounts.set(fact.customerId, (closedCounts.get(fact.customerId) ?? 0) + 1);
   for (const row of requisites.tops.customerTotals) {
     closedOrderRevenueByCustomer.set(row.customerId, row.total);
   }
@@ -1140,6 +1175,7 @@ function getCustomerAnalytics(
         averageProjectRevenue: 0,
         averageMarginAfterTaxPercent: 0,
         closedOrdersFactRevenue: closedOrderRevenueByCustomer.get(project.customerId) ?? 0,
+        closedOrdersCount: 0, activeOrdersRevenue: 0, activeOrdersCount: 0,
         ltvMixed: 0,
         repeat: false,
         completionRatePercent: 0,
@@ -1151,8 +1187,8 @@ function getCustomerAnalytics(
     if (project.status === "COMPLETED") prev.completedProjects += 1;
     if (project.status === "CANCELLED") prev.cancelledProjects += 1;
     if (project.status !== "CANCELLED") {
-      prev.forecastRevenue += project.financials.revenueTotal;
-      prev.forecastMarginAfterTax += project.financials.marginAfterTax;
+      prev.forecastRevenue = sumAnalyticsMoney([prev.forecastRevenue, project.financials.revenueTotal]);
+      prev.forecastMarginAfterTax = sumAnalyticsMoney([prev.forecastMarginAfterTax, project.financials.marginAfterTax]);
     }
     byCustomer.set(project.customerId, prev);
   }
@@ -1172,6 +1208,7 @@ function getCustomerAnalytics(
       averageProjectRevenue: 0,
       averageMarginAfterTaxPercent: 0,
       closedOrdersFactRevenue: revenue,
+      closedOrdersCount: 0, activeOrdersRevenue: 0, activeOrdersCount: 0,
       ltvMixed: 0,
       repeat: false,
       completionRatePercent: 0,
@@ -1179,19 +1216,34 @@ function getCustomerAnalytics(
     });
   }
 
+  for (const forecast of requisites.forecast.customerTotals) {
+    if (!byCustomer.has(forecast.customerId)) {
+      byCustomer.set(forecast.customerId, {
+        customerId: forecast.customerId, customerName: forecast.customerName,
+        projectsCount: 0, activeProjects: 0, completedProjects: 0, cancelledProjects: 0,
+        forecastRevenue: 0, forecastMarginAfterTax: 0, averageProjectRevenue: 0,
+        averageMarginAfterTaxPercent: 0, closedOrdersFactRevenue: 0, closedOrdersCount: 0,
+        activeOrdersRevenue: 0, activeOrdersCount: 0, ltvMixed: 0, repeat: false,
+        completionRatePercent: 0, cancelRatePercent: 0,
+      });
+    }
+  }
   const rows = [...byCustomer.values()]
     .map((row) => {
       const financialProjectCount = row.projectsCount - row.cancelledProjects;
       const marginPercent = row.forecastRevenue > 0 ? (row.forecastMarginAfterTax / row.forecastRevenue) * 100 : 0;
       return {
         ...row,
-        forecastRevenue: Math.round(row.forecastRevenue),
-        forecastMarginAfterTax: Math.round(row.forecastMarginAfterTax),
-        averageProjectRevenue: financialProjectCount > 0 ? Math.round(row.forecastRevenue / financialProjectCount) : 0,
+        forecastRevenue: roundMoney(row.forecastRevenue),
+        forecastMarginAfterTax: roundMoney(row.forecastMarginAfterTax),
+        averageProjectRevenue: financialProjectCount > 0 ? roundMoney(row.forecastRevenue / financialProjectCount) : 0,
         averageMarginAfterTaxPercent: round2(marginPercent),
-        closedOrdersFactRevenue: Math.round(row.closedOrdersFactRevenue),
-        ltvMixed: Math.round(row.forecastRevenue + row.closedOrdersFactRevenue),
-        repeat: row.projectsCount >= 2,
+        closedOrdersFactRevenue: roundMoney(row.closedOrdersFactRevenue),
+        ltvMixed: sumAnalyticsMoney([row.forecastRevenue, row.closedOrdersFactRevenue]),
+        closedOrdersCount: (closedCounts.get(row.customerId) ?? 0),
+        activeOrdersRevenue: forecastByCustomer.get(row.customerId)?.revenue ?? 0,
+        activeOrdersCount: forecastByCustomer.get(row.customerId)?.orders ?? 0,
+        repeat: row.completedProjects + (closedCounts.get(row.customerId) ?? 0) >= 2,
         completionRatePercent: row.projectsCount > 0 ? round2((row.completedProjects / row.projectsCount) * 100) : 0,
         cancelRatePercent: row.projectsCount > 0 ? round2((row.cancelledProjects / row.projectsCount) * 100) : 0,
       };
@@ -1211,7 +1263,7 @@ function getCustomerAnalytics(
       forecastRevenueTotal,
       forecastMarginAfterTax,
       closedOrdersFactRevenue: rows.reduce((sum, row) => sum + row.closedOrdersFactRevenue, 0),
-      averageProjectRevenue: projectRows.length > 0 ? Math.round(forecastRevenueTotal / projectRows.length) : 0,
+      averageProjectRevenue: projectRows.length > 0 ? roundMoney(forecastRevenueTotal / projectRows.length) : 0,
       averageProjectMarginPercent:
         marginRows.length > 0 ? round2(marginRows.reduce((sum, row) => sum + row.averageMarginAfterTaxPercent, 0) / marginRows.length) : 0,
     },
@@ -1223,6 +1275,7 @@ function getOverviewAnalytics(
   requisites: RequisiteAnalyticsData,
   projects: ProjectAnalyticsData,
   customers: CustomerAnalyticsData,
+  facts: AnalyticsFinancialFact[],
 ): OverviewAnalyticsData {
   const attention: OverviewAnalyticsData["attention"] = projects.risks.slice(0, 12).map((project) => ({
     type: project.daysSinceActivity >= 7 ? "stale" : project.financials.marginAfterTaxPct < 15 ? "margin" : !project.hasPrimaryEstimate ? "estimate" : !project.hasLinkedOrder ? "order" : "date",
@@ -1237,41 +1290,14 @@ function getOverviewAnalytics(
   const standaloneOrdersProfit = requisites.kpi.profitEstimate;
   const completedProjectsRevenue = projects.kpi.actualRevenueTotal;
   const completedProjectsProfit = projects.kpi.actualMarginAfterTax;
-  const factRevenueTotal = standaloneOrdersRevenue + completedProjectsRevenue;
-  const factProfitTotal = standaloneOrdersProfit + completedProjectsProfit;
+  const factRevenueTotal = sumAnalyticsMoney([standaloneOrdersRevenue, completedProjectsRevenue]);
+  const factProfitTotal = sumAnalyticsMoney([standaloneOrdersProfit, completedProjectsProfit]);
   const standaloneForecastOrdersRevenue = requisites.forecast.totalRevenue;
   const standaloneForecastOrdersProfit = requisites.forecast.profitEstimate;
-  const forecastRevenueTotal = standaloneForecastOrdersRevenue + projects.kpi.forecastRevenueTotal;
-  const forecastProfitTotal = standaloneForecastOrdersProfit + projects.kpi.forecastMarginAfterTax;
-  const factPool = Math.round(factProfitTotal * bonusRate);
-  const forecastPool = Math.round(forecastProfitTotal * bonusRate);
-  const timeline = new Map<
-    string,
-    { revenue: number; profit: number; orders: number; projects: number }
-  >();
-
-  for (const point of requisites.breakdowns.revenueByMonth) {
-    timeline.set(point.month, {
-      revenue: point.revenue,
-      profit: point.profit,
-      orders: point.orders,
-      projects: 0,
-    });
-  }
-
-  for (const project of projects.rows) {
-    if (project.status !== ProjectStatus.COMPLETED) continue;
-    const anchor = project.eventEndDate ?? project.eventStartDate;
-    if (!anchor) continue;
-    const month = anchor.slice(0, 7);
-    const current = timeline.get(month) ?? { revenue: 0, profit: 0, orders: 0, projects: 0 };
-    timeline.set(month, {
-      revenue: current.revenue + project.financials.revenueTotal,
-      profit: current.profit + project.financials.marginAfterTax,
-      orders: current.orders,
-      projects: current.projects + 1,
-    });
-  }
+  const forecastRevenueTotal = sumAnalyticsMoney([standaloneForecastOrdersRevenue, projects.kpi.forecastRevenueTotal]);
+  const forecastProfitTotal = sumAnalyticsMoney([standaloneForecastOrdersProfit, projects.kpi.forecastMarginAfterTax]);
+  const factPool = analyticsBonusPool(factProfitTotal);
+  const forecastPool = analyticsBonusPool(forecastProfitTotal);
 
   return {
     kpi: {
@@ -1312,9 +1338,11 @@ function getOverviewAnalytics(
         ratePercent: Math.round(bonusRate * 100),
         recipients: bonusRecipients,
         factPool,
-        factPerPerson: Math.round(factPool / bonusRecipients),
+        factPerPerson: splitAnalyticsMoney(factPool, bonusRecipients)[0],
+        factShares: splitAnalyticsMoney(factPool, bonusRecipients),
         forecastPool,
-        forecastPerPerson: Math.round(forecastPool / bonusRecipients),
+        forecastPerPerson: splitAnalyticsMoney(forecastPool, bonusRecipients)[0],
+        forecastShares: splitAnalyticsMoney(forecastPool, bonusRecipients),
       },
       ownership: {
         linkedOrdersExcluded: requisites.kpi.linkedOrdersExcluded,
@@ -1325,25 +1353,25 @@ function getOverviewAnalytics(
     topProjects: projects.topByRevenue.slice(0, 5),
     topCustomers: customers.rows.slice(0, 5),
     topItems: requisites.tops.topByRevenue.slice(0, 5),
-    timeline: [...timeline.entries()]
-      .map(([month, point]) => ({
-        month,
-        revenue: Math.round(point.revenue),
-        profit: Math.round(point.profit),
-        orders: point.orders,
-        projects: point.projects,
-      }))
-      .sort((a, b) => a.month.localeCompare(b.month)),
+    timeline: analyticsFactTimeline(facts),
   };
 }
 
 export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<AdminAnalyticsData> {
-  const requisites = await getRequisiteAnalytics(scope);
-  const projects = await getProjectAnalytics(scope);
+  const [requisites, projects] = await Promise.all([getRequisiteAnalytics(scope), getProjectAnalytics(scope)]);
   const customers = getCustomerAnalytics(projects, requisites);
-  const overview = getOverviewAnalytics(requisites, projects, customers);
+  const facts: AnalyticsFinancialFact[] = [
+    ...requisites.facts,
+    ...projects.rows.filter(project => project.status === "COMPLETED").map(project => ({
+      source: "PROJECT" as const, id: project.projectId, customerId: project.customerId,
+      customerName: project.customerName, date: projectActualDate(project)!,
+      revenue: roundMoney(project.financials.revenueTotal), profit: roundMoney(project.financials.marginAfterTax),
+    })),
+  ];
+  const overview = getOverviewAnalytics(requisites, projects, customers, facts);
 
   return {
+    facts,
     period: {
       from: scope.from ?? null,
       to: scope.to ?? null,
@@ -1359,8 +1387,8 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
     customers,
     methodology: [
       { section: "Реквизит", rule: "Фактическая выручка считается по закрытым заявкам, которые завершились в выбранном периоде. Прогноз включает активные заявки, период аренды которых пересекается с выбранным диапазоном. Скидки и налог берутся из той же формулы, что используется в заявках и сметах." },
-      { section: "Проекты", rule: `Финансовый прогноз считается по основной версии сметы проекта. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
-      { section: "Заказчики", rule: "Метрики по заказчикам собираются из проектов, созданных в выбранном периоде. Фактическая выручка по заявкам показывается отдельно и учитывает только закрытые заявки." },
+      { section: "Проекты", rule: `Финансы считаются по всем версиям смет, включённым в итог проекта. Факт учитывается один раз по дате окончания мероприятия (или начала, если окончания нет); прогноз — по пересечению дат. Проекты без обеих дат не входят в финансовые итоги периода. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
+      { section: "Заказчики", rule: "Выручка клиента — сумма завершённых проектов и самостоятельных закрытых заявок за общий период. Связанные с проектом заявки повторно не прибавляются. Прогноз активных работ показан отдельно; это не LTV за всё время и не поступления на счёт." },
       { section: "Статусы", rule: "Возраст статусов и зависшие проекты — это управленческие сигналы для контроля работы, а не бухгалтерские показатели." },
     ],
   };

@@ -4,7 +4,7 @@ import React from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, PieChart, Pie, Cell } from "recharts";
 import s from "./analytics.module.css";
 
-export const money = (value: number) => `${value.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`;
+export const money = (value: number) => `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽`;
 export const percent = (value: number | null) => value == null ? "—" : `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
 export const date = (value: string | null) => value ? new Intl.DateTimeFormat("ru-RU").format(new Date(`${value.slice(0, 10)}T00:00:00`)) : "Без даты";
 export const status = (value: string) => ({ NEW: "Новая", ESTIMATE_SENT: "Смета отправлена", CHANGES: "Правки", APPROVED: "Согласована", ASSEMBLY: "Сборка", ISSUED: "Выдана", ACCEPTANCE: "Приёмка", CLOSED: "Закрыта", LEAD: "Лид", IN_PROGRESS: "В работе", COMPLETED: "Завершён", CANCELLED: "Отменён" }[value] ?? value);

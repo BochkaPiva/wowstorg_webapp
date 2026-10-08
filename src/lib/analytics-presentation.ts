@@ -1,4 +1,16 @@
 import type { AdminAnalyticsData, ProjectAnalyticsRow } from "@/server/admin-analytics";
+import { sumAnalyticsMoney } from "@/lib/analytics-finance";
+
+export type AnalyticsTab = "overview" | "projects" | "customers" | "requisites" | "bonuses" | "reconciliation";
+export type AnalyticsUiScope = { from: string; to: string };
+export const SHARED_ANALYTICS_TABS = ["overview", "projects", "customers", "requisites"] as const;
+export function updateAnalyticsScope(scopes: Record<AnalyticsTab, AnalyticsUiScope>, tab: AnalyticsTab, scope: AnalyticsUiScope) {
+  const next = { ...scopes, [tab]: scope };
+  if (SHARED_ANALYTICS_TABS.some(shared => shared === tab)) {
+    for (const shared of SHARED_ANALYTICS_TABS) next[shared] = scope;
+  }
+  return next;
+}
 
 export function isAnalyticsDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -28,14 +40,16 @@ export function analyticsCustomerRows(data: AdminAnalyticsData) {
     const completed = projects.filter(project => project.status === "COMPLETED");
     const active = projects.filter(isActiveAnalyticsProject);
     const money = projects.filter(project => project.status !== "CANCELLED" && project.hasPrimaryEstimate);
-    const projectRevenue = money.reduce((sum, project) => sum + project.financials.revenueTotal, 0);
-    const projectProfit = money.reduce((sum, project) => sum + project.financials.marginAfterTax, 0);
-    const actualProjects = completed.reduce((sum, project) => sum + project.financials.revenueTotal, 0);
+    const projectRevenue = sumAnalyticsMoney(money.map(project => project.financials.revenueTotal));
+    const projectProfit = sumAnalyticsMoney(money.map(project => project.financials.marginAfterTax));
+    const actualProjects = sumAnalyticsMoney(completed.map(project => project.financials.revenueTotal));
+    const activeProjectsRevenue = sumAnalyticsMoney(active.map(project => project.financials.revenueTotal));
     return {
       ...customer,
       actualProjects,
-      actualRevenue: actualProjects + customer.closedOrdersFactRevenue,
-      activeRevenue: active.reduce((sum, project) => sum + project.financials.revenueTotal, 0),
+      actualRevenue: sumAnalyticsMoney([actualProjects, customer.closedOrdersFactRevenue]),
+      activeProjectsRevenue,
+      activeRevenue: sumAnalyticsMoney([activeProjectsRevenue, customer.activeOrdersRevenue ?? 0]),
       projectMargin: analyticsMargin(projectRevenue, projectProfit),
       averageEstimatedProject: money.length ? projectRevenue / money.length : null,
       incompleteCompleted: completed.filter(project => !project.hasPrimaryEstimate).length,

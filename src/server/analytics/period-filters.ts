@@ -27,3 +27,16 @@ export function orderRentalPeriodWhere(scope: DatePeriodScope): Prisma.OrderWher
     ...(from ? { endDate: { gte: from } } : {}),
   };
 }
+
+/** Actual revenue has one date; a multi-day event never repeats in adjacent facts. */
+export function projectFactPeriodWhere(scope: DatePeriodScope): Prisma.ProjectWhereInput {
+  if (!scope.from && !scope.to) return {};
+  const range = {
+    ...(scope.from ? { gte: parseDateOnlyStart(scope.from) } : {}),
+    ...(scope.to ? { lt: parseDateOnlyEndExclusive(scope.to) } : {}),
+  };
+  return { OR: [
+    { eventEndDate: range },
+    { eventEndDate: null, eventStartDate: range },
+  ] };
+}

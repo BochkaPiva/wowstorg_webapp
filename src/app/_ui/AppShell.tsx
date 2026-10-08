@@ -37,7 +37,7 @@ const inventoryItems: NavItem[] = [
 
 function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
   const pathname = usePathname();
-  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || (item.href === "/contractors" && pathname.startsWith("/proposals"));
   return (
     <Link
       href={item.href}

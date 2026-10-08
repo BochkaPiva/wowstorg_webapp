@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-09-07T22:49:39.203Z  
-> **Файлов route.ts:** 155  
+> **Сгенерировано:** 2026-10-08T06:00:04.627Z
+> **Файлов route.ts:** 160
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -39,7 +39,7 @@
 | POST | `/api/contractors/[contractorId]/assets/upload` | `src/app/api/contractors/[contractorId]/assets/upload/route.ts` |
 | PATCH | `/api/contractors/[contractorId]/offers/[offerId]` | `src/app/api/contractors/[contractorId]/offers/[offerId]/route.ts` |
 | POST | `/api/contractors/[contractorId]/offers` | `src/app/api/contractors/[contractorId]/offers/route.ts` |
-| PATCH | `/api/contractors/[contractorId]` | `src/app/api/contractors/[contractorId]/route.ts` |
+| GET, PATCH | `/api/contractors/[contractorId]` | `src/app/api/contractors/[contractorId]/route.ts` |
 | GET, POST | `/api/contractors` | `src/app/api/contractors/route.ts` |
 | GET, POST, DELETE | `/api/customers/[id]/logo` | `src/app/api/customers/[id]/logo/route.ts` |
 | PATCH | `/api/customers/[id]` | `src/app/api/customers/[id]/route.ts` |
@@ -128,6 +128,11 @@
 | GET, POST | `/api/projects` | `src/app/api/projects/route.ts` |
 | DELETE | `/api/projects/workspace-templates/[templateId]` | `src/app/api/projects/workspace-templates/[templateId]/route.ts` |
 | GET, POST | `/api/projects/workspace-templates` | `src/app/api/projects/workspace-templates/route.ts` |
+| POST | `/api/proposals/[id]/attach` | `src/app/api/proposals/[id]/attach/route.ts` |
+| POST | `/api/proposals/[id]/convert` | `src/app/api/proposals/[id]/convert/route.ts` |
+| POST | `/api/proposals/[id]/mutations` | `src/app/api/proposals/[id]/mutations/route.ts` |
+| GET, PATCH | `/api/proposals/[id]` | `src/app/api/proposals/[id]/route.ts` |
+| GET, POST | `/api/proposals` | `src/app/api/proposals/route.ts` |
 | POST, GET | `/api/reminders/run` | `src/app/api/reminders/run/route.ts` |
 | POST | `/api/standalone-estimates/[id]/convert` | `src/app/api/standalone-estimates/[id]/convert/route.ts` |
 | GET | `/api/standalone-estimates/[id]/estimate/pdf` | `src/app/api/standalone-estimates/[id]/estimate/pdf/route.ts` |

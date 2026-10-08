@@ -374,6 +374,7 @@ model User {
   projectMutationReceipts         ProjectMutationReceipt[]      @relation("project_mutation_receipt_actor")
   projectWorkspaceTemplates       ProjectWorkspaceTemplate[]    @relation("project_workspace_template_owner")
   standaloneEstimatesOwned        StandaloneEstimate[]          @relation("standalone_estimate_owner")
+  standaloneProposalsOwned        StandaloneProposal[]          @relation("standalone_proposal_owner")
   projectActivityLogs             ProjectActivityLog[]
   projectCommunicationEntries     ProjectCommunicationEntry[]
   projectFilesUploaded            ProjectFile[]
@@ -663,6 +664,7 @@ model Customer {
   orders              Order[]
   projects            Project[]
   standaloneEstimates StandaloneEstimate[]
+  standaloneProposals StandaloneProposal[]
   aliases             CustomerAlias[]
   mergesAsSource      CustomerMerge[]      @relation("customer_merge_source")
   mergesAsTarget      CustomerMerge[]      @relation("customer_merge_target")
@@ -699,6 +701,7 @@ model CustomerMerge {
   movedOrders              Int
   movedProjects            Int
   movedStandaloneEstimates Int
+  movedStandaloneProposals Int      @default(0)
   snapshot                 Json?
   createdAt                DateTime @default(now())
 
@@ -745,22 +748,23 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders                   Order[]
-  activityLogs             ProjectActivityLog[]
-  contacts                 ProjectContact[]
-  draftOrders              ProjectDraftOrder[]
-  notificationCooldowns    ProjectNotificationCooldown[]
-  folders                  ProjectFolder[]
-  projectFiles             ProjectFile[]
-  estimateVersions         ProjectEstimateVersion[]
-  scheduleDays             ProjectScheduleDay[]
-  tasks                    WorkTask[]
-  members                  ProjectMember[]
-  widgets                  ProjectWidget[]
-  workspaceItems           ProjectWorkspaceItem[]
-  mutationReceipts         ProjectMutationReceipt[]
-  proposals                ProjectProposal[]
-  sourceStandaloneEstimate StandaloneEstimate?           @relation("standalone_estimate_converted_project")
+  orders                    Order[]
+  activityLogs              ProjectActivityLog[]
+  contacts                  ProjectContact[]
+  draftOrders               ProjectDraftOrder[]
+  notificationCooldowns     ProjectNotificationCooldown[]
+  folders                   ProjectFolder[]
+  projectFiles              ProjectFile[]
+  estimateVersions          ProjectEstimateVersion[]
+  scheduleDays              ProjectScheduleDay[]
+  tasks                     WorkTask[]
+  members                   ProjectMember[]
+  widgets                   ProjectWidget[]
+  workspaceItems            ProjectWorkspaceItem[]
+  mutationReceipts          ProjectMutationReceipt[]
+  proposals                 ProjectProposal[]
+  sourceStandaloneEstimate  StandaloneEstimate?           @relation("standalone_estimate_converted_project")
+  sourceStandaloneProposals StandaloneProposal[]          @relation("standalone_proposal_converted_project")
 
   @@index([customerId])
   @@index([ownerUserId])
@@ -1047,29 +1051,52 @@ model ContractorOfferPriceHistory {
 }
 
 model ProjectProposal {
-  id          String                @id @default(cuid())
-  projectId   String
-  title       String
-  status      ProjectProposalStatus @default(DRAFT)
-  revision    Int                   @default(0)
-  isCurrent   Boolean               @default(true)
-  clientIntro String?
-  clientOutro String?
-  expiresAt   DateTime?
-  createdById String
-  updatedById String
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id                   String                @id @default(cuid())
+  projectId            String?
+  standaloneProposalId String?               @unique
+  title                String
+  status               ProjectProposalStatus @default(DRAFT)
+  revision             Int                   @default(0)
+  isCurrent            Boolean               @default(true)
+  clientIntro          String?
+  clientOutro          String?
+  expiresAt            DateTime?
+  createdById          String
+  updatedById          String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
-  project   Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy User                      @relation("project_proposal_created_by", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy User                      @relation("project_proposal_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
-  variants  ProjectProposalVariant[]
-  snapshots ProjectProposalSnapshot[]
+  project            Project?                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  standaloneProposal StandaloneProposal?       @relation(fields: [standaloneProposalId], references: [id], onDelete: Cascade)
+  createdBy          User                      @relation("project_proposal_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy          User                      @relation("project_proposal_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  variants           ProjectProposalVariant[]
+  snapshots          ProjectProposalSnapshot[]
+  mutationReceipts   ProposalMutationReceipt[]
 
   @@index([projectId, isCurrent, updatedAt])
+  @@index([standaloneProposalId, updatedAt])
   @@index([createdById])
   @@index([updatedById])
+}
+
+/// Server-owned reversible delta, never a browser-supplied replacement document.
+model ProposalMutationReceipt {
+  id                   String   @id @default(cuid())
+  proposalId           String
+  actorUserId          String
+  mutationId           String
+  requestHash          String
+  action               String
+  delta                Json
+  resultRevision       Int
+  reversedByMutationId String?
+  createdAt            DateTime @default(now())
+
+  proposal ProjectProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, actorUserId, mutationId])
+  @@index([proposalId, createdAt])
 }
 
 model ProjectProposalVariant {
@@ -1203,6 +1230,35 @@ model StandaloneEstimate {
 
   estimateVersions ProjectEstimateVersion[]
 
+  @@index([customerId])
+  @@index([ownerUserId])
+  @@index([convertedAt])
+  @@index([updatedAt])
+}
+
+/// Независимое коммерческое предложение до появления проекта.
+/// При конвертации существующее дерево ProjectProposal меняет владельца без копирования вариантов и снимков.
+model StandaloneProposal {
+  id               String    @id @default(cuid())
+  title            String
+  customerId       String?
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Свободное название заказчика до выбора/создания Customer.
+  leadCustomerName String?
+
+  ownerUserId String
+  owner       User   @relation("standalone_proposal_owner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  convertedAt        DateTime?
+  convertedProjectId String?
+  convertedProject   Project?  @relation("standalone_proposal_converted_project", fields: [convertedProjectId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  proposal ProjectProposal?
+
+  @@index([convertedProjectId])
   @@index([customerId])
   @@index([ownerUserId])
   @@index([convertedAt])

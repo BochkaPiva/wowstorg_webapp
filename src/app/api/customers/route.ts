@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       logoKey: true,
       logoUpdatedAt: true,
       mergedInto: { select: { id: true, name: true } },
-      _count: { select: { orders: true, projects: true, standaloneEstimates: true, aliases: true } },
+      _count: { select: { orders: true, projects: true, standaloneEstimates: true, standaloneProposals: true, aliases: true } },
     },
     take: 1000,
   });

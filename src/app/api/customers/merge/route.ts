@@ -20,18 +20,19 @@ const candidateSelect = {
   logoMimeType: true,
   logoUpdatedAt: true,
   createdAt: true,
-  _count: { select: { orders: true, projects: true, standaloneEstimates: true } },
+  _count: { select: { orders: true, projects: true, standaloneEstimates: true, standaloneProposals: true } },
 } satisfies Prisma.CustomerSelect;
 
 function customerScore(customer: {
   isActive: boolean;
   logoKey: string | null;
-  _count: { orders: number; projects: number; standaloneEstimates: number };
+  _count: { orders: number; projects: number; standaloneEstimates: number; standaloneProposals: number };
 }) {
   return (
     customer._count.orders * 20
     + customer._count.projects * 30
     + customer._count.standaloneEstimates * 10
+    + customer._count.standaloneProposals * 10
     + (customer.isActive ? 5 : 0)
     + (customer.logoKey ? 2 : 0)
   );
@@ -57,6 +58,7 @@ export async function GET() {
         movedOrders: true,
         movedProjects: true,
         movedStandaloneEstimates: true,
+        movedStandaloneProposals: true,
         createdAt: true,
         actor: { select: { displayName: true } },
       },
@@ -157,11 +159,13 @@ export async function POST(req: Request) {
         orders: source._count.orders,
         projects: source._count.projects,
         standaloneEstimates: source._count.standaloneEstimates,
+        standaloneProposals: source._count.standaloneProposals,
       }));
 
       await tx.order.updateMany({ where: { customerId: { in: sourceIds } }, data: { customerId: target.id } });
       await tx.project.updateMany({ where: { customerId: { in: sourceIds } }, data: { customerId: target.id } });
       await tx.standaloneEstimate.updateMany({ where: { customerId: { in: sourceIds } }, data: { customerId: target.id } });
+      await tx.standaloneProposal.updateMany({ where: { customerId: { in: sourceIds } }, data: { customerId: target.id } });
       const aliasesToCreate = sourceRows
         .flatMap((source) => [
           { name: source.name, normalizedName: normalizeCustomerName(source.name) },
@@ -221,6 +225,7 @@ export async function POST(req: Request) {
             movedOrders: moved.orders,
             movedProjects: moved.projects,
             movedStandaloneEstimates: moved.standaloneEstimates,
+            movedStandaloneProposals: moved.standaloneProposals,
             snapshot: {
               sourceActive: moved.source.isActive,
               sourceNotes: moved.source.notes,
@@ -237,6 +242,7 @@ export async function POST(req: Request) {
         movedOrders: movedBySource.reduce((sum, item) => sum + item.orders, 0),
         movedProjects: movedBySource.reduce((sum, item) => sum + item.projects, 0),
         movedStandaloneEstimates: movedBySource.reduce((sum, item) => sum + item.standaloneEstimates, 0),
+        movedStandaloneProposals: movedBySource.reduce((sum, item) => sum + item.standaloneProposals, 0),
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 

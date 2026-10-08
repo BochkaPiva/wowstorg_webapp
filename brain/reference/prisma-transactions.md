@@ -1,13 +1,13 @@
 # Использование `prisma.$transaction` (сверка с кодом)
 
-> **Дата сверки:** 2026-09-07 — добавлено атомарное объединение карточек заказчиков с переносом всей связанной истории.
+> **Дата сверки:** 2026-10-07 — добавлены временные КП, CAS-мутации и перенос дерева КП в проект.
 
 Файлы, где вызывается **`prisma.$transaction`** (или эквивалент с клиентом транзакции):
 
 | Файл | Serializable |
 |------|----------------|
 | `src/app/api/admin/loyalty/route.ts` | нет (обновление политики и уровней одним действием) |
-| `src/app/api/customers/merge/route.ts` | **да** (перенос заявок, проектов, отдельных смет, алиасов и запись журнала выполняются атомарно) |
+| `src/app/api/customers/merge/route.ts` | **да** (перенос заявок, проектов, отдельных смет, временных КП, алиасов и запись журнала выполняются атомарно) |
 | `src/app/api/customers/route.ts` | нет (проверка идентичности и создание карточки одним действием) |
 | `src/app/api/customers/[id]/route.ts` | нет (проверка идентичности, сохранение алиаса и переименование одним действием) |
 | `src/app/api/greenwich/achievements/route.ts` | нет |
@@ -30,6 +30,12 @@
 | `src/app/api/orders/[id]/return-declared/route.ts` | нет |
 | `src/app/api/orders/[id]/warehouse-edit/route.ts` | **да** |
 | `src/app/api/projects/route.ts` | **да** (проект, участники, стартовые виджеты, папки и activity log создаются одним действием) |
+| `src/app/api/proposals/route.ts` | **да** (обёртка временного КП, дерево, основной вариант и стартовая услуга создаются атомарно) |
+| `src/app/api/proposals/[id]/route.ts` | **да** (metadata, customer wrapper, revision и activity log проектного КП) |
+| `src/app/api/proposals/[id]/convert/route.ts` | **да** (CAS, создание проекта и перенос существующего дерева без копирования) |
+| `src/app/api/proposals/[id]/attach/route.ts` | **да** (CAS, перенос в существующий проект без замены активного КП) |
+| `src/server/proposals/mutate.ts` | **да** (единые мутации КП, перестановка разделов и перенос услуг внутри варианта без смены ID, CAS, actor-scoped UUID receipts/hash и серверные compensating deltas для undo/redo; изменения, revision, receipt и log атомарны) |
+| `src/app/api/projects/[id]/proposals/[proposalId]/transfer-to-estimate/route.ts` | **да** (идемпотентный перенос со связями, CAS КП и revision сметы; ADR 014) |
 | `src/app/api/projects/[id]/workspace/route.ts` | **да** (owner, members, layout виджетов и revision сохраняются атомарно; timeout 15 с, итоговый снимок читается после commit; конфликт возвращает 409) |
 | `src/app/api/projects/[id]/draft-order/route.ts` | нет |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireRole } from "@/server/auth/require";
 import { normalizeContractorName } from "@/server/contractors/identity";
+import { catalogQuery } from "@/server/contractors/catalog-query";
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
 
@@ -26,37 +27,32 @@ export async function GET(req: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
-  const search = url.searchParams.get("search")?.trim();
-  const categoryId = url.searchParams.get("categoryId")?.trim();
-  const includeInactive = url.searchParams.get("all") === "true";
+  let query: ReturnType<typeof catalogQuery>;
+  try { query = catalogQuery(url.searchParams); }
+  catch { return jsonError(400, "Некорректные фильтры каталога. Обновите поиск."); }
+  const { includeInactive } = query;
   const contractors = await prisma.contractor.findMany({
-    where: {
-      isActive: includeInactive ? undefined : true,
-      ...(search ? { OR: [
-        { name: { contains: search, mode: "insensitive" } },
-        { shortDescription: { contains: search, mode: "insensitive" } },
-        { offers: { some: { title: { contains: search, mode: "insensitive" } } } },
-      ] } : {}),
-      ...(categoryId ? { offers: { some: { categoryId, isActive: true } } } : {}),
-    },
-    orderBy: [{ isActive: "desc" }, { name: "asc" }],
-    take: 500,
+    where: query.where,
+    orderBy: query.orderBy,
+    take: query.take,
     select: {
       id: true, name: true, shortDescription: true, websiteUrl: true, city: true,
-      internalNotes: true, isActive: true, revision: true, updatedAt: true,
-      contacts: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], select: {
+      internalNotes: !query.paged, isActive: true, revision: true, updatedAt: true,
+      contacts: query.paged ? false : { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], select: {
         id: true, personName: true, role: true, phone: true, email: true, telegram: true, isPrimary: true,
       } },
       assets: { where: { kind: "PHOTO" }, orderBy: { sortOrder: "asc" }, take: 1, select: { id: true, storageKey: true, caption: true } },
-      offers: { where: includeInactive ? undefined : { isActive: true }, orderBy: [{ category: { sortOrder: "asc" } }, { title: "asc" }], select: {
+      offers: { where: { ...(includeInactive ? {} : { isActive: true }), ...(query.paged && query.categoryId ? { categoryId: query.categoryId } : {}) }, orderBy: [{ category: { sortOrder: "asc" } }, { title: "asc" }], select: {
         id: true, title: true, description: true, priceType: true, clientPrice: true, clientPriceMax: true,
-        internalCost: true, currencyCode: true, unitLabel: true, priceConfirmedAt: true, validUntil: true,
+        internalCost: !query.paged, currencyCode: true, unitLabel: true, priceConfirmedAt: true, validUntil: true,
         isActive: true, revision: true, category: { select: { id: true, name: true } },
       } },
     },
   });
 
-  return jsonOk({ contractors: contractors.map((contractor) => ({
+  const hasMore = query.paged && contractors.length > query.limit;
+  const rows = query.paged ? contractors.slice(0, query.limit) : contractors;
+  return jsonOk({ ...(query.paged ? { nextCursor: hasMore ? query.encodeCursor(rows[rows.length - 1]) : null } : {}), contractors: rows.map((contractor) => ({
     ...contractor,
     photoUrl: contractor.assets[0] ? `/api/contractors/${contractor.id}/assets/${contractor.assets[0].id}` : null,
     assets: undefined,
@@ -64,7 +60,7 @@ export async function GET(req: Request) {
       ...offer,
       clientPrice: offer.clientPrice?.toNumber() ?? null,
       clientPriceMax: offer.clientPriceMax?.toNumber() ?? null,
-      internalCost: offer.internalCost?.toNumber() ?? null,
+      ...(!query.paged ? { internalCost: offer.internalCost?.toNumber() ?? null } : {}),
     })),
   })) });
 }

@@ -57,7 +57,7 @@ const ProjectContactsPanel = dynamic(
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Контакты" /> },
 );
 const ProjectEventBuilderPanel = dynamic(
-  () => import("./ProjectEventBuilderPanel").then((module) => module.ProjectEventBuilderPanel),
+  () => import("./ProposalProjectLauncher").then((module) => module.ProjectEventBuilderPanel),
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Конструктор мероприятия" /> },
 );
 const ProjectEstimatePanel = dynamic(

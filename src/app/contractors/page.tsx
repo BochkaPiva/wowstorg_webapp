@@ -1,243 +1,118 @@
 "use client";
 
-import Image from "next/image";
+import Link from "next/link";
 import React from "react";
-
 import { AppShell } from "@/app/_ui/AppShell";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
-import { CONTRACTOR_PRICE_TYPE_LABEL, priceFreshness, type ContractorPriceType } from "@/lib/contractor-offers";
+import { catalogRequest, CatalogIcon, ContractorPhoto, freshnessCopy, offerPrice, seedHref, type Category, type ContractorCard, type ContractorDetail } from "./catalog-ui";
+import { CatalogInspector } from "./CatalogInspector";
 import styles from "./contractors.module.css";
 
-type Category = { id: string; name: string; description: string | null; sortOrder: number; _count?: { offers: number } };
-type Offer = { id: string; title: string; description: string | null; priceType: ContractorPriceType; clientPrice: number | null; clientPriceMax: number | null; internalCost: number | null; currencyCode: string; unitLabel: string | null; priceConfirmedAt: string | null; validUntil: string | null; isActive: boolean; revision: number; category: { id: string; name: string } };
-type Contractor = { id: string; name: string; shortDescription: string | null; websiteUrl: string | null; city: string | null; internalNotes: string | null; isActive: boolean; revision: number; updatedAt: string; photoUrl: string | null; contacts: Array<{ id: string; personName: string | null; role: string | null; phone: string | null; email: string | null; telegram: string | null; isPrimary: boolean }>; offers: Offer[] };
+type Panel = { kind: "view"; id: string } | { kind: "create" | "category" } | null;
+type CatalogPage = { contractors: ContractorCard[]; nextCursor: string | null };
 
-function money(value: number | null) { return value == null ? "По запросу" : new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(value); }
-function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("ru-RU"); }
-function offerPrice(offer: Offer) {
-  if (offer.priceType === "ON_REQUEST") return "По запросу";
-  const base = money(offer.clientPrice);
-  if (offer.priceType === "FROM") return `от ${base}`;
-  if (offer.priceType === "RANGE" && offer.clientPriceMax != null) return `${base} — ${money(offer.clientPriceMax)}`;
-  return offer.unitLabel ? `${base} / ${offer.unitLabel}` : base;
-}
-function freshnessCopy(value: ReturnType<typeof priceFreshness>) {
-  if (value === "FRESH") return "Актуально";
-  if (value === "AGING") return "Пора проверить";
-  if (value === "STALE") return "Устарело";
-  return "Не подтверждено";
-}
-async function readError(response: Response) { const body = await response.json().catch(() => null) as { error?: { message?: string } } | null; return body?.error?.message ?? "Не удалось выполнить действие"; }
-
-function ContractorPhoto({ src, name }: { src: string | null; name: string }) {
-  const [failed, setFailed] = React.useState(false);
-  React.useEffect(() => setFailed(false), [src]);
-  if (!src || failed) return <span className={styles.cardMonogram}>{initials(name)}</span>;
-  return <Image className={styles.cardPhoto} src={src} alt={`Фотография подрядчика ${name}`} fill sizes="(max-width: 720px) 100vw, 420px" unoptimized onError={() => setFailed(true)} />;
-}
-
-function ContractorCatalogSkeleton() {
+function CatalogSkeleton() {
   return <LoadingRegion className={styles.catalogSkeleton} label="Загрузка каталога подрядчиков">
     {Array.from({ length: 3 }, (_, index) => <article className={styles.skeletonCard} key={index}>
-      <Skeleton className={styles.skeletonMedia} />
-      <div className={styles.skeletonBody}>
-        <Skeleton className={styles.skeletonTitle} />
-        <Skeleton className={styles.skeletonDescription} />
-        <div className={styles.skeletonOffers}><Skeleton /><Skeleton /></div>
-      </div>
+      <Skeleton className={styles.skeletonMedia} /><div className={styles.skeletonBody}><Skeleton className={styles.skeletonTitle} /><Skeleton className={styles.skeletonDescription} /><div className={styles.skeletonOffers}><Skeleton /><Skeleton /></div></div>
     </article>)}
   </LoadingRegion>;
 }
 
 export default function ContractorsPage() {
   const [categories, setCategories] = React.useState<Category[]>([]);
-  const [contractors, setContractors] = React.useState<Contractor[]>([]);
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [contractors, setContractors] = React.useState<ContractorCard[]>([]);
   const [categoryId, setCategoryId] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const [modal, setModal] = React.useState<"contractor" | "category" | "offer" | null>(null);
-  const [editingOffer, setEditingOffer] = React.useState<Offer | null>(null);
-  const [contractorPhoto, setContractorPhoto] = React.useState<File | null>(null);
-  const [contractorPhotoPreview, setContractorPhotoPreview] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [moreLoading, setMoreLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [notice, setNotice] = React.useState("");
+  const [reload, setReload] = React.useState(0);
+  const [panel, setPanel] = React.useState<Panel>(null);
+  const [detail, setDetail] = React.useState<ContractorDetail | null>(null);
+  const [detailError, setDetailError] = React.useState("");
+  const [detailReload, setDetailReload] = React.useState(0);
+  const [panelEpoch, setPanelEpoch] = React.useState(0);
+  const panelRef = React.useRef<HTMLElement>(null);
+  const opener = React.useRef<HTMLElement | null>(null);
+  const dirty = React.useRef(false);
+  const saving = React.useRef(false);
+  const generation = React.useRef(0);
+  const moreFlight = React.useRef(false);
 
-  const load = React.useCallback(async () => {
-    const [categoriesResponse, contractorsResponse] = await Promise.all([
-      fetch("/api/contractor-categories", { cache: "no-store" }),
-      fetch("/api/contractors", { cache: "no-store" }),
-    ]);
-    if (!categoriesResponse.ok || !contractorsResponse.ok) throw new Error("Не удалось загрузить каталог");
-    const categoriesData = await categoriesResponse.json() as { categories: Category[] };
-    const contractorsData = await contractorsResponse.json() as { contractors: Contractor[] };
-    setCategories(categoriesData.categories); setContractors(contractorsData.contractors);
-    setSelectedId((current) => current && contractorsData.contractors.some((item) => item.id === current) ? current : contractorsData.contractors[0]?.id ?? null);
-  }, []);
-
+  React.useEffect(() => { const timer = setTimeout(() => setQuery(search.trim()), 250); return () => clearTimeout(timer); }, [search]);
   React.useEffect(() => {
-    void load()
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
-  }, [load]);
-  const filtered = contractors.filter((contractor) => {
-    const needle = search.trim().toLocaleLowerCase("ru-RU");
-    return (!needle || `${contractor.name} ${contractor.shortDescription ?? ""} ${contractor.offers.map((offer) => offer.title).join(" ")}`.toLocaleLowerCase("ru-RU").includes(needle))
-      && (!categoryId || contractor.offers.some((offer) => offer.category.id === categoryId));
-  });
-  const selected = contractors.find((contractor) => contractor.id === selectedId) ?? null;
-
-  React.useEffect(() => () => {
-    if (contractorPhotoPreview) URL.revokeObjectURL(contractorPhotoPreview);
-  }, [contractorPhotoPreview]);
-
-  function closeModal() {
-    setModal(null);
-    setEditingOffer(null);
-    setError(null);
-    setContractorPhoto(null);
-    setContractorPhotoPreview(null);
+    const controller = new AbortController();
+    void catalogRequest<{ categories: Category[] }>("/api/contractor-categories", { signal: controller.signal }).then((data) => setCategories(data.categories)).catch(() => { if (!controller.signal.aborted) setError("Категории не загрузились. Обновите страницу."); });
+    return () => controller.abort();
+  }, [reload]);
+  const catalogUrl = React.useCallback((cursor?: string) => `/api/contractors?${new URLSearchParams({ paged: "1", limit: "24", search: query, categoryId, ...(cursor ? { cursor } : {}) })}`, [query, categoryId]);
+  React.useEffect(() => {
+    const controller = new AbortController(); generation.current += 1;
+    setLoading(true); setError(""); setNextCursor(null);
+    void catalogRequest<CatalogPage>(catalogUrl(), { signal: controller.signal }).then((data) => { setContractors(data.contractors); setNextCursor(data.nextCursor); }).catch((cause) => { if (!controller.signal.aborted) { setContractors([]); setError(cause instanceof Error ? cause.message : "Каталог не загрузился"); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [catalogUrl, reload]);
+  const detailId = panel?.kind === "view" ? panel.id : null;
+  React.useEffect(() => {
+    setDetail(null); setDetailError(""); if (!detailId) return;
+    const controller = new AbortController();
+    void catalogRequest<{ contractor: ContractorDetail }>(`/api/contractors/${detailId}`, { signal: controller.signal }).then((data) => setDetail(data.contractor)).catch((cause) => { if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : "Карточка не загрузилась"); });
+    return () => controller.abort();
+  }, [detailId, detailReload]);
+  function switchPanel(next: Panel) {
+    if (saving.current) return;
+    if (dirty.current && !window.confirm("Есть несохранённые поля. Продолжить без сохранения?")) return;
+    dirty.current = false;
+    if (next) opener.current = document.activeElement as HTMLElement;
+    setPanel(next); setPanelEpoch((value) => value + 1);
+    if (!next) opener.current?.focus();
   }
-
-  function chooseContractorPhoto(file: File | null) {
-    if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setError("Для фотографии подойдут PNG, JPEG или WebP");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Фотография должна быть не больше 10 МБ");
-      return;
-    }
-    setError(null);
-    setContractorPhoto(file);
-    setContractorPhotoPreview(URL.createObjectURL(file));
-  }
-
-  async function submitContractor(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(null);
-    const data = new FormData(event.currentTarget);
+  React.useEffect(() => { if (panel) { panelRef.current?.focus(); panelRef.current?.scrollIntoView({ block: "nearest" }); } }, [panel]);
+  React.useEffect(() => {
+    const leave = (event: BeforeUnloadEvent) => { if (dirty.current || saving.current) { event.preventDefault(); event.returnValue = ""; } };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") switchPanel(null); };
+    window.addEventListener("beforeunload", leave); window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("beforeunload", leave); window.removeEventListener("keydown", key); };
+  }, []);
+  async function loadMore() {
+    if (!nextCursor || moreFlight.current || loading) return;
+    const version = generation.current; moreFlight.current = true; setMoreLoading(true); setError("");
     try {
-      const response = await fetch("/api/contractors", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-        name: data.get("name"), shortDescription: data.get("description") || null, websiteUrl: data.get("website") || null, city: data.get("city") || null,
-        contact: data.get("phone") || data.get("email") ? { personName: data.get("person") || null, phone: data.get("phone") || null, email: data.get("email") || null } : undefined,
-      }) });
-      if (!response.ok) { setError(await readError(response)); return; }
-      const body = await response.json() as { contractor: { id: string } };
-      let photoError: string | null = null;
-      if (contractorPhoto) {
-        const photoForm = new FormData();
-        photoForm.set("file", contractorPhoto);
-        const photoResponse = await fetch(`/api/contractors/${body.contractor.id}/assets/upload`, { method: "POST", body: photoForm });
-        if (!photoResponse.ok) photoError = await readError(photoResponse);
-      }
-      await load();
-      setSelectedId(body.contractor.id);
-      setModal(null);
-      setContractorPhoto(null);
-      setContractorPhotoPreview(null);
-      if (photoError) setError(`Карточка создана, но фотография не загрузилась: ${photoError}`);
-    } catch {
-      setError("Не удалось создать карточку. Проверьте соединение и попробуйте ещё раз.");
-    } finally {
-      setBusy(false);
-    }
+      const data = await catalogRequest<CatalogPage>(catalogUrl(nextCursor));
+      if (version === generation.current) { setContractors((current) => [...current, ...data.contractors.filter((row) => !current.some((old) => old.id === row.id))]); setNextCursor(data.nextCursor); }
+    } catch (cause) { if (version === generation.current) setError(cause instanceof Error ? cause.message : "Не удалось загрузить ещё"); }
+    finally { moreFlight.current = false; setMoreLoading(false); }
   }
-
-  async function submitCategory(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(null); const data = new FormData(event.currentTarget);
-    const response = await fetch("/api/contractor-categories", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), description: data.get("description") || null }) });
-    if (!response.ok) { setError(await readError(response)); setBusy(false); return; }
-    await load(); setModal(null); setBusy(false);
+  function saved(id?: string, message?: string) {
+    dirty.current = false; setReload((value) => value + 1); setDetailReload((value) => value + 1);
+    setNotice(message ?? "Сохранено.");
+    if (id) setPanel({ kind: "view", id });
+    else setPanel(null);
   }
-
-  async function submitOffer(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!selected) return; setBusy(true); setError(null); const data = new FormData(event.currentTarget);
-    const priceType = String(data.get("priceType")) as ContractorPriceType;
-    const toNumber = (key: string) => data.get(key) === "" ? null : Number(data.get(key));
-    const offerPayload = {
-      categoryId: data.get("categoryId"), title: data.get("title"), description: data.get("description") || null, priceType,
-      clientPrice: toNumber("clientPrice"), clientPriceMax: toNumber("clientPriceMax"), internalCost: toNumber("internalCost"), unitLabel: data.get("unitLabel") || null,
-    };
-    const response = await fetch(editingOffer ? `/api/contractors/${selected.id}/offers/${editingOffer.id}` : `/api/contractors/${selected.id}/offers`, { method: editingOffer ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(editingOffer ? { ...offerPayload, expectedRevision: editingOffer.revision } : offerPayload) });
-    if (!response.ok) { setError(await readError(response)); setBusy(false); return; }
-    await load(); setModal(null); setEditingOffer(null); setBusy(false);
+  function guardLink(event: React.MouseEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("a") && (saving.current || (dirty.current && !window.confirm("Есть несохранённые поля. Перейти без сохранения?")))) event.preventDefault();
   }
-
-  async function uploadPhoto(contractorId: string, file: File) {
-    setBusy(true); setError(null); const form = new FormData(); form.set("file", file);
-    const response = await fetch(`/api/contractors/${contractorId}/assets/upload`, { method: "POST", body: form });
-    if (!response.ok) setError(await readError(response)); else await load();
-    setBusy(false);
-  }
-
-  async function confirmOffer(contractorId: string, offer: Offer) {
-    setBusy(true); setError(null);
-    const response = await fetch(`/api/contractors/${contractorId}/offers/${offer.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: offer.revision, confirmPrice: true }) });
-    if (!response.ok) setError(await readError(response)); else await load();
-    setBusy(false);
-  }
-
-  return <AppShell title="Подрядчики">
-    <div className={styles.page}>
-      <section className={styles.hero}>
-        <div><h2>Подрядчики и услуги</h2><p>Фото, предложения и актуальные цены в одном каталоге. Всё, что видно здесь, доступно в конструкторе проекта.</p></div>
-        <div className={styles.heroActions}><button className={styles.secondary} onClick={() => setModal("category")}>Новая категория</button><button className={styles.primary} onClick={() => setModal("contractor")}>Добавить подрядчика</button></div>
-      </section>
-      {error ? <div className={styles.error} role="alert">{error}</div> : null}
-      <section className={styles.toolbar}>
-        <input className={styles.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Название, услуга или специализация" aria-label="Поиск подрядчиков" />
-        <div className={styles.chips}><button className={styles.chip} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}</div>
-      </section>
-      {loading ? <ContractorCatalogSkeleton /> : <>
-        <div className={styles.catalogSummary}><strong>{filtered.length}</strong><span>{filtered.length === 1 ? "подрядчик" : "подрядчиков"}</span><span>·</span><span>{filtered.reduce((sum, contractor) => sum + contractor.offers.length, 0)} предложений</span></div>
-        {filtered.length ? <section className={styles.catalogGrid} aria-label="Каталог подрядчиков">
-        {filtered.map((contractor) => <article key={contractor.id} className={styles.contractorCard}>
-          <div className={styles.cardMedia}>
-            <ContractorPhoto src={contractor.photoUrl} name={contractor.name} />
-            <label className={styles.changePhoto} title="Заменить фотографию">
-              <span>{contractor.photoUrl ? "Заменить фото" : "Добавить фото"}</span>
-              <input className={styles.photoInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(contractor.id, file); event.currentTarget.value = ""; }} />
-            </label>
+  return <AppShell title="Подрядчики"><div className={styles.page} onClickCapture={guardLink}>
+    <header className={styles.hero}><div><h2>Подрядчики и услуги</h2><p>Выберите услугу и начните КП. Для контактов и деталей откройте карточку.</p></div><div className={styles.heroActions}><button className={styles.secondary} onClick={() => switchPanel({ kind: "create" })}>Добавить подрядчика</button><Link className={styles.primary} href="/proposals?new=1">Составить КП</Link></div></header>
+    <nav className={styles.sectionTabs} aria-label="Подрядчики"><Link href="/contractors" aria-current="page">Каталог</Link><Link href="/proposals">Коммерческие предложения</Link></nav>
+    <section className={styles.toolbar} aria-label="Поиск и категории"><input className={styles.search} value={search} maxLength={200} onChange={(event) => setSearch(event.target.value)} placeholder="Подрядчик или услуга" aria-label="Поиск подрядчиков" /><div className={styles.chips}><button className={styles.chip} aria-pressed={!categoryId} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} aria-pressed={category.id === categoryId} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}<button className={styles.quiet} onClick={() => switchPanel({ kind: "category" })} aria-label="Добавить категорию">+ Категория</button></div></section>
+    {error ? <div className={styles.error} role="alert">{error} <button className={styles.quiet} onClick={() => setReload((value) => value + 1)}>Повторить</button></div> : null}
+    {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
+    <div className={styles.catalogLayout} data-inspecting={Boolean(panel)}>
+      <div className={styles.catalogContent}>
+        {loading ? <CatalogSkeleton /> : contractors.length ? <><div className={styles.catalogSummary}>Показано подрядчиков: <strong>{contractors.length}</strong>{nextCursor ? <span>· ниже есть ещё</span> : null}</div><section className={styles.catalogGrid} aria-label="Каталог подрядчиков">{contractors.map((contractor) => <article key={contractor.id} className={styles.contractorCard} data-selected={detailId === contractor.id}>
+          <button className={styles.cardMedia} onClick={() => switchPanel({ kind: "view", id: contractor.id })} aria-label={`Открыть карточку: ${contractor.name}`}><ContractorPhoto src={contractor.photoUrl} name={contractor.name} /></button>
+          <div className={styles.cardBody}><div className={styles.cardHead}><div><h3><button onClick={() => switchPanel({ kind: "view", id: contractor.id })}>{contractor.name}</button></h3>{contractor.shortDescription ? <p>{contractor.shortDescription}</p> : null}</div>{contractor.city ? <span className={styles.city}>{contractor.city}</span> : null}</div>
+            <div className={styles.offerList}>{contractor.offers.slice(0, 3).map((offer) => <div key={offer.id} className={styles.offerRow}><div className={styles.offerMain}><span className={styles.offerCategory}>{offer.category.name}</span><strong>{offer.title}</strong><span className={styles.freshness}>{freshnessCopy(offer)}</span></div><div className={styles.offerSide}><strong>{offerPrice(offer)}</strong><Link className={styles.serviceAction} href={seedHref(contractor, offer)} aria-label={`Составить КП: ${offer.title}, ${contractor.name}`}>В новое КП</Link></div></div>)}{!contractor.offers.length ? <div className={styles.noOffers}>Услуги ещё не добавлены</div> : null}</div>
+            <button className={styles.cardDetails} onClick={() => switchPanel({ kind: "view", id: contractor.id })}>{contractor.offers.length > 3 ? `Все услуги (${contractor.offers.length}) и контакты` : "Подробнее и контакты"}<CatalogIcon kind="open" /></button>
           </div>
-          <div className={styles.cardBody}>
-            <div className={styles.cardHead}>
-              <div><h3>{contractor.name}</h3><p>{contractor.shortDescription || "Описание пока не добавлено"}</p></div>
-              {contractor.city ? <span className={styles.city}>{contractor.city}</span> : null}
-            </div>
-            <div className={styles.contacts}>
-              {contractor.websiteUrl ? <a href={contractor.websiteUrl} target="_blank" rel="noreferrer">Сайт ↗</a> : null}
-              {contractor.contacts[0]?.phone ? <a href={`tel:${contractor.contacts[0].phone}`}>{contractor.contacts[0].phone}</a> : null}
-              {contractor.contacts[0]?.email ? <a href={`mailto:${contractor.contacts[0].email}`}>Email</a> : null}
-            </div>
-            <div className={styles.offerList}>
-              {contractor.offers.length ? contractor.offers.map((offer) => {
-                const freshness = priceFreshness(offer.priceConfirmedAt);
-                return <div key={offer.id} className={styles.offerRow}>
-                  <button className={styles.offerMain} type="button" onClick={() => { setSelectedId(contractor.id); setEditingOffer(offer); setModal("offer"); }}>
-                    <span className={styles.offerCategory}>{offer.category.name}</span>
-                    <strong>{offer.title}</strong>
-                    {offer.description ? <span className={styles.offerDescription}>{offer.description}</span> : null}
-                  </button>
-                  <div className={styles.offerSide}>
-                    <strong>{offerPrice(offer)}</strong>
-                    <span className={styles.freshness} data-state={freshness}>{freshnessCopy(freshness)}</span>
-                    {freshness !== "FRESH" ? <button className={styles.confirmPrice} disabled={busy} onClick={() => void confirmOffer(contractor.id, offer)}>Подтвердить цену</button> : null}
-                  </div>
-                </div>;
-              }) : <div className={styles.noOffers}><span>Услуг пока нет</span><button onClick={() => { setSelectedId(contractor.id); setEditingOffer(null); setModal("offer"); }}>Добавить первую</button></div>}
-            </div>
-            <button className={styles.addOfferButton} onClick={() => { setSelectedId(contractor.id); setEditingOffer(null); setModal("offer"); }}>+ Добавить услугу</button>
-          </div>
-        </article>)}
-        </section> : <div className={styles.catalogEmpty}><strong>Ничего не найдено</strong><span>Измените запрос или выберите другую категорию.</span></div>}
-      </>}
+        </article>)}</section>{nextCursor ? <div className={styles.loadMore}><button className={styles.secondary} disabled={moreLoading} onClick={() => void loadMore()}>{moreLoading ? "Загружаем…" : "Показать ещё"}</button></div> : null}</> : !error ? <div className={styles.catalogEmpty}><strong>{query || categoryId ? "Ничего не найдено" : "Соберите свою базу подрядчиков"}</strong><span>{query || categoryId ? "Попробуйте другой запрос или категорию." : "Добавьте первого подрядчика и его услуги — они появятся здесь."}</span><button className={styles.secondary} onClick={() => query || categoryId ? (setSearch(""), setCategoryId("")) : switchPanel({ kind: "create" })}>{query || categoryId ? "Сбросить поиск" : "Добавить подрядчика"}</button></div> : null}
+      </div>
+      {panel ? <aside className={styles.inspector} ref={panelRef} tabIndex={-1} aria-label="Карточка подрядчика"><CatalogInspector key={`${panel.kind === "view" ? panel.id : panel.kind}:${panelEpoch}`} kind={panel.kind} contractor={detail?.id === detailId ? detail : null} categories={categories} loadError={detailError} onClose={() => switchPanel(null)} onRetry={() => setDetailReload((value) => value + 1)} onSaved={saved} dirty={dirty} saving={saving} /></aside> : null}
     </div>
-    {modal ? <div className={styles.modal} role="dialog" aria-modal="true"><div className={styles.dialog}><div className={styles.dialogHead}><div><h3>{modal === "contractor" ? "Новый подрядчик" : modal === "category" ? "Новая категория" : `${editingOffer ? "Изменить услугу" : "Новая услуга"} · ${selected?.name}`}</h3>{modal === "contractor" ? <p>Контакты и фотография сразу попадут в каталог проекта.</p> : null}</div><button className={styles.closeButton} type="button" aria-label="Закрыть" onClick={closeModal}>×</button></div>
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {modal === "contractor" ? <form className={styles.form} onSubmit={submitContractor}><label className={styles.photoPicker}><input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={(event) => { chooseContractorPhoto(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />{contractorPhotoPreview ? <Image src={contractorPhotoPreview} alt="Предпросмотр фотографии подрядчика" fill sizes="112px" unoptimized /> : <span className={styles.photoPlaceholder}><span className={styles.photoPlus}>+</span><strong>Добавить фото</strong><small>PNG, JPEG или WebP · до 10 МБ</small></span>}<span className={styles.photoEdit}>{contractorPhotoPreview ? "Заменить" : "Выбрать"}</span></label><label>Название<input className={styles.input} name="name" required autoFocus /></label><label>Чем полезен<textarea className={styles.textarea} name="description" /></label><div className={styles.formGrid}><label>Город<input className={styles.input} name="city" /></label><label>Сайт<input className={styles.input} name="website" type="url" placeholder="https://" /></label><label>Контактное лицо<input className={styles.input} name="person" /></label><label>Телефон<input className={styles.input} name="phone" /></label></div><label>Email<input className={styles.input} name="email" type="email" /></label><button className={styles.primary} disabled={busy}>{busy ? contractorPhoto ? "Создаю и загружаю фото…" : "Создаю…" : "Создать карточку"}</button></form> : null}
-      {modal === "category" ? <form className={styles.form} onSubmit={submitCategory}><label>Название<input className={styles.input} name="name" required placeholder="Например, Ведущие" /></label><label>Описание<textarea className={styles.textarea} name="description" /></label><button className={styles.primary} disabled={busy}>{busy ? "Сохраняю…" : "Добавить категорию"}</button></form> : null}
-      {modal === "offer" ? <form key={editingOffer?.id ?? "new-offer"} className={styles.form} onSubmit={submitOffer}><div className={styles.formGrid}><label>Категория<select className={styles.select} name="categoryId" required defaultValue={editingOffer?.category.id ?? ""}><option value="">Выберите</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Модель цены<select className={styles.select} name="priceType" defaultValue={editingOffer?.priceType ?? "FIXED"}>{Object.entries(CONTRACTOR_PRICE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><label>Название услуги<input className={styles.input} name="title" required defaultValue={editingOffer?.title ?? ""} /></label><label>Что входит<textarea className={styles.textarea} name="description" defaultValue={editingOffer?.description ?? ""} /></label><div className={styles.formGrid}><label>Цена клиенту<input className={styles.input} name="clientPrice" type="number" min="0" step="0.01" defaultValue={editingOffer?.clientPrice ?? ""} /></label><label>Верхняя граница<input className={styles.input} name="clientPriceMax" type="number" min="0" step="0.01" defaultValue={editingOffer?.clientPriceMax ?? ""} /></label><label>Внутренняя стоимость<input className={styles.input} name="internalCost" type="number" min="0" step="0.01" defaultValue={editingOffer?.internalCost ?? ""} /></label><label>Единица<input className={styles.input} name="unitLabel" placeholder="мероприятие, час, человек" defaultValue={editingOffer?.unitLabel ?? ""} /></label></div><button className={styles.primary} disabled={busy}>{busy ? "Сохраняю…" : editingOffer ? "Сохранить и подтвердить цену" : "Добавить предложение"}</button></form> : null}
-    </div></div> : null}
-  </AppShell>;
+  </div></AppShell>;
 }

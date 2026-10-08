@@ -1,0 +1,43 @@
+.page { display: grid; gap: 24px; min-width: 0; color: #242126; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.heading h1 { margin: 0; font-size: clamp(24px, 2.4vw, 34px); line-height: 1.15; letter-spacing: -.025em; }
+.heading p, .footnote { margin: 8px 0 0; color: #68636d; font-size: 14px; line-height: 1.5; }
+.primary, .secondary, .quiet { min-height: 42px; padding: 10px 16px; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.primary { border: 1px solid #c8a200; background: #ffd21a; color: #242126; }
+.primary:hover { background: #ffdf57; }
+.secondary { border: 1px solid #d8d4de; background: #fff; color: #342d3c; }
+.secondary:hover { background: #f6f2fc; }
+.quiet { border: 0; background: transparent; color: #6125ad; }
+.quiet:hover { background: #f2eaff; }
+.page button:disabled { opacity: .5; cursor: not-allowed; }
+.page :is(a, button, input, select, textarea):focus-visible { outline: 2px solid #7130c5; outline-offset: 3px; }
+.page :is(input, select, textarea) { width: 100%; min-width: 0; min-height: 42px; padding: 10px 12px; border: 1px solid #d8d4de; border-radius: 9px; background: #fff; color: #242126; font: inherit; font-size: 14px; caret-color: #7130c5; }
+.page input::placeholder { color: #706976; }
+.page ::selection { background: #e9d9ff; color: #302042; }
+.tabs { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; border-bottom: 1px solid #ddd8e2; }
+.tabs :is(a, button) { display: inline-flex; min-height: 44px; align-items: center; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #68636d; text-decoration: none; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tabs :is([aria-current="page"], [aria-pressed="true"]) { color: #6125ad; border-bottom-color: #7130c5; }
+.createForm { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 20px; border-radius: 12px; background: #fff; }
+.createForm label { display: grid; flex: 1 1 220px; gap: 8px; font-size: 13px; font-weight: 600; }
+.createForm label span { color: #68636d; font-weight: 400; }
+.filters { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; }
+.filters > input { flex: 1 1 260px; max-width: 480px; }
+.list { overflow: hidden; border: 1px solid #ddd8e2; border-radius: 14px; background: #fff; }
+.listRow { display: grid; grid-template-columns: minmax(0, 1fr) 190px 200px; gap: 24px; padding: 22px; color: inherit; text-decoration: none; }
+.listRow + .listRow { border-top: 1px solid #ece8f0; }
+.listRow:hover { background: #faf7ff; }
+.listRow h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.listRow p, .listMeta span:last-child, .listPrice span { margin: 6px 0 0; color: #68636d; font-size: 12px; }
+.listMeta, .listPrice { display: grid; align-content: center; gap: 2px; font-size: 13px; }
+.listPrice { text-align: right; font-variant-numeric: tabular-nums; }
+.listPrice strong { font-size: 18px; }
+.empty { display: grid; justify-items: center; gap: 12px; padding: 64px 24px; background: #fff; border-radius: 14px; text-align: center; }
+.empty h2 { margin: 0; font-size: 24px; }
+.empty p { max-width: 54ch; margin: 0 0 8px; color: #68636d; line-height: 1.6; }
+.error { padding: 14px 18px; border: 1px solid #ecb7b1; border-radius: 10px; background: #fff2ef; color: #8d2e23; font-size: 14px; }
+.error button { margin-left: 12px; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.footnote { font-size: 12px; }
+@media (max-width: 800px) { .listRow { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; } .listMeta { grid-row: 2; } .listPrice { grid-column: 2; grid-row: 1 / 3; } }
+@media (max-width: 560px) { .page { gap: 18px; } .heading { align-items: start; flex-direction: column; gap: 14px; } .listRow { grid-template-columns: 1fr; padding: 18px; } .listPrice { grid-column: 1; grid-row: 3; text-align: left; } .createForm { padding: 16px; } }
+.seedContext { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 16px 18px; border: 1px solid #ddd1ee; border-radius: 10px; background: #f6f1fc; color: #625d56; font-size: 13px; line-height: 1.5; }
+.seedContext strong { color: #201d19; font-size: 15px; }

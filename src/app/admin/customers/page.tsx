@@ -8,7 +8,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
-type Counts = { orders: number; projects: number; standaloneEstimates: number; aliases?: number };
+type Counts = { orders: number; projects: number; standaloneEstimates: number; standaloneProposals: number; aliases?: number };
 type Customer = {
   id: string; name: string; isActive?: boolean; notes?: string | null; logoUrl?: string | null;
   mergedInto?: { id: string; name: string } | null; counts?: Counts;
@@ -20,12 +20,16 @@ type MergeData = {
   groups: DuplicateGroup[];
   history: Array<{
     id: string; sourceName: string; targetName: string; movedOrders: number; movedProjects: number;
-    movedStandaloneEstimates: number; createdAt: string; actor: { displayName: string };
+    movedStandaloneEstimates: number; movedStandaloneProposals: number; createdAt: string; actor: { displayName: string };
   }>;
 };
 
 const emptyMergeData: MergeData = { summary: { groups: 0, duplicateCards: 0 }, groups: [], history: [] };
-const usageTotal = (counts?: Counts) => (counts?.orders ?? 0) + (counts?.projects ?? 0) + (counts?.standaloneEstimates ?? 0);
+const usageTotal = (counts?: Counts) =>
+  (counts?.orders ?? 0)
+  + (counts?.projects ?? 0)
+  + (counts?.standaloneEstimates ?? 0)
+  + (counts?.standaloneProposals ?? 0);
 
 function CustomerMark({ customer, large = false }: { customer: Customer; large?: boolean }) {
   return (

@@ -1,0 +1,545 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-08T05:50:07Z",
+  "title": "Design System: WowStorg",
+  "extensions": {
+    "colorMeta": {
+      "wow-ink": {
+        "role": "neutral",
+        "displayName": "Чёрные чернила",
+        "tonalRamp": [
+          "oklch(15% 0.00000 89.88)",
+          "oklch(26% 0.00000 89.88)",
+          "oklch(38% 0.00000 89.88)",
+          "oklch(49% 0.00000 89.88)",
+          "oklch(61% 0.00000 89.88)",
+          "oklch(72% 0.00000 89.88)",
+          "oklch(84% 0.00000 89.88)",
+          "oklch(95% 0.00000 89.88)"
+        ]
+      },
+      "wow-ink-soft": {
+        "role": "neutral",
+        "displayName": "Мягкие чернила",
+        "tonalRamp": [
+          "oklch(15% 0.00187 106.54)",
+          "oklch(26% 0.00187 106.54)",
+          "oklch(38% 0.00187 106.54)",
+          "oklch(49% 0.00187 106.54)",
+          "oklch(61% 0.00187 106.54)",
+          "oklch(72% 0.00187 106.54)",
+          "oklch(84% 0.00187 106.54)",
+          "oklch(95% 0.00187 106.54)"
+        ]
+      },
+      "wow-paper": {
+        "role": "neutral",
+        "displayName": "Светлая бумага",
+        "tonalRamp": [
+          "oklch(15% 0.00530 106.50)",
+          "oklch(26% 0.00530 106.50)",
+          "oklch(38% 0.00530 106.50)",
+          "oklch(49% 0.00530 106.50)",
+          "oklch(61% 0.00530 106.50)",
+          "oklch(72% 0.00530 106.50)",
+          "oklch(84% 0.00530 106.50)",
+          "oklch(95% 0.00530 106.50)"
+        ]
+      },
+      "wow-surface": {
+        "role": "neutral",
+        "displayName": "Белая рабочая поверхность",
+        "tonalRamp": [
+          "oklch(15% 0.00000 89.88)",
+          "oklch(26% 0.00000 89.88)",
+          "oklch(38% 0.00000 89.88)",
+          "oklch(49% 0.00000 89.88)",
+          "oklch(61% 0.00000 89.88)",
+          "oklch(72% 0.00000 89.88)",
+          "oklch(84% 0.00000 89.88)",
+          "oklch(95% 0.00000 89.88)"
+        ]
+      },
+      "wow-surface-soft": {
+        "role": "neutral",
+        "displayName": "Мягкая нейтральная поверхность",
+        "tonalRamp": [
+          "oklch(15% 0.00534 106.50)",
+          "oklch(26% 0.00534 106.50)",
+          "oklch(38% 0.00534 106.50)",
+          "oklch(49% 0.00534 106.50)",
+          "oklch(61% 0.00534 106.50)",
+          "oklch(72% 0.00534 106.50)",
+          "oklch(84% 0.00534 106.50)",
+          "oklch(95% 0.00534 106.50)"
+        ]
+      },
+      "wow-line": {
+        "role": "neutral",
+        "displayName": "Нейтральная линия",
+        "tonalRamp": [
+          "oklch(15% 0.00679 106.54)",
+          "oklch(26% 0.00679 106.54)",
+          "oklch(38% 0.00679 106.54)",
+          "oklch(49% 0.00679 106.54)",
+          "oklch(61% 0.00679 106.54)",
+          "oklch(72% 0.00679 106.54)",
+          "oklch(84% 0.00679 106.54)",
+          "oklch(95% 0.00679 106.54)"
+        ]
+      },
+      "wow-muted": {
+        "role": "neutral",
+        "displayName": "Приглушённый текст",
+        "tonalRamp": [
+          "oklch(15% 0.00772 106.67)",
+          "oklch(26% 0.00772 106.67)",
+          "oklch(38% 0.00772 106.67)",
+          "oklch(49% 0.00772 106.67)",
+          "oklch(61% 0.00772 106.67)",
+          "oklch(72% 0.00772 106.67)",
+          "oklch(84% 0.00772 106.67)",
+          "oklch(95% 0.00772 106.67)"
+        ]
+      },
+      "wow-yellow": {
+        "role": "primary",
+        "displayName": "Жёлтый основной акцент",
+        "tonalRamp": [
+          "oklch(15% 0.17449 92.55)",
+          "oklch(26% 0.17449 92.55)",
+          "oklch(38% 0.17449 92.55)",
+          "oklch(49% 0.17449 92.55)",
+          "oklch(61% 0.17449 92.55)",
+          "oklch(72% 0.17449 92.55)",
+          "oklch(84% 0.17449 92.55)",
+          "oklch(95% 0.17449 92.55)"
+        ]
+      },
+      "wow-yellow-hover": {
+        "role": "primary",
+        "displayName": "Светлый жёлтый hover",
+        "tonalRamp": [
+          "oklch(15% 0.14209 96.31)",
+          "oklch(26% 0.14209 96.31)",
+          "oklch(38% 0.14209 96.31)",
+          "oklch(49% 0.14209 96.31)",
+          "oklch(61% 0.14209 96.31)",
+          "oklch(72% 0.14209 96.31)",
+          "oklch(84% 0.14209 96.31)",
+          "oklch(95% 0.14209 96.31)"
+        ]
+      },
+      "wow-purple": {
+        "role": "secondary",
+        "displayName": "Рабочий фиолетовый",
+        "tonalRamp": [
+          "oklch(15% 0.21663 293.10)",
+          "oklch(26% 0.21663 293.10)",
+          "oklch(38% 0.21663 293.10)",
+          "oklch(49% 0.21663 293.10)",
+          "oklch(61% 0.21663 293.10)",
+          "oklch(72% 0.21663 293.10)",
+          "oklch(84% 0.21663 293.10)",
+          "oklch(95% 0.21663 293.10)"
+        ]
+      },
+      "wow-purple-dark": {
+        "role": "secondary",
+        "displayName": "Тёмный фиолетовый",
+        "tonalRamp": [
+          "oklch(15% 0.10681 290.23)",
+          "oklch(26% 0.10681 290.23)",
+          "oklch(38% 0.10681 290.23)",
+          "oklch(49% 0.10681 290.23)",
+          "oklch(61% 0.10681 290.23)",
+          "oklch(72% 0.10681 290.23)",
+          "oklch(84% 0.10681 290.23)",
+          "oklch(95% 0.10681 290.23)"
+        ]
+      },
+      "wow-purple-soft": {
+        "role": "secondary",
+        "displayName": "Светлый фиолетовый",
+        "tonalRamp": [
+          "oklch(15% 0.03292 299.08)",
+          "oklch(26% 0.03292 299.08)",
+          "oklch(38% 0.03292 299.08)",
+          "oklch(49% 0.03292 299.08)",
+          "oklch(61% 0.03292 299.08)",
+          "oklch(72% 0.03292 299.08)",
+          "oklch(84% 0.03292 299.08)",
+          "oklch(95% 0.03292 299.08)"
+        ]
+      },
+      "wow-success": {
+        "role": "tertiary",
+        "displayName": "Успех",
+        "tonalRamp": [
+          "oklch(15% 0.10499 159.46)",
+          "oklch(26% 0.10499 159.46)",
+          "oklch(38% 0.10499 159.46)",
+          "oklch(49% 0.10499 159.46)",
+          "oklch(61% 0.10499 159.46)",
+          "oklch(72% 0.10499 159.46)",
+          "oklch(84% 0.10499 159.46)",
+          "oklch(95% 0.10499 159.46)"
+        ]
+      },
+      "wow-warning": {
+        "role": "tertiary",
+        "displayName": "Предупреждение",
+        "tonalRamp": [
+          "oklch(15% 0.11700 73.34)",
+          "oklch(26% 0.11700 73.34)",
+          "oklch(38% 0.11700 73.34)",
+          "oklch(49% 0.11700 73.34)",
+          "oklch(61% 0.11700 73.34)",
+          "oklch(72% 0.11700 73.34)",
+          "oklch(84% 0.11700 73.34)",
+          "oklch(95% 0.11700 73.34)"
+        ]
+      },
+      "wow-danger": {
+        "role": "tertiary",
+        "displayName": "Ошибка",
+        "tonalRamp": [
+          "oklch(15% 0.15608 29.46)",
+          "oklch(26% 0.15608 29.46)",
+          "oklch(38% 0.15608 29.46)",
+          "oklch(49% 0.15608 29.46)",
+          "oklch(61% 0.15608 29.46)",
+          "oklch(72% 0.15608 29.46)",
+          "oklch(84% 0.15608 29.46)",
+          "oklch(95% 0.15608 29.46)"
+        ]
+      },
+      "proposal-yellow": {
+        "role": "primary",
+        "displayName": "Жёлтый action КП",
+        "tonalRamp": [
+          "oklch(15% 0.17573 92.69)",
+          "oklch(26% 0.17573 92.69)",
+          "oklch(38% 0.17573 92.69)",
+          "oklch(49% 0.17573 92.69)",
+          "oklch(61% 0.17573 92.69)",
+          "oklch(72% 0.17573 92.69)",
+          "oklch(84% 0.17573 92.69)",
+          "oklch(95% 0.17573 92.69)"
+        ]
+      },
+      "proposal-yellow-hover": {
+        "role": "primary",
+        "displayName": "Жёлтый hover КП",
+        "tonalRamp": [
+          "oklch(15% 0.15474 95.83)",
+          "oklch(26% 0.15474 95.83)",
+          "oklch(38% 0.15474 95.83)",
+          "oklch(49% 0.15474 95.83)",
+          "oklch(61% 0.15474 95.83)",
+          "oklch(72% 0.15474 95.83)",
+          "oklch(84% 0.15474 95.83)",
+          "oklch(95% 0.15474 95.83)"
+        ]
+      },
+      "proposal-purple": {
+        "role": "secondary",
+        "displayName": "Фиолетовая ссылка КП",
+        "tonalRamp": [
+          "oklch(15% 0.19803 297.25)",
+          "oklch(26% 0.19803 297.25)",
+          "oklch(38% 0.19803 297.25)",
+          "oklch(49% 0.19803 297.25)",
+          "oklch(61% 0.19803 297.25)",
+          "oklch(72% 0.19803 297.25)",
+          "oklch(84% 0.19803 297.25)",
+          "oklch(95% 0.19803 297.25)"
+        ]
+      },
+      "proposal-focus": {
+        "role": "secondary",
+        "displayName": "Фиолетовый фокус КП",
+        "tonalRamp": [
+          "oklch(15% 0.21393 297.52)",
+          "oklch(26% 0.21393 297.52)",
+          "oklch(38% 0.21393 297.52)",
+          "oklch(49% 0.21393 297.52)",
+          "oklch(61% 0.21393 297.52)",
+          "oklch(72% 0.21393 297.52)",
+          "oklch(84% 0.21393 297.52)",
+          "oklch(95% 0.21393 297.52)"
+        ]
+      },
+      "proposal-purple-soft": {
+        "role": "secondary",
+        "displayName": "Светлый выбранный фон",
+        "tonalRamp": [
+          "oklch(15% 0.02920 303.08)",
+          "oklch(26% 0.02920 303.08)",
+          "oklch(38% 0.02920 303.08)",
+          "oklch(49% 0.02920 303.08)",
+          "oklch(61% 0.02920 303.08)",
+          "oklch(72% 0.02920 303.08)",
+          "oklch(84% 0.02920 303.08)",
+          "oklch(95% 0.02920 303.08)"
+        ]
+      },
+      "proposal-ink": {
+        "role": "neutral",
+        "displayName": "Чернила КП",
+        "tonalRamp": [
+          "oklch(15% 0.01024 312.06)",
+          "oklch(26% 0.01024 312.06)",
+          "oklch(38% 0.01024 312.06)",
+          "oklch(49% 0.01024 312.06)",
+          "oklch(61% 0.01024 312.06)",
+          "oklch(72% 0.01024 312.06)",
+          "oklch(84% 0.01024 312.06)",
+          "oklch(95% 0.01024 312.06)"
+        ]
+      },
+      "proposal-muted": {
+        "role": "neutral",
+        "displayName": "Приглушённый текст КП",
+        "tonalRamp": [
+          "oklch(15% 0.01673 308.10)",
+          "oklch(26% 0.01673 308.10)",
+          "oklch(38% 0.01673 308.10)",
+          "oklch(49% 0.01673 308.10)",
+          "oklch(61% 0.01673 308.10)",
+          "oklch(72% 0.01673 308.10)",
+          "oklch(84% 0.01673 308.10)",
+          "oklch(95% 0.01673 308.10)"
+        ]
+      },
+      "proposal-field-line": {
+        "role": "neutral",
+        "displayName": "Граница поля КП",
+        "tonalRamp": [
+          "oklch(15% 0.01424 304.11)",
+          "oklch(26% 0.01424 304.11)",
+          "oklch(38% 0.01424 304.11)",
+          "oklch(49% 0.01424 304.11)",
+          "oklch(61% 0.01424 304.11)",
+          "oklch(72% 0.01424 304.11)",
+          "oklch(84% 0.01424 304.11)",
+          "oklch(95% 0.01424 304.11)"
+        ]
+      },
+      "proposal-surface-line": {
+        "role": "neutral",
+        "displayName": "Разделитель КП",
+        "tonalRamp": [
+          "oklch(15% 0.01454 308.28)",
+          "oklch(26% 0.01454 308.28)",
+          "oklch(38% 0.01454 308.28)",
+          "oklch(49% 0.01454 308.28)",
+          "oklch(61% 0.01454 308.28)",
+          "oklch(72% 0.01454 308.28)",
+          "oklch(84% 0.01454 308.28)",
+          "oklch(95% 0.01454 308.28)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Рабочий заголовок",
+        "purpose": "Заголовок списка КП; точные headline параметры студии остаются локальными."
+      },
+      "title": {
+        "displayName": "Название услуги",
+        "purpose": "Повторяемый title услуги в студии и подборе."
+      },
+      "body": {
+        "displayName": "Поясняющий текст",
+        "purpose": "Основные пояснения и описания."
+      },
+      "label": {
+        "displayName": "Подпись поля",
+        "purpose": "Компактные подписи формы."
+      },
+      "shell-title": {
+        "displayName": "Заголовок shell",
+        "purpose": "Навигационный контекст, Madefor Display."
+      }
+    },
+    "shadows": [
+      {
+        "name": "catalog-dialog",
+        "value": "0 24px 80px rgb(0 0 0 / .18)",
+        "purpose": "Структурная тень модального диалога каталога."
+      },
+      {
+        "name": "field-focus",
+        "value": "0 0 0 3px color-mix(in srgb, var(--wow-purple) 14%, transparent)",
+        "purpose": "Унаследованное кольцо фокуса полей."
+      }
+    ],
+    "motion": [
+      {
+        "name": "wow-ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Существующее easing глобального shell."
+      },
+      {
+        "name": "state-transition",
+        "value": "160ms",
+        "purpose": "Короткие переходы состояния."
+      },
+      {
+        "name": "drawer-backdrop",
+        "value": "180ms",
+        "purpose": "Появление backdrop мобильной навигации."
+      },
+      {
+        "name": "drawer-panel",
+        "value": "220ms",
+        "purpose": "Появление мобильного меню."
+      },
+      {
+        "name": "skeleton-shimmer",
+        "value": "1.25s cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Существующий глобальный shimmer, отключаемый при reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "shell-drawer",
+        "value": "1023px"
+      },
+      {
+        "name": "catalog-stack",
+        "value": "900px"
+      },
+      {
+        "name": "proposal-list-condense",
+        "value": "800px"
+      },
+      {
+        "name": "proposal-list-stack",
+        "value": "560px"
+      },
+      {
+        "name": "proposal-inspector-wrap",
+        "value": "1250px"
+      },
+      {
+        "name": "proposal-workspace-stack",
+        "value": "700px"
+      },
+      {
+        "name": "proposal-comparison-stack",
+        "value": "1100px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Основная кнопка КП",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Следующий основной шаг; существующий локальный вариант КП.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Составить КП</button>",
+      "css": ".ds-btn-primary{min-height:42px;padding:10px 16px;border:1px solid #c8a200;border-radius:10px;background:#ffd21a;color:#242126;font-family:Onest,Arial,sans-serif;font-size:14px;font-weight:700;cursor:pointer}.ds-btn-primary:hover{background:#ffdf57}.ds-btn-primary:disabled{opacity:.5;cursor:not-allowed}.ds-btn-primary:focus-visible,.ds-btn-secondary:focus-visible,.ds-btn-quiet:focus-visible{outline:2px solid #7130c5;outline-offset:3px;}"
+    },
+    {
+      "name": "Secondary кнопка КП",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Дополнительное действие на белой поверхности.",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">Добавить свою услугу</button>",
+      "css": ".ds-btn-secondary{min-height:42px;padding:10px 16px;border:1px solid #d8d4de;border-radius:10px;background:#fff;color:#342d3c;font-family:Onest,Arial,sans-serif;font-size:14px;font-weight:700;cursor:pointer}.ds-btn-secondary:hover{background:#f6f2fc}.ds-btn-secondary:disabled{opacity:.5;cursor:not-allowed}.ds-btn-primary:focus-visible,.ds-btn-secondary:focus-visible,.ds-btn-quiet:focus-visible{outline:2px solid #7130c5;outline-offset:3px;}"
+    },
+    {
+      "name": "Quiet кнопка КП",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Ненавязчивое действие с фиолетовой подписью.",
+      "html": "<button class=\"ds-btn-quiet\" type=\"button\">Добавить раздел</button>",
+      "css": ".ds-btn-quiet{min-height:42px;padding:10px 16px;border:0;border-radius:10px;background:transparent;color:#6125ad;font-family:Onest,Arial,sans-serif;font-size:14px;font-weight:700;cursor:pointer}.ds-btn-quiet:hover{background:#f2eaff}.ds-btn-quiet:disabled{opacity:.5;cursor:not-allowed}.ds-btn-primary:focus-visible,.ds-btn-secondary:focus-visible,.ds-btn-quiet:focus-visible{outline:2px solid #7130c5;outline-offset:3px;}"
+    },
+    {
+      "name": "Поле КП",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Локальное поле с видимой подписью, keyboard outline и унаследованным кольцом фокуса.",
+      "html": "<label class=\"ds-field-label\">Название мероприятия<input class=\"ds-input\" placeholder=\"Например, корпоратив в декабре\" /></label>",
+      "css": ".ds-field-label{display:grid;gap:8px;color:#242126;font-family:Onest,Arial,sans-serif;font-size:13px;font-weight:600}.ds-input{width:100%;min-width:0;min-height:42px;padding:10px 12px;border:1px solid #d8d4de;border-radius:9px;background:#fff;color:#242126;font-family:Onest,Arial,sans-serif;font-size:14px;font-weight:400;caret-color:#7130c5}.ds-input::placeholder{color:#706976}.ds-input:focus{border-color:var(--wow-purple,#5e20bb);box-shadow:0 0 0 3px color-mix(in srgb,var(--wow-purple,#5e20bb) 14%,transparent)}.ds-input:focus-visible{outline:2px solid #7130c5;outline-offset:3px}"
+    },
+    {
+      "name": "Навигация AppShell",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Чёрный sidebar и действующий жёлтый active state.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Основная навигация\"><a class=\"ds-nav-link\" href=\"#home\">Главная</a><a class=\"ds-nav-link\" href=\"#contractors\" aria-current=\"page\" data-active=\"true\">Подрядчики<span class=\"ds-nav-marker\" aria-hidden=\"true\"></span></a></nav>",
+      "css": ".ds-nav{display:grid;gap:4px;padding:20px 12px;background:var(--wow-ink,#0a0a0a);font-family:Onest,Arial,sans-serif;}.ds-nav-link{display:flex;min-height:38px;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:9px;color:#c8c8c3;font-size:.84rem;font-weight:650;line-height:1.25;text-decoration:none;transition:color 160ms var(--wow-ease,cubic-bezier(.16,1,.3,1)),background-color 160ms var(--wow-ease,cubic-bezier(.16,1,.3,1))}.ds-nav-link:hover{background:#1c1c1b;color:#fff}.ds-nav-link[data-active=true]{background:var(--wow-yellow,#ffd21f);color:var(--wow-ink,#0a0a0a);font-weight:720}.ds-nav-link:focus-visible{outline:3px solid color-mix(in srgb,var(--wow-focus,#5e20bb) 58%,transparent);outline-offset:2px}.ds-nav-link:active{transform:translateY(1px)}.ds-nav-marker{width:6px;height:6px;border-radius:50%;background:currentColor}@media(prefers-reduced-motion:reduce){.ds-nav-link{transition:none;transform:none}}"
+    },
+    {
+      "name": "Категория каталога",
+      "kind": "chip",
+      "refersTo": "category-chip",
+      "description": "Существующий pill категории с фиолетовым selected state.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" type=\"button\" aria-pressed=\"false\">Все</button><button class=\"ds-chip\" data-active=\"true\" type=\"button\" aria-pressed=\"true\">Ведущие</button></div>",
+      "css": ".ds-chips{display:flex;gap:6px}.ds-chip{min-height:40px;padding:0 13px;border:1px solid #ded9d1;border-radius:999px;background:#faf9f7;color:#5b554f;font-family:Onest,Arial,sans-serif;font-size:13px;font-weight:800;cursor:pointer}.ds-chip:hover{border-color:#bfb7ad;color:#26221e}.ds-chip[data-active=true]{border-color:#7130c5;background:#f2eaff;color:#55209b}.ds-chip:focus-visible{outline:3px solid color-mix(in srgb,var(--wow-focus,#5e20bb) 58%,transparent);outline-offset:2px}"
+    },
+    {
+      "name": "Рабочая поверхность КП",
+      "kind": "card",
+      "refersTo": "work-surface",
+      "description": "Белый canvas: явная иерархия заголовка и пояснения, без декоративной тени.",
+      "html": "<section class=\"ds-surface\"><h2 class=\"ds-surface-title\">Программа мероприятия</h2><p class=\"ds-surface-copy\">Услуги и варианты выбранного раздела.</p></section>",
+      "css": ".ds-surface{min-width:0;padding:24px;border-radius:14px;background:#fff;color:#242126;font-family:Onest,Arial,sans-serif;}.ds-surface-title{margin:0;font-size:24px;letter-spacing:-.025em}.ds-surface-copy{margin:6px 0 0;color:#68636d;font-size:12px}"
+    },
+    {
+      "name": "Сравнение вариантов КП",
+      "kind": "custom",
+      "description": "До трёх колонок вариантов и строки разделов; первый вариант задаёт точку сравнения. Изменения отмечены заливкой и текстом, checkbox фильтрует строки, details раскрывает описание. До 1100px состав идёт последовательно. Разница бюджета доступна только для полных фиксированных итогов; декоративной анимации нет.",
+      "html": "<section class=\"ds-comparison\"><label class=\"ds-comparison-filter\"><input type=\"checkbox\" />Только различия</label><table class=\"ds-comparison-table\" role=\"table\"><caption>Клиентский состав вариантов</caption><thead role=\"rowgroup\"><tr role=\"row\"><th scope=\"col\" role=\"columnheader\">Состав мероприятия</th><th scope=\"col\" role=\"columnheader\">Вариант 2</th></tr></thead><tbody role=\"rowgroup\"><tr role=\"row\"><th scope=\"row\" role=\"rowheader\">Программа</th><td role=\"cell\" data-changed=\"true\"><span class=\"ds-comparison-label\" aria-hidden=\"true\">Вариант 2</span><span class=\"ds-comparison-changed\">Отличается от точки сравнения</span><details><summary>Описание</summary><p>Описание услуги</p></details></td></tr></tbody></table></section>",
+      "css": ".ds-comparison{min-width:0;padding:24px;border-radius:14px;background:#fff;font-family:Onest,Arial,sans-serif}.ds-comparison-filter{display:inline-flex;align-items:center;gap:10px;min-height:44px;font-size:14px;cursor:pointer}.ds-comparison-filter input{width:18px;height:18px;accent-color:#6125ad}.ds-comparison-table{width:100%;table-layout:fixed;border-collapse:collapse;margin:24px 0 18px;font-size:14px}.ds-comparison-table th,.ds-comparison-table td{vertical-align:top;padding:20px 16px;text-align:left;border-bottom:1px solid #ebe7ee;overflow-wrap:anywhere}.ds-comparison-table th:first-child{width:18%;padding-left:0}.ds-comparison-table td{border-left:1px solid #ebe7ee}.ds-comparison-table td[data-changed=true]{background:#f5efff}.ds-comparison-changed{display:block;margin-bottom:12px;color:#6125ad;font-size:12px;font-weight:500;line-height:1.5}.ds-comparison-table details{font-size:12px;font-weight:400;line-height:1.6}.ds-comparison-table summary{color:#6125ad;cursor:pointer;padding-block:6px}.ds-comparison-table summary:focus-visible{outline:2px solid #7130c5;outline-offset:3px}.ds-comparison-label{display:none}@media(max-width:1100px){.ds-comparison{padding:20px}.ds-comparison-table,.ds-comparison-table thead,.ds-comparison-table tbody,.ds-comparison-table tr,.ds-comparison-table th,.ds-comparison-table td{display:block;width:100%}.ds-comparison-table thead>tr{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:16px}.ds-comparison-table thead th:first-child{display:none}.ds-comparison-table th:first-child{width:100%}.ds-comparison-table tbody tr{margin-top:20px}.ds-comparison-table tbody th{padding:0 0 16px}.ds-comparison-table tbody td{padding:20px 12px;border-left:0}.ds-comparison-label{display:block;margin-bottom:14px;font-size:15px;font-weight:700}}"
+    },
+    {
+      "name": "Skeleton загрузки",
+      "kind": "custom",
+      "refersTo": "skeleton",
+      "description": "Существующая глобальная полоса; геометрия задаётся содержимым, shimmer отключается при reduced motion.",
+      "html": "<div class=\"ds-loading\" role=\"status\" aria-live=\"polite\" aria-busy=\"true\" aria-label=\"Загрузка данных\"><span class=\"ds-skeleton\" aria-hidden=\"true\"></span><span class=\"ds-skeleton ds-skeleton-short\" aria-hidden=\"true\"></span></div>",
+      "css": ".ds-loading{display:grid;gap:8px}.ds-skeleton{position:relative;display:block;overflow:hidden;contain:paint;width:100%;height:14px;border-radius:6px;background:var(--wow-surface-soft,#e9e9e5)}.ds-skeleton-short{width:60%;height:10px}.ds-skeleton::after{content:\"\";position:absolute;inset:0;transform:translateX(-105%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);animation:ds-skeleton-shimmer 1.25s cubic-bezier(.4,0,.2,1) infinite}@keyframes ds-skeleton-shimmer{to{transform:translateX(105%)}}@media(prefers-reduced-motion:reduce){.ds-skeleton::after{animation:none;display:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Спокойное рабочее пространство",
+    "overview": "Светлая рабочая основа, чёрное меню и точные цветовые акценты поддерживают быстрые решения команды event-агентства. Уверенность выражается через читаемые названия, доступные действия и содержательные фотографии. Визуальная плотность зависит от задачи: каталогу нужны изображения, спискам — сопоставимые строки, редактору — свободный рабочий холст.\n\nЭто Scan-mode фиксация существующего мира, а не новая идентичность. Глобальные токены извлечены из `src/app/globals.css`; локальные повторяемые варианты — из модулей каталога подрядчиков и КП. В frontmatter намеренно сохранены обе семьи акцентов: локальная реализация КП пока не полностью использует глобальные custom properties. При доработке существующего компонента его CSS остаётся источником точного значения; для общего shell используются глобальные токены. Новых CSS-переменных этот документ не вводит.",
+    "keyCharacteristics": [
+      "Светлые нейтральные рабочие поверхности и чёрная навигация.",
+      "Жёлтый основной action; фиолетовые выбор, ссылки и вспомогательные действия.",
+      "Содержательные фотографии целиком, ясные строки услуг и чисел.",
+      "Короткие функциональные переходы и skeleton при загрузке."
+    ],
+    "rules": [
+      {
+        "name": "The Action Hierarchy Rule",
+        "body": "В одном рабочем контексте не конкурируют несколько равнозначных главных действий. Действующий shell сохраняет жёлтый активный пункт чёрного меню; это существующий навигационный вариант, а не повод делать все selected states жёлтыми.",
+        "section": "colors"
+      },
+      {
+        "name": "The Calm Surface Rule",
+        "body": "Рабочие панели сохраняют нейтральную непрозрачную основу; глубина помогает разделить действующие слои интерфейса.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** сохранять чёрный shell, светлый рабочий фон и действующую иерархию жёлтых и фиолетовых состояний.",
+      "**Do** использовать подписи, роли и табличные цифры, чтобы услуги и суммы считывались без догадок.",
+      "**Do** показывать фотографии подрядчиков целиком и предусматривать спокойный fallback.",
+      "**Do** сохранять keyboard focus, текстовые статусы, содержательный skeleton и reduced motion.",
+      "**Do** адаптировать плотные рабочие области последовательными блоками и сохранять отдельный клиентский вид КП."
+    ],
+    "donts": [
+      "**Don't** превращать композицию студии КП в обязательный layout остальных модулей.",
+      "**Don't** добавлять стеклянные поверхности и декоративные тени рабочим карточкам и canvas.",
+      "**Don't** обрезать содержательные фотографии по образцу брендового знака меню.",
+      "**Don't** обозначать состояние только цветом или добавлять motion без рабочей причины.",
+      "**Don't** заменять существующие локальные значения токенов при одном лишь документировании."
+    ]
+  }
+}

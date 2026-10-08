@@ -56,6 +56,25 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
   const canExpand = widget.type !== "TASKS";
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const widgetRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    if (!expanded || !widgetRef.current) return;
+    const node = widgetRef.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const siblings = Array.from(document.body.children).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== node);
+    const previousInert = siblings.map(element => element.inert);
+    siblings.forEach(element => { element.inert = true; });
+    node.querySelector<HTMLButtonElement>("button")?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length > 0);
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus(); }
+    };
+    node.addEventListener("keydown", trap);
+    return () => { node.removeEventListener("keydown", trap); siblings.forEach((element, index) => { element.inert = previousInert[index]; }); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [expanded]);
 
   React.useEffect(() => {
     if (!menuOpen) return;
@@ -68,12 +87,16 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
 
   const widgetNode = (
     <section
+      ref={widgetRef}
       className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${collapsed ? "md:col-span-4" : WIDTH_CLASS[widget.width]}`}`}
       style={expanded ? undefined : { order: widget.sortOrder }}
       id={`project-widget-${widget.type.toLowerCase().replaceAll("_", "-")}`}
       data-widget={widget.type}
       data-expanded={expanded || undefined}
       data-collapsed={collapsed || undefined}
+      role={expanded ? "dialog" : undefined}
+      aria-modal={expanded || undefined}
+      aria-label={expanded ? definition.title : undefined}
     >
       <header className="project-workspace-widget__header" data-menu-open={menuOpen || undefined}>
         <div className="project-workspace-widget__identity">
@@ -90,7 +113,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
             </button>
           ) : null}
           <div ref={menuRef} className="relative">
-            <button type="button" onClick={() => setMenuOpen((value) => !value)} className="project-workspace-widget__control text-lg leading-none" aria-label={`Действия: ${definition.title}`} aria-expanded={menuOpen}>⋮</button>
+            <button type="button" onClick={() => setMenuOpen((value) => !value)} className="project-workspace-widget__control" aria-label={`Действия: ${definition.title}`} aria-expanded={menuOpen}><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="3" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="9" cy="15" r="1.5" /></svg></button>
             {menuOpen ? (
               <div className="absolute right-0 top-9 z-[90] w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-xs shadow-[0_6px_8px_rgba(0,0,0,0.1)]">
                 <button type="button" onClick={() => { setMenuOpen(false); onToggleCollapsed(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">{collapsed ? "Развернуть содержимое" : "Свернуть содержимое"}</button>
@@ -110,10 +133,17 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
 export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: {
   projectId: string;
   widgets: ProjectWorkspaceWidgetInput[];
-  renderWidget: (type: ProjectWidgetType, expanded: boolean) => React.ReactNode;
+  renderWidget: (type: ProjectWidgetType, expanded: boolean, onExpand?: () => void) => React.ReactNode;
 }) {
   const [collapsedTypes, setCollapsedTypes] = React.useState<Set<ProjectWidgetType>>(new Set());
   const [expandedType, setExpandedType] = React.useState<ProjectWidgetType | null>(null);
+  function closeExpanded() {
+    if (expandedType === "EVENT_BUILDER" && !window.dispatchEvent(new Event("proposal-workspace:close", { cancelable: true }))) return;
+    setExpandedType(null);
+  }
+  const closeOnEscape = React.useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); closeExpanded(); }
+  });
 
   React.useEffect(() => {
     try {
@@ -127,7 +157,7 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
   React.useEffect(() => {
     if (!expandedType) return;
     document.body.classList.add("project-workspace-expanded");
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setExpandedType(null); };
+    const close = (event: KeyboardEvent) => closeOnEscape(event);
     window.addEventListener("keydown", close);
     return () => {
       document.body.classList.remove("project-workspace-expanded");
@@ -171,10 +201,10 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
             collapsed={collapsedTypes.has(widget.type)}
             expanded={expandedType === widget.type}
             onToggleCollapsed={() => toggleCollapsed(widget.type)}
-            onToggleExpanded={() => setExpandedType((current) => current === widget.type ? null : widget.type)}
+            onToggleExpanded={() => expandedType === widget.type ? closeExpanded() : setExpandedType(widget.type)}
             onConfigure={() => window.dispatchEvent(new CustomEvent("project-workspace:configure"))}
           >
-            {renderWidget(widget.type, expandedType === widget.type)}
+            {renderWidget(widget.type, expandedType === widget.type, () => setExpandedType(widget.type))}
           </WorkspaceWidget>
         ))}
       </div>

@@ -1339,12 +1339,12 @@ export default function ProjectDetailPage() {
 
   const recommendedStatus = project ? PROJECT_STATUS_NEXT[project.status] ?? null : null;
 
-  function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false): React.ReactNode {
+  function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false, onExpand?: () => void): React.ReactNode {
     if (!project) return null;
     if (type === "EVENT_BUILDER") {
       return (
         <ProjectModuleBoundary title="Конструктор мероприятия" resetKey={`${id}:event-builder:inline`}>
-          <ProjectEventBuilderPanel projectId={id} readOnly={readOnly} />
+          <ProjectEventBuilderPanel projectId={id} readOnly={readOnly} expanded={expanded} onExpand={onExpand} />
         </ProjectModuleBoundary>
       );
     }

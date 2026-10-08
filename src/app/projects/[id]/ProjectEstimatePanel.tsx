@@ -2626,8 +2626,8 @@ export function ProjectEstimatePanel({
       ) : !data ? (
         <p className="text-sm text-zinc-600">Нет данных сметы.</p>
       ) : !data.current && data.versions.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-zinc-600">Смет ещё нет.</p>
+        <div className="project-estimate__empty">
+          <div><h3>Смета пока не создана</h3><p>Добавьте строки вручную или перенесите выбранные услуги из КП.</p></div>
           {!readOnly ? (
             <button
               type="button"

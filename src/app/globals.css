@@ -2795,6 +2795,19 @@ body.project-estimate-fill-dragging * {
   gap: 0;
 }
 
+.project-estimate__empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 28px 24px;
+}
+.project-estimate__empty > div { flex: 1 1 240px; }
+.project-estimate__empty h3 { margin: 0 0 8px; font-size: 18px; font-weight: 650; }
+.project-estimate__empty p { margin: 0; max-width: 52ch; font-size: 14px; line-height: 1.5; color: #68636d; }
+.project-estimate__empty > button { flex-shrink: 0; margin: 0; }
+
 .project-estimate--workspace .project-estimate__toolbar {
   padding: 8px 10px;
   border-color: #e4e4e0;

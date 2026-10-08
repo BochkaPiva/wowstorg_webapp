@@ -2,26 +2,29 @@ import { z } from "zod";
 
 const Fields = z.record(z.string().max(80), z.string().max(4000)).refine((value) => Object.keys(value).length <= 20);
 const Entry = z.object({ id: z.string().uuid(), label: z.string().max(160) });
+const Command = z.object({
+  operation: z.object({
+    mutationId: z.string().uuid(), expectedRevision: z.number().int().nonnegative(),
+    action: z.enum(["UPDATE_PROPOSAL", "ADD_VARIANT", "ADD_SECTION", "UPDATE_SECTION", "REMOVE_SECTION", "ADD_CATALOG_ITEM", "ADD_MANUAL_ITEM", "UPDATE_ITEM", "REMOVE_ITEM", "RESTORE_CHANGE", "MOVE_SECTION", "MOVE_ITEM"]),
+  }).catchall(z.unknown()).refine((value) => JSON.stringify(value).length <= 16000),
+  direction: z.enum(["undo", "redo"]).optional(), label: z.string().max(160),
+  savedForm: z.enum(["drawer", "section"]).optional(),
+});
 export const proposalRecoverySchema = z.object({
   version: z.literal(1), revision: z.number().int().nonnegative(), savedAt: z.string(),
   variantId: z.string().max(200), sectionId: z.string().max(200),
   drawer: z.object({ kind: z.enum(["item", "manual", "document", "convert"]), targetId: z.string().max(200).optional(), fields: Fields }).nullable(),
   sectionFields: Fields.nullable(),
   undo: z.array(Entry).max(50), redo: z.array(Entry).max(50),
-  pending: z.object({
-    operation: z.object({
-      mutationId: z.string().uuid(), expectedRevision: z.number().int().nonnegative(),
-      action: z.enum(["UPDATE_PROPOSAL", "ADD_VARIANT", "ADD_SECTION", "UPDATE_SECTION", "REMOVE_SECTION", "ADD_CATALOG_ITEM", "ADD_MANUAL_ITEM", "UPDATE_ITEM", "REMOVE_ITEM", "RESTORE_CHANGE", "MOVE_SECTION", "MOVE_ITEM"]),
-    }).catchall(z.unknown()).refine((value) => JSON.stringify(value).length <= 16000),
-    direction: z.enum(["undo", "redo"]).optional(), label: z.string().max(160),
-    savedForm: z.enum(["drawer", "section"]).optional(),
-  }).nullable(),
+  pending: Command.nullable(),
+  queued: z.array(Command).max(50).default([]),
 });
 export type ProposalRecovery = z.infer<typeof proposalRecoverySchema>;
 export type ProposalHistoryEntry = z.infer<typeof Entry>;
+export type ProposalCommand = z.infer<typeof Command>;
 
 export function readProposalRecovery(raw: string | null): ProposalRecovery | null {
-  if (!raw || raw.length > 100000) return null;
+  if (!raw || raw.length > 1000000) return null;
   try { const parsed = proposalRecoverySchema.safeParse(JSON.parse(raw)); return parsed.success ? parsed.data : null; }
   catch { return null; }
 }

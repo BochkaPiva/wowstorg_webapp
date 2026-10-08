@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { proposalRequest } from "@/app/proposals/api";
-import { PROPOSAL_STATUS, proposalMoney, proposalTotals, type Proposal } from "@/lib/proposals";
+import { PROPOSAL_STATUS, type Proposal } from "@/lib/proposals";
+import { proposalCount, proposalVariantSummary } from "@/lib/proposal-summary";
 import styles from "@/app/proposals/proposals.module.css";
+import summaryStyles from "./proposal-project.module.css";
 
 const EmbeddedWorkspace = dynamic(() => import("@/app/proposals/ProposalWorkspace").then(module => module.ProposalWorkspace), {
   loading: () => <LoadingRegion className="p-6"><Skeleton className="block h-48 w-full" /></LoadingRegion>,
@@ -41,10 +43,28 @@ export function ProjectEventBuilderPanel({ projectId, readOnly, expanded = false
   if (loading) return <LoadingRegion className="p-6"><Skeleton className="block h-24 w-full" /></LoadingRegion>;
   if (expanded && proposal) return <EmbeddedWorkspace key={proposal.id} proposalId={proposal.id} embedded />;
   const variant = proposal?.variants.find((entry) => entry.isRecommended) ?? proposal?.variants[0];
-  const totals = proposalTotals(variant?.sections.flatMap((section) => section.items) ?? []);
-  return <div className={`${styles.page} p-6`}>
-    {error ? <div className={styles.error} role="alert">{error}</div> : null}
-    <div className={styles.heading}><div><h2 className="m-0 text-2xl font-bold">{proposal?.title ?? "Соберите предложение для клиента"}</h2><p>{proposal ? `${PROPOSAL_STATUS[proposal.status]} · ${proposal.variants.length} вариантов · ${variant?.sections.length ?? 0} разделов` : "Подберите услуги и подготовьте КП прямо здесь, на весь экран."}</p></div>{proposal ? <button className={styles.primary} onClick={() => onExpand ? onExpand() : router.push(`/proposals/${proposal.id}`)}>Открыть конструктор КП</button> : <button className={styles.primary} disabled={busy || readOnly} onClick={() => void open()}>{busy ? "Открываем…" : "Составить КП"}</button>}</div>
-    {proposal ? <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2"><strong className="text-2xl tabular-nums">{totals.preliminary ? "от " : ""}{proposalMoney(totals.client)}</strong><span className="text-sm text-zinc-600">{totals.unresolved ? `${totals.unresolved} цен требуют уточнения` : "Основной вариант"}</span><span className="text-sm text-zinc-600">{variant?.sections.map((section) => section.title).join(" · ") || "Добавьте первый раздел в конструкторе"}</span></div> : null}
+  const summary = proposalVariantSummary(variant);
+  return <div className={summaryStyles.summary} data-proposal-summary>
+    {error ? <div className={`${styles.error} ${summaryStyles.error}`} role="alert">{error}</div> : null}
+    <div className={summaryStyles.header}>
+      <div className={summaryStyles.identity}>
+        <div className={summaryStyles.title}><h2>{proposal?.title ?? "Соберите предложение для клиента"}</h2>{proposal ? <span className={summaryStyles.status}>{PROPOSAL_STATUS[proposal.status] ?? proposal.status}</span> : null}</div>
+        <p>{proposal ? `${variant?.title ?? "Без варианта"} · ${proposalCount(proposal.variants.length, ["вариант", "варианта", "вариантов"])} · ${proposalCount(summary.sections.length, ["раздел", "раздела", "разделов"])}` : "Выберите услуги, сравните варианты и подготовьте предложение на весь экран."}</p>
+      </div>
+      {proposal ? <button className={styles.primary} onClick={() => onExpand ? onExpand() : router.push(`/proposals/${proposal.id}`)}>Открыть конструктор КП</button> : <button className={styles.primary} disabled={busy || readOnly} onClick={() => void open()}>{busy ? "Открываем…" : "Составить КП"}</button>}
+    </div>
+    {proposal ? <div className={summaryStyles.body}>
+      <dl className={summaryStyles.sections} aria-label="Состав предложения">
+        {summary.sections.slice(0, 3).map(section => <div className={summaryStyles.section} key={section.id}><dt>{section.title}</dt><dd>{section.selected.length ? `${section.selected.slice(0, 2).join(" · ")}${section.selected.length > 2 ? ` · ещё ${section.selected.length - 2}` : ""}` : section.hasCandidates ? "Основной состав ещё не выбран" : "Услуги ещё не подобраны"}</dd></div>)}
+        {!summary.sections.length ? <div className={summaryStyles.section}><dt>Состав</dt><dd>Добавьте первый раздел в конструкторе</dd></div> : null}
+        {summary.sections.length > 3 ? <div className={summaryStyles.section}><dt>Ещё {summary.sections.length - 3}</dt><dd>{summary.sections.slice(3).map(section => section.title).join(" · ")}</dd></div> : null}
+      </dl>
+      <section className={summaryStyles.budget} aria-label="Бюджет предложения">
+        <h3>Бюджет основного состава</h3><strong>{summary.budget.label}</strong>
+        <p className={summary.budget.unresolved ? summaryStyles.pending : undefined}>{summary.budget.detail}</p>
+        {summary.budget.primaryCount ? <p>{proposalCount(summary.budget.primaryCount, ["услуга включена", "услуги включены", "услуг включено"])}</p> : null}
+        {summary.alternatives || summary.options ? <p>{[summary.alternatives ? proposalCount(summary.alternatives, ["альтернатива", "альтернативы", "альтернатив"]) : "", summary.options ? proposalCount(summary.options, ["опция", "опции", "опций"]) : ""].filter(Boolean).join(" · ")} — отдельно от суммы</p> : null}
+      </section>
+    </div> : null}
   </div>;
 }

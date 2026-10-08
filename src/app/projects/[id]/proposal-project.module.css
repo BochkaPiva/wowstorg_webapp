@@ -1,0 +1,28 @@
+.summary { container: proposal-summary / inline-size; padding: 24px 28px; color: #242126; }
+.summary button:focus-visible { outline: 2px solid #7130c5; outline-offset: 3px; }
+.summary button:disabled { opacity: .5; cursor: not-allowed; }
+.summary ::selection { background: #e9d9ff; color: #302042; }
+.header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.identity { min-width: 0; flex: 1 1 260px; }
+.title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; }
+.title h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.status { color: #68636d; font-size: 12px; }
+.identity p { margin: 8px 0 0; color: #68636d; font-size: 13px; line-height: 1.5; }
+.body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .4fr); gap: 28px; margin-top: 22px; padding-top: 22px; border-top: 1px solid #e5e1e8; }
+.sections { display: grid; align-content: start; gap: 14px; margin: 0; }
+.section { display: grid; grid-template-columns: minmax(100px, 160px) minmax(0, 1fr); gap: 16px; font-size: 13px; line-height: 1.5; }
+.section dt { font-weight: 600; overflow-wrap: anywhere; }
+.section dd { margin: 0; color: #68636d; overflow-wrap: anywhere; }
+.more { margin: 0; color: #68636d; font-size: 12px; }
+.budget { min-width: 0; padding-left: 28px; border-left: 1px solid #e5e1e8; }
+.budget h3 { margin: 0 0 10px; font-size: 13px; color: #68636d; font-weight: 400; }
+.budget strong { display: block; font-size: 22px; line-height: 1.3; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.budget p { margin: 8px 0 0; font-size: 12px; color: #68636d; line-height: 1.5; }
+.budget .pending { color: #815c1b; }
+.error { margin-bottom: 16px; }
+@container proposal-summary (max-width: 620px) {
+  .body { grid-template-columns: 1fr; gap: 20px; }
+  .budget { border-left: 0; border-top: 1px solid #e5e1e8; padding: 20px 0 0; }
+  .section { grid-template-columns: minmax(90px, 120px) minmax(0, 1fr); gap: 12px; }
+}
+@media (max-width: 700px) { .summary { padding: 20px; } }

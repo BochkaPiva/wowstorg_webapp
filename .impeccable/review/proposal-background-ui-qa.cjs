@@ -91,7 +91,7 @@ async function main() {
     await page.setViewportSize({ width, height: width < 700 ? 844 : 1000 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    if (width === 390) assert.equal(await page.evaluate(() => document.documentElement.scrollHeight <= document.querySelector('[aria-label="Состав раздела"]').getBoundingClientRect().bottom + scrollY + 40), true, 'mobile document ends immediately after the canvas');
+    if (width === 390) assert.equal(await page.evaluate(() => document.documentElement.scrollHeight <= Math.max(...[...document.querySelectorAll('[aria-label="Состав раздела"], aside[aria-label="Подбор услуг"]')].map(e => e.getBoundingClientRect().bottom + scrollY)) + 40), true, 'mobile document ends immediately after the last workspace region');
     if (width === 390 && (capture || mobileCaptureOnly)) {
       // Explicit clip avoids Chromium's fullPage resize changing dvh during capture.
       const height = await page.evaluate(() => document.documentElement.scrollHeight);

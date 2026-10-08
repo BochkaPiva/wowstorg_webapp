@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 
 import type { AdminAnalyticsData, ProjectAnalyticsRow } from "@/server/admin-analytics";
+import { analyticsCustomerRows, isActiveAnalyticsProject } from "@/lib/analytics-presentation";
 
 export type AdminAnalyticsExportSection = "global" | "requisites" | "projects" | "customers";
 
@@ -386,16 +387,16 @@ function addCustomersSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   addTable(
     ws,
     6,
-    ["Заказчик", "Проектов", "Активные", "Прогноз выручка", "Прогноз прибыль", "Факт заявок", "LTV", "Отмены %"],
-    data.customers.rows.map((r) => [
+    ["Заказчик", "Проектов", "Активные проекты", "Завершённые работы", "Активные проекты · прогноз", "Факт самостоятельных заявок", "Средняя смета проекта", "Маржа только проектов"],
+    analyticsCustomerRows(data).map((r) => [
       r.customerName,
       r.projectsCount,
-      r.activeProjects,
-      r.forecastRevenue,
-      r.forecastMarginAfterTax,
+      r.projects.filter(isActiveAnalyticsProject).length,
+      r.actualRevenue,
+      r.activeRevenue,
       r.closedOrdersFactRevenue,
-      r.ltvMixed,
-      r.cancelRatePercent / 100,
+      r.averageEstimatedProject,
+      r.projectMargin == null ? null : r.projectMargin / 100,
     ]),
     { currencyColumns: [3, 4, 5, 6], percentColumns: [7] },
   );

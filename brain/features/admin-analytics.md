@@ -1,69 +1,55 @@
 # Админ-аналитика
 
-## Цель
-Пересобрать админ-аналитику в управленческий центр с независимыми периодами рабочих контуров и надежными финансовыми формулами.
+## Цель и состояние
 
-## Вкладки
-- `Сводка`: факт, прогноз, структура финансового результата и управленческие сигналы.
-- `Бонусы`: отдельный период, фактический бонусный пул, сумма на человека и отдельный прогноз.
-- `Реквизит`: аналитика по закрытым заявкам, рентабельность, ROI, топы и услуги.
-- `Проекты`: финансы по сметам, воронка, риски и зависания по статусам.
-- `Клиенты`: LTV, повторность, средний чек, маржа, отмены и состав базы.
+Реализованный управленческий экран с компактным обзором, независимыми периодами и сопоставимыми рабочими таблицами. V3 от 08.10.2026 сохраняет экономику существующего read-model и общий AppShell.
 
-## Границы
-- Не менять бизнес-логику заявок, проектов и смет.
-- Не вводить новую таблицу истории статусов в первой итерации.
-- Не смешивать факт по заявкам и прогноз по проектным сметам в одну денежную цифру без явной подписи.
-- Не ухудшать существующую аналитику реквизита.
+## Шесть вкладок
+
+- `Обзор`: факт выручки, прибыли и взвешенной маржи; месячная динамика; источники; отдельный прогноз; уникальные проектные сигналы и переключаемые лидеры.
+- `Проекты`: факт завершённых и прогноз активных; фильтры состояний/рисков, поиск, сортировка, раскрытие основной сметы и расходов.
+- `Клиенты`: завершённые работы и активные проекты раздельно, средняя смета, проектная маржа и состав работ; без ложного LTV/повторности.
+- `Реквизит`: самостоятельные закрытые заявки, услуги, спрос и окупаемость в объединённой таблице, месячная динамика.
+- `Бонусы`: фактические 15% прибыли, деление на двух получателей; потенциальный бонус отдельным расчётом.
+- `Сверка`: preview Excel, отдельные снимки, сопоставление, фильтры и сравнение итогов Excel − сайт.
+
+Общие таблицы: поиск, фильтры, доступная сортировка, десять строк на страницу, раскрываемые подробности. Длинная методология доступна по запросу. На телефоне сохраняются читабельные названия (минимум 180px; сверка 190px) и прокрутка внутри таблицы.
 
 ## Затронуто
-- UI: `src/app/admin/analytics/page.tsx`
-- API: `src/app/api/admin/analytics/route.ts`, `src/app/api/admin/analytics/export/route.ts`
-- Server: `src/server/admin-analytics.ts`, `src/server/admin-analytics-xlsx.ts`
-- Project formulas: `src/server/projects/estimate-read-model.ts`, `src/lib/project-estimate-totals.ts`
-- Requisite formulas: `src/server/orders/order-pricing.ts`
-- Docs: `docs/ADMIN_ANALYTICS_REDESIGN.md`
+
+- UI: `src/app/admin/analytics/{page.tsx,AnalyticsUI.tsx,AnalyticsOverview.tsx,AnalyticsSections.tsx,AnalyticsReconciliation.tsx,analytics.module.css}`.
+- Presentation helper: `src/lib/analytics-presentation.ts`.
+- Excel: `src/server/admin-analytics-xlsx.ts`; клиентские метрики используют тот же `analyticsCustomerRows`, что UI.
+- Read-model: `src/server/admin-analytics.ts` (источник экономических сумм).
+- Существующие API: `/api/admin/analytics`, `/api/admin/analytics/export`, `/api/admin/analytics/reconciliation`; новые routes/env и миграция БД не нужны.
 
 ## Инварианты
-- У каждого рабочего контура собственный период `from/to`; периоды не сбрасывают друг друга.
-- `Реквизит` считает факт по `Order.endDate` и только по закрытым заявкам для денежных KPI.
-- `Проекты` считают прогноз по основной версии проектной сметы.
-- `CANCELLED` проекты не входят в финансовый прогноз, но остаются в метриках отмен и воронке.
-- Проектная выручка/маржа считается теми же helper-формулами, что проектная смета и XLSX.
-- Метрики времени в статусах считаются только по `ProjectActivityLog`; точность явно подписывается в UI.
-- Excel-экспорт должен использовать тот же read-model, что UI.
 
-## Приёмка
-- [ ] Есть рабочие контуры `Сводка`, `Бонусы`, `Реквизит`, `Проекты`, `Клиенты`.
-- [ ] У каждого контура свой период, который сохраняется при переключении вкладок.
-- [ ] Есть общий XLSX за период сводки с листами по разделам.
-- [ ] `Реквизит`, `Заказчики`, `Проекты` скачиваются отдельными XLSX.
-- [ ] Факт по реквизиту совпадает с текущей аналитикой после внедрения.
-- [ ] Проектные суммы совпадают с проектной сметой/XLSX на тестовых проектах.
-- [ ] Метрики статусов проекта имеют tooltip с источником `ProjectActivityLog`.
+- Все шесть периодов `from/to` независимы; preferences сохраняются в localStorage при доступности. Клиентский кэш обычного read-model включает только период и хранит до восьми периодов; одинаковый период разных вкладок использует один загруженный ответ. Сверка работает отдельно.
+- Самостоятельный финансовый результат означает `Order.projectId = null`; связанные с проектом заявки не дублируются.
+- Факт: самостоятельные закрытые заявки по `Order.endDate` плюс завершённые проекты. Это не банковская оплата. Прогноз заявок — активная аренда, пересекающая период; проектов — активные неархивные неотменённые проекты с пересечением дат мероприятия.
+- Денежные суммы проектов берутся из основной сметы и прежних helper-формул. Отменённые видны в списке, но не включаются в финансовый результат.
+- Маржа: прибыль / положительная выручка; иначе «—». Сигналы и число рисков считают уникальные projectId.
+- Клиентский `actualRevenue` — завершённые проекты + факт самостоятельных заявок. `activeRevenue` — только активные проекты. Средняя смета — выручка неотменённых проектов с основной сметой / число этих проектов; маржа относится только к проектам. Это не lifetime-метрика.
+- Bonus fact остаётся 15% суммарной прибыли / 2 получателя; forecast не означает начисление или выплату.
+- Динамика имеет общую денежную шкалу; источники — доли общего итога. Неподтверждённые сравнения и повторные оплаты не выводятся.
+- Сверка создаёт отдельный снимок без изменения бизнес-сущностей. Preview привязан к файлу/названию/периоду; новый контекст требует повторного preview. Неподтверждённое сохранение требует проверить список перед новым импортом.
+- Общий XLSX: Обзор, Факт и прогноз, Динамика, Заявки, Реквизит, Проекты, Заказчики, Методология. Отдельные exports: реквизит, проекты, клиенты. UI округляет подписи, исходные суммы и точность Excel сохраняются.
+
+## Приёмка и ограничения
+
+- [x] Шесть вкладок, независимые периоды, компактный обзор и пересобранные таблицы.
+- [x] Финальная сборка и scoped ESLint; 252 теста / 44 файла.
+- [x] Синтетический browser QA всех вкладок при 1586/1440/390px: кэш, поиск, страницы, детали, retry, периоды и workflow сверки.
+- [x] Finish reviewer подтвердил три назначенных исправления и `ship` именно в пределах fix list.
+- [ ] Реальные суммы известного периода и клиентский Excel сверены после выпуска.
+- [ ] Настоящий Excel и сохранённый снимок проверены в авторизованной среде.
+
+Browser QA перехватывает API и не подтверждает реальную финансовую агрегацию БД или парсинг Excel. Строгая comp fidelity остаётся OPEN (72.43%): удалённый по разрешению владельца подвал и сохранённый AppShell дают veto; safety fallback зафиксирован. Exact-comp pass и отсутствие любых дефектов не заявляются.
 
 ## Ссылки
-- `docs/ADMIN_ANALYTICS_REDESIGN.md`
 
-## Update 2026-05-25: finance ownership
-- Standalone order finance in admin analytics means `Order.projectId = null`.
-- If an order is linked to a project, its revenue, services, tax/profit signal and customer contribution belong to the project side and are excluded from standalone requisites analytics.
-- Overview separates fact from forecast: fact is standalone closed orders plus completed projects; forecast is standalone active orders plus active non-archived projects.
-- Standalone order fact is attributed by `Order.endDate`; standalone order forecast includes active orders whose rental interval intersects the selected period. This keeps an issued rental visible before its future end date.
-- Bonuses in overview are calculated as 15% of profit and split between 2 people.
-- Project period filtering uses event dates (`eventStartDate` / `eventEndDate`) and includes projects whose event interval intersects the selected period.
-
-## Update 2026-05-25: director XLSX
-- The global XLSX export is a finance report, not an operational signal dump.
-- Global export sheets: `Обзор`, `Факт и прогноз`, `Динамика`, `Заявки`, `Проекты`, `Заказчики`, `Методология`.
-- Project risk/status-aging sheets are intentionally excluded from the global report.
-- `Динамика` shows month-by-month fact and month-over-month comparison when the selected period contains several months.
-
-## Update 2026-07-23: independent analytics workspaces
-
-- The UI is split into five workspaces: overview, bonuses, requisites, projects, and customers.
-- Each workspace owns its `from/to` period in client state. Changing one period must not reset the others.
-- Bonuses use a dedicated period and are not presented as part of the overview period.
-- Bonus fact is still 15% of actual profit, split between 2 recipients. Forecast is displayed separately and is not an accrued amount.
-- Overview and requisites include a lightweight monthly revenue/profit timeline; no heavy chart dependency is introduced.
-- Existing API formulas and XLSX formulas remain the source of truth. The redesign changes information architecture, not order or project economics.
+- [Реализованная V3, проверки и выпуск](../../docs/ANALYTICS_DASHBOARD_V3.md).
+- [Локальная дизайн-система аналитики](../../.impeccable/surfaces/analytics-design.md).
+- [Исходный доменный план](../../docs/ADMIN_ANALYTICS_REDESIGN.md).
+- [Сверка Excel](financial-reconciliation.md).

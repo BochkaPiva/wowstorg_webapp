@@ -63,3 +63,5 @@
 Итого **Serializable** на путях создания/редактирования реальных заявок, конкурентных статусных действий, переноса дат с пересчётом доступности, создания проектного пространства, materialize demo-черновика проекта и преобразования независимой сметы в полноценный проект (см. ADR 002, ADR 006, ADR 007 и ADR 012).
 
 С 2026-09-05: `src/app/api/warehouse/repair-items/[id]/restore/route.ts` и `write-off/route.ts` используют **Serializable** и проверку ручного остатка за вычетом открытых Incident. GET `src/app/api/warehouse/repair-items/route.ts` читает позиции и случаи в **RepeatableRead**, чтобы сверять один снимок. Подробности: [учёт ремонта](../features/inventory-repair-accounting.md).
+
+С 2026-10-08: `src/server/projects/proposal-export-snapshot.ts` фиксирует неизменяемый клиентский снимок КП в **Serializable** с CAS revision и UUID идемпотентности (maxWait 5 с, timeout 15 с). Фото готовятся до транзакции, внутри повторно проверяются revision и UUID, назначается versionNumber и записывается checksum. HTTP-вход: `src/app/api/proposals/[id]/exports/route.ts`. См. ADR 014/015.

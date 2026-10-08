@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-10-08T06:00:04.627Z
-> **Файлов route.ts:** 160
+> **Сгенерировано:** 2026-10-08T14:40:49.278Z  
+> **Файлов route.ts:** 162  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -130,6 +130,8 @@
 | GET, POST | `/api/projects/workspace-templates` | `src/app/api/projects/workspace-templates/route.ts` |
 | POST | `/api/proposals/[id]/attach` | `src/app/api/proposals/[id]/attach/route.ts` |
 | POST | `/api/proposals/[id]/convert` | `src/app/api/proposals/[id]/convert/route.ts` |
+| GET | `/api/proposals/[id]/exports/[snapshotId]` | `src/app/api/proposals/[id]/exports/[snapshotId]/route.ts` |
+| POST | `/api/proposals/[id]/exports` | `src/app/api/proposals/[id]/exports/route.ts` |
 | POST | `/api/proposals/[id]/mutations` | `src/app/api/proposals/[id]/mutations/route.ts` |
 | GET, PATCH | `/api/proposals/[id]` | `src/app/api/proposals/[id]/route.ts` |
 | GET, POST | `/api/proposals` | `src/app/api/proposals/route.ts` |

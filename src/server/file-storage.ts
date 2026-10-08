@@ -62,13 +62,14 @@ async function supabaseUpload(args: {
   }
 }
 
-async function supabaseDownload(args: { bucket: string; key: string }) {
+async function supabaseDownload(args: { bucket: string; key: string; signal?: AbortSignal; maxBytes?: number }) {
   const c = supabaseConfig();
   if (!c.url || !c.key) throw new Error("Supabase Storage is not configured");
   const objectPath = normalizePathForObjectUrl(args.key);
   const url = `${c.url.replace(/\/+$/g, "")}/storage/v1/object/${args.bucket}/${objectPath}`;
   const res = await fetch(url, {
     method: "GET",
+    signal: args.signal,
     headers: {
       Authorization: `Bearer ${c.key}`,
       apikey: c.key,
@@ -79,8 +80,20 @@ async function supabaseDownload(args: { bucket: string; key: string }) {
     const txt = await res.text().catch(() => "");
     throw new Error(`Supabase download failed (${res.status}): ${txt || "no body"}`);
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  return buf;
+  if (!args.maxBytes) return Buffer.from(await res.arrayBuffer());
+  const reader = res.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = []; let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > args.maxBytes) { await reader.cancel(); throw new Error("PHOTO_TOO_LARGE"); }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  return Buffer.concat(chunks);
 }
 
 async function supabaseDelete(args: { bucket: string; key: string }) {
@@ -156,11 +169,11 @@ export async function putCustomerLogo(key: string, body: Buffer, contentType: st
   writeFileSync(join(LOCAL_CUSTOMER_LOGOS_DIR, safeKey), body);
 }
 
-export async function getCustomerLogo(key: string) {
+export async function getCustomerLogo(key: string, options?: { signal?: AbortSignal; maxBytes?: number }) {
   assertStorageConfiguredForProduction();
   if (isSupabaseStorageEnabled()) {
     const { photosBucket } = supabaseConfig();
-    return supabaseDownload({ bucket: photosBucket, key });
+    return supabaseDownload({ bucket: photosBucket, key, ...options });
   }
   const safeKey = key.replace(/[/\\]/g, "_");
   try {

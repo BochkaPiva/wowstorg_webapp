@@ -75,11 +75,13 @@
 - [x] Разделы и услуги переставляются drag-and-drop, кнопками и клавиатурой; перенос услуги между разделами сохраняет снимок и поддерживает undo/redo.
 - [x] До трёх вариантов сравниваются по разделам/услугам, клиентским ценам и количествам; различия фильтруются, неизвестные бюджеты не обещают экономию. Режим работает без записи и имеет последовательный мобильный вид.
 - [x] Итоги конструктора и созданных строк сметы совпадают.
-- [ ] Client payload/PPTX не содержит внутренних цен и заметок.
+- [x] Client payload/PPTX не содержит внутренних цен и заметок (allowlist, unit tests; проверка живого production экспорта отдельно).
 - [ ] PPTX проходит smoke test в PowerPoint, Google Slides и LibreOffice без repair warning.
 - [ ] Конструктор полноценно работает на телефоне без сжатия desktop layout.
 
 ## Ссылки
+
+Файловый экспорт v1: `[id]/exports` фиксирует client-safe снимок; `[snapshotId]?format=pdf|pptx` скачивает его по фирменному макету с Oks Free. UI работает без общего busy overlay; первичная генерация синхронна в отдельном запросе, export job/history пока не реализованы. Обзор всех разделов и широкая галерея с checkbox-добавлением используют тот же редактор проекта/самостоятельного КП. См. уточнение ADR 015 и `src/server/projects/proposal-template-v1/README.md` для assets/шрифта/границ проверки. Новых миграций нет.
 
 - [`docs/EVENT_PROPOSAL_WORKSPACE_V2_SPEC.md`](../../docs/EVENT_PROPOSAL_WORKSPACE_V2_SPEC.md)
 - [`docs/EVENT_PROPOSAL_BUILDER_IMPLEMENTATION_PLAN.md`](../../docs/EVENT_PROPOSAL_BUILDER_IMPLEMENTATION_PLAN.md)

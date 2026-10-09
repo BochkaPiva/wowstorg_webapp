@@ -3893,6 +3893,14 @@ body.project-estimate-cell-selecting * {
   border-radius: 0 0 14px 14px;
 }
 
+/* Fullscreen content scrolls independently of the locked project page.
+   The board owns its canvas pan/zoom instead of an outer scroll area. */
+.project-workspace-widget[data-expanded="true"]:not([data-widget="FREE_BOARD"]) > .project-workspace-widget__body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .project-tasks-embed {
   display: block;
   min-height: 196px;
@@ -5336,7 +5344,7 @@ body.project-estimate-cell-selecting * {
     min-height: 260px;
   }
 
-  .project-workspace-widget[data-expanded="true"] .project-workspace-widget__body {
+  .project-workspace-widget[data-widget="FREE_BOARD"][data-expanded="true"] > .project-workspace-widget__body {
     overflow: hidden;
   }
 

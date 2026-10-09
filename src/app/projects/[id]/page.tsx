@@ -56,6 +56,10 @@ const ProjectContactsPanel = dynamic(
   () => import("./ProjectContactsPanel").then((module) => module.ProjectContactsPanel),
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Контакты" /> },
 );
+const ProjectContractorsPanel = dynamic(
+  () => import("./ProjectContractorsPanel").then((module) => module.ProjectContractorsPanel),
+  { ssr: false, loading: () => <ProjectModuleSkeleton title="Подрядчики проекта" /> },
+);
 const ProjectEventBuilderPanel = dynamic(
   () => import("./ProposalProjectLauncher").then((module) => module.ProjectEventBuilderPanel),
   { ssr: false, loading: () => <ProjectModuleSkeleton title="Конструктор мероприятия" /> },
@@ -879,6 +883,10 @@ function ActivityDescription({ row }: { row: ActivityLogRow }) {
     );
   }
   if (kind === "PROJECT_UPDATED") {
+    if (row.payload && typeof row.payload === "object" && "contractorAction" in row.payload) {
+      const payload = row.payload as { contractorAction: string; contractorName?: string; count?: number };
+      return <span>{payload.contractorAction === "imported" ? `Добавлены подрядчики из КП: ${payload.count ?? 0}` : `${payload.contractorAction === "added" ? "Добавлен подрядчик" : "Обновлён подрядчик"}: ${payload.contractorName ?? ""}`}</span>;
+    }
     const ch =
       typeof row.payload === "object" &&
       row.payload !== null &&
@@ -1341,6 +1349,7 @@ export default function ProjectDetailPage() {
 
   function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false, onExpand?: () => void): React.ReactNode {
     if (!project) return null;
+    if (type === "CONTRACTORS") return <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors:inline`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>;
     if (type === "EVENT_BUILDER") {
       return (
         <ProjectModuleBoundary title="Конструктор мероприятия" resetKey={`${id}:event-builder:inline`}>
@@ -2037,6 +2046,11 @@ export default function ProjectDetailPage() {
               <ProjectModuleBoundary title="Контакты" resetKey={`${id}:contacts`}>
                 <ProjectContactsPanel projectId={id} readOnly={readOnly} />
               </ProjectModuleBoundary>
+            </div>
+          ) : null}
+          {visibleWorkspaceTypes.has("CONTRACTORS") ? (
+            <div id="project-module-contractors" className={workspaceModuleClass("CONTRACTORS")} style={workspaceModuleStyle("CONTRACTORS")}>
+              <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>
             </div>
           ) : null}
 

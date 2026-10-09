@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { withDetailReturn } from "@/lib/detail-return";
@@ -461,17 +462,12 @@ function WarehouseQueueContent() {
         <div className="queue-empty">Этот раздел доступен только сотрудникам Wowstorg.</div>
       ) : (
         <div className="queue-page">
-          <header className="queue-toolbar">
-            <div className="queue-toolbar__top">
-              <div>
-                <h2>Очередь заявок</h2>
-                <p>{loading ? "Обновляем…" : `${orders.length} ${orders.length === 1 ? "заявка" : "заявок"}`}</p>
-              </div>
+          <SectionHeader title="Все заявки" description="Реквизит, выдача и возврат. Текущие заявки и история работы." actions={
               <div className="queue-tabs" role="tablist" aria-label="Область заявок">
                 <button type="button" role="tab" aria-selected={tab === "active"} onClick={() => { setTab("active"); setSort(DEFAULT_SORT); }}>Активные</button>
                 <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => { setTab("archive"); setSort(ARCHIVE_DEFAULT_SORT); }}>Архив</button>
               </div>
-            </div>
+            }>
 
             <div className="queue-filters">
               <label className="queue-search">
@@ -507,7 +503,7 @@ function WarehouseQueueContent() {
                 <button type="button" className="queue-statusFilters__reset" onClick={() => setStatusSet(new Set(STATUS_OPTIONS.map((option) => option.value)))}>Все</button>
               </div>
             ) : null}
-          </header>
+          </SectionHeader>
 
           {notice ? <div className="queue-notice" role="status">{notice}</div> : null}
           {loadError ? <div className="queue-error" role="alert">{loadError}<button type="button" onClick={() => void loadOrders()}>Повторить</button></div> : null}

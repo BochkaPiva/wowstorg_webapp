@@ -4,6 +4,8 @@
   color: var(--wow-ink);
 }
 
+.queue-page > header .queue-filters { padding: 0; }
+
 .queue-toolbar {
   border: 1px solid var(--wow-line);
   border-radius: 12px;
@@ -54,8 +56,8 @@
 }
 
 .queue-tabs button[aria-selected="true"] {
-  background: var(--wow-ink);
-  color: #fff;
+  background: #ede4fb;
+  color: #6324ac;
 }
 
 .queue-filters {

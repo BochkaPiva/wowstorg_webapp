@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildProjectWorkspaceDraft } from "@/lib/projects/project-workspace";
+import { PROJECT_WIDGET_TYPES } from "@/lib/projects/project-widget-registry";
 import {
   parseProjectWorkspaceTemplateWidgets,
   serializeProjectWorkspaceTemplateWidgets,
@@ -16,7 +17,7 @@ describe("project workspace templates", () => {
 
     const stored = serializeProjectWorkspaceTemplateWidgets(draft);
 
-    expect(stored).toHaveLength(10);
+    expect(stored).toHaveLength(PROJECT_WIDGET_TYPES.length);
     expect(stored.find((widget) => widget.type === "ESTIMATE")?.isVisible).toBe(true);
     expect(stored.every((widget, index) => widget.sortOrder === index && widget.y === index)).toBe(true);
   });
@@ -29,5 +30,5 @@ describe("project workspace templates", () => {
 });
 
 function draftOrder(index: number) {
-  return 9 - index;
+  return PROJECT_WIDGET_TYPES.length - 1 - index;
 }

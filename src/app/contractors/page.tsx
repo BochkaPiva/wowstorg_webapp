@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { catalogRequest, CatalogIcon, ContractorPhoto, freshnessCopy, offerPrice, seedHref, type Category, type ContractorCard, type ContractorDetail } from "./catalog-ui";
 import { CatalogInspector } from "./CatalogInspector";
@@ -13,7 +14,7 @@ type CatalogPage = { contractors: ContractorCard[]; nextCursor: string | null };
 
 function CatalogSkeleton() {
   return <LoadingRegion className={styles.catalogSkeleton} label="Загрузка каталога подрядчиков">
-    {Array.from({ length: 3 }, (_, index) => <article className={styles.skeletonCard} key={index}>
+    {Array.from({ length: 4 }, (_, index) => <article className={styles.skeletonCard} key={index}>
       <Skeleton className={styles.skeletonMedia} /><div className={styles.skeletonBody}><Skeleton className={styles.skeletonTitle} /><Skeleton className={styles.skeletonDescription} /><div className={styles.skeletonOffers}><Skeleton /><Skeleton /></div></div>
     </article>)}
   </LoadingRegion>;
@@ -36,6 +37,7 @@ export default function ContractorsPage() {
   const [detailError, setDetailError] = React.useState("");
   const [detailReload, setDetailReload] = React.useState(0);
   const [panelEpoch, setPanelEpoch] = React.useState(0);
+  const [expandedCards, setExpandedCards] = React.useState<Set<string>>(new Set());
   const panelRef = React.useRef<HTMLElement>(null);
   const opener = React.useRef<HTMLElement | null>(null);
   const dirty = React.useRef(false);
@@ -97,7 +99,7 @@ export default function ContractorsPage() {
     if ((event.target as HTMLElement).closest("a") && (saving.current || (dirty.current && !window.confirm("Есть несохранённые поля. Перейти без сохранения?")))) event.preventDefault();
   }
   return <AppShell title="Подрядчики"><div className={styles.page} onClickCapture={guardLink}>
-    <header className={styles.hero}><div><h2>Подрядчики и услуги</h2><p>Выберите услугу и начните КП. Для контактов и деталей откройте карточку.</p></div><div className={styles.heroActions}><button className={styles.secondary} onClick={() => switchPanel({ kind: "create" })}>Добавить подрядчика</button><Link className={styles.primary} href="/proposals?new=1">Составить КП</Link></div></header>
+    <SectionHeader title="Подрядчики" description="Услуги для ваших мероприятий. Соберите КП или найдите нужный контакт." actions={<><button className={styles.secondary} onClick={() => switchPanel({ kind: "create" })}>Добавить подрядчика</button><Link className={styles.primary} href="/proposals?new=1">Составить КП</Link></>} />
     <nav className={styles.sectionTabs} aria-label="Подрядчики"><Link href="/contractors" aria-current="page">Каталог</Link><Link href="/proposals">Коммерческие предложения</Link></nav>
     <section className={styles.toolbar} aria-label="Поиск и категории"><input className={styles.search} value={search} maxLength={200} onChange={(event) => setSearch(event.target.value)} placeholder="Подрядчик или услуга" aria-label="Поиск подрядчиков" /><div className={styles.chips}><button className={styles.chip} aria-pressed={!categoryId} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} aria-pressed={category.id === categoryId} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}<button className={styles.quiet} onClick={() => switchPanel({ kind: "category" })} aria-label="Добавить категорию">+ Категория</button></div></section>
     {error ? <div className={styles.error} role="alert">{error} <button className={styles.quiet} onClick={() => setReload((value) => value + 1)}>Повторить</button></div> : null}
@@ -107,8 +109,8 @@ export default function ContractorsPage() {
         {loading ? <CatalogSkeleton /> : contractors.length ? <><div className={styles.catalogSummary}>Показано подрядчиков: <strong>{contractors.length}</strong>{nextCursor ? <span>· ниже есть ещё</span> : null}</div><section className={styles.catalogGrid} aria-label="Каталог подрядчиков">{contractors.map((contractor) => <article key={contractor.id} className={styles.contractorCard} data-selected={detailId === contractor.id}>
           <button className={styles.cardMedia} onClick={() => switchPanel({ kind: "view", id: contractor.id })} aria-label={`Открыть карточку: ${contractor.name}`}><ContractorPhoto src={contractor.photoUrl} name={contractor.name} /></button>
           <div className={styles.cardBody}><div className={styles.cardHead}><div><h3><button onClick={() => switchPanel({ kind: "view", id: contractor.id })}>{contractor.name}</button></h3>{contractor.shortDescription ? <p>{contractor.shortDescription}</p> : null}</div>{contractor.city ? <span className={styles.city}>{contractor.city}</span> : null}</div>
-            <div className={styles.offerList}>{contractor.offers.slice(0, 3).map((offer) => <div key={offer.id} className={styles.offerRow}><div className={styles.offerMain}><span className={styles.offerCategory}>{offer.category.name}</span><strong>{offer.title}</strong><span className={styles.freshness}>{freshnessCopy(offer)}</span></div><div className={styles.offerSide}><strong>{offerPrice(offer)}</strong><Link className={styles.serviceAction} href={seedHref(contractor, offer)} aria-label={`Составить КП: ${offer.title}, ${contractor.name}`}>В новое КП</Link></div></div>)}{!contractor.offers.length ? <div className={styles.noOffers}>Услуги ещё не добавлены</div> : null}</div>
-            <button className={styles.cardDetails} onClick={() => switchPanel({ kind: "view", id: contractor.id })}>{contractor.offers.length > 3 ? `Все услуги (${contractor.offers.length}) и контакты` : "Подробнее и контакты"}<CatalogIcon kind="open" /></button>
+            <div className={styles.offerList} id={`services-${contractor.id}`} data-expanded={expandedCards.has(contractor.id)}>{(expandedCards.has(contractor.id) ? contractor.offers : contractor.offers.slice(0, 2)).map((offer) => <div key={offer.id} className={styles.offerRow}><div className={styles.offerMain}><span className={styles.offerCategory}>{offer.category.name}</span><strong title={offer.title}>{offer.title}</strong><span className={styles.freshness}>{freshnessCopy(offer)}</span></div><div className={styles.offerSide}><strong>{offerPrice(offer)}</strong><Link className={styles.serviceAction} href={seedHref(contractor, offer)} aria-label={`Составить КП: ${offer.title}, ${contractor.name}`}>В новое КП</Link></div></div>)}{!contractor.offers.length ? <div className={styles.noOffers}>Услуги ещё не добавлены</div> : null}</div>
+            <div className={styles.cardFooter}>{contractor.offers.length > 2 ? <button className={styles.cardDetails} aria-expanded={expandedCards.has(contractor.id)} aria-controls={`services-${contractor.id}`} onClick={() => setExpandedCards(current => { const next = new Set(current); if (next.has(contractor.id)) next.delete(contractor.id); else next.add(contractor.id); return next; })}>{expandedCards.has(contractor.id) ? "Свернуть услуги" : `Ещё ${contractor.offers.length - 2} услуг`}</button> : <span className={styles.serviceCount}>{contractor.offers.length ? `Услуг: ${contractor.offers.length}` : "Нет услуг"}</span>}<button className={styles.cardDetails} onClick={() => switchPanel({ kind: "view", id: contractor.id })}>Контакты<CatalogIcon kind="open" /></button></div>
           </div>
         </article>)}</section>{nextCursor ? <div className={styles.loadMore}><button className={styles.secondary} disabled={moreLoading} onClick={() => void loadMore()}>{moreLoading ? "Загружаем…" : "Показать ещё"}</button></div> : null}</> : !error ? <div className={styles.catalogEmpty}><strong>{query || categoryId ? "Ничего не найдено" : "Соберите свою базу подрядчиков"}</strong><span>{query || categoryId ? "Попробуйте другой запрос или категорию." : "Добавьте первого подрядчика и его услуги — они появятся здесь."}</span><button className={styles.secondary} onClick={() => query || categoryId ? (setSearch(""), setCategoryId("")) : switchPanel({ kind: "create" })}>{query || categoryId ? "Сбросить поиск" : "Добавить подрядчика"}</button></div> : null}
       </div>

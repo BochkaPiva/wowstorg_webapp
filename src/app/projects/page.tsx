@@ -6,6 +6,7 @@ import React, { Suspense } from "react";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import {
   PROJECT_BALL_LABEL,
@@ -485,12 +486,8 @@ function ProjectsContent() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-lg border border-zinc-300 border-t-4 border-t-yellow-400 bg-white p-5">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <h1 className="text-3xl font-black leading-none text-zinc-950 sm:text-4xl">Проекты</h1>
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <SectionHeader title="Все проекты" description="Мероприятия команды: текущая работа и завершённые проекты." actions={
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={openCreateModal}
@@ -512,7 +509,7 @@ function ProjectsContent() {
                     className={[
                       "rounded-md px-4 py-2.5 text-sm font-black transition-colors",
                       tab === "active"
-                        ? "bg-zinc-950 text-white"
+                        ? "bg-violet-100 text-violet-800"
                         : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                     ].join(" ")}
                   >
@@ -527,7 +524,7 @@ function ProjectsContent() {
                     className={[
                       "rounded-md px-4 py-2.5 text-sm font-black transition-colors",
                       tab === "archive"
-                        ? "bg-zinc-950 text-white"
+                        ? "bg-violet-100 text-violet-800"
                         : "text-zinc-700 hover:bg-white/80 hover:text-zinc-950",
                     ].join(" ")}
                   >
@@ -535,9 +532,8 @@ function ProjectsContent() {
                   </button>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-5 border-t border-zinc-200 pt-4">
+            }>
+            <div>
               <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(10rem,13rem)_minmax(12rem,15rem)_minmax(9rem,12rem)]">
                 <input
                   type="search"
@@ -585,7 +581,7 @@ function ProjectsContent() {
                 </select>
               </div>
             </div>
-          </section>
+          </SectionHeader>
 
           {listError ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">

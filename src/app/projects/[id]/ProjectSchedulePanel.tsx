@@ -3,6 +3,7 @@
 import React from "react";
 
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+import type { ProjectContractorsPayload } from "@/lib/projects/project-contractors";
 
 type Slot = { id: string; sortOrder: number; intervalText: string; description: string };
 type Day = { id: string; sortOrder: number; dateNote: string; slots: Slot[] };
@@ -85,6 +86,23 @@ export function ProjectSchedulePanel({
   readOnly: boolean;
 }) {
   const [serverDays, setServerDays] = React.useState<Day[]>([]);
+  const [contractorsBySlot, setContractorsBySlot] = React.useState<Record<string, string[]>>({});
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/contractors`, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return; // The roster itself shows migration / permission errors.
+        const data: ProjectContractorsPayload = await response.json();
+        const bySlot: Record<string, string[]> = {};
+        for (const row of data.assignments) if (row.scheduleSlotId && row.status !== "CANCELLED") (bySlot[row.scheduleSlotId] ??= []).push(row.name);
+        setContractorsBySlot(bySlot);
+      } catch { /* Optional roster context must not block the schedule. */ }
+    };
+    const listener = () => { void load(); };
+    void load(); window.addEventListener("project-contractors-changed", listener);
+    return () => { controller.abort(); window.removeEventListener("project-contractors-changed", listener); };
+  }, [projectId]);
   const [draftDays, setDraftDays] = React.useState<Day[]>([]);
   const [draftDirty, setDraftDirty] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
@@ -254,6 +272,7 @@ export function ProjectSchedulePanel({
         setDraftDirty(false);
         window.localStorage.removeItem(storageKey);
         load(false);
+        window.dispatchEvent(new Event("project-contractors-changed"));
       } else {
         window.alert(j?.error?.message ?? "Ошибка");
       }
@@ -352,7 +371,7 @@ export function ProjectSchedulePanel({
           ) : null}
 
           {viewMode === "timeline" ? (
-            <ScheduleTimeline days={draftDays} />
+            <ScheduleTimeline days={draftDays} contractorsBySlot={contractorsBySlot} />
           ) : <div className="project-schedule-panel__days">
             {draftDays.length === 0 ? (
               <div className="project-schedule-panel__empty">Добавьте первый день и его события.</div>
@@ -361,6 +380,7 @@ export function ProjectSchedulePanel({
                 <DayBlock
                   key={d.id}
                   day={d}
+                  contractorsBySlot={contractorsBySlot}
                   readOnly={readOnly}
                   busy={busy}
                   onPatchDay={patchDay}
@@ -377,7 +397,7 @@ export function ProjectSchedulePanel({
   );
 }
 
-function ScheduleTimeline({ days }: { days: Day[] }) {
+function ScheduleTimeline({ days, contractorsBySlot }: { days: Day[]; contractorsBySlot: Record<string, string[]> }) {
   const slots = days.flatMap((day) => day.slots.map((slot) => ({ day, slot, interval: parseInterval(slot.intervalText) })))
     .filter((item): item is { day: Day; slot: Slot; interval: { start: number; end: number } } => Boolean(item.interval));
   if (!days.length) return <div className="project-schedule-panel__empty">Пока нет событий. Переключитесь в таблицу, чтобы собрать тайминг.</div>;
@@ -414,6 +434,7 @@ function ScheduleTimeline({ days }: { days: Day[] }) {
                       <strong>{slot.description}</strong>
                     </span>
                   </div>
+                  {contractorsBySlot[slot.id]?.length ? <div className="col-start-2 py-1 text-xs text-violet-700">{contractorsBySlot[slot.id].join(" · ")}</div> : null}
                 </div>
               );
             }) : <div className="project-schedule-timeline__day-empty">Событий пока нет</div>}
@@ -426,6 +447,7 @@ function ScheduleTimeline({ days }: { days: Day[] }) {
 
 function DayBlock({
   day,
+  contractorsBySlot,
   readOnly,
   busy,
   onPatchDay,
@@ -434,6 +456,7 @@ function DayBlock({
   onDeleteSlot,
 }: {
   day: Day;
+  contractorsBySlot: Record<string, string[]>;
   readOnly: boolean;
   busy: boolean;
   onPatchDay: (id: string, p: object) => void;
@@ -539,7 +562,7 @@ function DayBlock({
               <div className="project-schedule-slot__time">
                 {s.intervalText}
               </div>
-              <div className="project-schedule-slot__description">{s.description}</div>
+              <div className="project-schedule-slot__description">{s.description}{contractorsBySlot[s.id]?.length ? <span className="mt-1 block text-xs text-violet-700">{contractorsBySlot[s.id].join(" · ")}</span> : null}</div>
               {!readOnly ? (
                 <button
                   type="button"

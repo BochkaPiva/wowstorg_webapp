@@ -61,7 +61,7 @@ export function buildProjectWorkspaceDraft(
       heightPreset: HEIGHT_SET.has(String(heightPreset)) && definition.allowedHeights.includes(heightPreset as ProjectWidgetHeightPreset)
         ? (heightPreset as ProjectWidgetHeightPreset)
         : definition.defaultHeight,
-      isVisible: definition.mandatory ? true : saved?.isVisible === true,
+      isVisible: definition.mandatory ? true : saved ? saved.isVisible === true : definition.defaultVisible === true,
     };
   });
 }
@@ -73,6 +73,7 @@ export function buildRecommendedProjectWorkspaceDraft(): ProjectWorkspaceWidgetI
     heightPreset: ProjectWorkspaceWidgetInput["heightPreset"];
   }> = [
     { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
+    { type: "CONTRACTORS", width: 12, heightPreset: "MEDIUM" },
     { type: "ESTIMATE", width: 12, heightPreset: "LARGE" },
     { type: "ORDERS", width: 4, heightPreset: "COMPACT" },
     { type: "SCHEDULE", width: 4, heightPreset: "COMPACT" },
@@ -125,7 +126,7 @@ export function normalizeProjectWorkspaceWidgets(
         HEIGHT_SET.has(heightPreset) && definition.allowedHeights.includes(heightPreset)
           ? heightPreset
           : definition.defaultHeight,
-      isVisible: definition.mandatory ? true : widget?.isVisible === true,
+      isVisible: definition.mandatory ? true : widget ? widget.isVisible === true : definition.defaultVisible === true,
     };
   });
 }

@@ -393,6 +393,8 @@ model User {
   orderServiceFeedbacks           OrderServiceFeedback[]        @relation("order_service_feedback_author")
   customerMerges                  CustomerMerge[]               @relation("customer_merge_actor")
   contractorsCreated              Contractor[]                  @relation("contractor_created_by")
+  projectContractorsCreated       ProjectContractor[]           @relation("project_contractor_created_by")
+  projectContractorsUpdated       ProjectContractor[]           @relation("project_contractor_updated_by")
   contractorsUpdated              Contractor[]                  @relation("contractor_updated_by")
   contractorOfferPricesConfirmed  ContractorOffer[]             @relation("contractor_offer_price_confirmed_by")
   contractorPriceHistoryCreated   ContractorOfferPriceHistory[] @relation("contractor_price_history_actor")
@@ -757,6 +759,7 @@ model Project {
   projectFiles              ProjectFile[]
   estimateVersions          ProjectEstimateVersion[]
   scheduleDays              ProjectScheduleDay[]
+  contractorAssignments     ProjectContractor[]
   tasks                     WorkTask[]
   members                   ProjectMember[]
   widgets                   ProjectWidget[]
@@ -938,12 +941,13 @@ model Contractor {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  createdBy     User                  @relation("contractor_created_by", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy     User                  @relation("contractor_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
-  contacts      ContractorContact[]
-  assets        ContractorAsset[]
-  offers        ContractorOffer[]
-  proposalItems ProjectProposalItem[]
+  createdBy          User                  @relation("contractor_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy          User                  @relation("contractor_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  contacts           ContractorContact[]
+  assets             ContractorAsset[]
+  offers             ContractorOffer[]
+  proposalItems      ProjectProposalItem[]
+  projectAssignments ProjectContractor[]
 
   @@index([isActive, name])
   @@index([city])
@@ -967,6 +971,41 @@ model ContractorContact {
   contractor Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
 
   @@index([contractorId, sortOrder])
+}
+
+/// Реальный состав подрядчиков проекта. Не бюджет, не вариант КП и не бронирование.
+model ProjectContractor {
+  id             String   @id @default(uuid())
+  projectId      String
+  contractorId   String?
+  scheduleSlotId String?
+  name           String
+  responsibility String   @db.Text
+  contactName    String?
+  phone          String?
+  email          String?
+  status         String   @default("PENDING")
+  arrivalNote    String?  @db.Text
+  internalNotes  String?  @db.Text
+  revision       Int      @default(0)
+  creationHash   String
+  createdById    String
+  updatedById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractor   Contractor?          @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  scheduleSlot ProjectScheduleSlot? @relation(fields: [scheduleSlotId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("project_contractor_created_by", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User                 @relation("project_contractor_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, contractorId])
+  @@index([projectId, status])
+  @@index([contractorId])
+  @@index([scheduleSlotId])
+  @@index([createdById])
+  @@index([updatedById])
 }
 
 model ContractorAsset {
@@ -1869,9 +1908,10 @@ model ProjectScheduleSlot {
   dayId String
   day   ProjectScheduleDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
 
-  sortOrder    Int    @default(0)
-  intervalText String
-  description  String @db.Text
+  sortOrder             Int                 @default(0)
+  intervalText          String
+  description           String              @db.Text
+  contractorAssignments ProjectContractor[]
 
   @@index([dayId, sortOrder])
 }

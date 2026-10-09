@@ -1,5 +1,7 @@
 # Крупные фичи — как вести документацию
 
+Состав подрядчиков проекта: [`project-contractors.md`](./project-contractors.md), ADR 017.
+
 ## Где живут длинные ТЗ
 
 Исторические и детальные планы остаются в **[`docs/`](../../docs/)** (например `GREENWICH_ACHIEVEMENTS_IMPLEMENTATION_PLAN.md`, `INVENTORY_AUDIT_SYSTEM_PLAN.md`).

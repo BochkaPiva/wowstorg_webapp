@@ -1,0 +1,9 @@
+.header { padding: 24px; border: 1px solid var(--wow-line, #d4d4cf); border-radius: 16px; background: var(--wow-surface, #fff); }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.copy { min-width: 0; }
+.copy h1 { margin: 0; color: var(--wow-ink, #0a0a0a); font-size: 30px; font-weight: 750; line-height: 1.2; letter-spacing: -.025em; }
+.copy p { margin: 8px 0 0; max-width: 65ch; font-size: 14px; line-height: 1.5; color: var(--wow-muted, #686863); }
+.actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; flex: none; gap: 8px; }
+.bottom { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--wow-line, #d4d4cf); }
+@media (max-width: 800px) { .top { align-items: start; flex-direction: column; gap: 16px; } .actions { justify-content: flex-start; } }
+@media (max-width: 560px) { .header { padding: 18px; } .copy h1 { font-size: 26px; } }

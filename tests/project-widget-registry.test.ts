@@ -31,6 +31,7 @@ describe("project widget registry", () => {
     const widgets = buildRecommendedProjectWorkspaceDraft();
     expect(widgets.map(({ type, width, heightPreset }) => ({ type, width, heightPreset }))).toEqual([
       { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
+      { type: "CONTRACTORS", width: 12, heightPreset: "MEDIUM" },
       { type: "ESTIMATE", width: 12, heightPreset: "LARGE" },
       { type: "ORDERS", width: 4, heightPreset: "COMPACT" },
       { type: "SCHEDULE", width: 4, heightPreset: "COMPACT" },
@@ -50,6 +51,10 @@ describe("project widget registry", () => {
         (item) => item.allowedWidths.includes(item.defaultWidth) && item.allowedHeights.includes(item.defaultHeight),
       ),
     ).toBe(true);
+  });
+  it("reveals the new roster for existing layouts without undoing an explicit hide", () => {
+    expect(buildProjectWorkspaceDraft([]).find((item) => item.type === "CONTRACTORS")?.isVisible).toBe(true);
+    expect(buildProjectWorkspaceDraft([{ type: "CONTRACTORS", instanceKey: "contractors", isVisible: false }]).find((item) => item.type === "CONTRACTORS")?.isVisible).toBe(false);
   });
 
   it("restores the complete settings catalog while keeping optional modules hidden", () => {

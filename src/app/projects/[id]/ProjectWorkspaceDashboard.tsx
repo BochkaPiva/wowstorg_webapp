@@ -8,6 +8,8 @@ import {
   type ProjectWidgetType,
 } from "@/lib/projects/project-widget-registry";
 import type { ProjectWorkspaceWidgetInput } from "@/lib/projects/project-workspace";
+import { queueProjectBoardInsertion } from "@/lib/projects/project-board-insertion";
+import type { ProjectFreeBoardLinkedItemType } from "@/lib/projects/project-free-board";
 
 const WIDTH_CLASS: Record<4 | 6 | 8 | 12, string> = {
   4: "md:col-span-4",
@@ -68,6 +70,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
     node.querySelector<HTMLButtonElement>("button")?.focus();
     const trap = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
+      if (node.querySelector("dialog:modal")) return;
       const controls = Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length > 0);
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus(); }
@@ -138,12 +141,28 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
 }) {
   const [collapsedTypes, setCollapsedTypes] = React.useState<Set<ProjectWidgetType>>(new Set());
   const [expandedType, setExpandedType] = React.useState<ProjectWidgetType | null>(null);
+  const [returnToBoard, setReturnToBoard] = React.useState(false);
   function closeExpanded() {
     if (expandedType === "EVENT_BUILDER" && !window.dispatchEvent(new Event("proposal-workspace:close", { cancelable: true }))) return;
     if (expandedType === "CONTRACTORS" && !window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return;
-    setExpandedType(null);
+    setExpandedType(returnToBoard ? "FREE_BOARD" : null);
+    setReturnToBoard(false);
   }
+  React.useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; type: ProjectWidgetType; returnToBoard?: boolean; insert?: { type: ProjectFreeBoardLinkedItemType; id: string } }>).detail;
+      if (detail?.projectId !== projectId) return;
+      if (!widgets.some((widget) => widget.type === detail.type)) { event.preventDefault(); return; }
+      if (!window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) { event.preventDefault(); return; }
+      if (detail.insert) queueProjectBoardInsertion(projectId, detail.insert);
+      setCollapsedTypes((current) => { const next = new Set(current); next.delete(detail.type); return next; });
+      setReturnToBoard(Boolean(detail.returnToBoard)); setExpandedType(detail.type);
+    };
+    window.addEventListener("project-workspace:open", open);
+    return () => window.removeEventListener("project-workspace:open", open);
+  }, [projectId, widgets]);
   const closeOnEscape = React.useEffectEvent((event: KeyboardEvent) => {
+    if (document.querySelector("dialog:modal")) return;
     if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); closeExpanded(); }
   });
 
@@ -197,7 +216,7 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("project-workspace:configure"))}>Настроить</button>
       </nav>
       <div className="project-workspace-grid grid grid-cols-1 items-start md:grid-cols-12">
-        {visible.map((widget) => (
+        {widgets.filter((widget) => widget.isVisible || widget.type === expandedType).sort((a, b) => a.sortOrder - b.sortOrder).map((widget) => (
           <WorkspaceWidget
             key={widget.type}
             widget={widget}

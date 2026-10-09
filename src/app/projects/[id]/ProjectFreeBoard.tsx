@@ -1,6 +1,9 @@
 "use client";
 
 import React from "react";
+import dynamic from "next/dynamic";
+import { ContractorPhoto } from "@/app/contractors/catalog-ui";
+import { takeProjectBoardInsertion } from "@/lib/projects/project-board-insertion";
 import ReactGridLayout from "react-grid-layout/legacy";
 import {
   useContainerWidth,
@@ -12,6 +15,8 @@ import {
   PROJECT_FREE_BOARD_COLUMNS,
   PROJECT_FREE_BOARD_MAX_ITEMS,
   PROJECT_FREE_BOARD_PORTS,
+  BOARD_LINK_COLLECTION,
+  projectBoardLinkedId,
   ProjectFreeBoardItemInputSchema,
   createProjectFreeBoardConnector,
   createProjectFreeBoardGroup,
@@ -41,6 +46,7 @@ import {
   readProjectBoardRecovery,
   writeProjectBoardRecovery,
 } from "@/lib/projects/project-free-board-storage";
+const ProjectBoardEntityDetails = dynamic(() => import("./ProjectBoardEntityDetails").then((module) => module.ProjectBoardEntityDetails), { ssr: false });
 
 type SaveState = "idle" | "saving" | "saved" | "offline" | "error" | "invalid";
 type BasicItemType = "NOTE" | "STICKER" | "HEADING" | "CHECKLIST" | "LINK";
@@ -122,14 +128,10 @@ const LINKED_ITEM_LABEL: Record<ProjectFreeBoardLinkedItemType, string> = {
   ORDER: "Заявка",
   FILE: "Файл",
   ESTIMATE_SECTION: "Раздел сметы",
+  CONTRACTOR: "Подрядчик", CONTACT: "Контакт", SCHEDULE_SLOT: "Тайминг", PROPOSAL: "КП",
 };
 
-const LINKABLE_COLLECTION: Record<ProjectFreeBoardLinkedItemType, keyof ProjectFreeBoardLinkables> = {
-  TASK: "tasks",
-  ORDER: "orders",
-  FILE: "files",
-  ESTIMATE_SECTION: "estimateSections",
-};
+const LINKABLE_COLLECTION = BOARD_LINK_COLLECTION;
 
 const BOARD_PORT_POSITION: Record<ProjectFreeBoardPort, string> = {
   TOP: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize",
@@ -166,6 +168,10 @@ function Icon({ name }: { name: BasicItemType | ProjectFreeBoardLinkedItemType |
     CHECKLIST: <path d="M4 6h3v3H4V6zm5 0h11v2H9V6zM4 11h3v3H4v-3zm5 0h11v2H9v-2zM4 16h3v3H4v-3zm5 0h11v2H9v-2z" />,
     LINK: <path d="M9 7h-2a5 5 0 000 10h3v-2H7a3 3 0 010-6h2V7zm6 0h2a5 5 0 010 10h-3v-2h3a3 3 0 000-6h-2V7zm-7 4h8v2H8v-2z" />,
     TASK: <path d="M4 4h16v16H4V4zm3 3v2h10V7H7zm0 4v2h7v-2H7zm0 4v2h5v-2H7z" />,
+    CONTRACTOR: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21a7 7 0 0 1 14 0H5Z" />,
+    CONTACT: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 21a7 7 0 0 1 14 0H5Z" />,
+    SCHEDULE_SLOT: <path d="M6 3h2v2h8V3h2v2h2v16H4V5h2V3zm0 7v9h12v-9H6z" />,
+    PROPOSAL: <path d="M6 3h12v18H6V3zm3 4h6V5H9v2zm0 4h6V9H9v2zm0 4h4v-2H9v2z" />,
     ORDER: <path d="M6 3h12v18H6V3zm3 4h6V5H9v2zm0 4h6V9H9v2zm0 4h4v-2H9v2z" />,
     FILE: <path d="M6 2h8l4 4v16H6V2zm8 2.5V8h3.5L14 4.5zM9 12h6v-2H9v2zm0 4h6v-2H9v2z" />,
     ESTIMATE_SECTION: <path d="M4 4h16v16H4V4zm3 3v2h10V7H7zm0 4v2h4v-2H7zm6 0v2h4v-2h-4zm-6 4v2h4v-2H7zm6 0v2h4v-2h-4z" />,
@@ -240,6 +246,7 @@ export function ProjectFreeBoard({
   const [linkables, setLinkables] = React.useState<ProjectFreeBoardLinkables>(EMPTY_LINKABLES);
   const [linkPickerType, setLinkPickerType] = React.useState<ProjectFreeBoardLinkedItemType | null>(null);
   const [linkQuery, setLinkQuery] = React.useState("");
+  const [openedEntity, setOpenedEntity] = React.useState<{ type: ProjectFreeBoardLinkedItemType; id: string } | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
   const [activeItemId, setActiveItemId] = React.useState<string | null>(null);
   const [historyVersion, setHistoryVersion] = React.useState(0);
@@ -338,6 +345,23 @@ export function ProjectFreeBoard({
       })),
     );
   }, [actorUserId, projectId, replaceItems]);
+
+  React.useEffect(() => {
+    let sequence = 0;
+    const controller = new AbortController();
+    const refreshLinks = async () => {
+      const request = ++sequence;
+      try {
+        const response = await fetch(`/api/projects/${projectId}/workspace/items`, { cache: "no-store", signal: controller.signal });
+        const body = await response.json().catch(() => null) as BoardResponse | null;
+        if (response.ok && body?.board && request === sequence) setLinkables(body.board.linkables ?? EMPTY_LINKABLES);
+      } catch { /* Keep loaded links during a temporary network failure. */ }
+    };
+    const changed = (event: Event) => { const detail = (event as CustomEvent<{ projectId?: string }>).detail; if (!detail?.projectId || detail.projectId === projectId) void refreshLinks(); };
+    window.addEventListener("project-contractors-changed", changed);
+    window.addEventListener("focus", refreshLinks);
+    return () => { controller.abort(); window.removeEventListener("project-contractors-changed", changed); window.removeEventListener("focus", refreshLinks); };
+  }, [projectId]);
 
   const flush = React.useCallback(async () => {
     if (!loaded || readOnly || flushingRef.current) return;
@@ -568,12 +592,7 @@ export function ProjectFreeBoard({
       setSaveState("invalid");
       return;
     }
-    const alreadyLinked = itemsRef.current.some((item) => {
-      if (type === "TASK") return item.type === type && item.linkedTaskId === linkable.id;
-      if (type === "ORDER") return item.type === type && item.linkedOrderId === linkable.id;
-      if (type === "FILE") return item.type === type && item.linkedFileId === linkable.id;
-      return item.type === type && item.linkedSectionId === linkable.id;
-    });
+    const alreadyLinked = itemsRef.current.some((item) => item.type === type && projectBoardLinkedId(item) === linkable.id);
     if (alreadyLinked) {
       setMessage("Эта карточка уже есть на доске");
       setSaveState("invalid");
@@ -590,6 +609,15 @@ export function ProjectFreeBoard({
     setLinkQuery("");
     setLinkInsertAt(null);
   }, [enqueue, linkInsertAt, pushHistory, readOnly, replaceItems]);
+
+  React.useEffect(() => {
+    if (!loaded || readOnly) return;
+    const requested = takeProjectBoardInsertion(projectId);
+    if (!requested) return;
+    const entity = (linkables[BOARD_LINK_COLLECTION[requested.type]] ?? []).find((row) => row.id === requested.id);
+    if (entity && !entity.inactive) addLinkedItem(requested.type, entity);
+    else { setMessage("Объект больше недоступен для добавления на доску"); setSaveState("invalid"); }
+  }, [loaded, readOnly, projectId, linkables, addLinkedItem]);
 
   const toggleSelection = React.useCallback((itemId: string) => {
     setSelectedIds((current) => {
@@ -760,7 +788,7 @@ export function ProjectFreeBoard({
 
   React.useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
-      if (readOnly || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
+      if (readOnly || document.querySelector("dialog:modal") || event.altKey || (!event.ctrlKey && !event.metaKey)) return;
       const target = event.target;
       if (
         target instanceof HTMLInputElement
@@ -1180,6 +1208,7 @@ export function ProjectFreeBoard({
   }, [enqueueMany, pushHistory, replaceItems]);
 
   const linkedSummary = (item: ProjectFreeBoardItemInput): ProjectFreeBoardLinkable | null => {
+    if (item.type in BOARD_LINK_COLLECTION) return (linkables[BOARD_LINK_COLLECTION[item.type as ProjectFreeBoardLinkedItemType]] ?? []).find((candidate) => candidate.id === projectBoardLinkedId(item)) ?? null;
     if (item.type === "TASK") {
       return linkables.tasks.find((candidate) => candidate.id === item.linkedTaskId) ?? null;
     }
@@ -1373,15 +1402,15 @@ export function ProjectFreeBoard({
             </div>
           </div>
         ) : null}
-        {(item.type === "TASK" || item.type === "ORDER" || item.type === "FILE" || item.type === "ESTIMATE_SECTION") ? (
+        {(item.type in BOARD_LINK_COLLECTION) ? (
           <div className="flex h-full min-h-0 flex-col justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/5 bg-white/75 text-violet-700 shadow-sm">
-                <Icon name={item.type} />
+              <div className="relative grid h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-violet-50 text-violet-700">
+                {linked?.photoUrl ? <ContractorPhoto src={linked.photoUrl} name={linked.label} /> : <Icon name={item.type as ProjectFreeBoardLinkedItemType} />}
               </div>
               <div className="min-w-0">
                 <div className="line-clamp-2 text-base font-black leading-5 text-zinc-950">
-                  {linked?.label ?? item.payload.label ?? "Связь недоступна"}
+                  {linked?.label ?? ("label" in item.payload ? item.payload.label : null) ?? "Связь недоступна"}
                 </div>
                 <div className="mt-1 line-clamp-2 text-xs font-medium leading-4 text-zinc-500">
                   {linked?.meta ?? "Связанная сущность была удалена или перемещена"}
@@ -1389,12 +1418,7 @@ export function ProjectFreeBoard({
               </div>
             </div>
             {linked ? (
-              <a
-                href={linked.href}
-                className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-black/10 bg-white/75 px-2.5 py-1.5 text-xs font-black text-zinc-700 shadow-sm hover:border-violet-300 hover:text-violet-800"
-              >
-                Открыть <span aria-hidden>↗</span>
-              </a>
+              <div className="flex flex-wrap items-center gap-2"><button data-no-drag type="button" onClick={() => setOpenedEntity({ type: item.type as ProjectFreeBoardLinkedItemType, id: linked.id })} className="min-h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-semibold text-violet-800 hover:bg-violet-50">Подробнее</button>{linked.phone ? <a data-no-drag href={`tel:${linked.phone.replace(/[^+\d]/g, "")}`} className="text-xs text-violet-800">Позвонить</a> : null}</div>
             ) : null}
           </div>
         ) : null}
@@ -1414,11 +1438,12 @@ export function ProjectFreeBoard({
   const canUndo = historyVersion >= 0 && undoRef.current.length > 0;
   const canRedo = historyVersion >= 0 && redoRef.current.length > 0;
   const activeLinkables = linkPickerType
-    ? linkables[LINKABLE_COLLECTION[linkPickerType]].filter((item) => {
+    ? (linkables[LINKABLE_COLLECTION[linkPickerType]] ?? []).filter((item) => {
         const query = linkQuery.trim().toLocaleLowerCase("ru-RU");
         return !query || `${item.label} ${item.meta}`.toLocaleLowerCase("ru-RU").includes(query);
       })
     : [];
+  const openedLinkable = openedEntity ? (linkables[BOARD_LINK_COLLECTION[openedEntity.type]] ?? []).find((entity) => entity.id === openedEntity.id) : null;
   const boardItems = items.filter((item) => item.type !== "CONNECTOR");
   const connectors = items.filter((item): item is BoardConnector => item.type === "CONNECTOR");
   const gridMargin = 10;
@@ -1556,7 +1581,7 @@ export function ProjectFreeBoard({
               type="button"
               onClick={() => {
                 setLinkInsertAt(null);
-                setLinkPickerType((current) => current ? null : "TASK");
+                setLinkPickerType((current) => current ? null : "CONTRACTOR");
               }}
               className="project-free-board__tool-button"
               data-active={linkPickerType ? "true" : undefined}
@@ -1592,6 +1617,7 @@ export function ProjectFreeBoard({
               value={linkQuery}
               onChange={(event) => setLinkQuery(event.target.value)}
               placeholder="Найти в проекте…"
+              aria-label="Найти объект проекта"
               className="min-h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm font-medium text-zinc-800 outline-none focus:border-violet-500 sm:w-72"
             />
           </div>
@@ -1601,12 +1627,13 @@ export function ProjectFreeBoard({
                 key={linkable.id}
                 type="button"
                 onClick={() => addLinkedItem(linkPickerType, linkable)}
+                disabled={linkable.inactive || items.some((item) => item.type === linkPickerType && projectBoardLinkedId(item) === linkable.id)}
                 className="flex min-w-0 items-start gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left shadow-sm hover:border-violet-300 hover:shadow-md"
               >
                 <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-violet-100 text-violet-700"><Icon name={linkPickerType} /></div>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-black text-zinc-900">{linkable.label}</span>
-                  <span className="mt-0.5 block truncate text-xs font-medium text-zinc-500">{linkable.meta}</span>
+                  <span className="mt-0.5 block truncate text-xs font-medium text-zinc-500">{linkable.meta}</span><span className="mt-1 block text-xs text-violet-800">{items.some((item) => item.type === linkPickerType && projectBoardLinkedId(item) === linkable.id) ? "Уже на доске" : linkable.inactive ? "Неактивен" : "Добавить на доску"}</span>
                 </span>
               </button>
             ))}
@@ -1812,6 +1839,7 @@ export function ProjectFreeBoard({
           </div>
         </div>
       )}
+      {openedEntity && openedLinkable ? <ProjectBoardEntityDetails projectId={projectId} type={openedEntity.type} entity={openedLinkable} readOnly={readOnly} onClose={() => setOpenedEntity(null)} /> : null}
     </section>
   );
 }

@@ -981,6 +981,7 @@ model ProjectContractor {
   scheduleSlotId String?
   name           String
   responsibility String   @db.Text
+  categoryNames  String[] @default([])
   contactName    String?
   phone          String?
   email          String?

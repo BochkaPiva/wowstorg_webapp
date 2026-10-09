@@ -38,6 +38,7 @@
 | `src/server/proposals/mutate.ts` | **да** (единые мутации КП, перестановка разделов и перенос услуг внутри варианта без смены ID, CAS, actor-scoped UUID receipts/hash и серверные compensating deltas для undo/redo; изменения, revision, receipt и log атомарны) |
 | `src/app/api/projects/[id]/proposals/[proposalId]/transfer-to-estimate/route.ts` | **да** (идемпотентный перенос со связями, CAS КП и revision сметы; ADR 014) |
 | `src/app/api/projects/[id]/workspace/route.ts` | **да** (owner, members, layout виджетов и revision сохраняются атомарно; timeout 15 с, итоговый снимок читается после commit; конфликт возвращает 409) |
+| `src/app/api/projects/[id]/workspace/items/batch/route.ts` | **да** (доска: actor-scoped UUID receipt, archive/widget scope, проверки принадлежности восьми типов связанных сущностей проекту, revision CAS, soft-delete и activity log атомарны; осиротевшую ссылку можно только сохранить без подмены) |
 | `src/app/api/projects/[id]/draft-order/route.ts` | нет |
 | `src/app/api/projects/[id]/draft-order/materialize/route.ts` | **да** |
 | `src/app/api/projects/[id]/convert/route.ts` | **да** |

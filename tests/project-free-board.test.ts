@@ -6,6 +6,8 @@ import {
   createProjectFreeBoardGroup,
   createProjectFreeBoardItem,
   duplicateProjectFreeBoardItem,
+  createProjectFreeBoardLinkedItem,
+  projectBoardLinkedId,
 } from "@/lib/projects/project-free-board";
 import { projectFreeBoardOperationsForSnapshot } from "@/lib/projects/project-free-board-history";
 import {
@@ -15,6 +17,15 @@ import {
 } from "@/lib/projects/project-free-board-queue";
 
 describe("project free board", () => {
+  it.each(["CONTRACTOR", "CONTACT", "SCHEDULE_SLOT", "PROPOSAL"] as const)("persists a typed %s reference through recovery/history without copying data", (type) => {
+    const item = createProjectFreeBoardLinkedItem(type, { id: "entity-1", label: "Сущность", meta: "Статус", href: "/projects/p" }, { x: 0, y: 0 });
+    expect(ProjectFreeBoardItemInputSchema.parse(item)).toEqual(item);
+    expect(projectBoardLinkedId(item)).toBe("entity-1");
+    expect("entityId" in item.payload && item.payload.entityId).toBe("entity-1");
+    expect(ProjectFreeBoardItemInputSchema.safeParse({ ...item, payload: { ...item.payload, internalNotes: "Must not be copied" } }).success).toBe(false);
+    const envelope = parseStoredProjectFreeBoardEnvelope(JSON.stringify({ mutationId: crypto.randomUUID(), operations: [{ op: "UPSERT", item }] }));
+    expect(envelope?.operations[0]).toEqual({ op: "UPSERT", item });
+  });
   it("coalesces rapid edits to the latest intent", () => {
     const item = createProjectFreeBoardItem("NOTE", { x: 0, y: 0 });
     if (item.type !== "NOTE") throw new Error("Expected note");

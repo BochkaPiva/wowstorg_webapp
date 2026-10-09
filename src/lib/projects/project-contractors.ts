@@ -9,6 +9,7 @@ const optionalText = (max: number) => z.string().trim().max(max).nullable().tran
 export const ProjectContractorFieldsSchema = z.object({
   name: z.string().trim().min(1).max(200),
   responsibility: z.string().trim().min(1).max(3000),
+  categoryNames: z.array(z.string().trim().min(1).max(80)).max(12).transform((names) => [...new Set(names)]).optional(),
   contactName: optionalText(200), phone: optionalText(80),
   email: z.union([z.string().trim().email().max(200), z.literal(""), z.null()]).transform((value) => value || null),
   status: z.enum(PROJECT_CONTRACTOR_STATUSES),
@@ -28,6 +29,16 @@ export type ProjectContractorRow = ProjectContractorFields & {
   id: string; contractorId: string | null; revision: number; photoUrl: string | null;
   updatedAt: string; scheduleLabel: string | null;
 };
+
+export function groupProjectContractors(rows: readonly ProjectContractorRow[]) {
+  const groups = new Map<string, ProjectContractorRow[]>();
+  for (const row of rows) {
+    if (row.status === "CANCELLED") continue;
+    const category = row.categoryNames?.[0] || "Без категории";
+    groups.set(category, [...(groups.get(category) ?? []), row]);
+  }
+  return [...groups].sort(([a], [b]) => a === "Без категории" ? 1 : b === "Без категории" ? -1 : a.localeCompare(b, "ru"));
+}
 export type ProjectContractorsPayload = {
   assignments: ProjectContractorRow[];
   scheduleSlots: { id: string; label: string }[];

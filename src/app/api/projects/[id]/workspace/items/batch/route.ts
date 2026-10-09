@@ -93,6 +93,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const sectionIds = upsertItems.flatMap((item) =>
           item.type === "ESTIMATE_SECTION" ? [item.linkedSectionId] : [],
         );
+        const idsFor = (type: "CONTRACTOR" | "CONTACT" | "SCHEDULE_SLOT" | "PROPOSAL") => upsertItems.flatMap((item) => item.type === type && "entityId" in item.payload ? [item.payload.entityId] : []);
+        const [contractors, contacts, slots, proposals] = await Promise.all([
+          idsFor("CONTRACTOR").length ? tx.projectContractor.findMany({ where: { id: { in: idsFor("CONTRACTOR") }, projectId: id }, select: { id: true } }) : [],
+          idsFor("CONTACT").length ? tx.projectContact.findMany({ where: { id: { in: idsFor("CONTACT") }, projectId: id }, select: { id: true } }) : [],
+          idsFor("SCHEDULE_SLOT").length ? tx.projectScheduleSlot.findMany({ where: { id: { in: idsFor("SCHEDULE_SLOT") }, day: { projectId: id } }, select: { id: true } }) : [],
+          idsFor("PROPOSAL").length ? tx.projectProposal.findMany({ where: { id: { in: idsFor("PROPOSAL") }, projectId: id }, select: { id: true } }) : [],
+        ]);
+        const projectEntityIds = { CONTRACTOR: new Set(contractors.map((row) => row.id)), CONTACT: new Set(contacts.map((row) => row.id)), SCHEDULE_SLOT: new Set(slots.map((row) => row.id)), PROPOSAL: new Set(proposals.map((row) => row.id)) };
         const [tasks, orders, files, sections] = await Promise.all([
           taskIds.length
             ? tx.workTask.findMany({ where: { id: { in: taskIds }, projectId: id }, select: { id: true } })
@@ -115,6 +123,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         const validFileIds = new Set(files.map((item) => item.id));
         const validSectionIds = new Set(sections.map((item) => item.id));
         const invalidLinkedItemIds = upsertItems.flatMap((item) => {
+          if ("entityId" in item.payload) {
+            const valid = projectEntityIds[item.type as keyof typeof projectEntityIds]?.has(item.payload.entityId);
+            // Permit moving an existing orphan, not forging a new cross-project link.
+            const previous = storedById.get(item.id);
+            const previousPayload = previous?.payload as { entityId?: string } | null;
+            if (!valid && !(previous?.type === item.type && previousPayload?.entityId === item.payload.entityId)) return [item.id];
+          }
           if (item.type === "TASK" && !validTaskIds.has(item.linkedTaskId)) return [item.id];
           if (item.type === "ORDER" && !validOrderIds.has(item.linkedOrderId)) return [item.id];
           if (item.type === "FILE" && !validFileIds.has(item.linkedFileId)) return [item.id];

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AddProjectContractorSchema, ProjectContractorPostSchema, UpdateProjectContractorSchema, groupProposalContractors } from "@/lib/projects/project-contractors";
+import { AddProjectContractorSchema, ProjectContractorPostSchema, UpdateProjectContractorSchema, groupProposalContractors, groupProjectContractors, type ProjectContractorRow } from "@/lib/projects/project-contractors";
 const tx = vi.hoisted(() => ({
   project: { findUnique: vi.fn() }, projectScheduleSlot: { findFirst: vi.fn() },
   projectContractor: { findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
@@ -16,6 +16,18 @@ beforeEach(() => {
   tx.projectContractor.findUnique.mockResolvedValue(null); tx.projectContractor.create.mockResolvedValue({}); tx.projectContractor.updateMany.mockResolvedValue({ count: 1 });
 });
 describe("roster contract", () => {
+  it("groups a person once by primary category, leaves cancelled people out and keeps an uncategorized fallback", () => {
+    const row = (id: string, categoryNames: string[], status = "PENDING") => ({ ...fields, id, categoryNames, status }) as ProjectContractorRow;
+    const groups = groupProjectContractors([row("1", ["Оборудование", "Локации"]), row("2", ["Ведущие"]), row("3", []), row("4", ["Ведущие"], "CANCELLED")]);
+    expect(groups.map(([name]) => name)).toEqual(["Ведущие", "Оборудование", "Без категории"]);
+    expect(groups.flatMap(([, rows]) => rows.map((item) => item.id))).toEqual(["2", "1", "3"]);
+  });
+  it("normalizes category names and rejects excessive/unbounded categories", () => {
+    expect(AddProjectContractorSchema.parse({ ...add, categoryNames: [" Звук ", "Звук"] }).categoryNames).toEqual(["Звук"]);
+    expect(AddProjectContractorSchema.safeParse({ ...add, categoryNames: [""] }).success).toBe(false);
+    expect(AddProjectContractorSchema.safeParse({ ...add, categoryNames: Array(13).fill("Звук") }).success).toBe(false);
+    expect(UpdateProjectContractorSchema.parse({ ...fields, expectedRevision: 2 }).categoryNames).toBeUndefined();
+  });
   it("validates status, email, UUID and rejects unknown fields", () => {
     expect(AddProjectContractorSchema.safeParse(add).success).toBe(true);
     for (const bad of [{ status: "BOOKED" }, { email: "wrong" }, { id: "x" }, { clientPrice: 123 }, { responsibility: " " }]) expect(AddProjectContractorSchema.safeParse({ ...add, ...bad }).success).toBe(false);
@@ -28,6 +40,11 @@ describe("roster contract", () => {
   });
 });
 describe("project roster writes", () => {
+  it("uses the selected offer's real category, not a misplaced proposal section", async () => {
+    tx.projectProposalVariant.findFirst.mockResolvedValue({ title: "КП", proposal: { revision: 0 }, sections: [{ title: "Ведущие", categoryNameSnapshot: "Ведущие", items: [{ contractorId: "c", contractorNameSnapshot: "Техник", offerTitleSnapshot: "Спецэффекты", selectionRole: "PRIMARY", offer: { category: { name: "Оборудование" } } }] }] });
+    await addProjectContractors("p", "a", { action: "IMPORT_PROPOSAL", variantId: "v", expectedProposalRevision: 0 });
+    expect(tx.projectContractor.create.mock.calls[0][0].data.categoryNames).toEqual(["Оборудование"]);
+  });
   it("creates in Serializable and logs the action without financial mutations", async () => {
     expect(await addProjectContractors("p", "actor", add)).toEqual({ added: 1, skipped: 0 });
     expect(transaction.mock.calls[0][1]).toEqual({ isolationLevel: "Serializable" });

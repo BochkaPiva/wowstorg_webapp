@@ -14,18 +14,27 @@ export const PROJECT_FREE_BOARD_ITEM_TYPES = [
   "ORDER",
   "FILE",
   "ESTIMATE_SECTION",
+  "CONTRACTOR",
+  "CONTACT",
+  "SCHEDULE_SLOT",
+  "PROPOSAL",
   "GROUP",
   "CONNECTOR",
 ] as const;
 
 export type ProjectFreeBoardItemType = (typeof PROJECT_FREE_BOARD_ITEM_TYPES)[number];
-export type ProjectFreeBoardLinkedItemType = "TASK" | "ORDER" | "FILE" | "ESTIMATE_SECTION";
+export type ProjectFreeBoardLinkedItemType = "TASK" | "ORDER" | "FILE" | "ESTIMATE_SECTION" | "CONTRACTOR" | "CONTACT" | "SCHEDULE_SLOT" | "PROPOSAL";
 
 export type ProjectFreeBoardLinkable = {
   id: string;
   label: string;
   meta: string;
   href: string;
+  phone?: string | null;
+  email?: string | null;
+  photoUrl?: string | null;
+  description?: string;
+  inactive?: boolean;
 };
 
 export type ProjectFreeBoardLinkables = {
@@ -33,7 +42,21 @@ export type ProjectFreeBoardLinkables = {
   orders: ProjectFreeBoardLinkable[];
   files: ProjectFreeBoardLinkable[];
   estimateSections: ProjectFreeBoardLinkable[];
+  contractors?: ProjectFreeBoardLinkable[];
+  contacts?: ProjectFreeBoardLinkable[];
+  scheduleSlots?: ProjectFreeBoardLinkable[];
+  proposals?: ProjectFreeBoardLinkable[];
 };
+
+export const BOARD_LINK_COLLECTION = { TASK: "tasks", ORDER: "orders", FILE: "files", ESTIMATE_SECTION: "estimateSections", CONTRACTOR: "contractors", CONTACT: "contacts", SCHEDULE_SLOT: "scheduleSlots", PROPOSAL: "proposals" } as const;
+export function projectBoardLinkedId(item: ProjectFreeBoardItemInput): string | null {
+  if (item.type === "TASK") return item.linkedTaskId;
+  if (item.type === "ORDER") return item.linkedOrderId;
+  if (item.type === "FILE") return item.linkedFileId;
+  if (item.type === "ESTIMATE_SECTION") return item.linkedSectionId;
+  if ("entityId" in item.payload) return item.payload.entityId;
+  return null;
+}
 
 const ItemIdSchema = z.uuid();
 const ColorSchema = z.enum(["LILAC", "YELLOW", "MINT", "BLUE", "ROSE", "NEUTRAL"]);
@@ -101,6 +124,10 @@ const LinkedPayloadSchema = z
   })
   .strict();
 
+// Weak project-scoped references: deleting a source preserves the board's geometry/history.
+// Every new reference is checked inside the board transaction, never trusted from JSON.
+const ProjectEntityPayloadSchema = LinkedPayloadSchema.extend({ entityId: z.string().trim().min(1).max(100) }).strict();
+
 const GroupPayloadSchema = z
   .object({
     title: z.string().trim().max(240).optional(),
@@ -163,6 +190,10 @@ export const ProjectFreeBoardItemInputSchema = z
       })
       .strict(),
     z.object({ ...GeometrySchema, type: z.literal("GROUP"), payload: GroupPayloadSchema }).strict(),
+    z.object({ ...GeometrySchema, type: z.literal("CONTRACTOR"), payload: ProjectEntityPayloadSchema }).strict(),
+    z.object({ ...GeometrySchema, type: z.literal("CONTACT"), payload: ProjectEntityPayloadSchema }).strict(),
+    z.object({ ...GeometrySchema, type: z.literal("SCHEDULE_SLOT"), payload: ProjectEntityPayloadSchema }).strict(),
+    z.object({ ...GeometrySchema, type: z.literal("PROPOSAL"), payload: ProjectEntityPayloadSchema }).strict(),
     z.object({ ...GeometrySchema, type: z.literal("CONNECTOR"), payload: ConnectorPayloadSchema }).strict(),
   ])
   .superRefine((value, ctx) => {
@@ -258,7 +289,8 @@ export function createProjectFreeBoardLinkedItem(
   if (type === "TASK") return { ...common, type, linkedTaskId: linkable.id };
   if (type === "ORDER") return { ...common, type, linkedOrderId: linkable.id };
   if (type === "FILE") return { ...common, type, linkedFileId: linkable.id };
-  return { ...common, type, linkedSectionId: linkable.id };
+  if (type === "ESTIMATE_SECTION") return { ...common, type, linkedSectionId: linkable.id };
+  return { ...common, type, height: 5, payload: { ...common.payload, entityId: linkable.id } };
 }
 
 export function createProjectFreeBoardGroup(

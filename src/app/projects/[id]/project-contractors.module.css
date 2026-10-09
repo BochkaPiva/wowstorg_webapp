@@ -14,6 +14,39 @@
 .panel button:disabled { opacity:.55; cursor:default; }
 .panel :is(button,input,textarea,select,a,summary):focus-visible { outline:2px solid #752dc7; outline-offset:3px; }
 .list { display:grid; gap:12px; }
+.groups { display:grid; gap:28px; }
+.categoryGroup > header { display:flex; align-items:baseline; gap:12px; padding-bottom:10px; border-bottom:1px solid #e5e1e9; margin-bottom:4px; }
+.categoryGroup > header h3 { margin:0; font-size:17px; font-weight:700; }
+.categoryGroup > header span { font-size:12px; color:#68636d; }
+.categoryGroup .list { gap:0; }
+.categoryGroup .row { border:0; border-bottom:1px solid #edeaf0; border-radius:0; padding:18px 0; }
+.categoryGroup .row:last-child { border-bottom:0; }
+.filters { display:grid; gap:12px; margin:0 0 22px; }
+.filters > input { min-height:44px; border:1px solid #ded9e4; border-radius:10px; padding:10px 12px; width:min(100%,460px); font-size:14px; background:#fff; }
+.categoryFilters { display:flex; flex-wrap:wrap; gap:6px; }
+.categoryFilters button { min-height:40px; cursor:pointer; border:1px solid #e5e0ea; background:#fff; border-radius:8px; padding:8px 12px; color:#59535e; font-size:13px; }
+.categoryFilters button[aria-pressed="true"] { color:#6023ad; background:#f3edfc; border-color:#c6afe5; }
+.categoryFilters span { margin-left:6px; font-variant-numeric:tabular-nums; }
+.categoryTags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.categoryTags span { color:#655e6d; font-size:11px; }
+.statusSelect { font:inherit; font-size:12px; min-height:36px; border:1px solid #e6d9b2; border-radius:7px; padding:5px 8px; background:#fff7e2; color:#785500; max-width:100%; cursor:pointer; }
+.statusSelect[data-status="CONFIRMED"],.statusSelect[data-status="DONE"] { color:#146344; background:#eff8f3; border-color:#b8dcca; }
+.statusSelect[data-status="CANCELLED"] { background:#f2f1f0; border-color:#dcd9d5; color:#5e5952; }
+.rowActions { display:flex; gap:4px; flex-shrink:0; }
+.iconButton { display:grid; place-items:center; width:44px; height:44px; cursor:pointer; border:0; background:transparent; color:#696171; border-radius:8px; }
+.iconButton:hover { background:#f5effe; color:#6023ad; }
+.iconButton svg { width:18px; height:18px; }
+.removeLine { display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#faf6ed; padding:10px 12px; border-radius:8px; margin-top:12px; font-size:13px; }
+.removeLine span { flex:1 1 220px; }
+.cancelled { border-top:1px solid #e5e1e9; margin-top:20px; padding-top:12px; }
+.cancelled > summary { min-height:44px; cursor:pointer; color:#665f6d; font-size:13px; }
+.editPopover { position:fixed; inset:auto; margin:0; overflow:auto; overscroll-behavior:contain; width:min(600px,calc(100vw - 24px)); border:1px solid #ddd6e6; border-radius:14px; background:white; padding:20px; color:#202024; box-shadow:0 12px 32px #22163024; }
+.editPopover:not(:popover-open) { display:none; }
+.editHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid #e5e0eb; padding-bottom:10px; }
+.editHeader h3 { margin:0; font-size:18px; }
+.editPopover .form { grid-template-columns:1fr; }
+.editPopover .formActions { position:sticky; bottom:-20px; padding:12px 0; background:white; border-top:1px solid #e5e0eb; }
+.editPopover :is(button,input,select,textarea):focus-visible { outline:2px solid #752dc7; outline-offset:3px; }
 .row { border:1px solid var(--wow-line, #e0ddd7); border-radius:14px; padding:18px; background:#fff; }
 .row[data-cancelled] { background:#faf9f7; }
 .person { display:flex; gap:16px; align-items:flex-start; }
@@ -58,3 +91,4 @@
 .empty p { font-size:14px; line-height:1.6; color:#716d77; margin:8px 0; max-width:68ch; }
 @media(max-width:700px) { .panel { padding:18px; } .toolbar { align-items:flex-start; flex-wrap:wrap; } .toolbar h2 { font-size:21px; } .form,.picker { grid-template-columns:1fr; } .person { gap:12px; flex-wrap:wrap; } .personCopy { flex-basis:calc(100% - 80px); } .person > button { margin-left:76px; } .searchLine { flex-wrap:wrap; } .searchLine input { flex:1 1 100%; } .row { padding:14px; } }
 @media(prefers-reduced-motion:reduce) { .panel * { transition:none !important; } }
+@media(max-width:700px) { .rowActions { margin-left:76px; } .categoryGroup .personCopy { flex-basis:calc(100% - 80px); } .editPopover { padding:16px; } }

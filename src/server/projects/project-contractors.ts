@@ -10,7 +10,7 @@ class RosterError extends Error { constructor(readonly status: number, message: 
 export function rosterErrorResponse(error: unknown) {
   if (error instanceof RosterError) return jsonError(error.status, error.message);
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2021" || error.code === "P2022") return jsonError(503, "Блок подрядчиков ещё не подключён к базе. Нужна миграция project_contractors_roster.");
+    if (error.code === "P2021" || error.code === "P2022") return jsonError(503, "Блок подрядчиков ещё не подключён к базе. Проверьте миграции project_contractors_roster и project_contractor_categories.");
     if (["P2034", "P2002"].includes(error.code)) return jsonError(409, "Состав изменился в другом окне. Обновите список; ваши поля сохранены в форме.");
     if (error.code === "P2003") return jsonError(409, "Связанный контакт или пункт тайминга изменился. Обновите список.");
   }
@@ -27,7 +27,7 @@ async function validateSlot(tx: Prisma.TransactionClient, projectId: string, slo
   const slot = await tx.projectScheduleSlot.findFirst({ where: { id: slotId, day: { projectId } }, select: { id: true } });
   if (!slot) throw new RosterError(400, "Выберите пункт тайминга этого проекта");
 }
-const variantInclude = { sections: { orderBy: { sortOrder: "asc" as const }, include: { items: { orderBy: { sortOrder: "asc" as const } } } } };
+const variantInclude = { sections: { orderBy: { sortOrder: "asc" as const }, include: { items: { orderBy: { sortOrder: "asc" as const }, include: { offer: { select: { category: { select: { name: true } } } } } } } } };
 export async function readProjectContractors(projectId: string) {
   const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
   if (!project) throw new RosterError(404, "Проект не найден");
@@ -86,7 +86,8 @@ export async function addProjectContractors(projectId: string, actorId: string, 
       const contractor = await tx.contractor.findUnique({ where: { id: group.contractorId }, select: { contacts: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1 } } });
       if (!contractor) continue;
       const contact = contractor.contacts[0];
-      await tx.projectContractor.create({ data: { ...group, contactName: contact?.personName ?? null, phone: contact?.phone ?? null, email: contact?.email ?? null, id: randomUUID(), projectId, status: "PENDING", creationHash: `proposal:${input.variantId}:${input.expectedProposalRevision}`, createdById: actorId, updatedById: actorId } });
+      const categoryNames = [...new Set(variant.sections.flatMap((section) => section.items.filter((item) => item.contractorId === group.contractorId && item.selectionRole === "PRIMARY").map((item) => item.offer?.category.name || section.categoryNameSnapshot || section.title)))];
+      await tx.projectContractor.create({ data: { ...group, categoryNames, contactName: contact?.personName ?? null, phone: contact?.phone ?? null, email: contact?.email ?? null, id: randomUUID(), projectId, status: "PENDING", creationHash: `proposal:${input.variantId}:${input.expectedProposalRevision}`, createdById: actorId, updatedById: actorId } });
       added++;
     }
     if (added) await appendProjectActivityLog(tx, { projectId, actorUserId: actorId, kind: ProjectActivityKind.PROJECT_UPDATED, payload: { contractorAction: "imported", variantTitle: variant.title, count: added } });

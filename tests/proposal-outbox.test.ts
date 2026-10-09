@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchProposalCommand, isQueuedId, projectProposalCommands } from "@/lib/proposal-outbox";
+import { acknowledgedCatalogItem, dispatchProposalCommand, isQueuedId, projectProposalCommands, resolveCreatedProposalItem } from "@/lib/proposal-outbox";
 import { readProposalRecovery, type ProposalCommand } from "@/lib/proposal-recovery";
 import type { Proposal, ProposalItem } from "@/lib/proposals";
 import { ProposalApiError, proposalCommandRequest } from "@/app/proposals/api";
@@ -9,6 +9,30 @@ const model = (): Proposal => ({ id: "cp", title: "Демо КП", status: "DRAF
 const command = (action: ProposalCommand["operation"]["action"], fields: Record<string, unknown> = {}): ProposalCommand => ({ label: "Правка", operation: { action, mutationId: "3e942ab2-2e73-4d91-8991-cbb01bcc58f6", expectedRevision: 4, ...fields } });
 
 describe("proposal local outbox projection", () => {
+  it("resolves a removal after lost-response reload without changing the dispatched add", () => {
+    const add = command("ADD_CATALOG_ITEM", { sectionId: "s2", offerId: "offer" });
+    const committed = model(); committed.revision++;
+    committed.variants[0].sections[1].items.push({ ...item, id: "actual" });
+    const created = acknowledgedCatalogItem(committed, committed, add, true);
+    expect(created?.id).toBe("actual");
+    expect(acknowledgedCatalogItem(committed, committed, add, false)).toBeUndefined();
+    const remove = command("REMOVE_ITEM", { itemId: `queued:${add.operation.mutationId}` });
+    const resolved = resolveCreatedProposalItem([remove], String(remove.operation.itemId), created!.id);
+    expect(projectProposalCommands(committed, resolved).variants[0].sections[1].items).toHaveLength(0);
+    expect(add.operation.expectedRevision).toBe(4);
+  });
+  it("unchecks a pending addition locally and resolves its unsent removal after acknowledgement", () => {
+    const add = command("ADD_CATALOG_ITEM", { sectionId: "s2", offerId: "offer" });
+    const queuedId = `queued:${add.operation.mutationId}`;
+    const remove = command("REMOVE_ITEM", { itemId: queuedId, mutationId: "baceac28-0901-4dbe-900a-e325b7407785" });
+    expect(projectProposalCommands(model(), [add, remove], new Map([[add.operation.mutationId, item]])).variants[0].sections[1].items).toHaveLength(0);
+    const server = model(); server.variants[0].sections[1].items.push({ ...item, id: "actual" });
+    const resolved = resolveCreatedProposalItem([remove], queuedId, "actual");
+    expect(projectProposalCommands(server, resolved).variants[0].sections[1].items).toHaveLength(0);
+    expect(remove.operation.itemId).toBe(queuedId);
+    expect(resolved[0].operation.mutationId).toBe(remove.operation.mutationId);
+    expect(add.operation.expectedRevision).toBe(4);
+  });
   it("projects queued edits in order without mutating the server model or original command", () => {
     const server = model();
     const edits = [command("UPDATE_ITEM", { itemId: "i", clientUnitPrice: 3000 }), command("UPDATE_ITEM", { itemId: "i", qty: 2 })];

@@ -68,6 +68,18 @@
 .catalogEmpty strong { color: #201d19; font-size: 20px; }
 .loadMore { display: flex; justify-content: center; padding: 10px; }
 .inspector { min-width: 0; border: 1px solid #dcd8d1; border-radius: 14px; background: #fff; padding: 20px; scroll-margin-top: 100px; }
+.detailDialog { width: min(1040px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 0; margin: auto; border: 0; border-radius: 14px; background: #fff; color: #242126; box-shadow: 0 24px 80px rgb(0 0 0 / .24); overflow: auto; overscroll-behavior: contain; }
+.detailDialog::backdrop { background: rgb(0 0 0 / .58); }
+.dialogContent { padding: 24px; }
+.dialogContent button:disabled, .dialogContent fieldset:disabled { opacity: .55; cursor: not-allowed; }
+.dialogContent :is(button, a, input, select, textarea):focus-visible { outline: 2px solid #7130c5; outline-offset: 3px; }
+.dialogContent > .inspectorHead { position: sticky; top: -24px; z-index: 1; background: #fff; padding-block: 12px; }
+.dialogContent > .form { max-width: 680px; margin-inline: auto; }
+.detailGrid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 32px; }
+.detailVisual, .detailCopy { min-width: 0; }
+.detailVisual .detailMedia { aspect-ratio: 3 / 4; max-height: 560px; }
+.detailCopy > .detailDescription:first-child { margin-top: 0; }
+@media(max-width: 700px) { .detailGrid { grid-template-columns: 1fr; gap: 20px; } .dialogContent { padding: 18px; } .dialogContent > .inspectorHead { top: -18px; } .detailVisual .detailMedia { aspect-ratio: 1; max-height: 300px; } }
 .inspectorHead { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 18px; }
 .inspectorHead h3 { margin: 0; font-size: 22px; line-height: 1.25; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .inspectorHead p { margin: 5px 0 0; color: #6f6962; font-size: 13px; }

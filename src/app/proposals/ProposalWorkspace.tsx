@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
+import { ContextPopover } from "@/app/_ui/ContextPopover";
 import { priceFreshness, type ContractorPriceType } from "@/lib/contractor-offers";
 import { PROPOSAL_STATUS, proposalMoney, proposalTotals, type Proposal, type ProposalItem } from "@/lib/proposals";
 import { proposalNextStep } from "@/lib/proposal-guidance";
 import { proposalBudget } from "@/lib/proposal-summary";
 import { useAuth } from "@/app/providers";
 import { formFields, proposalCommandLabel, readProposalRecovery, restoreFormFields, type ProposalCommand, type ProposalHistoryEntry, type ProposalRecovery } from "@/lib/proposal-recovery";
-import { dispatchProposalCommand, isQueuedId, projectProposalCommands } from "@/lib/proposal-outbox";
+import { acknowledgedCatalogItem, dispatchProposalCommand, isQueuedId, projectProposalCommands, resolveCreatedProposalItem } from "@/lib/proposal-outbox";
 import { ProposalApiError, proposalCommandRequest, proposalRequest } from "./api";
 import { proposalOrder } from "@/lib/proposal-order";
 import { ProposalMoveHandle, type ProposalDrop } from "./ProposalMoveHandle";
@@ -75,6 +76,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   const catalogMoreFlight = React.useRef(false);
   const inFlight = React.useRef(false);
   const drawerRef = React.useRef<HTMLElement>(null);
+  const [pickerAnchor, setPickerAnchor] = React.useState<HTMLElement | null>(null);
   const transferId = React.useRef<string | null>(null);
   const dirty = React.useRef(false);
   const sectionDirty = React.useRef(false);
@@ -167,9 +169,6 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     void proposalRequest<{ categories: Category[] }>("/api/contractor-categories", "GET", undefined, controller.signal).then((data) => setCategories(data.categories)).catch(() => { /* Custom sections remain available if categories cannot load. */ });
     return () => controller.abort();
   }, [load]);
-  React.useEffect(() => {
-    if (drawer) { drawerRef.current?.focus(); drawerRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" }); }
-  }, [drawer]);
   React.useEffect(() => {
     const closeMenus = (event: Event) => {
       const open = workspaceRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]");
@@ -312,6 +311,13 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
       setProposal(data.proposal);
       const entry = { id: data.changeId ?? String(command.operation.mutationId), label: command.label };
       const exact = data.proposal.revision === Number(command.operation.expectedRevision) + 1;
+      if (exact && command.operation.action === "ADD_CATALOG_ITEM") {
+        const created = acknowledgedCatalogItem(proposal, data.proposal, command, Boolean(recoveringRequest));
+        if (created) {
+          queuedRef.current = resolveCreatedProposalItem(queuedRef.current, `queued:${command.operation.mutationId}`, created.id);
+          setQueued(queuedRef.current);
+        }
+      }
       const previousUndo = recovery?.undo ?? undoStack, previousRedo = recovery?.redo ?? redoStack;
       const nextUndo = !exact ? [] : command.direction === "undo" ? previousUndo.slice(0, -1) : [...previousUndo, entry].slice(-50);
       const nextRedo = !exact ? [] : command.direction === "undo" ? [...previousRedo, entry].slice(-50) : command.direction === "redo" ? previousRedo.slice(0, -1) : [];
@@ -412,11 +418,40 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     const link = document.createElement("a"); link.href = url; link.download = `kp-${proposalId}-local.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  async function openCatalog(id: string) {
+  async function openCatalog(id: string, anchor?: HTMLElement) {
     if (!openDrawer({ kind: "catalog", sectionId: id })) return;
+    setPickerAnchor(anchor ?? sectionElements.current.get(id)?.querySelector<HTMLElement>("button[aria-label^='Подобрать услуги']") ?? pickerAnchor);
     setSectionId(id); setSearch("");
     setCategoryFilter(sections.find((section) => section.id === id)?.category?.id ?? "");
     setCatalogReload((value) => value + 1);
+  }
+  function cancelUnsent(ids: Set<string>) {
+    const next = queuedRef.current.filter(c => !ids.has(c.operation.mutationId));
+    if (!persistRecovery({ queued: next })) return;
+    for (const id of ids) { previews.current.delete(id); afterCommands.current.delete(id); }
+    queuedRef.current = next; setQueued(next);
+  }
+  function toggleCatalogOffer(sectionId: string, offerId: string) {
+    if (!proposal || locked) return;
+    const commands = [...(pending ? [pending] : []), ...queuedRef.current];
+    const projected = projectProposalCommands(proposal, commands, previews.current);
+    const selected = projected.variants.flatMap(v => v.sections).find(s => s.id === sectionId)?.items.filter(i => i.offerId === offerId) ?? [];
+    if (selected.length) {
+      const cancel = new Set<string>();
+      for (const item of selected) {
+        const unsent = queuedRef.current.find(c => c.operation.action === "ADD_CATALOG_ITEM" && `queued:${c.operation.mutationId}` === item.id);
+        if (unsent) cancel.add(unsent.operation.mutationId);
+        else mutate({ action: "REMOVE_ITEM", itemId: item.id });
+      }
+      if (cancel.size) cancelUnsent(cancel);
+    } else {
+      // Rechecking before deletion is dispatched cancels deletion and retains edited fields.
+      const original = projectProposalCommands(proposal, commands.filter(c => c.operation.action !== "REMOVE_ITEM"), previews.current);
+      const ids = new Set(original.variants.flatMap(v => v.sections).find(s => s.id === sectionId)?.items.filter(i => i.offerId === offerId).map(i => i.id));
+      const removals = queuedRef.current.filter(c => c.operation.action === "REMOVE_ITEM" && ids.has(String(c.operation.itemId)));
+      if (removals.length) cancelUnsent(new Set(removals.map(c => c.operation.mutationId)));
+      else mutate({ action: "ADD_CATALOG_ITEM", sectionId, offerId });
+    }
   }
   function navigateSection(id: string) {
     if (!openDrawer(null)) return;
@@ -526,31 +561,31 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
           <aside className={styles.outline} aria-label="Структура мероприятия"><h2>Мероприятие</h2><div className={styles.outlineList}>{sections.map((section, index) => <div className={styles.outlineRow} key={section.id} data-proposal-drop-kind="section" data-proposal-drop-id={section.id} data-drop={dropState("section", section.id)} data-moving={drag?.source === section.id || undefined}>
             <ProposalMoveHandle kind="section" id={section.id} name={section.title} disabled={locked} canUp={index > 0} canDown={index < sections.length - 1} onTarget={dragTarget} onDrop={(drop) => dropSection(section.id, drop)} onStep={(direction) => moveSection(section.id, direction === -1 ? sections[index - 1].id : sections[index + 2]?.id ?? null)} />
             <button className={styles.outlineChoice} aria-pressed={section.id === target?.id} onClick={() => navigateSection(section.id)}><span>{section.title}</span><small>{section.items.length} услуг</small></button>
-            <button className={styles.inlinePlus} disabled={locked} aria-label={`Подобрать услуги: ${section.title}`} title="Подобрать услуги" onClick={() => void openCatalog(section.id)}><PlusIcon /></button>
+            <button className={styles.inlinePlus} disabled={locked} aria-label={`Подобрать услуги: ${section.title}`} title="Подобрать услуги" onClick={(event) => void openCatalog(section.id, event.currentTarget)}><PlusIcon /></button>
           </div>)}</div><button className={base.quiet} disabled={locked} aria-expanded={sectionForm} onClick={() => { if (sectionForm && sectionDirty.current && !window.confirm("Закрыть раздел без сохранения введённых полей?")) return; contextVersion.current += 1; sectionDirty.current = false; setSectionForm(!sectionForm); }}>Добавить раздел</button>
             {sectionForm ? <form ref={sectionFormRef} className={styles.form} onChangeCapture={() => { sectionDirty.current = true; }} onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void mutate({ action: "ADD_SECTION", variantId: variant?.id, title: data.get("title"), categoryId: data.get("category") || null }, (next) => { const created = next.variants.find((entry) => entry.id === variant?.id)?.sections.at(-1); if (created && !drawer) setSectionId(created.id); setSectionForm(false); }, "section"); }}><label>Название<input name="title" disabled={locked} minLength={2} maxLength={160} required placeholder="Например, шоу-программа" /></label><label>Категория<select name="category" disabled={locked}><option value="">Своя категория</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button className={base.secondary} disabled={locked}>Добавить</button></form> : null}
             <div className={styles.budget}><span>Основной состав</span><strong>{budget.label}</strong>{totals.unresolved ? <small>{budget.detail}</small> : null}<dl><div><dt>Расходы</dt><dd>{totals.unconfirmedCost ? "Не все указаны" : proposalMoney(totals.cost)}</dd></div><div><dt>Маржа</dt><dd>{totals.unconfirmedCost || totals.unresolved ? "Уточните цены" : proposalMoney(totals.margin)}</dd></div></dl></div>
           </aside>
-          <section className={styles.canvas} aria-label="Состав мероприятия" hidden={drawer?.kind === "catalog"}>
+          <section className={styles.canvas} aria-label="Состав мероприятия">
             <div className={styles.canvasToolbar}><span>{sections.length} разделов · {items.length} услуг</span><div role="group" aria-label="Режим просмотра состава"><button aria-pressed={wholeEvent} onClick={() => setWholeEvent(true)}>Всё мероприятие</button><button aria-pressed={!wholeEvent} onClick={() => setWholeEvent(false)}>Один раздел</button></div></div>
             {!readOnly && !conflict && Boolean(target?.items.length) && !drawer && nextStep.kind !== "CATALOG" ? <div className={styles.nextStep} aria-label="Следующий шаг"><div><strong>{nextStep.title}</strong><p>{nextStep.reason}</p></div><button className={base.quiet} disabled={locked} onClick={followNextStep}>{nextStep.action}</button></div> : null}
             {canvasSections.length ? canvasSections.map((section) => <section className={styles.eventSection} key={section.id} ref={(node) => { if (node) sectionElements.current.set(section.id, node); else sectionElements.current.delete(section.id); }}>
               <div className={styles.sectionHeading}><div><h2>{section.title}</h2><p>{section.items.length ? `${section.items.length} услуг` : "Услуги ещё не выбраны"}</p></div><div className={styles.sectionActions}>
-                <button className={styles.addService} disabled={locked} aria-label={`Подобрать услуги: ${section.title}`} onClick={() => void openCatalog(section.id)}><PlusIcon /><span>Подобрать</span></button>
+                <button className={styles.addService} disabled={locked} aria-label={`Подобрать услуги: ${section.title}`} onClick={(event) => void openCatalog(section.id, event.currentTarget)}><PlusIcon /><span>Подобрать</span></button>
                 <details className={styles.actionMenu}><summary aria-label={`Действия с разделом ${section.title}`}><MoreIcon /></summary><div><button disabled={locked} onClick={() => { setSectionId(section.id); setDrawer({ kind: "manual", sectionId: section.id }); }}>Своя услуга</button><button disabled={locked} onClick={() => { if (window.confirm(`Удалить раздел «${section.title}» и его услуги?`) && discardContext()) void mutate({ action: "REMOVE_SECTION", sectionId: section.id }, () => setSectionId("")); }}>Удалить раздел</button></div></details>
               </div></div>
-              {!section.items.length ? <button className={styles.emptyAdd} disabled={locked} onClick={() => void openCatalog(section.id)}><PlusIcon /><span>Выбрать из каталога</span></button> : <div className={styles.itemList}>{section.items.map((item, index) => <div className={styles.itemRow} key={item.id} data-proposal-drop-kind="item" data-proposal-drop-id={item.id} data-drop={dropState("item", item.id)} data-moving={drag?.source === item.id || undefined}>
+              {!section.items.length ? <button className={styles.emptyAdd} disabled={locked} onClick={(event) => void openCatalog(section.id, event.currentTarget)}><PlusIcon /><span>Выбрать из каталога</span></button> : <div className={styles.itemList}>{section.items.map((item, index) => <div className={styles.itemRow} key={item.id} data-proposal-drop-kind="item" data-proposal-drop-id={item.id} data-drop={dropState("item", item.id)} data-moving={drag?.source === item.id || undefined}>
                 <ProposalMoveHandle kind="item" id={item.id} name={item.offerTitleSnapshot} disabled={locked || isQueuedId(item.id)} canUp={index > 0} canDown={index < section.items.length - 1} onTarget={dragTarget} onDrop={(drop) => dropItem(item.id, drop)} onStep={(direction) => moveItem(item.id, section.id, direction === -1 ? section.items[index - 1].id : section.items[index + 2]?.id ?? null)} />
                 <button className={styles.item} disabled={isQueuedId(item.id)} onClick={() => { if (openDrawer({ kind: "item", item })) setSectionId(section.id); }}><Photo url={item.assetSnapshot?.[0]?.url} name={item.offerTitleSnapshot} /><div className={styles.itemCopy}><h3>{item.offerTitleSnapshot}</h3><p>{item.contractorNameSnapshot}</p>{item.offerDescriptionSnapshot ? <p className={styles.description}>{item.offerDescriptionSnapshot}</p> : null}<span>{isQueuedId(item.id) ? "Сохраняем · " : ""}{roleLabel[item.selectionRole]} · {item.qty} {item.unitLabel ?? "шт."}</span></div><strong>{priceLabel(item.clientUnitPrice, item.priceTypeSnapshot, item.qty)}</strong></button>
               </div>)}</div>}
             </section>) : <div className={styles.emptySection}><h2>С чего начнём мероприятие?</h2><p>Добавьте первый раздел. Затем подберите подрядчиков и соберите несколько вариантов для клиента.</p><div className={styles.suggestions}>{categories.slice(0, 6).map((category) => <button key={category.id} className={base.secondary} disabled={locked} onClick={() => void mutate({ action: "ADD_SECTION", variantId: variant?.id, title: category.name, categoryId: category.id }, (next) => setSectionId(next.variants.find((entry) => entry.id === variant?.id)?.sections.at(-1)?.id ?? ""))}>{category.name}</button>)}</div><button className={base.quiet} disabled={locked} onClick={() => setSectionForm(true)}>Свой раздел</button></div>}
           </section>
-          {drawer ? <aside className={styles.drawer} ref={drawerRef} tabIndex={-1} onChangeCapture={(event) => { if ((event.target as HTMLElement).closest("form")) dirty.current = true; }} aria-label={drawer.kind === "catalog" ? "Подбор услуг" : "Параметры КП"}><div className={styles.drawerHeading}><h2>{drawer.kind === "catalog" ? "Подбор услуг" : drawer.kind === "item" ? "Настроить услугу" : drawer.kind === "manual" ? "Своя услуга" : drawer.kind === "transfer" ? "Перенос в смету" : drawer.kind === "document" ? "Оформление КП" : drawer.kind === "export" ? "Скачать КП" : "Создать проект"}</h2><button className={base.quiet} onClick={() => openDrawer(null)}>Закрыть</button></div><fieldset className={styles.drawerFields} disabled={Boolean(readOnly) && drawer.kind !== "export"}>
+          {drawer ? <ContextPopover className={`${styles.drawer} ${drawer.kind === "catalog" ? styles.picker : ""}`} anchor={drawer.kind === "catalog" ? pickerAnchor : null} surfaceRef={drawerRef} dismissOutside={drawer.kind === "catalog"} onClose={() => openDrawer(null)} onChangeCapture={(event) => { if ((event.target as HTMLElement).closest("form")) dirty.current = true; }} label={drawer.kind === "catalog" ? "Подбор услуг" : "Параметры КП"}><div className={styles.drawerHeading}><h2>{drawer.kind === "catalog" ? `В раздел «${sections.find(s => s.id === drawer.sectionId)?.title ?? ""}»` : drawer.kind === "item" ? "Настроить услугу" : drawer.kind === "manual" ? "Своя услуга" : drawer.kind === "transfer" ? "Перенос в смету" : drawer.kind === "document" ? "Оформление КП" : drawer.kind === "export" ? "Скачать КП" : "Создать проект"}</h2><button className={base.quiet} onClick={() => openDrawer(null)}>Закрыть</button></div><fieldset className={styles.drawerFields} disabled={Boolean(readOnly) && drawer.kind !== "export"}>
             {drawer.kind === "item" && sections.length > 1 ? <label className={styles.moveDestination}>Раздел услуги<select aria-label="Перенести услугу в раздел" disabled={locked} value={sections.find((section) => section.items.some((item) => item.id === drawer.item.id))?.id ?? target?.id} onChange={(event) => moveItem(drawer.item.id, event.target.value, null)}>{sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><small>Переносит услугу целиком. Можно отменить через Ctrl+Z.</small></label> : null}
-            {drawer.kind === "catalog" ? <><div className={styles.catalogFilters}><label>Добавляем в<select value={drawer.sectionId} onChange={(event) => void openCatalog(event.target.value)}>{sections.map(section => <option key={section.id} value={section.id}>{section.title}</option>)}</select></label><label>Поиск<input autoFocus aria-label="Найти подрядчика или услугу" placeholder="Подрядчик или услуга" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label>Категория<select aria-label="Категория услуг" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>{catalogLoading ? <LoadingRegion className={styles.loading}><Skeleton /><Skeleton /></LoadingRegion> : !catalogLoaded ? <button className={base.secondary} onClick={() => void openCatalog(drawer.sectionId)}>Повторить загрузку каталога</button> : catalogOffers.length ? <div className={styles.offerList}>{catalogOffers.map(({ contractor, offer }) => {
+            {drawer.kind === "catalog" ? <><div className={styles.catalogFilters}><label>Поиск<input autoFocus aria-label="Найти подрядчика или услугу" placeholder="Подрядчик или услуга" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label>Категория<select aria-label="Категория услуг" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>{catalogLoading ? <LoadingRegion className={styles.loading}><Skeleton /><Skeleton /></LoadingRegion> : !catalogLoaded ? <button className={base.secondary} onClick={() => void openCatalog(drawer.sectionId)}>Повторить загрузку каталога</button> : catalogOffers.length ? <div className={styles.offerList}>{catalogOffers.map(({ contractor, offer }) => {
               const added = sections.find((section) => section.id === drawer.sectionId)?.items.some((item) => item.offerId === offer.id);
-              return <label className={styles.offer} key={offer.id} data-added={added || undefined}><input type="checkbox" aria-label={`Добавить ${offer.title} — ${contractor.name}`} checked={Boolean(added)} disabled={locked || added} onChange={() => void mutate({ action: "ADD_CATALOG_ITEM", sectionId: drawer.sectionId, offerId: offer.id })} /><Photo url={contractor.photoUrl} name={contractor.name} /><div><h3>{offer.title}</h3><p>{contractor.name}</p><p>{offer.description}</p><strong>{priceLabel(offer.clientPrice, offer.priceType, 1, offer.clientPriceMax)}{offer.unitLabel ? ` / ${offer.unitLabel}` : ""}</strong><small>{added ? "В составе мероприятия" : priceFreshness(offer.priceConfirmedAt) === "FRESH" ? "Цена подтверждена" : "Цену нужно уточнить"}</small></div></label>;
-            })}</div> : <p className={styles.context}>Нет подходящих услуг. Выберите все категории или измените запрос.</p>}{catalogCursor && catalogLoaded ? <button className={base.secondary} disabled={catalogMoreLoading} onClick={() => void moreCatalog()}>{catalogMoreLoading ? "Загружаем…" : "Показать ещё услуги"}</button> : null}<div className={styles.catalogFooter}><button className={base.quiet} disabled={locked} onClick={() => setDrawer({ kind: "manual", sectionId: drawer.sectionId })}>Своя услуга</button><button className={base.secondary} onClick={() => navigateSection(drawer.sectionId)}>К составу мероприятия</button></div></> : null}
+              return <label className={styles.offer} key={offer.id} data-added={added || undefined}><input type="checkbox" aria-label={`Выбрать ${offer.title} — ${contractor.name}`} checked={Boolean(added)} disabled={locked} onChange={() => toggleCatalogOffer(drawer.sectionId, offer.id)} /><Photo url={contractor.photoUrl} name={contractor.name} /><div><h3>{offer.title}</h3><p>{contractor.name}</p><p>{offer.description}</p><strong>{priceLabel(offer.clientPrice, offer.priceType, 1, offer.clientPriceMax)}{offer.unitLabel ? ` / ${offer.unitLabel}` : ""}</strong><small>{added ? "В составе мероприятия" : priceFreshness(offer.priceConfirmedAt) === "FRESH" ? "Цена подтверждена" : "Цену нужно уточнить"}</small></div></label>;
+            })}</div> : <p className={styles.context}>Нет подходящих услуг. Выберите все категории или измените запрос.</p>}{catalogCursor && catalogLoaded ? <button className={base.secondary} disabled={catalogMoreLoading} onClick={() => void moreCatalog()}>{catalogMoreLoading ? "Загружаем…" : "Показать ещё услуги"}</button> : null}<div className={styles.catalogFooter}><button className={base.quiet} disabled={locked} onClick={() => setDrawer({ kind: "manual", sectionId: drawer.sectionId })}>Своя услуга</button><button className={base.secondary} onClick={() => openDrawer(null)}>Готово</button></div></> : null}
             {drawer.kind === "export" && variant ? <ProposalExportPanel proposalId={proposal.id} revision={proposal.revision} variantId={variant.id} variantTitle={variant.title} disabled={unconfirmed || Boolean(recovery) || conflict || busy} /> : null}
             {drawer.kind === "item" || drawer.kind === "manual" ? <form className={styles.form} key={drawer.kind === "item" ? drawer.item.id : drawer.sectionId} onSubmit={(event) => {
               event.preventDefault(); const data = new FormData(event.currentTarget);
@@ -561,7 +596,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
             {drawer.kind === "convert" ? <form className={styles.form} onSubmit={convert}><p className={styles.context}>Все варианты, услуги и фотографии перейдут в проект. КП не будет копироваться или заменять смету.</p><label>Название проекта<input name="title" required minLength={2} maxLength={300} defaultValue={proposal.title} /></label><label>Заказчик<input name="customer" required minLength={2} maxLength={200} readOnly={proposal.owner?.type === "STANDALONE" && Boolean(proposal.owner.customer)} defaultValue={proposal.owner?.type === "STANDALONE" ? proposal.owner.customer?.name ?? proposal.owner.leadCustomerName ?? "" : ""} /></label><button className={base.primary} disabled={locked}>{busy ? "Создаём…" : "Создать проект с этим КП"}</button></form> : null}
             {drawer.kind === "transfer" ? <><p className={styles.context}>В смету добавятся основные услуги варианта «{variant?.title}». Существующие строки не будут заменены. Ранее перенесённые услуги пропускаются — их цены в смете не обновляются.</p><ul className={styles.transferList}>{items.filter((item) => item.selectionRole === "PRIMARY").map((item) => <li key={item.id}>{item.offerTitleSnapshot}<strong>{priceLabel(item.clientUnitPrice, item.priceTypeSnapshot, item.qty)}</strong></li>)}</ul>{totals.unresolved ? <p className={styles.context}>Внимание: {totals.unresolved} цен не указаны. В смете они останутся пустыми.</p> : null}<button className={base.primary} disabled={locked} onClick={() => void transfer()}>Подтвердить перенос</button></> : null}
             {drawer.kind === "document" ? <form className={styles.form} onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void mutate({ action: "UPDATE_PROPOSAL", title: data.get("title"), clientIntro: data.get("intro") || null, clientOutro: data.get("outro") || null }, () => setDrawer(null), "drawer"); }}><label>Название<input name="title" defaultValue={proposal.title} required minLength={2} maxLength={200} /></label><label>Вступление для клиента<textarea name="intro" maxLength={4000} defaultValue={proposal.clientIntro ?? ""} /></label><label>Заключение<textarea name="outro" maxLength={4000} defaultValue={proposal.clientOutro ?? ""} /></label><button className={base.primary} disabled={locked}>Сохранить текст</button></form> : null}
-          </fieldset></aside> : null}
+          </fieldset></ContextPopover> : null}
         </div> : null}
       </>}
     </div>

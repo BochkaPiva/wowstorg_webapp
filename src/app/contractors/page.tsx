@@ -7,6 +7,7 @@ import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 import { catalogRequest, CatalogIcon, ContractorPhoto, freshnessCopy, offerPrice, seedHref, type Category, type ContractorCard, type ContractorDetail } from "./catalog-ui";
 import { CatalogInspector } from "./CatalogInspector";
+import { CatalogDialog } from "./CatalogDialog";
 import styles from "./contractors.module.css";
 
 type Panel = { kind: "view"; id: string } | { kind: "create" | "category" } | null;
@@ -38,7 +39,6 @@ export default function ContractorsPage() {
   const [detailReload, setDetailReload] = React.useState(0);
   const [panelEpoch, setPanelEpoch] = React.useState(0);
   const [expandedCards, setExpandedCards] = React.useState<Set<string>>(new Set());
-  const panelRef = React.useRef<HTMLElement>(null);
   const opener = React.useRef<HTMLElement | null>(null);
   const dirty = React.useRef(false);
   const saving = React.useRef(false);
@@ -73,12 +73,10 @@ export default function ContractorsPage() {
     setPanel(next); setPanelEpoch((value) => value + 1);
     if (!next) opener.current?.focus();
   }
-  React.useEffect(() => { if (panel) { panelRef.current?.focus(); panelRef.current?.scrollIntoView({ block: "nearest" }); } }, [panel]);
   React.useEffect(() => {
     const leave = (event: BeforeUnloadEvent) => { if (dirty.current || saving.current) { event.preventDefault(); event.returnValue = ""; } };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") switchPanel(null); };
-    window.addEventListener("beforeunload", leave); window.addEventListener("keydown", key);
-    return () => { window.removeEventListener("beforeunload", leave); window.removeEventListener("keydown", key); };
+    window.addEventListener("beforeunload", leave);
+    return () => window.removeEventListener("beforeunload", leave);
   }, []);
   async function loadMore() {
     if (!nextCursor || moreFlight.current || loading) return;
@@ -104,7 +102,7 @@ export default function ContractorsPage() {
     <section className={styles.toolbar} aria-label="Поиск и категории"><input className={styles.search} value={search} maxLength={200} onChange={(event) => setSearch(event.target.value)} placeholder="Подрядчик или услуга" aria-label="Поиск подрядчиков" /><div className={styles.chips}><button className={styles.chip} aria-pressed={!categoryId} data-active={!categoryId} onClick={() => setCategoryId("")}>Все</button>{categories.map((category) => <button key={category.id} className={styles.chip} aria-pressed={category.id === categoryId} data-active={category.id === categoryId} onClick={() => setCategoryId(category.id)}>{category.name}</button>)}<button className={styles.quiet} onClick={() => switchPanel({ kind: "category" })} aria-label="Добавить категорию">+ Категория</button></div></section>
     {error ? <div className={styles.error} role="alert">{error} <button className={styles.quiet} onClick={() => setReload((value) => value + 1)}>Повторить</button></div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
-    <div className={styles.catalogLayout} data-inspecting={Boolean(panel)}>
+    <div className={styles.catalogLayout}>
       <div className={styles.catalogContent}>
         {loading ? <CatalogSkeleton /> : contractors.length ? <><div className={styles.catalogSummary}>Показано подрядчиков: <strong>{contractors.length}</strong>{nextCursor ? <span>· ниже есть ещё</span> : null}</div><section className={styles.catalogGrid} aria-label="Каталог подрядчиков">{contractors.map((contractor) => <article key={contractor.id} className={styles.contractorCard} data-selected={detailId === contractor.id}>
           <button className={styles.cardMedia} onClick={() => switchPanel({ kind: "view", id: contractor.id })} aria-label={`Открыть карточку: ${contractor.name}`}><ContractorPhoto src={contractor.photoUrl} name={contractor.name} /></button>
@@ -114,7 +112,7 @@ export default function ContractorsPage() {
           </div>
         </article>)}</section>{nextCursor ? <div className={styles.loadMore}><button className={styles.secondary} disabled={moreLoading} onClick={() => void loadMore()}>{moreLoading ? "Загружаем…" : "Показать ещё"}</button></div> : null}</> : !error ? <div className={styles.catalogEmpty}><strong>{query || categoryId ? "Ничего не найдено" : "Соберите свою базу подрядчиков"}</strong><span>{query || categoryId ? "Попробуйте другой запрос или категорию." : "Добавьте первого подрядчика и его услуги — они появятся здесь."}</span><button className={styles.secondary} onClick={() => query || categoryId ? (setSearch(""), setCategoryId("")) : switchPanel({ kind: "create" })}>{query || categoryId ? "Сбросить поиск" : "Добавить подрядчика"}</button></div> : null}
       </div>
-      {panel ? <aside className={styles.inspector} ref={panelRef} tabIndex={-1} aria-label="Карточка подрядчика"><CatalogInspector key={`${panel.kind === "view" ? panel.id : panel.kind}:${panelEpoch}`} kind={panel.kind} contractor={detail?.id === detailId ? detail : null} categories={categories} loadError={detailError} onClose={() => switchPanel(null)} onRetry={() => setDetailReload((value) => value + 1)} onSaved={saved} dirty={dirty} saving={saving} /></aside> : null}
+      {panel ? <CatalogDialog label="Карточка подрядчика" onClose={() => switchPanel(null)}><CatalogInspector key={`${panel.kind === "view" ? panel.id : panel.kind}:${panelEpoch}`} kind={panel.kind} contractor={detail?.id === detailId ? detail : null} categories={categories} loadError={detailError} onClose={() => switchPanel(null)} onRetry={() => setDetailReload((value) => value + 1)} onSaved={saved} dirty={dirty} saving={saving} /></CatalogDialog> : null}
     </div>
   </div></AppShell>;
 }

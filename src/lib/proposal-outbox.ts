@@ -4,6 +4,23 @@ import { proposalOrder } from "./proposal-order";
 
 export const isQueuedId = (id: string) => id.startsWith("queued:");
 
+/** Resolve only unsent dependants after the server has acknowledged the creating command. */
+export function resolveCreatedProposalItem(commands: readonly ProposalCommand[], queuedId: string, itemId: string): ProposalCommand[] {
+  return commands.map(command => {
+    const operation = { ...command.operation };
+    if (operation.itemId === queuedId) operation.itemId = itemId;
+    if (operation.beforeId === queuedId) operation.beforeId = itemId;
+    return { ...command, operation };
+  });
+}
+
+/** A receipt replay after reload can return an item already present in the freshly loaded model. */
+export function acknowledgedCatalogItem(before: Proposal, after: Proposal, command: ProposalCommand, replay: boolean) {
+  const previousIds = new Set(before.variants.flatMap(v => v.sections.flatMap(s => s.items.map(i => i.id))));
+  const candidates = after.variants.flatMap(v => v.sections).find(s => s.id === command.operation.sectionId)?.items.filter(i => i.offerId === command.operation.offerId) ?? [];
+  return candidates.find(i => !previousIds.has(i.id)) ?? (replay ? candidates.at(-1) : undefined);
+}
+
 /** Local projection only. The server still creates snapshots, checks CAS, and owns IDs. */
 export function projectProposalCommands(server: Proposal, commands: readonly ProposalCommand[], previews: ReadonlyMap<string, ProposalItem> = new Map()): Proposal {
   if (!commands.length) return server;

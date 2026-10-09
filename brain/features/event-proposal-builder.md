@@ -83,6 +83,8 @@
 
 Файловый экспорт v1: `[id]/exports` фиксирует client-safe снимок; `[snapshotId]?format=pdf|pptx` скачивает его по фирменному макету с Oks Free. UI работает без общего busy overlay; первичная генерация синхронна в отдельном запросе, export job/history пока не реализованы. Обзор всех разделов и широкая галерея с checkbox-добавлением используют тот же редактор проекта/самостоятельного КП. См. уточнение ADR 015 и `src/server/projects/proposal-template-v1/README.md` для assets/шрифта/границ проверки. Новых миграций нет.
 
+Уточнение UI 09.10.2026: вместо широкой галереи, заменяющей холст, «+ Подобрать» открывает mini-каталог возле кнопки. Галочки добавляют и удаляют услуги в текущем разделе, включая отмену во время фонового сохранения. Цены/комментарии сохраняются при отмене ещё не отправленного удаления. Параметры услуги — отдельная ограниченная viewport панель с собственной прокруткой; детали подрядчика — модальное окно по паттерну каталога реквизита, без сужения сетки. Полноэкранный редактор сохраняет focus scope и порядок Escape. Миграции/API не менялись; см. последнюю секцию ADR 015. Синтетические browser fixtures не подтверждают production БД/storage.
+
 - [`docs/EVENT_PROPOSAL_WORKSPACE_V2_SPEC.md`](../../docs/EVENT_PROPOSAL_WORKSPACE_V2_SPEC.md)
 - [`docs/EVENT_PROPOSAL_BUILDER_IMPLEMENTATION_PLAN.md`](../../docs/EVENT_PROPOSAL_BUILDER_IMPLEMENTATION_PLAN.md)
 - [`brain/decisions/014-event-proposal-builder-boundaries.md`](../decisions/014-event-proposal-builder-boundaries.md)

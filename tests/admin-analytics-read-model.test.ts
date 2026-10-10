@@ -66,6 +66,46 @@ beforeEach(() => {
 });
 
 describe("complete analytics read model and export", () => {
+  it("recognises undated completed projects by closing day, consistently in customers, chart, bonuses and XLSX", async () => {
+    const projects = [
+      { ...project("archived-close", null, null), archivedAt: new Date("2026-08-31T18:00:00Z") },
+      { ...project("status-close", null, null), activityLogs: [
+        { kind: "PROJECT_UPDATED", payload: { changes: { status: { from: "LEAD", to: "COMPLETED" } } }, createdAt: at("2026-07-01") },
+        { kind: "PROJECT_UPDATED", payload: { changes: { status: { from: "IN_PROGRESS", to: "COMPLETED" } } }, createdAt: at("2026-09-15") },
+      ] },
+      { ...project("dated-priority", "2026-08-01", "2026-08-31"), archivedAt: at("2026-09-10") },
+      project("missing-close", null, null),
+      { ...project("active-undated", null, null, "IN_PROGRESS"), archivedAt: at("2026-09-01") },
+      { ...project("cancelled-undated", null, null, "CANCELLED"), archivedAt: at("2026-09-01") },
+    ];
+    db.project.findMany.mockImplementation(({ where }) => projects.filter(row => matches(row, where)));
+    const august = await getAdminAnalyticsData({ from: "2026-08-01", to: "2026-08-31" });
+    const september = await getAdminAnalyticsData({ from: "2026-09-01", to: "2026-09-30" });
+    const july = await getAdminAnalyticsData({ from: "2026-07-01", to: "2026-07-31" });
+    expect(august.facts.filter(row => row.source === "PROJECT").map(row => row.id)).toEqual(["dated-priority"]);
+    expect(july.projects.kpi.actualRevenueTotal).toBe(0);
+    expect(september.projects.rows.map(row => row.projectId)).toEqual(["archived-close", "status-close"]);
+    expect(september.facts.map(row => row.date)).toEqual(["2026-09-01", "2026-09-15"]);
+    expect(september.projects.unassigned.map(row => row.projectId)).toEqual(["missing-close", "active-undated"]);
+    expect(september.projects.kpi.actualRevenueTotal).toBe(240.8);
+    expect(september.overview.finance.fact.revenueTotal).toBe(240.8);
+    expect(sumAnalyticsMoney(analyticsCustomerRows(september).map(row => row.actualRevenue))).toBe(240.8);
+    expect(sumAnalyticsMoney(september.overview.timeline.map(row => row.revenue))).toBe(240.8);
+    expect(september.overview.finance.forecast.revenueTotal).toBe(0);
+    expect(sumAnalyticsMoney(september.overview.finance.bonuses.factShares)).toBe(september.overview.finance.bonuses.factPool);
+    const firstDay = await getAdminAnalyticsData({ from: "2026-09-01", to: "2026-09-01" });
+    expect(firstDay.projects.rows.map(row => row.projectId)).toEqual(["archived-close"]);
+    const remainder = await getAdminAnalyticsData({ from: "2026-09-02", to: "2026-09-30" });
+    expect(remainder.projects.rows.map(row => row.projectId)).toEqual(["status-close"]);
+    expect(sumAnalyticsMoney([firstDay.projects.kpi.actualRevenueTotal, remainder.projects.kpi.actualRevenueTotal])).toBe(september.projects.kpi.actualRevenueTotal);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await buildAdminAnalyticsXlsx(september, "global") as unknown as ExcelJS.Buffer);
+    expect(workbook.getWorksheet("Динамика")!.getCell("B7").value).toBe(240.8);
+    expect(workbook.getWorksheet("Проекты")!.getCell("J7").value).toBe("2026-09-01");
+    expect(workbook.getWorksheet("Проекты")!.getCell("K7").value).toBe("Закрытие проекта");
+    expect(workbook.getWorksheet("Заказчики")!.getCell("D7").value).toBe(240.8);
+    expect(workbook.getWorksheet("Без дат — вне итогов")!.getCell("A7").value).toBe("missing-close");
+  });
   it("recognises a cross-month completed project once, includes all counted versions and exposes undated work separately", async () => {
     const july = await getAdminAnalyticsData({ from: "2026-07-01", to: "2026-07-31" });
     const august = await getAdminAnalyticsData({ from: "2026-08-01", to: "2026-08-31" });

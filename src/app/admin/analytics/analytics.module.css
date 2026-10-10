@@ -1,4 +1,10 @@
 .page {display:grid;gap:10px;padding-bottom:32px;color:var(--wow-ink-soft);font-size:14px;min-width:0;margin-top:-24px;}
+.projectDates {margin:0;border:1px solid var(--wow-line);border-radius:12px;padding:20px;background:#fff;color:var(--wow-ink-soft);overflow:auto;box-shadow:0 12px 32px rgb(24 24 27 / 12%);}
+.projectDates .panelHeader {padding:0;}
+.projectDates form {display:grid;gap:18px;margin-top:20px;}
+.projectDates .period label {display:grid;gap:6px;flex:1;min-width:140px;}
+.projectDates .period input {width:100%;}
+.projectDates :is(button,input):focus-visible {outline:2px solid var(--wow-purple);outline-offset:3px;}
 .page ::selection {background:var(--wow-purple-soft);}
 .page :is(button,input,select,summary,a):focus-visible {outline:2px solid var(--wow-purple);outline-offset:3px;}
 .page button {cursor:pointer;}

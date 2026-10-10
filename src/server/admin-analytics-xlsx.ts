@@ -319,12 +319,12 @@ function addRequisitesSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
 function addProjectsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
   const ws = wb.addWorksheet("Проекты");
   styleSheet(ws);
-  setCols(ws, [30, 24, 18, 15, 15, 15, 15, 12, 16, 16]);
-  addReportHeader(ws, "Финансы проектов", data, 10);
+  setCols(ws, [30, 24, 18, 15, 15, 15, 15, 12, 16, 16, 24]);
+  addReportHeader(ws, "Финансы проектов", data, 11);
   addTable(
     ws,
     6,
-    ["Проект", "Заказчик", "Статус", "Бюджет смет", "Расходы с условным налогом", "Комиссия", "Расчётный налог", "Прибыль", "Маржа %", "Дата окончания / начала"],
+    ["Проект", "Заказчик", "Статус", "Бюджет смет", "Расходы с условным налогом", "Комиссия", "Расчётный налог", "Прибыль", "Маржа %", "Дата учёта / мероприятия", "Источник даты"],
     data.projects.rows
       .filter((p) => p.status !== "CANCELLED")
       .sort((a, b) => b.financials.revenueTotal - a.financials.revenueTotal)
@@ -339,6 +339,7 @@ function addProjectsSheet(wb: ExcelJS.Workbook, data: AdminAnalyticsData) {
         p.financials.marginAfterTax,
         p.financials.marginAfterTaxPct / 100,
         projectActualDate(p) ?? "",
+        p.eventEndDate ? "Окончание мероприятия" : p.eventStartDate ? "Начало мероприятия" : "Закрытие проекта",
       ]),
     { currencyColumns: [3, 4, 5, 6, 7], percentColumns: [8] },
   );

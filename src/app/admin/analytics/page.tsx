@@ -28,7 +28,7 @@ const TAB_META: Array<{
     label: "Сводка бизнеса",
     shortLabel: "Обзор",
     description: "Факт, прогноз, структура результата и точки управленческого внимания.",
-    basis: "Факт заявок — по дате завершения; прогноз — по пересечению периода аренды. Факт проектов — по окончанию мероприятия; прогноз — по пересечению дат.",
+    basis: "Факт заявок — по дате завершения. Факт проектов — по окончанию мероприятия; без дат — временно по закрытию. Прогноз — по пересечению дат.",
   },
   {
     id: "bonuses",
@@ -56,14 +56,14 @@ const TAB_META: Array<{
     label: "Проекты",
     shortLabel: "Проекты",
     description: "Воронка, финансовый прогноз, зрелость процессов и проектные риски.",
-    basis: "Завершённые — по окончанию мероприятия (или началу, если окончания нет); остальные — по пересечению дат.",
+    basis: "Завершённые — по окончанию мероприятия (или началу); без дат — временно по закрытию. Даты можно уточнить здесь. Остальные — по пересечению дат.",
   },
   {
     id: "customers",
     label: "Клиенты",
     shortLabel: "Клиенты",
     description: "Повторные продажи, ценность клиентской базы и качество портфеля.",
-    basis: "Общий период с обзором: завершённые проекты и отдельные заявки по дате окончания; прогноз — отдельно.",
+    basis: "Общий период с обзором: отдельные заявки по дате окончания; проекты по дате мероприятия, без неё — временно по закрытию. Прогноз — отдельно.",
   },
 ];
 
@@ -175,6 +175,12 @@ export default function AdminAnalyticsPage() {
     setCache(next);
     setRevision(current => current + 1);
   }
+  function datesChanged() {
+    // A date correction moves a fact between periods; all cached periods are stale.
+    cacheRef.current = {};
+    setCache({});
+    setRevision(current => current + 1);
+  }
   const exportSection = ({ overview: "global", requisites: "requisites", projects: "projects", customers: "customers", bonuses: "global", reconciliation: "global" } as const)[activeTab];
 
   return <AppShell title="Админка · Аналитика">{forbidden ? <div>Раздел доступен только команде Wowstorg.</div> : <section className={s.page} aria-label="Аналитика бизнеса">
@@ -185,11 +191,11 @@ export default function AdminAnalyticsPage() {
     <nav className={s.tabs} aria-label="Разделы аналитики">{["overview", "projects", "customers", "requisites", "bonuses", "reconciliation"].map(id => TAB_META.find(tab => tab.id === id)!).map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => { setActiveTab(tab.id); setError(null); }}>{tab.shortLabel}</button>)}</nav>
     {scopeError ? <div className={s.error}>Укажите обе даты; начало периода не должно быть позже конца.</div> : activeTab === "reconciliation" && ready && state.status === "authenticated" ? <AnalyticsReconciliation scope={scope} /> : error ? <div className={s.error}>{error}<button className={s.button} onClick={refresh} type="button">Повторить</button></div> : !ready || !data ? <DashboardSkeleton /> : <>
       {loading && <span className={s.note} role="status">Обновляем данные…</span>}
-      {activeTab !== "bonuses" && <AnalyticsDataQuality data={data} />}
+      {activeTab !== "bonuses" && <AnalyticsDataQuality data={data} onDatesChanged={datesChanged} />}
       {activeTab === "overview" && <AnalyticsOverview data={data} scope={scope} onProjects={() => setActiveTab("projects")} />}
       {activeTab === "bonuses" && <AnalyticsBonuses data={data} />}
       {activeTab === "requisites" && <AnalyticsRequisites data={data} scope={scope} />}
-      {activeTab === "projects" && <AnalyticsProjects data={data} />}
+      {activeTab === "projects" && <AnalyticsProjects data={data} onDatesChanged={datesChanged} />}
       {activeTab === "customers" && <AnalyticsCustomers data={data} />}
     </>}
   </section>}</AppShell>;

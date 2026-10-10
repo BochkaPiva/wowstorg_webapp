@@ -18,8 +18,8 @@ export function sumAnalyticsMoney(values: Iterable<number>): number {
   return cents / 100;
 }
 
-export function projectActualDate(project: { eventEndDate: string | null; eventStartDate: string | null }) {
-  return project.eventEndDate ?? project.eventStartDate;
+export function projectActualDate(project: { eventEndDate: string | null; eventStartDate: string | null; status?: string; closedDate?: string | null }) {
+  return project.eventEndDate ?? project.eventStartDate ?? (project.status === "COMPLETED" ? project.closedDate ?? null : null);
 }
 
 export function splitAnalyticsMoney(total: number, recipients: number): number[] {

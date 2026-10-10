@@ -9,6 +9,7 @@
 | `src/server/projects/project-contractors.ts` | **да** (состав проекта: archive/тайминг guard, идемпотентное добавление, перенос из КП без перезаписи, CAS-правки и activity log) |
 | `src/app/api/admin/loyalty/route.ts` | нет (обновление политики и уровней одним действием) |
 | `src/app/api/customers/merge/route.ts` | **да** (перенос заявок, проектов, отдельных смет, временных КП, алиасов и запись журнала выполняются атомарно) |
+| `src/app/api/projects/[id]/event-dates/route.ts` | нет (коррекция дат завершённого проекта с CAS по прежним датам и атомарным журналом; архив/статус/резерв не меняются) |
 | `src/app/api/customers/route.ts` | нет (проверка идентичности и создание карточки одним действием) |
 | `src/app/api/customers/[id]/route.ts` | нет (проверка идентичности, сохранение алиаса и переименование одним действием) |
 | `src/app/api/greenwich/achievements/route.ts` | нет |

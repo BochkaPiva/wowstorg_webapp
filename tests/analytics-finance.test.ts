@@ -18,6 +18,14 @@ describe("analytics financial contract", () => {
       { eventEndDate: null, eventStartDate: { gte: new Date("2026-08-01Z"), lt: new Date("2026-09-01Z") } },
     ] });
   });
+  it("uses a recorded closing day only for completed projects with neither event date", () => {
+    const closed = { status: "COMPLETED", closedDate: "2026-10-09", eventStartDate: null, eventEndDate: null };
+    expect(projectActualDate(closed)).toBe("2026-10-09");
+    expect(projectActualDate({ ...closed, eventStartDate: "2026-07-31" })).toBe("2026-07-31");
+    expect(projectActualDate({ ...closed, eventStartDate: "2026-07-31", eventEndDate: "2026-08-01" })).toBe("2026-08-01");
+    expect(projectActualDate({ ...closed, status: "IN_PROGRESS" })).toBeNull();
+    expect(projectActualDate({ ...closed, status: "CANCELLED" })).toBeNull();
+  });
   it("splits the pool without losing or creating a kopeck, including negatives", () => {
     expect(analyticsBonusPool(125735.41)).toBe(18860.31);
     expect(splitAnalyticsMoney(18860.31, 2)).toEqual([9430.16, 9430.15]);

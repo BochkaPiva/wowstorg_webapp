@@ -21,6 +21,7 @@ import {
 } from "@/lib/project-estimate-line-totals";
 import { prisma } from "@/server/db";
 import { orderRentalPeriodWhere, projectFactPeriodWhere } from "@/server/analytics/period-filters";
+import { projectClosedDate } from "@/server/analytics/project-dates";
 import { roundMoney } from "@/lib/money";
 import { analyticsBonusPool, analyticsFactTimeline, projectActualDate, splitAnalyticsMoney, sumAnalyticsMoney, type AnalyticsFinancialFact } from "@/lib/analytics-finance";
 import { calcOrderPricing } from "@/server/orders/order-pricing";
@@ -32,8 +33,8 @@ export type AnalyticsPeriod = {
   to: string | null;
   dateBasis: {
     requisites: "order.endDate";
-    projects: "project.eventStartDate/eventEndDate";
-    customers: "project.eventStartDate/eventEndDate + order.endDate";
+    projects: "project.eventEndDate/eventStartDate/closedDate";
+    customers: "project.eventEndDate/eventStartDate/closedDate + order.endDate";
   };
 };
 
@@ -133,6 +134,8 @@ export type ProjectAnalyticsRow = {
   updatedAt: string;
   eventStartDate: string | null;
   eventEndDate: string | null;
+  /** Omsk calendar day of closing; only a fallback when both event dates are absent. */
+  closedDate: string | null;
   eventDateConfirmed: boolean;
   ordersCount: number;
   estimateVersionsCount: number;
@@ -150,6 +153,8 @@ export type ProjectAnalyticsRow = {
 
 export type ProjectAnalyticsData = {
   unassigned: ProjectAnalyticsRow[];
+  /** Completed work recognised by closing day, awaiting actual event dates; all periods. */
+  pendingDates: ProjectAnalyticsRow[];
   kpi: {
     projectsTotal: number;
     activeProjects: number;
@@ -1039,6 +1044,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       updatedAt: project.updatedAt.toISOString(),
       eventStartDate: ymd(project.eventStartDate),
       eventEndDate: ymd(project.eventEndDate),
+      closedDate: projectClosedDate(project),
       eventDateConfirmed: project.eventDateConfirmed,
       ordersCount: project.orders.length,
       estimateVersionsCount: project.estimateVersions.length,
@@ -1054,9 +1060,15 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     }];
   });
 
-  // Undated work is a data-quality issue, never an inferred dated financial fact.
+  // Undated projects are already loaded for data-quality reporting. Recognise
+  // completed ones by their recorded closing day, then apply the period here.
+  // Otherwise every undated completed project would leak into every period.
   const unassigned = allRows.filter(row => !projectActualDate(row) && row.status !== "CANCELLED");
-  const rows = allRows.filter(row => projectActualDate(row) != null);
+  const pendingDates = allRows.filter(row => row.status === "COMPLETED" && !row.eventStartDate && !row.eventEndDate && row.closedDate);
+  const rows = allRows.filter(row => {
+    const date = projectActualDate(row);
+    return date != null && (row.status !== "COMPLETED" || ((!scope.from || date >= scope.from) && (!scope.to || date <= scope.to)));
+  });
   const total = rows.length;
   const activeProjects = rows.filter((p) => !p.archived && p.status !== "COMPLETED" && p.status !== "CANCELLED").length;
   const completedProjects = rows.filter((p) => p.status === "COMPLETED").length;
@@ -1143,6 +1155,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     lowMargin: lowMargin.slice(0, 20),
     risks: [...rows].filter((p) => p.risks.length > 0).sort((a, b) => a.healthScore - b.healthScore),
     unassigned,
+    pendingDates,
     rows,
   };
 }
@@ -1377,8 +1390,8 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
       to: scope.to ?? null,
       dateBasis: {
         requisites: "order.endDate",
-        projects: "project.eventStartDate/eventEndDate",
-        customers: "project.eventStartDate/eventEndDate + order.endDate",
+        projects: "project.eventEndDate/eventStartDate/closedDate",
+        customers: "project.eventEndDate/eventStartDate/closedDate + order.endDate",
       },
     },
     overview,
@@ -1387,7 +1400,7 @@ export async function getAdminAnalyticsData(scope: AnalyticsScope): Promise<Admi
     customers,
     methodology: [
       { section: "Реквизит", rule: "Фактическая выручка считается по закрытым заявкам, которые завершились в выбранном периоде. Прогноз включает активные заявки, период аренды которых пересекается с выбранным диапазоном. Скидки и налог берутся из той же формулы, что используется в заявках и сметах." },
-      { section: "Проекты", rule: `Финансы считаются по всем версиям смет, включённым в итог проекта. Факт учитывается один раз по дате окончания мероприятия (или начала, если окончания нет); прогноз — по пересечению дат. Проекты без обеих дат не входят в финансовые итоги периода. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
+      { section: "Проекты", rule: `Финансы считаются по всем версиям смет, включённым в итог проекта. Факт учитывается один раз по дате окончания мероприятия (или начала, если окончания нет). Если обе даты отсутствуют, завершённый проект учитывается по дате закрытия в Омске: архивация, а при её отсутствии — последний переход в статус «Завершён». Прогноз — по пересечению дат мероприятия; активные проекты без дат остаются вне итогов. Отмененные проекты не входят в прогноз выручки и маржи, но остаются в показателях отмен. Комиссия — ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%, клиентский налог при включении — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%, расходный условный налог — ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%.` },
       { section: "Заказчики", rule: "Выручка клиента — сумма завершённых проектов и самостоятельных закрытых заявок за общий период. Связанные с проектом заявки повторно не прибавляются. Прогноз активных работ показан отдельно; это не LTV за всё время и не поступления на счёт." },
       { section: "Статусы", rule: "Возраст статусов и зависшие проекты — это управленческие сигналы для контроля работы, а не бухгалтерские показатели." },
     ],

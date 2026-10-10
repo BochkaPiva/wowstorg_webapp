@@ -14,6 +14,7 @@
 ## Бэкапы и восстановление
 
 - Есть проверенный локальный consistent dump `data/security/2026-10-10-public.pgdump`, совпадение counts 87 таблиц. Он создан **до** archive/convergence; не включает private maintenance archive, auth/storage и файлы.
+- Перед обновлением PostgreSQL создан свежий consistent dump public + maintenance `data/security/2026-10-10T09-45-49-323Z-pre-upgrade.pgdump`: восстановлен на отдельной локальной БД, counts всех 88 таблиц совпали, 7 архивных checklist rows присутствуют. Он не включает auth/storage schemas или бинарные файлы buckets и не заменяет off-device recovery комплект.
 - Следующий полный recovery комплект должен включать public + maintenance (7 архивированных checklist rows), Storage-файлы и список объектов/контрольных сумм, необходимые настройки/секреты в отдельном защищённом хранилище. DB dump не сохраняет бинарные файлы buckets.
 - Ежедневная off-device копия и сроки хранения **ещё не настроены**. Цель для согласования: потеря не более суток данных (RPO), восстановление не более 4 часов (RTO). Это цели, не проверенная гарантия.
 - Место хранения и ключ шифрования согласовать; не грузить рабочие данные в публичный Git/CI artifacts. Не считать файлы на том же компьютере disaster-recovery резервом.
@@ -26,8 +27,9 @@
 |---|---|---|
 | P0 | Закрыть Supabase Data API business tables | Выпущено 1228b5b; 87 tables/access 0, проверен HTTP отказ |
 | P1 | CSRF и жизненный цикл сессий | Код этой итерации; proxy + negative tests + HTTP smoke + admin session revocation |
-| P1 | Активация пользователя по секретному приглашению | Ожидает формата: одноразовая ссылка/код; один login больше не должен позволять установить пароль. Без автоматического отключения текущих пользователей |
-| P1 | Защита login/activation от перебора | Нужен общий durable limiter (IP + account), TTL/cleanup, Retry-After, конкурентные тесты, без постоянной блокировки чужого аккаунта. In-memory Map на Vercel не принимается |
+| P1 | Активация пользователя по секретному приглашению | Отложено по решению владельца: действующие коллеги активированы, pending active = 0 на проверке 10.10. Риск остаётся для будущих pending аккаунтов, отсутствие индексации не считается защитой |
+| P1 | Защита login/activation от перебора | Реализован DB limiter 8 pair / 40 account / 60 IP за 10 минут, TTL/cleanup, Retry-After, fail-closed, unit + concurrent HTTP tests. Выпуск фиксируется в отчёте ADR 021; пароли/права/сессии не меняются |
+| P1 | Обновление PostgreSQL | Обновлено до стабильной 17.11.0.003, SQL server_version 17.11, ACTIVE_HEALTHY; backup/restore и проверки — `SECURITY_AUTH_LIMITS_2026-10-10.md` |
 | P1 | Off-device DB + Storage backups | Выбор приватного места/шифрования; проверить полный restore и зафиксировать измеренный RPO/RTO |
 | P1 | Required checks / repository visibility | Административное решение владельца; workflow не равен branch protection, repo всё ещё public |
 | P2 | 164 исторические React lint errors | Исправлять по модулю с browser regression QA. Не заменять setState-in-effect на setTimeout лишь для обхода правила. В этой итерации count не уменьшается |

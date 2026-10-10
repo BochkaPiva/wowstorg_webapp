@@ -485,6 +485,15 @@ model GreenwichRatingTier {
   @@index([policyId, sortOrder])
 }
 
+/// Shared, expiring authentication attempt budgets. Never store passwords or raw login/IP.
+model AuthRateLimit {
+  key       String   @id @db.VarChar(96)
+  attempts  Int      @default(0)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
 model Session {
   id     String @id @default(cuid())
   userId String

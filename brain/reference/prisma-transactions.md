@@ -6,6 +6,7 @@
 
 | Файл | Serializable |
 |------|----------------|
+| `src/server/auth/rate-limit.ts` | нет (атомарные upsert account/pair, единый порядок блокировок; bcrypt вне короткой транзакции, maxWait 3 с / timeout 5 с) |
 | `src/app/api/auth/first-login/route.ts` | нет (atomic conditional UPDATE допускает одного победителя; отзыв прежних сессий в той же транзакции) |
 | `src/app/api/admin/users/[id]/route.ts` | нет (изменение учётной записи, Telegram-профиля и отзыв сессий одним действием) |
 | `src/server/projects/project-contractors.ts` | **да** (состав проекта: archive/тайминг guard, идемпотентное добавление, перенос из КП без перезаписи, CAS-правки и activity log) |

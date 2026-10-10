@@ -11,6 +11,7 @@ vi.mock("@/server/db", () => ({ prisma: {
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
 vi.mock("bcryptjs", () => ({ hash: mocks.hash }));
 vi.mock("@/server/auth/require", () => ({ requireRole: mocks.role }));
+vi.mock("@/server/auth/rate-limit", () => ({ guardAuthIp: vi.fn(async () => null), guardAuthAccount: vi.fn(async () => null) }));
 import { getCurrentUser } from "@/server/auth/session";
 import { POST as activate } from "@/app/api/auth/first-login/route";
 import { PATCH as editUser } from "@/app/api/admin/users/[id]/route";

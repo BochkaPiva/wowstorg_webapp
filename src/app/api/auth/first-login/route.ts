@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { prisma } from "@/server/db";
 import { jsonError, jsonOk } from "@/server/http";
+import { guardAuthIp, guardAuthAccount } from "@/server/auth/rate-limit";
 
 const BodySchema = z.object({
   login: z.string().trim().min(1).max(128),
@@ -11,6 +12,8 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const ipDenied = await guardAuthIp(req);
+  if (ipDenied) return ipDenied;
   let body: unknown;
   try {
     body = await req.json();
@@ -21,6 +24,8 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonError(400, "Invalid input", parsed.error.flatten());
 
   const { login, password, passwordConfirm } = parsed.data;
+  const accountDenied = await guardAuthAccount(req, login);
+  if (accountDenied) return accountDenied;
   if (password !== passwordConfirm) {
     return jsonError(400, "Пароли не совпадают");
   }

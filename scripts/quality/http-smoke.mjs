@@ -1,6 +1,6 @@
 // Real Next.js HTTP -> Prisma -> PostgreSQL test. Never runs against a working DB.
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import nextEnv from "@next/env";
@@ -16,12 +16,15 @@ const db = new PrismaClient();
 const base = "http://127.0.0.1:3217";
 const cleanEnv = { ...process.env, DATABASE_URL: database.toString(), DIRECT_URL: database.toString(),
   NEXT_PUBLIC_APP_URL: base, NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1" };
+delete cleanEnv.VERCEL; // Loopback tests are not behind the Vercel trusted proxy.
 for (const key of Object.keys(cleanEnv)) {
   if (/^(TELEGRAM_|SUPABASE_|REMINDERS_|INVENTORY_AUDIT_|CRON_SECRET)/.test(key)) cleanEnv[key] = "";
 }
 const server = spawn(process.execPath, [fileURLToPath(new URL("../../node_modules/next/dist/bin/next", import.meta.url)),
   "start", "--hostname", "127.0.0.1", "--port", "3217"], { env: cleanEnv, stdio: "inherit", windowsHide: true });
 const users = [];
+const budgetKeys = [];
+const budgetKey = (scope, ...parts) => `auth:${scope}:${createHash("sha256").update(JSON.stringify(parts)).digest("hex")}`;
 let standaloneId;
 async function request(path, cookie, body, expected = 200) {
   const result = await fetch(base + path, { method: body ? "POST" : "GET", headers: {
@@ -56,6 +59,7 @@ try {
   for (const role of ["WOWSTORG", "GREENWICH"]) {
     const user = await db.user.create({ data: { login: `smoke-${randomUUID()}`, passwordHash, displayName: "CI Test", role } });
     users.push(user.id);
+    budgetKeys.push(budgetKey("account", user.login), budgetKey("pair", "non-vercel", user.login));
     identities[role] = user;
     const login = await request("/api/auth/login", null, { login: user.login, password });
     assert.match(login.headers.get("set-cookie"), /HttpOnly/i);
@@ -121,12 +125,42 @@ try {
   await request("/api/auth/login", null, { login: employee.login, password: newPassword }, 403);
   await request("/api/auth/first-login", null, { login: employee.login, password: newPassword, passwordConfirm: newPassword });
   await request("/api/auth/first-login", null, { login: employee.login, password: newPassword, passwordConfirm: newPassword }, 400);
+  // Real concurrent HTTP requests exercise the shared atomic DB counters, not mocks.
+  const identity = identities.WOWSTORG;
+  const accountKey = budgetKey("account", identity.login);
+  const pairKey = budgetKey("pair", "non-vercel", identity.login);
+  const attempts = await Promise.all(Array.from({ length:12 }, () => fetch(base + "/api/auth/login", {
+    method:"POST", headers:{ "Content-Type":"application/json", Origin:base },
+    body:JSON.stringify({ login:identity.login, password:"wrong-password" }),
+  })));
+  assert.equal(attempts.filter(r => r.status === 401).length, 7, "One prior login leaves seven attempts in the window");
+  assert.equal(attempts.filter(r => r.status === 429).length, 5, "Concurrent overflow must be throttled");
+  assert(attempts.filter(r => r.status === 429).every(r => Number(r.headers.get("Retry-After")) > 0));
+  await request("/api/auth/first-login", null, { login:identity.login, password, passwordConfirm:password }, 429);
+  await request("/api/proposals", cookie); // Existing sessions remain usable while login is throttled.
+  const pair = await db.authRateLimit.findUniqueOrThrow({ where:{ key:pairKey } });
+  assert.equal(pair.attempts, 9, "Blocked traffic must not grow the counter indefinitely");
+  await db.authRateLimit.updateMany({ where:{ key:{ in:[accountKey,pairKey] } }, data:{ expiresAt:new Date(0) } });
+  await request("/api/auth/login", null, { login:identity.login, password });
+  assert.equal((await db.authRateLimit.findUniqueOrThrow({ where:{ key:pairKey } })).attempts, 1);
+  await db.authRateLimit.update({ where:{ key:accountKey }, data:{ attempts:40 } });
+  await request("/api/auth/login", null, { login:identity.login, password }, 429);
+  const staleKey = budgetKey("account", `stale-${randomUUID()}`);
+  budgetKeys.push(staleKey);
+  await db.authRateLimit.create({ data:{ key:staleKey, attempts:1, expiresAt:new Date(0) } });
+  const ipKey = budgetKey("ip", "non-vercel");
+  await db.authRateLimit.update({ where:{ key:ipKey }, data:{ attempts:60 } });
+  const malformed = await fetch(base + "/api/auth/login", { method:"POST", headers:{ Origin:base }, body:"invalid" });
+  assert.equal(malformed.status, 429, "IP gate must run before body parsing");
+  assert.equal(await db.authRateLimit.count({ where:{ key:staleKey } }), 0, "Expired counters are cleaned up");
+  await db.authRateLimit.update({ where:{ key:ipKey }, data:{ expiresAt:new Date(0) } });
   await request("/api/auth/logout", cookie, {});
   await request("/api/proposals", cookie, null, 401);
-  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, session revocation and logout.");
+  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, session revocation, concurrent auth limits/expiry/cleanup and logout.");
 } finally {
   server.kill();
   if (standaloneId) await db.standaloneProposal.delete({ where: { id: standaloneId } });
   if (users.length) await db.user.deleteMany({ where: { id: { in: users } } });
+  if (budgetKeys.length) await db.authRateLimit.deleteMany({ where:{ key:{ in:budgetKeys } } });
   await db.$disconnect();
 }

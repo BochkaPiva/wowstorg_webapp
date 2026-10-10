@@ -44,6 +44,7 @@
 
 | Тема | Документ |
 |------|----------|
+| Защита входа от перебора | [`auth-attempt-limits.md`](./auth-attempt-limits.md) (общие DB-счётчики, trusted proxy, Retry-After, совместимость с текущими сессиями) |
 | Проекты / мероприятия (ивент-ведение) | [`projects.md`](./projects.md) (спека), [`projects-foundation.md`](./projects-foundation.md) (риски, зависимости, фазы), [`projects-predeploy-checklist.md`](./projects-predeploy-checklist.md) (бакет + env), [`projects-post-implementation-checklist.md`](./projects-post-implementation-checklist.md) (статус MVP + чеклист перед продом) |
 | Админ-аналитика | [`admin-analytics.md`](./admin-analytics.md) (редизайн, формулы, вкладки, Excel) |
 | Единая идентичность заказчика | [`customer-identity.md`](./customer-identity.md) (нормализация, поиск дублей, безопасное объединение и LTV) |

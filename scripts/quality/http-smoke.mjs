@@ -25,7 +25,7 @@ const users = [];
 let standaloneId;
 async function request(path, cookie, body, expected = 200) {
   const result = await fetch(base + path, { method: body ? "POST" : "GET", headers: {
-    ...(cookie ? { cookie } : {}), ...(body ? { "Content-Type": "application/json" } : {}),
+    ...(cookie ? { cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: base } : {}),
   }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000) });
   assert.equal(result.status, expected, `${path} returned ${result.status}`);
   return result;
@@ -38,13 +38,25 @@ try {
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   assert(started, "Test server did not start");
+  const page = await fetch(base);
+  assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(page.headers.get("x-frame-options"), "SAMEORIGIN");
+  assert.match(page.headers.get("content-security-policy"), /frame-ancestors 'self'/);
+  for (const path of ["/api/auth/login", "/api/auth/first-login", "/api/auth/logout", "/api/proposals"]) {
+    const denied = await fetch(base + path, { method: "POST", headers: {
+      Origin: "https://untrusted.example", "Content-Type": "application/json",
+    }, body: "{}" });
+    assert.equal(denied.status, 403, `Cross-origin ${path} must be blocked before the handler`);
+  }
   await request("/api/proposals", null, null, 401);
   const password = randomUUID();
   const passwordHash = await hash(password, 4);
   const cookies = {};
+  const identities = {};
   for (const role of ["WOWSTORG", "GREENWICH"]) {
     const user = await db.user.create({ data: { login: `smoke-${randomUUID()}`, passwordHash, displayName: "CI Test", role } });
     users.push(user.id);
+    identities[role] = user;
     const login = await request("/api/auth/login", null, { login: user.login, password });
     assert.match(login.headers.get("set-cookie"), /HttpOnly/i);
     cookies[role] = login.headers.get("set-cookie").split(";")[0];
@@ -52,6 +64,12 @@ try {
   await request("/api/proposals", cookies.GREENWICH, null, 403);
   await request("/api/admin/analytics", cookies.GREENWICH, null, 403);
   const cookie = cookies.WOWSTORG;
+  const before = await db.standaloneProposal.count();
+  const deniedMutation = await fetch(base + "/api/proposals", { method: "POST", headers: {
+    cookie, Origin: "https://untrusted.example", "Content-Type": "application/json",
+  }, body: JSON.stringify({ title: "Must not be created" }) });
+  assert.equal(deniedMutation.status, 403);
+  assert.equal(await db.standaloneProposal.count(), before, "Rejected mutation must not write to the DB");
   const created = await (await request("/api/proposals", cookie, { title: "Тестовое КП CI" })).json();
   const proposal = created.proposal;
   assert(proposal?.id && proposal.variants.length === 1);
@@ -82,9 +100,30 @@ try {
   const zip = await JSZip.loadAsync(await pptx.arrayBuffer());
   assert(zip.file("ppt/presentation.xml"), "PPTX must contain a presentation");
   await request("/api/admin/analytics?from=2026-01-01&to=2026-12-31", cookie);
+  // Exercise admin changes through HTTP, not direct DB mutations. All users are owned fixtures.
+  const employee = identities.GREENWICH;
+  async function editEmployee(body) {
+    const response = await fetch(`${base}/api/admin/users/${employee.id}`, { method: "PATCH", headers: {
+      cookie, Origin: base, "Content-Type": "application/json",
+    }, body: JSON.stringify(body) });
+    assert.equal(response.status, 200, "Admin security change should succeed");
+    assert.equal(await db.session.count({ where: { userId: employee.id } }), 0, "Old sessions must be revoked");
+  }
+  const newPassword = randomUUID();
+  await editEmployee({ password: newPassword });
+  await request("/api/proposals", cookies.GREENWICH, null, 401);
+  const relogin = await request("/api/auth/login", null, { login: employee.login, password: newPassword });
+  const renewedCookie = relogin.headers.get("set-cookie").split(";")[0];
+  await editEmployee({ isActive: false });
+  await editEmployee({ isActive: true });
+  await request("/api/proposals", renewedCookie, null, 401);
+  await editEmployee({ mustSetPassword: true });
+  await request("/api/auth/login", null, { login: employee.login, password: newPassword }, 403);
+  await request("/api/auth/first-login", null, { login: employee.login, password: newPassword, passwordConfirm: newPassword });
+  await request("/api/auth/first-login", null, { login: employee.login, password: newPassword, passwordConfirm: newPassword }, 400);
   await request("/api/auth/logout", cookie, {});
   await request("/api/proposals", cookie, null, 401);
-  console.log("HTTP smoke passed: real login/roles, mutations/retry/conflict, PDF/PPTX, analytics and logout.");
+  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, session revocation and logout.");
 } finally {
   server.kill();
   if (standaloneId) await db.standaloneProposal.delete({ where: { id: standaloneId } });

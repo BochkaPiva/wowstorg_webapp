@@ -54,27 +54,33 @@ export async function PATCH(
 
     // Prisma Client может быть старым (EPERM на generate) и не знать поле telegramChatId.
     // Поэтому обновляем его отдельным SQL при необходимости.
-    const updated = await prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        login: true,
-        displayName: true,
-        role: true,
-        isActive: true,
-        mustSetPassword: true,
-        createdAt: true,
-      },
-    });
+    const revokeSessions = parsed.data.password !== undefined || parsed.data.mustSetPassword === true ||
+      parsed.data.isActive === false || (parsed.data.role !== undefined && parsed.data.role !== user.role);
+    const updated = await prisma.$transaction(async tx => {
+      const result = await tx.user.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          login: true,
+          displayName: true,
+          role: true,
+          isActive: true,
+          mustSetPassword: true,
+          createdAt: true,
+        },
+      });
 
-    if (telegramChatId !== undefined) {
-      await prisma.$executeRaw`
-        UPDATE "User"
-        SET "telegramChatId" = ${telegramChatId}
-        WHERE "id" = ${id}
-      `;
-    }
+      if (telegramChatId !== undefined) {
+        await tx.$executeRaw`
+          UPDATE "User"
+          SET "telegramChatId" = ${telegramChatId}
+          WHERE "id" = ${id}
+        `;
+      }
+      if (revokeSessions) await tx.session.deleteMany({ where: { userId: id } });
+      return result;
+    });
 
     const telegramRow = (await prisma.$queryRaw<
       Array<{ telegramChatId: string | null }>

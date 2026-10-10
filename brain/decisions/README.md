@@ -23,5 +23,6 @@
 | 017 | [017-project-contractor-roster.md](./017-project-contractor-roster.md) | Реальное участие подрядчиков, контактный снимок и связь с таймингом |
 | 018 | [018-server-only-db-and-release-gates.md](./018-server-only-db-and-release-gates.md) | Серверный доступ к БД, RLS/grants и проверки выпуска |
 | 019 | [019-migration-history-adoption-and-recovery.md](./019-migration-history-adoption-and-recovery.md) | Безопасное принятие исторических SQL Editor-изменений и архив восстановления |
+| 020 | [020-api-origin-and-session-lifecycle.md](./020-api-origin-and-session-lifecycle.md) | Общая origin-защита API и атомарный отзыв сессий |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

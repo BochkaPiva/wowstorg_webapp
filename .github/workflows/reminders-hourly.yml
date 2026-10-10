@@ -1,5 +1,7 @@
 name: Reminder worker
 
+permissions: {}
+
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -32,10 +34,7 @@ jobs:
             -H "User-Agent: wowstorg-reminder-worker" \
             -X POST "$REMINDERS_URL")"
           echo "Reminder endpoint returned HTTP $HTTP_STATUS"
-          if [ -s reminder-response.json ]; then
-            head -c 2000 reminder-response.json
-            echo
-          fi
+          # Do not publish business identifiers or response bodies in public CI logs.
           case "$HTTP_STATUS" in
             2??) ;;
             *) exit 1 ;;

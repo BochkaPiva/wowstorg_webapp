@@ -34,14 +34,16 @@ export async function POST(req: Request) {
   if (!user.mustSetPassword) return jsonError(400, "Первая авторизация уже выполнена");
 
   const passwordHash = await hash(password, 10);
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      passwordHash,
-      mustSetPassword: false,
-      passwordSetAt: new Date(),
-    },
+  const activated = await prisma.$transaction(async tx => {
+    const result = await tx.user.updateMany({
+      // Atomic claim: a concurrent activation or admin block must not be overwritten.
+      where: { id: user.id, isActive: true, mustSetPassword: true },
+      data: { passwordHash, mustSetPassword: false, passwordSetAt: new Date() },
+    });
+    if (result.count === 1) await tx.session.deleteMany({ where: { userId: user.id } });
+    return result.count === 1;
   });
+  if (!activated) return jsonError(409, "Активация уже выполнена или аккаунт заблокирован. Повторите вход.");
   return jsonOk({ ok: true });
 }
 

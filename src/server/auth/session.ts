@@ -72,10 +72,13 @@ export async function getCurrentUser(): Promise<PublicUser | null> {
   const tokenHash = sha256Hex(token);
   const session = await prisma.session.findFirst({
     where: { tokenHash, expiresAt: { gt: new Date() } },
-    include: { user: true },
+    select: { user: { select: {
+      id: true, login: true, displayName: true, role: true,
+      isActive: true, mustSetPassword: true,
+    } } },
   });
   if (!session) return null;
-  if (!session.user.isActive) return null;
+  if (!session.user.isActive || session.user.mustSetPassword) return null;
 
   return {
     id: session.user.id,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countErrors, findRegressions } from "../scripts/quality/lint-ci.mjs";
+import { countErrors, findRegressions, findStaleAllowances } from "../scripts/quality/lint-ci.mjs";
 
 describe("CI lint debt ratchet", () => {
   it("does not fail for unchanged or reduced existing debt", () => {
@@ -10,6 +10,12 @@ describe("CI lint debt ratchet", () => {
   });
   it("never accepts parser failures", () => {
     expect(findRegressions({ "a.ts|fatal": 1 }, { "a.ts|fatal": 1 })).toHaveLength(1);
+  });
+  it("requires reduced or removed allowances to be committed with fixes", () => {
+    expect(findStaleAllowances({ "a.ts|rule": 1 }, { "a.ts|rule": 2, "b.ts|rule": 1 })).toEqual([
+      { key: "a.ts|rule", count: 1, allowed: 2 }, { key: "b.ts|rule", count: 0, allowed: 1 },
+    ]);
+    expect(findStaleAllowances({ "a.ts|rule": 1 }, { "a.ts|rule": 1 })).toEqual([]);
   });
   it("counts errors per normalized file and rule, not warnings", () => {
     expect(countErrors([{ filePath: "/repo/a.ts", messages: [

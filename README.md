@@ -220,4 +220,4 @@ npm test
 
 ### Security note
 
-This is a **private** repository. Do not commit `.env` files, API keys, or production data. Use `.env.example` as the template only.
+This repository is currently **public**; private visibility requires the owner's administrative decision. Do not commit `.env` files, API keys, or production data. Use `.env.example` as the template only. See [SECURITY.md](./SECURITY.md) and the [security operations plan](./docs/SECURITY_OPERATIONS.md).

@@ -1,5 +1,7 @@
 # First Login Authorization Plan
 
+> Security review 10.10.2026: activation based only on login is **not proof of employee identity**. The existing flow needs an admin-issued, expiring, single-use secret invitation; link/code format is awaiting owner confirmation. Do not describe the current implementation as secure onboarding. Atomic conditional activation and session revocation have been added (ADR 020); shared rate limiting and invitation verification remain outstanding.
+
 ## Goal
 
 Implement secure "first login" onboarding so admins no longer set or know employee passwords:

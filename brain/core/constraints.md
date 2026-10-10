@@ -4,11 +4,14 @@
 
 - **Не коммитить** `.env`, ключи Supabase, Telegram, cron-токены. В репозитории — только [`.env.example`](../../.env.example).
 - **`SUPABASE_SERVICE_ROLE_KEY`** только на сервере; никогда в `NEXT_PUBLIC_*`.
+- Бизнес-таблицы — только для серверного Prisma: RLS включён, `PUBLIC`, `anon` и `authenticated` не получают табличных прав или EXECUTE на public RPC. Auth/storage схемы не менять вместе с бизнес-таблицами. Новая таблица тоже требует RLS/revoke; проверка: `node scripts/security/check-db-access.mjs` (ADR 018).
 
 ## База данных
 
 - Любое изменение схемы → **миграция Prisma** + при необходимости обновление сида и доков. На проде: **`prisma migrate deploy`** использует **`DIRECT_URL`** (в `schema.prisma`); на Vercel нужны оба: **`DATABASE_URL`** (пул) и **`DIRECT_URL`**.
 - Таблица **`ReminderSent`** используется через **raw SQL** в `reminder-runner.ts`; модели в `schema.prisma` может не быть — миграции должны применяться полностью.
+- История рабочей БД сверена 10.10.2026 после backup/restore и отдельной проверки схемы; старые SQL Editor-изменения приняты через `migrate resolve --applied`, а не повторное выполнение data migrations. См. ADR 019 и `docs/SECURITY_RELEASE_HARDENING_2026-10-10.md`. Никогда не переносить такое принятие истории автоматически на другую БД.
+- Release gate: `npm run build:verified`. Полный `npm run lint` пока показывает исторический долг; baseline разрешает только существующее число ошибок по файлу/правилу, не новые ошибки. Не увеличивать baseline ради зелёного CI.
 
 ## Заказы и конкурентность
 

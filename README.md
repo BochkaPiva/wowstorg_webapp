@@ -44,7 +44,7 @@ A web application for event prop rental operations: catalog, orders, warehouse w
 
 ### Быстрый старт
 
-**Требования:** Node.js 20+, npm, доступная PostgreSQL.
+**Требования:** Node.js 24 (CI: 24.14.1), npm, доступная PostgreSQL.
 
 ```bash
 git clone <repository-url>
@@ -78,6 +78,7 @@ npm run dev
 |---------|------------|
 | `npm run dev` | Dev-сервер |
 | `npm run build` | Production-сборка |
+| `npm run build:verified` | Проверка новых ESLint-ошибок, тесты, аудит production-зависимостей и сборка |
 | `npm run start` | Запуск после сборки |
 | `npm test` | Unit-тесты (Vitest) |
 | `npm run test:watch` | Тесты в watch-режиме |
@@ -111,7 +112,7 @@ npm test
 
 ### Конфиденциальность
 
-Репозиторий **приватный**. Не коммитьте `.env`, ключи API и production-данные. Шаблон переменных — только в `.env.example`.
+Репозиторий сейчас **публичный**; смена видимости требует отдельного решения владельца. Не коммитьте `.env`, ключи API, резервные копии и production-данные. Шаблон переменных — только в `.env.example`. Ограничение Supabase Data API и процесс выпуска: [ADR 018](brain/decisions/018-server-only-db-and-release-gates.md).
 
 ---
 

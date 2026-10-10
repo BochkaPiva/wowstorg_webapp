@@ -2,7 +2,7 @@
 
 Документ описывает **текущее состояние проекта** `wowstorg_webapp`, что нужно для хостинга на **Vercel** и БД **Supabase (PostgreSQL)**, как **вернуться к локальной разработке**, и **план переезда** на другой хостинг и другой **Postgres** без смены СУБД.
 
-**Важно:** на момент написания приложение **рассчитано на постоянный локальный диск** (`data/…`). Деплой на Vercel в продакшене **потребует доработки** (объектное хранилище для файлов) — ниже перечислено точно по файлам и переменным.
+**Актуализация 10.10.2026:** production уже использует Supabase Storage; локальный `data/…` — только dev fallback. Приложение обращается к бизнес-таблицам через серверный Prisma, а не браузерный Supabase Data API. Процесс защиты доступа, резервного копирования и сверки миграций: [отчёт](SECURITY_RELEASE_HARDENING_2026-10-10.md).
 
 ---
 
@@ -150,7 +150,7 @@ Serverless-функции **не имеют постоянного диска**.
    - Подключить репозиторий GitHub.  
    - Framework Preset: Next.js.  
    - Env: `DATABASE_URL`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_PHOTOS_BUCKET`, `SUPABASE_STORAGE_ESTIMATES_BUCKET`, `SUPABASE_STORAGE_PROJECTS_BUCKET` (при использовании проектов), секреты Telegram, `REMINDERS_CRON_TOKEN`, `CRON_SECRET`, `INVENTORY_AUDIT_CRON_TOKEN` (опционально, для fallback) и т.д.  
-   - Build: убедиться в `prisma generate` + `next build`.  
+   - Build command: `npm run build:verified`; `prisma generate` выполняется в `postinstall`. Тесты, проверка новых lint-ошибок и аудит production-зависимостей блокируют неуспешный выпуск. Миграции этот build **не применяет**.
    - Настроить **Cron**:
      - reminders — по прежнему через `POST https://<ваш-домен>/api/reminders/run` с `x-cron-token`,
      - inventory audit — через `vercel.json`; Vercel сам вызовет `GET https://<ваш-домен>/api/admin/inventory-audit/cron` и приложит `Authorization: Bearer <CRON_SECRET>`.
@@ -215,7 +215,7 @@ Serverless-функции **не имеют постоянного диска**.
 
 ## 8. Чеклисты
 
-### Перед первым прод-деплоем (после доработки файлов)
+### Перед прод-деплоем
 
 - [ ] `DATABASE_URL` на управляемый Postgres  
 - [ ] Все миграции применены  
@@ -234,8 +234,8 @@ Serverless-функции **не имеют постоянного диска**.
 
 ## 9. Соответствие репозиторию
 
-- **Миграции:** `prisma/migrations/` — **11** файлов `migration.sql`.  
+- **Миграции:** источник истины — все каталоги `prisma/migrations/`; на 10.10.2026 их 75. CI разворачивает их на пустом PostgreSQL 17 и проверяет отсутствие drift и доступа Data API. Исторические SQL Editor-патчи рабочей БД сверены отдельно; не выполнять `migrate resolve` вслепую на других БД.
 - **Сид:** `prisma/seed.cjs` (указан в `package.json` → `prisma.seed`).  
 - **Удалённый репозиторий:** `origin` → `https://github.com/BochkaPiva/wowstorg_webapp.git` (актуальный пуш выполняйте перед релизами по вашему процессу).
 
-Документ можно обновлять после появления реализации Storage и изменений в `schema.prisma` (например `directUrl` для Supabase).
+Обновляйте документ при изменении Storage, `schema.prisma` и процесса выпуска. Канонические имена env — `brain/reference/env-inventory.md`; этот обзор не заменяет реестр.

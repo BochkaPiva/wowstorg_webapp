@@ -1,0 +1,70 @@
+name: Quality checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Tests, security and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Deliberately unusable DB: unit tests/build must not touch production.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:1/ci
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:1/ci
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.14.1'
+          cache: npm
+      - run: npm ci --no-fund
+      - run: npm run build:verified
+
+  migrations:
+    name: Fresh database and access boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: wowstorg_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wowstorg_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/wowstorg_ci
+      DIRECT_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/wowstorg_ci
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.14.1'
+          cache: npm
+      - run: npm ci --no-fund
+      - name: Model the Supabase Data API roles on the disposable database
+        run: psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -c 'CREATE ROLE anon; CREATE ROLE authenticated;'
+      - run: npm run db:deploy
+      - run: node scripts/quality/check-schema.mjs
+      - run: node scripts/security/check-db-access.mjs
+      - run: npm run build
+      - run: node scripts/quality/http-smoke.mjs

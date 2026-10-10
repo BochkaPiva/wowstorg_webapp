@@ -4,6 +4,16 @@ import * as XLSX from "xlsx";
 import { parseFinancialWorkbook } from "@/server/analytics/reconciliation";
 
 describe("financial reconciliation workbook parser", () => {
+  it("retains legacy .xls (BIFF8) import after the SheetJS security update", () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ["Проект", "Сумма по смете", "Наши расходы", "Заработок"],
+      ["Старый Excel", 12_500, 4_000, 8_500],
+    ]), "Сентябрь");
+    const result = parseFinancialWorkbook(XLSX.write(workbook, { type: "array", bookType: "biff8" }));
+    expect(result.rows[0]).toMatchObject({ projectName: "Старый Excel", revenue: 12_500, expenses: 4_000, profit: 8_500 });
+  });
+
   it("reads localized currency, percentages, bonuses, and source links", () => {
     const sheet = XLSX.utils.aoa_to_sheet([
       [

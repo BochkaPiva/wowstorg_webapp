@@ -1,4 +1,4 @@
-﻿-- Additional internal expense rows for project estimate lines.
+-- Additional internal expense rows for project estimate lines.
 CREATE TABLE "ProjectEstimateLineInternalExpense" (
     "id" TEXT NOT NULL,
     "lineId" TEXT NOT NULL,

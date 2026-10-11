@@ -15,6 +15,9 @@ import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import { useAuth } from "@/app/providers";
 import { withDetailReturn } from "@/lib/detail-return";
 import { PROJECT_WIDGET_REGISTRY } from "@/lib/projects/project-widget-registry";
+import { WORK_CREATE, workCreateBody, workCreatedHref, type WorkCreateKind } from "@/lib/work-create";
+import { WorkQueueHeader } from "./WorkQueueHeader";
+import { WorkCreateDialog } from "./WorkCreateDialog";
 
 import "./work.css";
 
@@ -385,6 +388,7 @@ function CustomerCombobox({
   autoFocus,
   required,
   placeholder,
+  newCustomerHint = "Нового заказчика создадим с этим названием.",
 }: {
   id: string;
   value: string;
@@ -393,6 +397,7 @@ function CustomerCombobox({
   autoFocus?: boolean;
   required?: boolean;
   placeholder: string;
+  newCustomerHint?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState(-1);
@@ -421,6 +426,7 @@ function CustomerCombobox({
         id={id}
         autoFocus={autoFocus}
         autoComplete="off"
+        maxLength={200}
         required={required}
         role="combobox"
         aria-autocomplete="list"
@@ -445,7 +451,9 @@ function CustomerCombobox({
           } else if (event.key === "Enter" && open && activeIndex >= 0 && options[activeIndex]) {
             event.preventDefault();
             selectCustomer(options[activeIndex]);
-          } else if (event.key === "Escape") {
+          } else if (event.key === "Escape" && open) {
+            event.preventDefault();
+            event.stopPropagation();
             setOpen(false);
           }
         }}
@@ -482,12 +490,12 @@ function CustomerCombobox({
               </button>
             ))
           ) : (
-            <div className="work-customerPicker__empty">Совпадений нет — будет создан новый заказчик.</div>
+            <div className="work-customerPicker__empty">Совпадений нет. {newCustomerHint}</div>
           )}
         </div>
       ) : null}
       {value.trim() && !exactMatch ? (
-        <small className="work-customerPicker__hint">Нового заказчика создадим с этим названием.</small>
+        <small className="work-customerPicker__hint">{newCustomerHint}</small>
       ) : null}
     </div>
   );
@@ -517,7 +525,9 @@ export default function WorkQueuePage() {
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [previews, setPreviews] = React.useState<Record<string, ProjectPreview>>({});
   const [previewBusy, setPreviewBusy] = React.useState<string | null>(null);
-  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createKind, setCreateKind] = React.useState<WorkCreateKind | null>(null);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const createFlight = React.useRef(false);
   const [createTitle, setCreateTitle] = React.useState("");
   const [createCustomer, setCreateCustomer] = React.useState("");
   const [customers, setCustomers] = React.useState<CustomerOption[]>([]);
@@ -705,33 +715,29 @@ export default function WorkQueuePage() {
     }
   }
 
-  async function createEstimate(event: React.FormEvent) {
+  async function createWork(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!createTitle.trim()) return;
-    const matchedCustomer = customers.find(
-      (customer) => customer.name.localeCompare(createCustomer.trim(), "ru", { sensitivity: "accent" }) === 0,
-    );
+    if (!createKind || createFlight.current || createTitle.trim().length < 2 || (createCustomer.trim() && createCustomer.trim().length < 2) || (createKind === "project" && !createCustomer.trim())) return;
+    const kind = createKind;
+    createFlight.current = true;
     setBusy("create");
-    setError(null);
+    setCreateError(null);
     try {
-      const response = await fetch("/api/standalone-estimates", {
+      const response = await fetch(WORK_CREATE[kind].endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: createTitle.trim(),
-          customerId: matchedCustomer?.id,
-          customerName: matchedCustomer ? undefined : createCustomer.trim() || undefined,
-        }),
+        body: JSON.stringify(workCreateBody(createTitle, createCustomer, customers)),
       });
       if (!response.ok) throw new Error(await responseMessage(response));
-      const payload = await response.json() as { estimate: { id: string } };
+      const href = workCreatedHref(kind, await response.json());
       setCreateTitle("");
       setCreateCustomer("");
-      setCreateOpen(false);
-      router.push(`/estimates/${payload.estimate.id}`);
+      setCreateKind(null);
+      router.push(withDetailReturn(href, "work", "/work"));
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Не удалось создать расчёт");
+      setCreateError(createError instanceof TypeError ? "Ответ сервера не получен. Проверьте список перед повторным созданием." : createError instanceof Error ? createError.message : "Не удалось создать. Проверьте список перед повтором.");
     } finally {
+      createFlight.current = false;
       setBusy(null);
     }
   }
@@ -866,17 +872,7 @@ export default function WorkQueuePage() {
         <div className="work-empty">Раздел доступен только команде Wowstorg.</div>
       ) : (
         <div className="work-page">
-          <header className="work-hero">
-            <div>
-              <span className="work-eyebrow">Операционный центр</span>
-              <h2>Вся работа — в одной очереди</h2>
-              <p>Проекты, самостоятельные заявки и предварительные расчёты без дублей.</p>
-            </div>
-            <button type="button" className="work-primary work-primary--create" onClick={() => setCreateOpen(true)}>
-              <span aria-hidden="true">+</span>
-              Составить смету
-            </button>
-          </header>
+          <WorkQueueHeader onCreate={kind => { setCreateError(null); setCreateKind(kind); }} />
 
           <section className="work-controls" aria-label="Фильтры рабочей очереди">
             <div className="work-controls__toolbar">
@@ -1340,30 +1336,19 @@ export default function WorkQueuePage() {
             <div className="work-empty"><strong>В этой выборке пока пусто</strong><span>Измените период или фильтр.</span></div>
           )}
 
-          {createOpen ? (
-            <div className="work-modal" role="dialog" aria-modal="true" aria-labelledby="estimate-modal-title">
-              <button type="button" className="work-modal__backdrop" aria-label="Закрыть" onClick={() => setCreateOpen(false)} />
-              <form className="work-modal__panel" onSubmit={createEstimate}>
-                <span className="work-eyebrow">Новая сущность без лишней бюрократии</span>
-                <h2 id="estimate-modal-title">Составить смету</h2>
-                <p>Создайте расчёт сейчас. Заказчика, дату и контакты можно уточнить позже.</p>
-                <label><span>Название расчёта</span><input autoFocus required value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="Например, летний корпоратив" /></label>
-                <div className="work-modalField">
-                  <label htmlFor="create-estimate-customer">Заказчик, если известен</label>
+          {createKind ? (
+            <WorkCreateDialog kind={createKind} title={createTitle} onTitle={setCreateTitle} customerValid={!createCustomer.trim() ? createKind !== "project" : createCustomer.trim().length >= 2} busy={busy === "create"} error={createError} onSubmit={createWork} onClose={() => { if (!createFlight.current) setCreateKind(null); }} customerField={<div className="work-createDialog__field">
+                  <label htmlFor="create-work-customer">{createKind === "project" ? "Заказчик" : "Заказчик, если известен"}</label>
                   <CustomerCombobox
-                    id="create-estimate-customer"
+                    id="create-work-customer"
+                    required={createKind === "project"}
+                    newCustomerHint={createKind === "project" ? "Нового заказчика создадим с этим названием." : "Сохраним название в черновике; заказчика можно связать позже."}
                     value={createCustomer}
                     onChange={setCreateCustomer}
                     customers={customers}
                     placeholder="Начните вводить название"
                   />
-                </div>
-                <div className="work-modal__actions">
-                  <button type="button" onClick={() => setCreateOpen(false)}>Отмена</button>
-                  <button type="submit" className="work-primary" disabled={busy === "create" || !createTitle.trim()}>{busy === "create" ? "Создаём…" : "Создать расчёт"}</button>
-                </div>
-              </form>
-            </div>
+                </div>} />
           ) : null}
 
           {convertItem ? (

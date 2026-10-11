@@ -6,6 +6,46 @@
   padding-bottom: 64px;
 }
 
+.work-launch { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 28px; border: 1px solid var(--work-border); border-radius: 16px; background: #fff; padding: 28px 32px 22px; overflow: hidden; }
+.work-launch__content { position: relative; z-index: 1; min-width: 0; }
+.work-launch h2 { margin: 0; color: var(--wow-ink); font-size: clamp(25px, 2.5vw, 36px); line-height: 1.15; font-weight: 780; letter-spacing: -.025em; text-wrap: balance; }
+.work-launch p { margin: 9px 0 24px; color: var(--wow-muted); font-size: 14px; line-height: 1.5; }
+.work-launch__actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.work-launch__actions > div { display: grid; gap: 8px; }
+.work-launch__actions > div > span { padding-left: 2px; color: var(--wow-muted); font-size: 12px; }
+.work-launch__button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; border: 1px solid var(--wow-line); border-radius: 10px; padding: 10px 16px; background: #fff; color: var(--wow-ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: background-color 140ms ease-out; }
+.work-launch__button svg { width: 24px; height: 24px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.work-launch__button:hover { background: var(--wow-purple-soft); }
+.work-launch__button--primary { border-color: var(--wow-yellow); background: var(--wow-yellow); }
+.work-launch__button--primary:hover { background: var(--wow-yellow-hover); border-color: var(--wow-yellow-hover); }
+.work-launch__button:disabled { opacity: .55; cursor: default; }
+.work-launch__button:focus-visible, .work-launch__links a:focus-visible { outline: 2px solid var(--wow-purple); outline-offset: 3px; }
+.work-launch__links { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 24px; }
+.work-launch__links a { color: var(--wow-purple); font-size: 13px; font-weight: 650; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; }
+.work-launch__links a:hover { text-decoration-color: currentColor; }
+.work-launch__art { align-self: end; height: 220px; overflow: hidden; border-radius: 12px; background: var(--wow-purple-soft); }
+.work-launch__art img { width: 180px; height: auto; margin: 12px 5px 0; }
+.work-createDialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; border: 0; border-radius: 16px; padding: 28px; background: #fff; color: var(--wow-ink); overflow-y: auto; overscroll-behavior: contain; box-shadow: 0 24px 64px #0003; }
+.work-createDialog::backdrop { background: #17112180; }
+.work-createDialog form { display: grid; gap: 20px; }
+.work-createDialog__heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.work-createDialog h2 { margin: 0; font-size: 25px; font-weight: 750; letter-spacing: -.025em; }
+.work-createDialog__heading button { display: grid; place-items: center; width: 36px; height: 36px; padding: 6px; border: 0; border-radius: 8px; background: var(--wow-paper); color: var(--wow-muted); }
+.work-createDialog__heading svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.6; }
+.work-createDialog p { margin: -8px 0 0; max-width: 50ch; font-size: 14px; line-height: 1.55; color: var(--wow-muted); }
+.work-createDialog small { color: var(--wow-muted); font-size: 12px; line-height: 1.5; }
+.work-createDialog__field { display: grid; gap: 8px; font-size: 13px; font-weight: 650; }
+.work-createDialog input { width: 100%; min-height: 46px; border: 1px solid var(--wow-line); border-radius: 9px; padding: 10px 12px; background: #fff; color: var(--wow-ink); font: inherit; font-size: 14px; caret-color: var(--wow-purple); }
+.work-createDialog :is(input,button,a):focus-visible { outline: 2px solid var(--wow-purple); outline-offset: 3px; }
+.work-createDialog__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 16px; border-top: 1px solid var(--wow-line); }
+.work-createDialog__actions > button:not(.work-launch__button) { border: 0; background: none; color: var(--wow-muted); padding: 12px; font: inherit; font-size: 14px; }
+.work-createDialog__error { padding: 12px; border-radius: 8px; background: #fff3ed; color: var(--wow-danger); font-size: 13px; line-height: 1.55; }
+.work-createDialog__error a { display: block; color: var(--wow-purple); text-decoration: underline; text-underline-offset: 3px; margin-top: 4px; }
+.work-createDialog .work-customerPicker__options { max-height: 200px; overflow-y: auto; }
+@media (max-width: 1050px) { .work-launch { grid-template-columns: minmax(0, 1fr) 140px; padding: 24px; gap: 18px; } .work-launch__art { height: 190px; } .work-launch__art img { width: 135px; margin-left: 3px; } }
+@media (max-width: 650px) { .work-launch { display: block; padding: 20px; } .work-launch__art { display: none; } .work-launch__actions { display: grid; gap: 16px; } .work-launch__actions > div > span { padding-left: 0; } .work-launch__actions button { justify-content: flex-start; width: 100%; } .work-launch p { margin-bottom: 20px; } .work-launch__links { gap: 20px; } .work-createDialog { padding: 20px; } }
+@media (prefers-reduced-motion: reduce) { .work-launch__button { transition: none; } }
+
 .work-hero,
 .work-controls,
 .work-card,

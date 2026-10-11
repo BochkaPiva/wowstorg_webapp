@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
@@ -16,6 +17,7 @@ import { formFields, proposalCommandLabel, readProposalRecovery, restoreFormFiel
 import { acknowledgedCatalogItem, dispatchProposalCommand, isQueuedId, projectProposalCommands, resolveCreatedProposalItem } from "@/lib/proposal-outbox";
 import { ProposalApiError, proposalCommandRequest, proposalRequest } from "./api";
 import { proposalOrder } from "@/lib/proposal-order";
+import { safeDetailReturnTo } from "@/lib/detail-return";
 import { ProposalMoveHandle, type ProposalDrop } from "./ProposalMoveHandle";
 import { ProposalComparison } from "./ProposalComparison";
 import { ProposalExportPanel } from "./ProposalExportPanel";
@@ -46,6 +48,7 @@ const roleLabel: Record<ProposalItem["selectionRole"], string> = { PRIMARY: "В�
 
 export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId: string; embedded?: boolean }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { state: auth } = useAuth();
   const recoveryKey = auth.status === "authenticated" ? `wowstorg:proposal-recovery:v1:${auth.user.id}:${proposalId}` : null;
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
@@ -418,12 +421,25 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     const link = document.createElement("a"); link.href = url; link.download = `kp-${proposalId}-local.json`; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  async function openCatalog(id: string, anchor?: HTMLElement) {
+  async function openCatalog(id: string, anchor?: HTMLElement, categoryId?: string) {
     if (!openDrawer({ kind: "catalog", sectionId: id })) return;
     setPickerAnchor(anchor ?? sectionElements.current.get(id)?.querySelector<HTMLElement>("button[aria-label^='Подобрать услуги']") ?? pickerAnchor);
     setSectionId(id); setSearch("");
-    setCategoryFilter(sections.find((section) => section.id === id)?.category?.id ?? "");
+    setCategoryFilter(categoryId ?? sections.find((section) => section.id === id)?.category?.id ?? "");
     setCatalogReload((value) => value + 1);
+  }
+  function startWithCategory(category: Category) {
+    if (locked || [pending, ...queuedRef.current].some(command => command?.operation.action === "ADD_SECTION")) return;
+    const targetVariantId = variant?.id;
+    mutate({ action: "ADD_SECTION", variantId: targetVariantId, title: category.name, categoryId: category.id }, next => {
+      const created = next.variants.find(entry => entry.id === targetVariantId)?.sections.at(-1);
+      if (!created) return;
+      setSectionId(created.id);
+      // Let React mount the section's real picker button before positioning its popover.
+      requestAnimationFrame(() => {
+        if (workspaceRef.current?.isConnected) void openCatalog(created.id, sectionElements.current.get(created.id)?.querySelector<HTMLElement>("button[aria-label^='Подобрать услуги']") ?? undefined, category.id);
+      });
+    });
   }
   function cancelUnsent(ids: Set<string>) {
     const next = queuedRef.current.filter(c => !ids.has(c.operation.mutationId));
@@ -578,7 +594,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
                 <ProposalMoveHandle kind="item" id={item.id} name={item.offerTitleSnapshot} disabled={locked || isQueuedId(item.id)} canUp={index > 0} canDown={index < section.items.length - 1} onTarget={dragTarget} onDrop={(drop) => dropItem(item.id, drop)} onStep={(direction) => moveItem(item.id, section.id, direction === -1 ? section.items[index - 1].id : section.items[index + 2]?.id ?? null)} />
                 <button className={styles.item} disabled={isQueuedId(item.id)} onClick={() => { if (openDrawer({ kind: "item", item })) setSectionId(section.id); }}><Photo url={item.assetSnapshot?.[0]?.url} name={item.offerTitleSnapshot} /><div className={styles.itemCopy}><h3>{item.offerTitleSnapshot}</h3><p>{item.contractorNameSnapshot}</p>{item.offerDescriptionSnapshot ? <p className={styles.description}>{item.offerDescriptionSnapshot}</p> : null}<span>{isQueuedId(item.id) ? "Сохраняем · " : ""}{roleLabel[item.selectionRole]} · {item.qty} {item.unitLabel ?? "шт."}</span></div><strong>{priceLabel(item.clientUnitPrice, item.priceTypeSnapshot, item.qty)}</strong></button>
               </div>)}</div>}
-            </section>) : <div className={styles.emptySection}><h2>С чего начнём мероприятие?</h2><p>Добавьте первый раздел. Затем подберите подрядчиков и соберите несколько вариантов для клиента.</p><div className={styles.suggestions}>{categories.slice(0, 6).map((category) => <button key={category.id} className={base.secondary} disabled={locked} onClick={() => void mutate({ action: "ADD_SECTION", variantId: variant?.id, title: category.name, categoryId: category.id }, (next) => setSectionId(next.variants.find((entry) => entry.id === variant?.id)?.sections.at(-1)?.id ?? ""))}>{category.name}</button>)}</div><button className={base.quiet} disabled={locked} onClick={() => setSectionForm(true)}>Свой раздел</button></div>}
+            </section>) : <div className={styles.emptySection}><h2>Что предложим клиенту?</h2><p>Выберите, с чего начать — сразу откроется каталог услуг. Остальные части мероприятия добавите по ходу.</p><div className={styles.suggestions}>{categories.map(category => <button key={category.id} className={base.secondary} disabled={locked || unconfirmed} onClick={() => startWithCategory(category)}><PlusIcon />{category.name}</button>)}</div><button className={base.quiet} disabled={locked} onClick={() => setSectionForm(true)}>Свой раздел</button></div>}
           </section>
           {drawer ? <ContextPopover className={`${styles.drawer} ${drawer.kind === "catalog" ? styles.picker : ""}`} anchor={drawer.kind === "catalog" ? pickerAnchor : null} surfaceRef={drawerRef} dismissOutside={drawer.kind === "catalog"} onClose={() => openDrawer(null)} onChangeCapture={(event) => { if ((event.target as HTMLElement).closest("form")) dirty.current = true; }} label={drawer.kind === "catalog" ? "Подбор услуг" : "Параметры КП"}><div className={styles.drawerHeading}><h2>{drawer.kind === "catalog" ? `В раздел «${sections.find(s => s.id === drawer.sectionId)?.title ?? ""}»` : drawer.kind === "item" ? "Настроить услугу" : drawer.kind === "manual" ? "Своя услуга" : drawer.kind === "transfer" ? "Перенос в смету" : drawer.kind === "document" ? "Оформление КП" : drawer.kind === "export" ? "Скачать КП" : "Создать проект"}</h2><button className={base.quiet} onClick={() => openDrawer(null)}>Закрыть</button></div><fieldset className={styles.drawerFields} disabled={Boolean(readOnly) && drawer.kind !== "export"}>
             {drawer.kind === "item" && sections.length > 1 ? <label className={styles.moveDestination}>Раздел услуги<select aria-label="Перенести услугу в раздел" disabled={locked} value={sections.find((section) => section.items.some((item) => item.id === drawer.item.id))?.id ?? target?.id} onChange={(event) => moveItem(drawer.item.id, event.target.value, null)}>{sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><small>Переносит услугу целиком. Можно отменить через Ctrl+Z.</small></label> : null}
@@ -601,5 +617,5 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
       </>}
     </div>
   ;
-  return embedded ? content : <AppShell title="Конструктор КП" backHref={proposal?.owner?.type === "PROJECT" ? `/projects/${proposal.owner.projectId}` : "/proposals"}>{content}</AppShell>;
+  return embedded ? content : <AppShell title="Конструктор КП" backHref={proposal?.owner?.type === "PROJECT" ? `/projects/${proposal.owner.projectId}` : safeDetailReturnTo(searchParams.get("returnTo"), "/proposals")}>{content}</AppShell>;
 }

@@ -1,4 +1,4 @@
-type WorkEntityIconKind = "ORDER" | "ESTIMATE" | "PROJECT";
+type WorkEntityIconKind = "ORDER" | "ESTIMATE" | "PROJECT" | "PROPOSAL";
 
 export function WorkEntityIcon({
   kind,
@@ -7,6 +7,9 @@ export function WorkEntityIcon({
   kind: WorkEntityIconKind;
   className?: string;
 }) {
+  if (kind === "PROPOSAL") {
+    return <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 5h22v17H5V5ZM16 22v6M10 28h12M10 16l4-5 4 3 4-6" /></svg>;
+  }
   if (kind === "ESTIMATE") {
     return (
       <svg className={className} viewBox="0 0 32 32" fill="none" aria-hidden="true">

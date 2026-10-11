@@ -4,22 +4,29 @@ import { createHash } from "node:crypto";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFName, PDFStream, rgb } from "pdf-lib";
 import JSZip from "jszip";
-import { planExportPages, type ExportDocument, type ExportText } from "./proposal-export-document";
+import { LEGACY_EXPORT_ADAPTER, planExportPages, type ExportDocument, type ExportText } from "./proposal-export-document";
 
 const assets = () => join(process.cwd(), "src/server/projects/proposal-template-v1");
+// pdf-lib does not apply fontkit's positioned glyph advances. Avoid shaped Cyrillic
+// ligatures/kerning in new files; use the exact same unshaped metrics for wrapping.
+const plainFontFeatures = { liga: false, clig: false, dlig: false, calt: false, kern: false };
 async function pagePlan(document: ExportDocument) {
   const font = fontkit.create(await readFile(join(assets(), "OksFree.otf")));
-  return planExportPages(document, (text, size) => font.layout(text).glyphs.reduce((sum: number, glyph: { advanceWidth: number }) => sum + glyph.advanceWidth, 0) / font.unitsPerEm * size * 1.08);
+  return planExportPages(document, (text, size) => font.layout(text, document.adapter === LEGACY_EXPORT_ADAPTER ? undefined : plainFontFeatures).glyphs.reduce((sum: number, glyph: { advanceWidth: number }) => sum + glyph.advanceWidth, 0) / font.unitsPerEm * size * 1.08);
 }
 const escapeXml = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/[<>&"']/g, char => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[char]!);
 const emu = (value: number) => Math.round(value * 9525);
-const fitPhoto = (width: number, height: number) => {
-  const scale = Math.min(450 / width, 320 / height);
-  return { x: 76 + (450 - width * scale) / 2, y: 282 + (320 - height * scale) / 2, width: width * scale, height: height * scale };
+const fitPhoto = (width: number, height: number, box = { x: 76, y: 282, width: 450, height: 320 }) => {
+  const scale = Math.min(box.width / width, box.height / height);
+  return { x: box.x + (box.width - width * scale) / 2, y: box.y + (box.height - height * scale) / 2, width: width * scale, height: height * scale };
 };
 function textShape(text: ExportText, id: number) {
   const size = Math.round(text.size * 75); // px to PowerPoint hundredths of a point
-  const paragraphs = text.text.replace(/[\u00a0\u202f]/g, " ").split("\n").map(line => `<a:p><a:pPr><a:lnSpc><a:spcPct val="120000"/></a:lnSpc></a:pPr><a:r><a:rPr lang="ru-RU" sz="${size}" b="0"><a:solidFill><a:srgbClr val="${text.color ?? "FFFFFF"}"/></a:solidFill><a:latin typeface="Oks Free"/><a:cs typeface="Oks Free"/><a:ea typeface="Oks Free"/></a:rPr><a:t xml:space="preserve">${escapeXml(line)}</a:t></a:r></a:p>`).join("");
+  const font = `<a:solidFill><a:srgbClr val="${text.color ?? "FFFFFF"}"/></a:solidFill><a:latin typeface="Oks Free"/><a:cs typeface="Oks Free"/><a:ea typeface="Oks Free"/>`;
+  const spacing = text.lineHeight ? `<a:spcPts val="${Math.round(text.lineHeight * 75)}"/>` : '<a:spcPct val="120000"/>';
+  const defaults = text.lineHeight ? `<a:spcBef><a:spcPts val="0"/></a:spcBef><a:spcAft><a:spcPts val="0"/></a:spcAft><a:defRPr sz="${size}" b="0">${font}</a:defRPr>` : "";
+  const end = text.lineHeight ? `<a:endParaRPr lang="ru-RU" sz="${size}" b="0">${font}</a:endParaRPr>` : "";
+  const paragraphs = text.text.replace(/[\u00a0\u202f]/g, " ").split("\n").map(line => `<a:p><a:pPr><a:lnSpc>${spacing}</a:lnSpc>${defaults}</a:pPr><a:r><a:rPr lang="ru-RU" sz="${size}" b="0">${font}</a:rPr><a:t xml:space="preserve">${escapeXml(line)}</a:t></a:r>${end}</a:p>`).join("");
   return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="КП текст ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${emu(text.x)}" y="${emu(text.y)}"/><a:ext cx="${emu(text.width)}" cy="${emu(text.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="none" lIns="0" rIns="0" tIns="0" bIns="0"><a:noAutofit/></a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 }
 export async function renderProposalPptx(document: ExportDocument) {
@@ -44,7 +51,7 @@ export async function renderProposalPptx(document: ExportDocument) {
       const name = photoNames.get(key) ?? `proposal-${photoNames.size + 1}.jpg`;
       if (!photoNames.has(key)) { photoNames.set(key, name); zip.file(`ppt/media/${name}`, Buffer.from(page.photo.jpeg, "base64")); }
       rels = rels.replace("</Relationships>", `<Relationship Id="rIdPhoto" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${name}"/></Relationships>`);
-      const frame = fitPhoto(page.photo.width, page.photo.height);
+      const frame = fitPhoto(page.photo.width, page.photo.height, page.photoBox);
       shapes += `<p:pic><p:nvPicPr><p:cNvPr id="2000" name="Фото подрядчика"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rIdPhoto"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${emu(frame.x)}" y="${emu(frame.y)}"/><a:ext cx="${emu(frame.width)}" cy="${emu(frame.height)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
     }
     zip.file(`ppt/slides/slide${n}.xml`, source.replace("</p:spTree>", `${shapes}</p:spTree>`));
@@ -73,7 +80,7 @@ export async function renderProposalPdf(document: ExportDocument) {
     Object.defineProperty(font, "cff", { value: true });
     return font;
   } });
-  const regular = await pdf.embedFont(await readFile(join(assets(), "OksFree.otf")), { subset: false });
+  const regular = await pdf.embedFont(await readFile(join(assets(), "OksFree.otf")), { subset: false, ...(document.adapter !== LEGACY_EXPORT_ADAPTER ? { features: plainFontFeatures } : {}) });
   const bold = regular; // Original brand font has one weight. Hierarchy uses size, not synthetic bold.
   const backgrounds = new Map<number, Awaited<ReturnType<typeof pdf.embedJpg>>>();
   const photos = new Map<string, Awaited<ReturnType<typeof pdf.embedJpg>>>();
@@ -85,17 +92,18 @@ export async function renderProposalPdf(document: ExportDocument) {
       const color = text.color ?? "FFFFFF";
       const font = text.bold ? bold : regular;
       const lines = text.text.replace(/[\u00a0\u202f]/g, " ").split("\n");
+      const lineHeight = text.lineHeight ?? text.size * 1.2;
       for (const [index, line] of lines.entries()) {
         // No silent clipping: fail export if content violates the adapter's contract.
-        if (font.widthOfTextAtSize(line, text.size) > text.width + 2 || (index + 1) * text.size * 1.2 > text.height + text.size * .2) throw new Error("EXPORT_TEXT_OVERFLOW");
-        page.drawText(line, { x: text.x, y: 720 - text.y - text.size - index * text.size * 1.2, font, size: text.size, color: rgb(parseInt(color.slice(0, 2), 16) / 255, parseInt(color.slice(2, 4), 16) / 255, parseInt(color.slice(4, 6), 16) / 255) });
+        if (font.widthOfTextAtSize(line, text.size) > text.width + 2 || (index + 1) * lineHeight > text.height + text.size * .2) throw new Error("EXPORT_TEXT_OVERFLOW");
+        page.drawText(line, { x: text.x, y: 720 - text.y - text.size - index * lineHeight, font, size: text.size, color: rgb(parseInt(color.slice(0, 2), 16) / 255, parseInt(color.slice(2, 4), 16) / 255, parseInt(color.slice(4, 6), 16) / 255) });
       }
     }
     if (source.photo) {
       const key = createHash("sha256").update(source.photo.jpeg).digest("hex");
       if (!photos.has(key)) photos.set(key, await pdf.embedJpg(Uint8Array.from(Buffer.from(source.photo.jpeg, "base64"))));
       const image = photos.get(key)!;
-      const frame = fitPhoto(source.photo.width, source.photo.height);
+      const frame = fitPhoto(source.photo.width, source.photo.height, source.photoBox);
       page.drawImage(image, { x: frame.x, y: 720 - frame.y - frame.height, width: frame.width, height: frame.height });
     }
   }

@@ -46,9 +46,9 @@ type AvailabilityConflict = {
   orderLineIds: string[];
 };
 
-function dateSelectionError(data: DateSelection): string | null {
+function dateSelectionError(data: DateSelection, role: string): string | null {
   const today = utcTodayDateOnlyString();
-  if (data.readyByDate < today || data.startDate < today || data.endDate < today) {
+  if (role !== "WOWSTORG" && (data.readyByDate < today || data.startDate < today || data.endDate < today)) {
     return "Новые даты не могут быть в прошлом";
   }
   if (data.readyByDate > data.startDate) return "Дата готовности не может быть позже начала аренды";
@@ -168,7 +168,7 @@ async function inspectAvailability(tx: Tx, orderId: string, data: DateSelection)
   return { order, conflicts };
 }
 
-async function readDateBody(req: Request) {
+async function readDateBody(req: Request, role: string) {
   let body: unknown;
   try {
     body = await req.json();
@@ -182,12 +182,12 @@ async function readDateBody(req: Request) {
       response: jsonError(400, "Проверьте выбранные даты", parsed.error.flatten()),
     };
   }
-  const error = dateSelectionError(parsed.data);
+  const error = dateSelectionError(parsed.data, role);
   if (error) return { ok: false as const, response: jsonError(400, error) };
   return { ok: true as const, data: parsed.data };
 }
 
-async function readApplyBody(req: Request) {
+async function readApplyBody(req: Request, role: string) {
   let body: unknown;
   try {
     body = await req.json();
@@ -201,7 +201,7 @@ async function readApplyBody(req: Request) {
       response: jsonError(400, "Проверьте выбранные даты", parsed.error.flatten()),
     };
   }
-  const error = dateSelectionError(parsed.data);
+  const error = dateSelectionError(parsed.data, role);
   if (error) return { ok: false as const, response: jsonError(400, error) };
   return { ok: true as const, data: parsed.data };
 }
@@ -209,7 +209,7 @@ async function readApplyBody(req: Request) {
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const parsed = await readDateBody(req);
+  const parsed = await readDateBody(req, auth.user.role);
   if (!parsed.ok) return parsed.response;
   const { id } = await ctx.params;
 
@@ -255,7 +255,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const parsed = await readApplyBody(req);
+  const parsed = await readApplyBody(req, auth.user.role);
   if (!parsed.ok) return parsed.response;
   const { id } = await ctx.params;
   const data = parsed.data;

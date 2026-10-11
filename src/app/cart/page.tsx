@@ -1781,6 +1781,7 @@ export default function CartPage() {
                           percent={rentalDiscountPercent}
                           amount={rentalDiscountAmount}
                           rentalSubtotal={totalForPeriod}
+                          rentalDays={rentalDays}
                           onTypeChange={setRentalDiscountType}
                           onPercentChange={setRentalDiscountPercent}
                           onAmountChange={setRentalDiscountAmount}

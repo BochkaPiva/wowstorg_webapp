@@ -3204,10 +3204,14 @@ html {
 
 .checkout-financeEditor {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   padding-top: 12px;
   animation: checkout-finance-in 180ms ease-out both;
+}
+
+.checkout-financeEditor > details {
+  min-width: 0;
 }
 
 .checkout-financeInput {

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { OrderDiscountDaysCalculator } from "./OrderDiscountDaysCalculator";
 
 export type OrderDiscountType = "NONE" | "PERCENT" | "AMOUNT";
 export type OrderDiscountValue = number | "";
@@ -189,12 +190,14 @@ export function CompactOrderDiscountControl({
   percent,
   amount,
   rentalSubtotal,
+  rentalDays,
   onTypeChange,
   onPercentChange,
   onAmountChange,
   disabled = false,
 }: DiscountState & {
   rentalSubtotal: number;
+  rentalDays?: number;
   onTypeChange: (value: OrderDiscountType) => void;
   onPercentChange: (value: OrderDiscountValue) => void;
   onAmountChange: (value: OrderDiscountValue) => void;
@@ -276,6 +279,17 @@ export function CompactOrderDiscountControl({
             <button type="button" onClick={reset} disabled={disabled}>Сбросить</button>
           ) : null}
         </div>
+        {rentalDays != null ? (
+          <OrderDiscountDaysCalculator
+            rentalSubtotal={rentalSubtotal}
+            rentalDays={rentalDays}
+            disabled={disabled}
+            onApply={(nextAmount) => {
+              onTypeChange("AMOUNT");
+              onAmountChange(nextAmount);
+            }}
+          />
+        ) : null}
       </div>
     </details>
   );

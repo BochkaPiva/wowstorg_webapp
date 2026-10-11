@@ -25,6 +25,7 @@ type Conflict = {
 type Props = {
   open: boolean;
   orderId: string;
+  allowPastDates?: boolean;
   initialValue: DateDraft;
   onClose: () => void;
   onApplied: () => Promise<void> | void;
@@ -89,7 +90,7 @@ function ProgressCheck() {
   );
 }
 
-export function OrderDateChangeDialog({ open, orderId, initialValue, onClose, onApplied }: Props) {
+export function OrderDateChangeDialog({ open, orderId, allowPastDates = false, initialValue, onClose, onApplied }: Props) {
   const [draft, setDraft] = React.useState<DateDraft>(initialValue);
   const [phase, setPhase] = React.useState<Phase>("editing");
   const [conflicts, setConflicts] = React.useState<Conflict[]>([]);
@@ -226,6 +227,10 @@ export function OrderDateChangeDialog({ open, orderId, initialValue, onClose, on
                   </label>
                 ))}
               </div>
+
+              {allowPastDates ? (
+                <p className="text-sm text-zinc-600">Администратору доступны прошедшие даты. Стоимость будет пересчитана за весь новый срок.</p>
+              ) : null}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <PartChoice

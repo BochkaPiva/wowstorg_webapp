@@ -9,6 +9,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
 import { OrderDetailSkeleton } from "@/app/_ui/Skeleton";
 import { getOrderDiscountError } from "@/app/orders/OrderDiscountControl";
+import { OrderDiscountDaysCalculator } from "@/app/orders/OrderDiscountDaysCalculator";
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { orderReturnFallback, safeDetailReturnTo } from "@/lib/detail-return";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
@@ -2265,6 +2266,7 @@ export default function OrderDetailsPage() {
 
         <OrderDateChangeDialog
           open={dateDialogOpen}
+          allowPastDates={isWarehouse}
           orderId={order.id}
           initialValue={{
             readyByDate: order.readyByDate.slice(0, 10),
@@ -2672,6 +2674,15 @@ export default function OrderDetailsPage() {
                         <p className="mt-2 text-[11px] leading-4 text-zinc-500">
                           {isInternalGreenwichOrder ? "Дополняет уже рассчитанные цены Grinvich." : "Применяется только к аренде реквизита."}
                         </p>
+                        <OrderDiscountDaysCalculator
+                          rentalSubtotal={editPricing?.rentalBeforeDiscount ?? 0}
+                          rentalDays={editPricing?.days ?? 0}
+                          onApply={(amount) => {
+                            setEditRentalDiscountType("AMOUNT");
+                            setEditRentalDiscountAmount(amount);
+                          }}
+                          disabled={busy}
+                        />
                       </>
                     ) : (
                       <>

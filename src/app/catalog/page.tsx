@@ -4,6 +4,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useClientReady } from "@/lib/use-client-ready";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
@@ -58,6 +61,14 @@ type CatalogItem = {
 };
 
 const CATALOG_PAGE_SIZE = 32;
+const EMPTY_ITEMS: CatalogItem[] = [];
+
+function itemsUrl(params: URLSearchParams, demo: boolean, dates: {
+  startDate: string; endDate: string; rentalStartPartOfDay: RentalPartOfDay; rentalEndPartOfDay: RentalPartOfDay;
+}) {
+  if (!demo) for (const [key, value] of Object.entries(dates)) params.set(key, value);
+  return `/api/catalog/items?${params}`;
+}
 
 function CatalogGridSkeleton() {
   return (
@@ -155,15 +166,30 @@ function catalogCartHref(args: {
 }
 
 export default function CatalogPage() {
+  return <React.Suspense fallback={<AppShell title="Каталог"><CatalogGridSkeleton /></AppShell>}><CatalogEntry /></React.Suspense>;
+}
+
+function CatalogEntry() {
+  const params = useSearchParams();
+  const ready = useClientReady();
+  const { state } = useAuth();
+  const context = {
+    quickParentId: params.get("quickParentId"), projectId: params.get("projectId"),
+    projectMode: params.get("projectMode") === "demo" ? "demo" as const : "dated" as const,
+    estimateVersionId: params.get("estimateVersionId"), returnTo: params.get("returnTo"),
+  };
+  if (!ready || state.status !== "authenticated") return <AppShell title="Каталог"><CatalogGridSkeleton /></AppShell>;
+  return <CatalogContent key={JSON.stringify([state.user.id, state.user.role, context])} {...context} />;
+}
+
+function CatalogContent({ quickParentId, projectId, projectMode, estimateVersionId, returnTo }: {
+  quickParentId: string | null; projectId: string | null; projectMode: "dated" | "demo";
+  estimateVersionId: string | null; returnTo: string | null;
+}) {
   const { state } = useAuth();
   const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
   const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
-  const [quickParentId, setQuickParentId] = React.useState<string | null>(null);
-  const [projectId, setProjectId] = React.useState<string | null>(null);
   const [projectBannerTitle, setProjectBannerTitle] = React.useState<string | null>(null);
-  const [projectMode, setProjectMode] = React.useState<"dated" | "demo">("dated");
-  const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(null);
-  const [returnTo, setReturnTo] = React.useState<string | null>(null);
 
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCatalog = Boolean(projectId) && !quickParentId;
@@ -177,29 +203,32 @@ export default function CatalogPage() {
       : undefined;
   const [projectBannerNote, setProjectBannerNote] = React.useState<string | null>(null);
 
-  const [items, setItems] = React.useState<CatalogItem[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [kits, setKits] = React.useState<Kit[]>([]);
-  const [kitItemsById, setKitItemsById] = React.useState<Record<string, CatalogItem>>({});
-  const [cartItemsById, setCartItemsById] = React.useState<Record<string, CatalogItem>>({});
-  const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
-  const [cart, setCart] = React.useState<CartLine[]>([]);
+  const [cart, setCartState] = React.useState<CartLine[]>(() => loadCart(cartScope));
+  const cartDraft = React.useRef(cart);
+  // Resolve event updates once, outside React's replayable state updater.
+  const setCart = React.useCallback((update: React.SetStateAction<CartLine[]>) => {
+    const next = typeof update === "function" ? update(cartDraft.current) : update;
+    cartDraft.current = next;
+    setCartState(next);
+  }, []);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [categoryId, setCategoryId] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<CatalogTab>("positions");
   const [currentPage, setCurrentPage] = React.useState(1);
-  const [pagination, setPagination] = React.useState<CatalogPagination | null>(null);
-  // Одинаковые дефолты на SSR и первом кадре клиента — иначе гидратация и «ломаные» min/max у type=date
-  const [startDate, setStartDate] = React.useState(() => getDefaultCatalogDates().startDate);
-  const [endDate, setEndDate] = React.useState(() => getDefaultCatalogDates().endDate);
-  const [readyByDate, setReadyByDate] = React.useState(() => getDefaultCatalogDates().readyByDate);
+  const [initialDates] = React.useState(() => isQuickSupplement || isProjectDemoCatalog ? getDefaultCatalogDates() : catalogDatesFromStorage());
+  // This keyed editor mounts after the empty SSR snapshot; restore before writing preferences.
+  const [startDate, setStartDate] = React.useState(initialDates.startDate);
+  const [endDate, setEndDate] = React.useState(initialDates.endDate);
+  const [readyByDate, setReadyByDate] = React.useState(initialDates.readyByDate);
   const [rentalStartPartOfDay, setRentalStartPartOfDay] = React.useState<RentalPartOfDay>(
-    () => getDefaultCatalogDates().rentalStartPartOfDay,
+    initialDates.rentalStartPartOfDay,
   );
   const [rentalEndPartOfDay, setRentalEndPartOfDay] = React.useState<RentalPartOfDay>(
-    () => getDefaultCatalogDates().rentalEndPartOfDay,
+    initialDates.rentalEndPartOfDay,
   );
   const [showFloatingCart, setShowFloatingCart] = React.useState(false);
   const [miniCartOpen, setMiniCartOpen] = React.useState(false);
@@ -216,6 +245,26 @@ export default function CatalogPage() {
     [cart],
   );
 
+  const fetchCategoryId = activeTab === "categories" ? categoryId : null;
+  const shouldFetchPagedItems = activeTab !== "kits" && !(activeTab === "categories" && !categoryId);
+  const dates = { startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay };
+  const pageParams = new URLSearchParams({ page: String(currentPage), pageSize: String(CATALOG_PAGE_SIZE) });
+  if (debouncedQuery) pageParams.set("query", debouncedQuery);
+  if (fetchCategoryId) pageParams.set("category", fetchCategoryId);
+  const pagedRead = useJsonResource<{ items?: CatalogItem[]; pagination?: CatalogPagination | null }>(
+    shouldFetchPagedItems ? itemsUrl(pageParams, isProjectDemoCatalog, dates) : null, "Не удалось загрузить каталог",
+  );
+  const items = pagedRead.data?.items ?? EMPTY_ITEMS;
+  const pagination = pagedRead.data?.pagination ?? null;
+  const loading = pagedRead.loading;
+  const cartRead = useJsonResource<{ items?: CatalogItem[] }>(cartItemIdsKey
+    ? itemsUrl(new URLSearchParams({ ids: cartItemIdsKey }), isProjectDemoCatalog, dates) : null, "Не удалось загрузить позиции корзины");
+  const cartItemsById = React.useMemo(() => Object.fromEntries((cartRead.data?.items ?? EMPTY_ITEMS).map(item => [item.id, item])), [cartRead.data]);
+  const kitIds = Array.from(new Set(kits.flatMap(kit => kit.lines.map(line => line.item.id)))).join(",");
+  const kitsRead = useJsonResource<{ items?: CatalogItem[] }>(kitIds
+    ? itemsUrl(new URLSearchParams({ ids: kitIds }), isProjectDemoCatalog, dates) : null, "Не удалось загрузить позиции наборов");
+  const kitItemsById = React.useMemo(() => Object.fromEntries((kitsRead.data?.items ?? EMPTY_ITEMS).map(item => [item.id, item])), [kitsRead.data]);
+
   const itemLookup = React.useMemo(() => {
     const map = new Map<string, CatalogItem>();
     for (const item of items) map.set(item.id, item);
@@ -227,12 +276,6 @@ export default function CatalogPage() {
     }
     return map;
   }, [cartItemsById, items, kitItemsById]);
-  const itemLookupRef = React.useRef(itemLookup);
-  itemLookupRef.current = itemLookup;
-  const cartScopeRef = React.useRef(cartScope);
-  cartScopeRef.current = cartScope;
-  const isProjectDemoCatalogRef = React.useRef(isProjectDemoCatalog);
-  isProjectDemoCatalogRef.current = isProjectDemoCatalog;
 
   const showAddedFeedback = React.useCallback((label: string, itemId?: string) => {
     if (cartFeedbackTimerRef.current !== null) {
@@ -263,15 +306,6 @@ export default function CatalogPage() {
     [],
   );
 
-  const datesRef = React.useRef({
-    readyByDate,
-    startDate,
-    endDate,
-    rentalStartPartOfDay,
-    rentalEndPartOfDay,
-  });
-  datesRef.current = { readyByDate, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay };
-
   const patchCatalogDates = React.useCallback(
     (patch: Partial<{
       readyByDate: string;
@@ -281,13 +315,8 @@ export default function CatalogPage() {
       rentalEndPartOfDay: RentalPartOfDay;
     }>) => {
       try {
-        const cur = datesRef.current;
         const n = normalizeCatalogDates({
-          readyByDate: cur.readyByDate,
-          startDate: cur.startDate,
-          endDate: cur.endDate,
-          rentalStartPartOfDay: cur.rentalStartPartOfDay,
-          rentalEndPartOfDay: cur.rentalEndPartOfDay,
+          readyByDate, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay,
           ...patch,
         });
         setReadyByDate(n.readyByDate);
@@ -300,7 +329,7 @@ export default function CatalogPage() {
         console.error("[catalog] patchCatalogDates", e);
       }
     },
-    [],
+    [readyByDate, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay],
   );
 
   const dateMin = todayDateOnly();
@@ -321,28 +350,6 @@ export default function CatalogPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [catalogDateHelpOpen]);
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setQuickParentId(params.get("quickParentId"));
-    setProjectId(params.get("projectId"));
-    setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
-    setEstimateVersionId(params.get("estimateVersionId"));
-    setReturnTo(params.get("returnTo"));
-  }, []);
-
-  /** После монтирования подставляем даты из localStorage (не в useState — иначе mismatch гидратации). */
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("quickParentId")) return;
-    if (new URLSearchParams(window.location.search).get("projectMode") === "demo") return;
-    const n = catalogDatesFromStorage();
-    setStartDate(n.startDate);
-    setEndDate(n.endDate);
-    setReadyByDate(n.readyByDate);
-    setRentalStartPartOfDay(n.rentalStartPartOfDay);
-    setRentalEndPartOfDay(n.rentalEndPartOfDay);
-  }, []);
 
   React.useEffect(() => {
     if (!quickParentId) return;
@@ -377,9 +384,6 @@ export default function CatalogPage() {
 
   React.useEffect(() => {
     if (!isProjectCatalog || !projectId || !isWarehouse) {
-      setProjectBannerTitle(null);
-      setProjectBannerNote(null);
-      projectDatesPrefilledRef.current = null;
       return;
     }
     let cancelled = false;
@@ -460,7 +464,7 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [cartScope, isProjectDemoCatalog, projectId]);
+  }, [cartScope, isProjectDemoCatalog, projectId, setCart]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -488,42 +492,6 @@ export default function CatalogPage() {
     }
   }, [rentalStartPartOfDay, rentalEndPartOfDay, isProjectDemoCatalog, isQuickSupplement]);
 
-  React.useEffect(() => {
-    setCart(loadCart(cartScope));
-  }, [cartScope]);
-
-  React.useEffect(() => {
-    const ids = cartItemIdsKey ? cartItemIdsKey.split(",") : [];
-    if (ids.length === 0) {
-      setCartItemsById({});
-      return;
-    }
-
-    let cancelled = false;
-    async function loadCartItems() {
-      try {
-        const params = new URLSearchParams({ ids: ids.join(",") });
-        if (!isProjectDemoCatalog) {
-          params.set("startDate", startDate);
-          params.set("endDate", endDate);
-          params.set("rentalStartPartOfDay", rentalStartPartOfDay);
-          params.set("rentalEndPartOfDay", rentalEndPartOfDay);
-        }
-        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
-        if (!cancelled) {
-          setCartItemsById(Object.fromEntries((data?.items ?? []).map((item) => [item.id, item])));
-        }
-      } catch (error) {
-        console.error("catalog cart items load failed", error);
-      }
-    }
-
-    void loadCartItems();
-    return () => {
-      cancelled = true;
-    };
-  }, [cartItemIdsKey, endDate, isProjectDemoCatalog, rentalEndPartOfDay, rentalStartPartOfDay, startDate]);
 
   const floatingCartScrollRef = React.useRef(false);
   React.useEffect(() => {
@@ -548,9 +516,6 @@ export default function CatalogPage() {
     };
   }, []);
 
-  const fetchCategoryId =
-    activeTab === "positions" ? null : activeTab === "categories" ? categoryId : null;
-  const shouldFetchPagedItems = activeTab !== "kits" && !(activeTab === "categories" && !categoryId);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -580,102 +545,11 @@ export default function CatalogPage() {
     };
   }, []);
 
-  React.useEffect(() => {
-    if (!shouldFetchPagedItems) {
-      setItems([]);
-      setPagination(null);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    async function run() {
-      setLoading(true);
-      try {
-        const url = new URL("/api/catalog/items", window.location.origin);
-        if (debouncedQuery) url.searchParams.set("query", debouncedQuery);
-        if (fetchCategoryId) url.searchParams.set("category", fetchCategoryId);
-        if (!isProjectDemoCatalog) {
-          url.searchParams.set("startDate", startDate);
-          url.searchParams.set("endDate", endDate);
-          url.searchParams.set("rentalStartPartOfDay", rentalStartPartOfDay);
-          url.searchParams.set("rentalEndPartOfDay", rentalEndPartOfDay);
-        }
-        url.searchParams.set("page", String(currentPage));
-        url.searchParams.set("pageSize", String(CATALOG_PAGE_SIZE));
-        const res = await fetch(url.toString(), { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as {
-          items?: CatalogItem[];
-          pagination?: CatalogPagination | null;
-        } | null;
-        if (!cancelled) {
-          setItems(data?.items ?? []);
-          setPagination(data?.pagination ?? null);
-        }
-      } catch (e) {
-        console.error("catalog load failed", e);
-        if (!cancelled) {
-          setItems([]);
-          setPagination(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void run().catch((e) => console.error("catalog fetch", e));
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    currentPage,
-    debouncedQuery,
-    endDate,
-    fetchCategoryId,
-    isProjectDemoCatalog,
-    rentalEndPartOfDay,
-    rentalStartPartOfDay,
-    shouldFetchPagedItems,
-    startDate,
-  ]);
-
-  React.useEffect(() => {
-    const kitIds = Array.from(new Set(kits.flatMap((kit) => kit.lines.map((line) => line.item.id))));
-    if (kitIds.length === 0) {
-      setKitItemsById({});
-      return;
-    }
-    let cancelled = false;
-    async function loadKitItems() {
-      try {
-        const params = new URLSearchParams();
-        params.set("ids", kitIds.join(","));
-        if (!isProjectDemoCatalog) {
-          params.set("startDate", startDate);
-          params.set("endDate", endDate);
-          params.set("rentalStartPartOfDay", rentalStartPartOfDay);
-          params.set("rentalEndPartOfDay", rentalEndPartOfDay);
-        }
-        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
-        if (!cancelled) {
-          setKitItemsById(
-            Object.fromEntries((data?.items ?? []).map((item) => [item.id, item])),
-          );
-        }
-      } catch (e) {
-        console.error("catalog kit items load failed", e);
-        if (!cancelled) setKitItemsById({});
-      }
-    }
-    void loadKitItems().catch((e) => console.error("catalog kit items fetch", e));
-    return () => {
-      cancelled = true;
-    };
-  }, [endDate, isProjectDemoCatalog, kits, rentalEndPartOfDay, rentalStartPartOfDay, startDate]);
 
   const addToCart = React.useCallback((itemId: string, pricePerDay?: number) => {
     setCart((prev) => {
-      const item = itemLookupRef.current.get(itemId);
-      const demo = isProjectDemoCatalogRef.current;
+      const item = itemLookup.get(itemId);
+      const demo = isProjectDemoCatalog;
       const max = item
         ? demo
           ? item.availability.availableNow
@@ -695,15 +569,15 @@ export default function CatalogPage() {
       } else {
         next.push({ itemId, qty: nextQty, pricePerDay: price });
       }
-      saveCart(next, cartScopeRef.current);
+      saveCart(next, cartScope);
       return next.filter((l) => l.qty > 0);
     });
-  }, []);
+  }, [itemLookup, isProjectDemoCatalog, cartScope, setCart]);
 
   const setQty = React.useCallback((itemId: string, qty: number) => {
     setCart((prev) => {
-      const item = itemLookupRef.current.get(itemId);
-      const demo = isProjectDemoCatalogRef.current;
+      const item = itemLookup.get(itemId);
+      const demo = isProjectDemoCatalog;
       const max = item
         ? demo
           ? item.availability.availableNow
@@ -720,19 +594,19 @@ export default function CatalogPage() {
           pricePerDay: item ? Number(item.pricePerDay) : undefined,
         });
       }
-      saveCart(next, cartScopeRef.current);
+      saveCart(next, cartScope);
       return next;
     });
-  }, []);
+  }, [itemLookup, isProjectDemoCatalog, cartScope, setCart]);
 
   function addKitToCart(kit: Kit) {
     // Обновляем корзину ОДНИМ апдейтом, чтобы не словить race condition и не выйти за лимит доступности
     setCart((prev) => {
-      const demo = isProjectDemoCatalogRef.current;
+      const demo = isProjectDemoCatalog;
       const next = [...prev];
       for (const l of kit.lines) {
         const itemId = l.item.id;
-        const inv = itemLookupRef.current.get(itemId);
+        const inv = itemLookup.get(itemId);
         const max = inv
           ? demo
             ? inv.availability.availableNow
@@ -757,7 +631,7 @@ export default function CatalogPage() {
         }
       }
       const cleaned = next.filter((x) => x.qty > 0);
-      saveCart(cleaned, cartScopeRef.current);
+      saveCart(cleaned, cartScope);
       return cleaned;
     });
     showAddedFeedback(`Набор «${kit.name}» добавлен`);
@@ -765,8 +639,8 @@ export default function CatalogPage() {
 
   const clearCart = React.useCallback(() => {
     setCart([]);
-    saveCart([], cartScopeRef.current);
-  }, []);
+    saveCart([], cartScope);
+  }, [cartScope, setCart]);
 
   const qtyByItemId = React.useMemo(() => {
     const m: Record<string, number> = {};
@@ -791,13 +665,13 @@ export default function CatalogPage() {
           next.push({ itemId, qty: nextQty, pricePerDay });
         }
         const cleaned = next.filter((l) => l.qty > 0);
-        saveCart(cleaned, cartScopeRef.current);
+        saveCart(cleaned, cartScope);
         return cleaned;
       });
-      const item = itemLookupRef.current.get(itemId);
+      const item = itemLookup.get(itemId);
       showAddedFeedback(item ? `${item.name} добавлен` : "Позиция добавлена", itemId);
     },
-    [showAddedFeedback],
+    [showAddedFeedback, itemLookup, cartScope, setCart],
   );
 
   const cartRelatedInputs = React.useMemo(
@@ -829,10 +703,10 @@ export default function CatalogPage() {
   const handleCardAdd = React.useCallback(
     (id: string, price: number) => {
       addToCart(id, price);
-      const item = itemLookupRef.current.get(id);
+      const item = itemLookup.get(id);
       showAddedFeedback(item ? `${item.name} добавлен` : "Позиция добавлена", id);
     },
-    [addToCart, showAddedFeedback],
+    [addToCart, showAddedFeedback, itemLookup],
   );
   const handleCardDec = React.useCallback(
     (id: string, currentQty: number) => setQty(id, currentQty - 1),

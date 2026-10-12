@@ -33,9 +33,15 @@ try {
     else if (url.pathname === "/api/work-queue") result = { items: [], meta: { total: 0, projects: 0, standaloneOrders: 0, estimates: 0, undated: 0, from: "2026-09-01", to: "2026-09-30" } };
     else if (url.pathname === "/api/projects") result = { projects: [project] };
     else if (url.pathname === "/api/projects/meta") result = { users: [user], currentUserId: user.id, templates: [] };
+    else if (url.pathname === "/api/catalog/items") result = { items: [{ ...item, photo2Key: null, availability: { availableNow: 5, availableForDates: 5 } }], pagination: { page: 1, pageSize: 32, total: 1, totalPages: 1 } };
+    else if (url.pathname === "/api/catalog/categories") result = { categories: [] };
+    else if (url.pathname === "/api/catalog/kits") result = { kits: [] };
+    else if (url.pathname === "/api/catalog/related") result = { groups: [] };
+    else if (url.pathname === "/api/users/greenwich") result = { users: [] };
     else if (url.pathname === "/api/inventory/positions") result = { items: [item] };
     else if (url.pathname === "/api/inventory/positions/qa-item") result = { item, categories: [] };
     else if (url.pathname === "/api/inventory/positions/qa-item/related") result = { relations: [] };
+    else if (url.pathname === "/api/inventory/positions/qa-item/photo") { await route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#eee"/></svg>' }); return; }
     else if (url.pathname === "/api/inventory/positions/export") { await route.fulfill({ status: 200, contentType: "application/octet-stream", body: "" }); return; }
     else { unknown.push(url.pathname); await route.fulfill({ status: 501, json: { error: { message: "No QA fixture" } } }); return; }
     await route.fulfill({ json: result });
@@ -87,8 +93,23 @@ try {
   await page.waitForURL(url => !url.searchParams.has("tab"));
   assert.equal(await page.getByRole("searchbox", { name: "Найти проект" }).inputValue(), "October");
   assert.equal(await page.getByRole("combobox", { name: "Сортировка", exact: true }).inputValue(), "updated_desc");
+
+  await page.goto(new URL("/catalog", base).href);
+  await page.getByRole("button", { name: "В корзину", exact: true }).waitFor();
+  await page.getByRole("button", { name: "В корзину", exact: true }).click();
+  const catalogQuantity = page.locator('.mk-card input[aria-label="Количество"]');
+  await catalogQuantity.fill("2"); await catalogQuantity.press("Enter");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("cart") ?? "[]")[0]?.qty === 2);
+  await page.goto(new URL("/cart", base).href);
+  const cartQuantity = page.locator('.cart-row input[aria-label="Количество"]');
+  await cartQuantity.waitFor(); assert.equal(await cartQuantity.inputValue(), "2");
+  await cartQuantity.focus(); await cartQuantity.blur();
+  assert.equal(await cartQuantity.inputValue(), "2");
+  await page.getByRole("button", { name: "Увеличить", exact: true }).click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("cart") ?? "[]")[0]?.qty === 3);
+  assert.equal(await cartQuantity.inputValue(), "3");
   assert.deepEqual(writes, []);
   assert.deepEqual(unknown, []);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
+  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope", "actual catalog card to cart quantity restore, blur and increment"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
 } finally { await browser.close(); }

@@ -111,6 +111,20 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — 90 ошибок baseline, 0 регрессий; 86 test files / 538 tests; production audit 0; TypeScript и Next production build успешны. Browser smoke расширен списком проектов: внешний URL с фильтрами, debounced search + URL acknowledgement, переключение области с сохранением ввода. Настоящий headless Edge на локальном production build: 26 fixture GETs, 0 записей, 0 page errors. API→рабочая БД, реальные Telegram callbacks и импорт этим smoke не подтверждаются. Это не завершение всего React-долга.
 
+## Пакет 8 — каталог и корзина (13.10.2026)
+
+Ошибки: **90 → 67**, суммарно устранены 97 из 164. Сняты 23 допуска, правила и severity сохранены.
+
+- URL-контекст читается через `useSearchParams` внутри Suspense. Keyed редактор привязан к пользователю/роли, quick parent, проекту, режиму, версии и returnTo; появляется после пустого SSR snapshot и подтверждения авторизации. Корзина и даты восстанавливаются при его инициализации, до GET/persistence, а не цепочкой reset-effects.
+- Обычная, project, project-demo и quick корзины сохраняют прежние отдельные storage keys. Business cart не перенесена в общий hook UI-предпочтений. Запись каталога выполняется в событии один раз, вне replayable React state-updater; refs хранят только синхронный event draft, не читаются для render. Даты и item lookup передаются callback dependencies, не присваиваются refs при отрисовке.
+- Три независимых каталожных чтения (страница, состав корзины, наборы) используют GET lifecycle с отменой и ключом по запросу. Смена дат/поиска/категории/страницы не показывает старую доступность; demo не отправляет даты.
+- Корзина применяет прежние stock caps pure reducer-ом только из действующего ответа. Сохранение скорректированного состава — отдельный storage effect; серверный резерв/pricing не меняются. Пустой qty draft остаётся пустым до blur, неизменённый qty восстановленной корзины не принимается за удаление.
+- Подтверждённые даты проекта подставляются по прежним правилам; последующая правка периода в каталоге не отменяется повторным GET. Quick/demo не перезаписывают обычные даты. Бонус сбрасывается при смене выбранного сотрудника; demo сохраняет server line metadata (plannedDays/comment/periodGroup/id) и прежний выбор estimateVersionId в явном PATCH.
+
+Добавлены DOM regression checks в `tests/catalog-cart-lifecycle.test.tsx`: SSR/hydration, auth gate, сохранённые даты, быстрые добавления/наборы, caps, поиск и late responses, scope isolation, project/quick даты и явный demo PATCH при HTTP-ошибке. Date picker/card/mini-cart/recommendations частично изолированы; бизнес API замоканы, рабочая БД не изменяется. Настоящие card → cart сценарии проверяются отдельно browser smoke. API, schema, env и финансовые формулы не менялись.
+
+Проверки: 15 новых tests, всего **87 файлов / 553 tests**. Полный `npm run build:verified` с входным `NODE_ENV=production` прошёл: 67 исторических ошибок, 0 регрессий, production audit 0, TypeScript/Next build успешны. Расширенный smoke в настоящем headless Edge на локальной production-сборке проверил card → cart, восстановление количества, неизменённый blur и увеличение: 44 fixture GETs, 0 writes, 0 page errors. Фото отдано отдельной fixture; неизвестные API и любые mutations по-прежнему блокируются. Настоящее создание заявки, серверный резерв и production-runtime monitoring этим browser smoke не проверены. Baseline остаётся необходимым для остальных 67 ошибок.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.

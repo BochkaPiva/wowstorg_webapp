@@ -4,7 +4,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { BackLink } from "@/app/_ui/BackLink";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useClientReady } from "@/lib/use-client-ready";
+import { useJsonResource, useReadResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
@@ -42,6 +44,22 @@ type CatalogItem = {
   photo1Key: string | null;
   availability: { availableNow: number; availableForDates?: number };
 };
+const EMPTY_ITEMS: CatalogItem[] = [];
+type CartState = { lines: CartLine[]; persist: boolean };
+type CartAction = { type: "replace"; lines: CartLine[] } | { type: "stock"; items: CatalogItem[]; demo: boolean };
+function cartReducer(state: CartState, action: CartAction): CartState {
+  if (action.type === "replace") return { lines: action.lines, persist: false };
+  let changed = false;
+  const lines = state.lines.map(line => {
+    const item = action.items.find(entry => entry.id === line.itemId);
+    if (!item) return line;
+    const cap = action.demo ? item.availability.availableNow : item.availability.availableForDates ?? item.availability.availableNow;
+    const qty = Math.max(0, cap) <= 0 ? 0 : Math.min(line.qty, Math.max(0, cap));
+    if (qty !== line.qty) changed = true;
+    return { ...line, qty };
+  }).filter(line => line.qty > 0);
+  return changed ? { lines, persist: true } : state;
+}
 
 function formatDateRu(dateOnly: string) {
   const [y, m, d] = dateOnly.split("-").map((v) => Number(v));
@@ -129,29 +147,30 @@ type DraftOrderResponse = {
 };
 
 export default function CartPage() {
+  return <React.Suspense fallback={<AppShell title="Корзина"><ListSkeleton rows={4} /></AppShell>}><CartEntry /></React.Suspense>;
+}
+
+function CartEntry() {
+  const params = useSearchParams();
+  const ready = useClientReady();
+  const { state } = useAuth();
+  const context = {
+    quickParentId: params.get("quickParentId"), projectId: params.get("projectId"),
+    projectMode: params.get("projectMode") === "demo" ? "demo" as const : "dated" as const,
+    initialEstimateVersionId: params.get("estimateVersionId"), returnTo: params.get("returnTo"),
+  };
+  if (!ready || state.status !== "authenticated") return <AppShell title="Корзина"><ListSkeleton rows={4} /></AppShell>;
+  return <CartContent key={JSON.stringify([state.user.id, state.user.role, context])} {...context} />;
+}
+
+function CartContent({ quickParentId, projectId, projectMode, initialEstimateVersionId, returnTo }: {
+  quickParentId: string | null; projectId: string | null; projectMode: "dated" | "demo";
+  initialEstimateVersionId: string | null; returnTo: string | null;
+}) {
   const router = useRouter();
   const { state } = useAuth();
   const authRole = state.status === "authenticated" ? state.user.role : null;
-  const [quickParentId, setQuickParentId] = React.useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("quickParentId");
-  });
-  const [projectId, setProjectId] = React.useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("projectId");
-  });
-  const [projectMode, setProjectMode] = React.useState<"dated" | "demo">(() => {
-    if (typeof window === "undefined") return "dated";
-    return new URLSearchParams(window.location.search).get("projectMode") === "demo" ? "demo" : "dated";
-  });
-  const [estimateVersionId, setEstimateVersionId] = React.useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("estimateVersionId");
-  });
-  const [returnTo, setReturnTo] = React.useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return new URLSearchParams(window.location.search).get("returnTo");
-  });
+  const [estimateVersionId, setEstimateVersionId] = React.useState(initialEstimateVersionId);
   const isQuickSupplement = Boolean(quickParentId);
   const isProjectCart = Boolean(projectId) && !quickParentId;
   const isProjectDemoCart = isProjectCart && projectMode === "demo";
@@ -178,7 +197,7 @@ export default function CartPage() {
       estimateVersionId: string | null;
     } | null;
   } | null>(null);
-  const [projectCartError, setProjectCartError] = React.useState<string | null>(null);
+  const [projectCartError, setProjectCartError] = React.useState<string | null>(() => isProjectCart && authRole !== "WOWSTORG" ? "Корзина проекта доступна только со склада (Wowstorg)." : null);
   const [draftLineMetaByItemId, setDraftLineMetaByItemId] = React.useState<
     Record<
       string,
@@ -191,16 +210,23 @@ export default function CartPage() {
     >
   >({});
 
-  const [cart, setCart] = React.useState<CartLine[]>([]);
-  const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>({});
-  const [items, setItems] = React.useState<CatalogItem[]>([]);
+  const [cartState, dispatchCart] = React.useReducer(cartReducer, cartScope, scope => ({ lines: loadCart(scope), persist: false }));
+  const cart = cartState.lines;
+  const setCart = React.useCallback((lines: CartLine[]) => dispatchCart({ type: "replace", lines }), []);
+  React.useEffect(() => {
+    if (cartState.persist) saveCart(cartState.lines, cartScope);
+  }, [cartState, cartScope]);
+  const [qtyDrafts, setQtyDrafts] = React.useState<Record<string, string>>(() => Object.fromEntries(cart.map(line => [line.itemId, String(line.qty)])));
   const [selectedItemId, setSelectedItemId] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [startDate, setStartDate] = React.useState<string | null>(null);
-  const [endDate, setEndDate] = React.useState<string | null>(null);
-  const [readyByDate, setReadyByDate] = React.useState<string | null>(null);
-  const [rentalStartPartOfDay, setRentalStartPartOfDay] = React.useState<RentalPartOfDay>("MORNING");
-  const [rentalEndPartOfDay, setRentalEndPartOfDay] = React.useState<RentalPartOfDay>("EVENING");
+  const [initialDates] = React.useState(() => isQuickSupplement || isProjectDemoCart ? null : catalogDatesFromStorage());
+  const [startDate, setStartDate] = React.useState<string | null>(initialDates?.startDate ?? null);
+  const [endDate, setEndDate] = React.useState<string | null>(initialDates?.endDate ?? null);
+  const [readyByDate, setReadyByDate] = React.useState<string | null>(initialDates?.readyByDate ?? null);
+  const [rentalStartPartOfDay, setRentalStartPartOfDay] = React.useState<RentalPartOfDay>(initialDates?.rentalStartPartOfDay ?? "MORNING");
+  const [rentalEndPartOfDay, setRentalEndPartOfDay] = React.useState<RentalPartOfDay>(initialDates?.rentalEndPartOfDay ?? "EVENING");
+  if (startDate && startDate === endDate && (rentalStartPartOfDay !== "MORNING" || rentalEndPartOfDay !== "EVENING")) {
+    setRentalStartPartOfDay("MORNING"); setRentalEndPartOfDay("EVENING");
+  }
 
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [customerId, setCustomerId] = React.useState("");
@@ -237,25 +263,12 @@ export default function CartPage() {
   const [orderType, setOrderType] = React.useState<"greenwich" | "external">("external");
   const [greenwichUsers, setGreenwichUsers] = React.useState<GreenwichUser[]>([]);
   const [greenwichUserId, setGreenwichUserId] = React.useState("");
-  const [myBonus, setMyBonus] = React.useState<MyBonusSnapshot | null>(null);
+  const { data: myBonus } = useJsonResource<MyBonusSnapshot>(authRole === "GREENWICH" ? "/api/greenwich/bonuses" : null, "Не удалось загрузить бонусы");
   const [selectedMonthlyBonusId, setSelectedMonthlyBonusId] = React.useState("");
 
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    setQuickParentId(params.get("quickParentId"));
-    setProjectId(params.get("projectId"));
-    setProjectMode(params.get("projectMode") === "demo" ? "demo" : "dated");
-    setEstimateVersionId(params.get("estimateVersionId"));
-    setReturnTo(params.get("returnTo"));
-  }, []);
+  const mounted = useClientReady();
 
   React.useEffect(() => {
     if (!quickParentId) return;
@@ -321,18 +334,12 @@ export default function CartPage() {
 
   React.useEffect(() => {
     if (!projectId || quickParentId) {
-      setProjectContext(null);
-      setProjectCartError(null);
       return;
     }
     if (authRole !== "WOWSTORG") {
-      setProjectContext(null);
-      setProjectCartError("Корзина проекта доступна только со склада (Wowstorg).");
       return;
     }
     let cancelled = false;
-    setProjectCartError(null);
-    setProjectContext(null);
     fetch(`/api/projects/${projectId}`, { cache: "no-store" })
       .then((r) => r.json().catch(() => null))
       .then(
@@ -359,6 +366,11 @@ export default function CartPage() {
             return;
           }
           const p = data.project;
+          if (!isProjectDemoCart && p.eventDateConfirmed && p.eventStartDate && p.eventEndDate) {
+            setStartDate(current => current ?? p.eventStartDate ?? null);
+            setEndDate(current => current ?? p.eventEndDate ?? null);
+            setReadyByDate(current => current ?? p.eventStartDate ?? null);
+          }
           setProjectContext({
             id: p.id,
             title: p.title,
@@ -384,11 +396,8 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [authRole, projectId, quickParentId]);
+  }, [authRole, projectId, quickParentId, isProjectDemoCart]);
 
-  React.useEffect(() => {
-    setCart(loadCart(cartScope));
-  }, [cartScope]);
 
   /**
    * Синхронизируем черновик поля ввода с корзиной, но не затираем:
@@ -396,7 +405,9 @@ export default function CartPage() {
    * - промежуточный ввод, пока число в поле совпадает с qty в корзине.
    * Раньше использовалось prev ?? String(qty) — при нажатии «+» qty росло, а черновик оставался старым.
    */
-  React.useEffect(() => {
+  const [qtySource, setQtySource] = React.useState(cart);
+  if (qtySource !== cart) {
+    setQtySource(cart);
     setQtyDrafts((prev) => {
       const next: Record<string, string> = {};
       for (const l of cart) {
@@ -412,31 +423,16 @@ export default function CartPage() {
       }
       return next;
     });
-  }, [cart]);
+  }
 
   React.useEffect(() => {
-    if (isQuickSupplement || isProjectDemoCart) return;
-    if (typeof window === "undefined") return;
-    const n = catalogDatesFromStorage();
-    setStartDate(n.startDate);
-    setEndDate(n.endDate);
-    setReadyByDate(n.readyByDate);
-    setRentalStartPartOfDay(n.rentalStartPartOfDay);
-    setRentalEndPartOfDay(n.rentalEndPartOfDay);
-    localStorage.setItem("catalog_readyByDate", n.readyByDate);
-    localStorage.setItem("catalog_startDate", n.startDate);
-    localStorage.setItem("catalog_endDate", n.endDate);
-    localStorage.setItem("catalog_rentalStartPart", n.rentalStartPartOfDay);
-    localStorage.setItem("catalog_rentalEndPart", n.rentalEndPartOfDay);
-  }, [isProjectDemoCart, isQuickSupplement]);
-
-  React.useEffect(() => {
-    if (!startDate || !endDate) return;
-    if (startDate === endDate) {
-      setRentalStartPartOfDay("MORNING");
-      setRentalEndPartOfDay("EVENING");
-    }
-  }, [startDate, endDate]);
+    if (!initialDates) return;
+    localStorage.setItem("catalog_readyByDate", initialDates.readyByDate);
+    localStorage.setItem("catalog_startDate", initialDates.startDate);
+    localStorage.setItem("catalog_endDate", initialDates.endDate);
+    localStorage.setItem("catalog_rentalStartPart", initialDates.rentalStartPartOfDay);
+    localStorage.setItem("catalog_rentalEndPart", initialDates.rentalEndPartOfDay);
+  }, [initialDates]);
 
   React.useEffect(() => {
     if (isQuickSupplement || isProjectDemoCart) return;
@@ -490,28 +486,8 @@ export default function CartPage() {
     };
   }, [authRole]);
 
-  React.useEffect(() => {
-    if (authRole !== "GREENWICH") {
-      setMyBonus(null);
-      return;
-    }
-    let cancelled = false;
-    void fetch("/api/greenwich/bonuses", { cache: "no-store" })
-      .then(async (response) => {
-        const json = (await response.json().catch(() => null)) as MyBonusSnapshot | null;
-        if (!cancelled && response.ok) setMyBonus(json);
-      })
-      .catch(() => {
-        if (!cancelled) setMyBonus(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [authRole]);
-
-  React.useEffect(() => {
-    setSelectedMonthlyBonusId("");
-  }, [greenwichUserId, quickParentId, projectId]);
+  const [bonusOwner, setBonusOwner] = React.useState(greenwichUserId);
+  if (bonusOwner !== greenwichUserId) { setBonusOwner(greenwichUserId); setSelectedMonthlyBonusId(""); }
 
   const cartItemIdsKey = React.useMemo(() => cart.map((l) => l.itemId).sort().join(","), [cart]);
 
@@ -557,57 +533,30 @@ export default function CartPage() {
     return () => {
       cancelled = true;
     };
-  }, [cartScope, isProjectDemoCart, projectId]);
+  }, [cartScope, isProjectDemoCart, projectId, setCart]);
 
-  React.useEffect(() => {
-    if (!isProjectCart || !projectContext || isProjectDemoCart) return;
-    if (!projectContext.eventDateConfirmed) return;
-    if (!projectContext.eventStartDate || !projectContext.eventEndDate) return;
-    setStartDate((prev) => prev ?? projectContext.eventStartDate ?? null);
-    setEndDate((prev) => prev ?? projectContext.eventEndDate ?? null);
-    setReadyByDate((prev) => prev ?? projectContext.eventStartDate ?? null);
-  }, [isProjectCart, isProjectDemoCart, projectContext]);
-
-  React.useEffect(() => {
-    if (cart.length === 0) {
-      setItems([]);
-      setLoading(false);
-      return;
+  const itemParams = new URLSearchParams({ ids: cartItemIdsKey });
+  if (!isProjectDemoCart && startDate && endDate) {
+    itemParams.set("startDate", startDate); itemParams.set("endDate", endDate);
+    itemParams.set("rentalStartPartOfDay", rentalStartPartOfDay); itemParams.set("rentalEndPartOfDay", rentalEndPartOfDay);
+  }
+  if (quickParentId) itemParams.set("excludeOrderId", quickParentId);
+  const itemsUrl = `/api/catalog/items?${itemParams}`;
+  const readItems = React.useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch(itemsUrl, { cache: "no-store", signal });
+    const payload = (await response.json().catch(() => null)) as { items?: CatalogItem[] } | null;
+    if (!response.ok) throw new Error("Не удалось загрузить позиции корзины");
+    const loaded = payload?.items ?? EMPTY_ITEMS;
+    if (!signal?.aborted && loaded.length > 0) {
+      // Apply stock caps only from this acknowledged response, never from stale items.
+      dispatchCart({ type: "stock", items: loaded, demo: isProjectDemoCart });
     }
-    let cancelled = false;
-    const ids = cart.map((l) => l.itemId).join(",");
+    return loaded;
+  }, [itemsUrl, isProjectDemoCart]);
+  const itemsRead = useReadResource(cartItemIdsKey ? itemsUrl : null, readItems, "Не удалось загрузить позиции корзины");
+  const items = itemsRead.data ?? EMPTY_ITEMS;
+  const loading = itemsRead.loading;
 
-    const params = new URLSearchParams();
-    params.set("ids", ids);
-    if (!isProjectDemoCart && startDate && endDate) {
-      params.set("startDate", startDate);
-      params.set("endDate", endDate);
-      params.set("rentalStartPartOfDay", rentalStartPartOfDay);
-      params.set("rentalEndPartOfDay", rentalEndPartOfDay);
-    }
-    if (quickParentId) {
-      params.set("excludeOrderId", quickParentId);
-    }
-
-    async function loadItems() {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/catalog/items?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as { items?: CatalogItem[] } | null;
-        if (!cancelled) setItems(data?.items ?? []);
-      } catch (e) {
-        console.error("[cart] load catalog items failed", e);
-        if (!cancelled) setItems([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadItems();
-    return () => {
-      cancelled = true;
-    };
-  }, [cartItemIdsKey, startDate, endDate, rentalEndPartOfDay, rentalStartPartOfDay, quickParentId, isProjectDemoCart]);
 
   function maxQtyForItem(itemId: string): number | null {
     const inv = items.find((i) => i.id === itemId);
@@ -619,8 +568,9 @@ export default function CartPage() {
     return Math.max(0, max);
   }
 
-  function setQty(itemId: string, qty: number) {
-    const cap = maxQtyForItem(itemId);
+  const setQty = React.useCallback((itemId: string, qty: number) => {
+    const item = items.find(entry => entry.id === itemId);
+    const cap = !item ? null : Math.max(0, isProjectDemoCart ? item.availability.availableNow : item.availability.availableForDates ?? item.availability.availableNow);
     const clamped =
       cap === null ? Math.max(0, qty) : cap <= 0 ? 0 : Math.max(0, Math.min(qty, cap));
     const next = cart
@@ -631,31 +581,8 @@ export default function CartPage() {
     }
     setCart(next);
     saveCart(next, cartScope);
-  }
+  }, [items, isProjectDemoCart, cart, cartScope, setCart]);
 
-  /** После загрузки каталога с датами — подрезаем qty, если в корзине было больше доступного. */
-  React.useEffect(() => {
-    if (items.length === 0) return;
-    setCart((prev) => {
-      let changed = false;
-      const next = prev
-        .map((l) => {
-          const inv = items.find((i) => i.id === l.itemId);
-          if (!inv) return l;
-          const cap = isProjectDemoCart
-            ? inv.availability.availableNow
-            : inv.availability.availableForDates ?? inv.availability.availableNow;
-          const max = Math.max(0, cap);
-          const clamped = max <= 0 ? 0 : Math.min(l.qty, max);
-          if (clamped !== l.qty) changed = true;
-          return { ...l, qty: clamped };
-        })
-        .filter((l) => l.qty > 0);
-      if (!changed) return prev;
-      saveCart(next, cartScope);
-      return next;
-    });
-  }, [items, cartScope, isProjectDemoCart]);
 
   function remove(itemId: string) {
     setCart(cart.filter((l) => l.itemId !== itemId));

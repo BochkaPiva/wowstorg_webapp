@@ -62,6 +62,13 @@ export function CatalogRentalPeriodPicker({
     from: ymdLocalToDate(startDate),
     to: ymdLocalToDate(endDate),
   }));
+  const rangeSource = `${startDate}/${endDate}`;
+  const [draftSource, setDraftSource] = React.useState(rangeSource);
+
+  if (draftSource !== rangeSource) {
+    setDraftSource(rangeSource);
+    setDraftRange({ from: ymdLocalToDate(startDate), to: ymdLocalToDate(endDate) });
+  }
 
   const multiDay = startDate !== endDate;
 
@@ -84,14 +91,6 @@ export function CatalogRentalPeriodPicker({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [open, updatePosition]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setDraftRange({
-      from: ymdLocalToDate(startDate),
-      to: ymdLocalToDate(endDate),
-    });
-  }, [open, startDate, endDate]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -214,6 +213,7 @@ export function CatalogRentalPeriodPicker({
                 setOpen(false);
                 setCoords(null);
               } else if (triggerRef.current) {
+                setDraftRange({ from: ymdLocalToDate(startDate), to: ymdLocalToDate(endDate) });
                 const r = triggerRef.current.getBoundingClientRect();
                 const { left, width } = measurePopoverLeft(r);
                 setCoords({ top: r.bottom + 10, left, width });
@@ -232,6 +232,7 @@ export function CatalogRentalPeriodPicker({
               const { left, width } = measurePopoverLeft(r);
               setCoords({ top: r.bottom + 10, left, width });
             }
+            setDraftRange({ from: ymdLocalToDate(startDate), to: ymdLocalToDate(endDate) });
             setOpen(true);
           }}
         >

@@ -15,13 +15,8 @@
     "src/app/bonuses/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/cart/CartRelatedSuggestions.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/cart/page.tsx|react-hooks/set-state-in-effect": 12,
-    "src/app/catalog/CatalogDateField.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/catalog/CatalogMiniCart.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/catalog/CatalogRentalPeriodPicker.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/catalog/ItemModal.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/catalog/page.tsx|react-hooks/refs": 4,
     "src/app/catalog/page.tsx|react-hooks/set-state-in-effect": 7,
-    "src/app/contractors/catalog-ui.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/contractors/CatalogInspector.tsx|react-hooks/immutability": 7,
     "src/app/contractors/page.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/estimates/[id]/page.tsx|react-hooks/set-state-in-effect": 1,
@@ -72,7 +67,6 @@
     "src/app/warehouse/queue/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/warehouse/repair/page.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/work/page.tsx|react-hooks/set-state-in-effect": 3,
-    "src/app/_ui/AppShell.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/_ui/InAppNotifications.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/_ui/OrderServiceFeedback.tsx|react-hooks/set-state-in-effect": 2
   }

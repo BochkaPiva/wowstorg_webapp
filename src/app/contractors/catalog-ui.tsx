@@ -33,8 +33,11 @@ export async function catalogRequest<T>(url: string, init?: RequestInit): Promis
   return data as T;
 }
 export function ContractorPhoto({ src, name }: { src: string | null; name: string }) {
+  return <ContractorPhotoForSource key={src} src={src} name={name} />;
+}
+
+function ContractorPhotoForSource({ src, name }: { src: string | null; name: string }) {
   const [failed, setFailed] = React.useState(false);
-  React.useEffect(() => setFailed(false), [src]);
   if (!src || failed) return <span className={styles.cardMonogram}>{name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase("ru-RU")}</span>;
   return <Image className={styles.cardPhoto} src={src} alt={`Фотография подрядчика ${name}`} fill sizes="(max-width: 720px) 100vw, 420px" unoptimized onError={() => setFailed(true)} />;
 }

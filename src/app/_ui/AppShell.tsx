@@ -120,12 +120,17 @@ export function AppShell({
   const pathname = usePathname();
   const { state, refresh } = useAuth();
   const [navOpen, setNavOpen] = React.useState(false);
+  const [navPathname, setNavPathname] = React.useState(pathname);
+
+  // Close before committing the new route, including browser back/forward.
+  if (navPathname !== pathname) {
+    setNavPathname(pathname);
+    setNavOpen(false);
+  }
 
   React.useEffect(() => {
     if (state.status === "anonymous") router.replace("/login");
   }, [router, state.status]);
-
-  React.useEffect(() => setNavOpen(false), [pathname]);
 
   React.useEffect(() => {
     if (!navOpen) return;

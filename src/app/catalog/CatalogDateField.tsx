@@ -49,6 +49,7 @@ export function CatalogDateField({
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
 
   const [text, setText] = React.useState(() => formatDateRu(value));
+  const [textSource, setTextSource] = React.useState(value);
   const [showHint, setShowHint] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [coords, setCoords] = React.useState<{ top: number; left: number } | null>(null);
@@ -67,9 +68,11 @@ export function CatalogDateField({
     return new Date();
   }, [selectedDate, safeMin]);
 
-  React.useEffect(() => {
+  // Preserve incomplete typing unless the authoritative date actually changes.
+  if (textSource !== value) {
+    setTextSource(value);
     setText(formatDateRu(value));
-  }, [value]);
+  }
 
   const updatePosition = React.useCallback(() => {
     const el = wrapRef.current;

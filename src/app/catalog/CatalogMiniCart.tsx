@@ -30,6 +30,11 @@ type CatalogMiniCartProps = {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// No events: this snapshot only distinguishes SSR/hydration from the client.
+const subscribeToClient = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
+
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value) + " ₽";
 }
@@ -46,12 +51,10 @@ export function CatalogMiniCart({
   onSetQty,
   onClear,
 }: CatalogMiniCartProps) {
-  const [mounted, setMounted] = React.useState(false);
+  const mounted = React.useSyncExternalStore(subscribeToClient, clientSnapshot, serverSnapshot);
   const panelRef = React.useRef<HTMLElement | null>(null);
   const closeRef = React.useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);
-
-  React.useEffect(() => setMounted(true), []);
 
   React.useEffect(() => {
     if (!open) return;

@@ -65,6 +65,7 @@
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "jsdom": "29.1.1",
     "prisma": "^6.19.2",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",

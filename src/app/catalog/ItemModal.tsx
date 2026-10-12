@@ -49,10 +49,13 @@ export function ItemModal({
   const canAddMore = available > qtyInCart;
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   const [qtyDraft, setQtyDraft] = React.useState<string>(qtyInCart > 0 ? String(qtyInCart) : "");
+  const [qtySource, setQtySource] = React.useState(qtyInCart);
 
-  React.useEffect(() => {
+  // Parent quantity updates replace the draft; unrelated renders do not.
+  if (qtySource !== qtyInCart) {
+    setQtySource(qtyInCart);
     setQtyDraft(qtyInCart > 0 ? String(qtyInCart) : "");
-  }, [qtyInCart]);
+  }
 
   React.useEffect(() => {
     const previousOverflow = document.body.style.overflow;

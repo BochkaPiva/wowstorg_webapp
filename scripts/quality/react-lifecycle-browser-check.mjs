@@ -9,6 +9,7 @@ assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Only a local buil
 const user = { id: "qa-lifecycle", displayName: "QA · проверка", login: "qa-lifecycle", role: "WOWSTORG", isActive: true, mustSetPassword: false };
 const item = { id: "qa-item", name: "QA · позиция", description: null, type: "BULK", isActive: true, internalOnly: false, pricePerDay: "100", purchasePricePerUnit: "500", total: 8, inRepair: 0, broken: 0, missing: 0, photo1Key: null, categories: [], collections: [], updatedAt: "2026-10-12T00:00:00.000Z" };
 const saved = { id: "qa", name: "Архив QA", view: "archive", kind: "project", phase: "DONE", from: "2026-09-01", to: "2026-09-30", sort: "amount" };
+const project = { id: "qa-project", title: "QA · проект", mode: "FULL", leadCustomerName: null, status: "LEAD", ball: "CLIENT", archivedAt: null, archiveNote: null, eventStartDate: null, eventEndDate: null, eventDateConfirmed: false, updatedAt: "2026-10-12T00:00:00.000Z", customer: null, owner: user, _count: { orders: 0 }, finance: { revenueTotal: 123, marginAfterTax: 100, marginAfterTaxPct: 81 } };
 const calls = [], writes = [], unknown = [], errors = [];
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
@@ -30,6 +31,8 @@ try {
     else if (url.pathname === "/api/me/push-subscriptions") result = { enabled: false, publicKey: null };
     else if (url.pathname === "/api/customers") result = { customers: [{ id: "one", name: "Авангард" }, { id: "two", name: "Сбер" }] };
     else if (url.pathname === "/api/work-queue") result = { items: [], meta: { total: 0, projects: 0, standaloneOrders: 0, estimates: 0, undated: 0, from: "2026-09-01", to: "2026-09-30" } };
+    else if (url.pathname === "/api/projects") result = { projects: [project] };
+    else if (url.pathname === "/api/projects/meta") result = { users: [user], currentUserId: user.id, templates: [] };
     else if (url.pathname === "/api/inventory/positions") result = { items: [item] };
     else if (url.pathname === "/api/inventory/positions/qa-item") result = { item, categories: [] };
     else if (url.pathname === "/api/inventory/positions/qa-item/related") result = { relations: [] };
@@ -73,8 +76,19 @@ try {
   await page.locator("#pos-name").fill("QA · несохранённый черновик");
   await page.locator("#pos-description").fill("Другой ввод вызывает render формы");
   assert.equal(await page.locator("#pos-name").inputValue(), "QA · несохранённый черновик");
+
+  await page.goto(new URL("/projects?tab=archive&q=September&sort=title_asc&stage=completion&ball=NONE", base).href);
+  await page.getByText(project.title, { exact: true }).waitFor();
+  assert.deepEqual(calls.filter(call => call.path === "/api/projects").at(-1).params, { archive: "1", sort: "title_asc", q: "September", stage: "completion", ball: "NONE" });
+  assert.equal(await page.getByRole("searchbox", { name: "Найти проект" }).inputValue(), "September");
+  await page.getByRole("searchbox", { name: "Найти проект" }).fill("October");
+  await page.waitForURL(url => url.searchParams.get("q") === "October");
+  await page.getByRole("button", { name: "Активные", exact: true }).click();
+  await page.waitForURL(url => !url.searchParams.has("tab"));
+  assert.equal(await page.getByRole("searchbox", { name: "Найти проект" }).inputValue(), "October");
+  assert.equal(await page.getByRole("combobox", { name: "Сортировка", exact: true }).inputValue(), "updated_desc");
   assert.deepEqual(writes, []);
   assert.deepEqual(unknown, []);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
+  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
 } finally { await browser.close(); }

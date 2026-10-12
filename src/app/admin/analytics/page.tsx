@@ -5,6 +5,8 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { DashboardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import { useClientReady } from "@/lib/use-client-ready";
+import { useLocalStorageText } from "@/lib/use-local-storage-text";
 import type { AdminAnalyticsData } from "@/server/admin-analytics";
 import { isAnalyticsDate, updateAnalyticsScope } from "@/lib/analytics-presentation";
 import { AnalyticsOverview } from "./AnalyticsOverview";
@@ -106,6 +108,18 @@ function initialScopes(): Record<Tab, Scope> {
   };
 }
 
+function restoredScopes(raw: string | null, defaults: Record<Tab, Scope>): Record<Tab, Scope> {
+  const next = { ...defaults };
+  try {
+    const parsed = JSON.parse(raw ?? "{}") as Partial<Record<Tab, Scope>> | null;
+    for (const tab of TAB_META) {
+      const saved = parsed?.[tab.id];
+      if (saved && isAnalyticsDate(saved.from) && isAnalyticsDate(saved.to)) next[tab.id] = saved;
+    }
+  } catch { /* Damaged preferences must not block the report. */ }
+  return updateAnalyticsScope(next, "overview", next.overview);
+}
+
 function formatDate(value: string | null) {
   if (!value || !isAnalyticsDate(value.slice(0, 10))) return "Дата не задана";
   return new Intl.DateTimeFormat("ru-RU").format(new Date(`${value.slice(0, 10)}T00:00:00`));
@@ -115,47 +129,36 @@ export default function AdminAnalyticsPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
   const [activeTab, setActiveTab] = React.useState<Tab>("overview");
-  const [scopes, setScopes] = React.useState<Record<Tab, Scope>>(initialScopes);
+  const ready = useClientReady();
+  const [storedV3, writeScopes] = useLocalStorageText("wowstorg.analytics.scopes.v3");
+  const [storedV2] = useLocalStorageText("wowstorg.analytics.scopes.v2");
+  const stored = storedV3 ?? storedV2;
+  const [defaults] = React.useState(initialScopes);
+  const [scopes, setScopes] = React.useState(() => restoredScopes(stored, defaults));
+  const [scopeSource, setScopeSource] = React.useState(stored);
+  if (scopeSource !== stored) { setScopeSource(stored); setScopes(restoredScopes(stored, defaults)); }
   const [cache, setCache] = React.useState<Record<string, AnalyticsPayload>>({});
-  const [ready, setReady] = React.useState(false);
+  const authKey = state.status === "authenticated" && !forbidden ? state.user.id : null;
+  const [cacheOwner, setCacheOwner] = React.useState(authKey);
+  if (cacheOwner !== authKey) { setCacheOwner(authKey); setCache({}); }
   const [revision, setRevision] = React.useState(0);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<{ key: string; error: string | null } | null>(null);
   const scope = scopes[activeTab];
   const scopeError = !isAnalyticsDate(scope.from) || !isAnalyticsDate(scope.to) || scope.from > scope.to;
   const cacheKey = `${scope.from}:${scope.to}`;
-  const data = cache[cacheKey] ?? null;
+  const data = state.status === "authenticated" && !forbidden ? cache[cacheKey] ?? null : null;
+  const canRequest = ready && state.status === "authenticated" && !forbidden && !scopeError && activeTab !== "reconciliation";
+  const requestKey = JSON.stringify([cacheKey, revision, activeTab, authKey]);
+  const error = canRequest && result?.key === requestKey ? result.error : null;
+  const loading = canRequest && !data && !error;
   const activeMeta = TAB_META.find(item => item.id === activeTab) ?? TAB_META[0];
-  const cacheRef = React.useRef(cache);
-  React.useEffect(() => { cacheRef.current = cache; }, [cache]);
+  React.useEffect(() => {
+    if (ready && storedV3 === null) writeScopes(JSON.stringify(scopes));
+  }, [ready, storedV3, scopes, writeScopes]);
 
   React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("wowstorg.analytics.scopes.v3") ?? window.localStorage.getItem("wowstorg.analytics.scopes.v2");
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Record<Tab, Scope>>;
-        setScopes(current => {
-          const next = { ...current };
-          for (const tab of TAB_META) {
-            const saved = parsed[tab.id];
-            if (saved && isAnalyticsDate(saved.from) && isAnalyticsDate(saved.to)) next[tab.id] = saved;
-          }
-          return updateAnalyticsScope(next, "overview", next.overview);
-        });
-      }
-    } catch { /* Local preferences must not block analytics. */ }
-    setReady(true);
-  }, []);
-  React.useEffect(() => {
-    if (!ready) return;
-    try { window.localStorage.setItem("wowstorg.analytics.scopes.v3", JSON.stringify(scopes)); } catch { /* Optional persistence. */ }
-  }, [scopes, ready]);
-
-  React.useEffect(() => {
-    if (!ready || state.status !== "authenticated" || forbidden || scopeError || activeTab === "reconciliation" || cacheRef.current[cacheKey]) { setLoading(false); return; }
+    if (!canRequest || data) return;
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
     fetch(`/api/admin/analytics?${new URLSearchParams({ from: scope.from, to: scope.to })}`, { cache: "no-store", signal: controller.signal })
       .then(async response => {
         const payload = await response.json().catch(() => null) as AnalyticsPayload | null;
@@ -165,29 +168,35 @@ export default function AdminAnalyticsPage() {
           const entries = Object.entries(current).slice(-7);
           return { ...Object.fromEntries(entries), [cacheKey]: payload };
         });
+        setResult({ key: requestKey, error: null });
       })
-      .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Ошибка загрузки."); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .catch((reason: unknown) => { if (!controller.signal.aborted) setResult({ key: requestKey, error: reason instanceof Error ? reason.message : "Ошибка загрузки." }); });
     return () => controller.abort();
-  }, [activeTab, cacheKey, forbidden, ready, revision, scope.from, scope.to, scopeError, state.status]);
+  }, [canRequest, data, cacheKey, requestKey, scope.from, scope.to]);
+
+  function changeScope(nextScope: Scope) {
+    const next = updateAnalyticsScope(scopes, activeTab, nextScope);
+    const text = JSON.stringify(next);
+    // Do not treat our own incomplete date input as an external preference reset.
+    setScopeSource(text); setScopes(next); writeScopes(text);
+  }
 
   function refresh() {
-    const next = { ...cacheRef.current }; delete next[cacheKey]; cacheRef.current = next;
+    const next = { ...cache }; delete next[cacheKey];
     setCache(next);
     setRevision(current => current + 1);
   }
   function datesChanged() {
     // A date correction moves a fact between periods; all cached periods are stale.
-    cacheRef.current = {};
     setCache({});
     setRevision(current => current + 1);
   }
   const exportSection = ({ overview: "global", requisites: "requisites", projects: "projects", customers: "customers", bonuses: "global", reconciliation: "global" } as const)[activeTab];
 
   return <AppShell title="Админка · Аналитика">{forbidden ? <div>Раздел доступен только команде Wowstorg.</div> : <section className={s.page} aria-label="Аналитика бизнеса">
-    <SectionHeader title={activeTab === "overview" ? "Результаты бизнеса" : activeMeta.label} mascot="admin" description="Финансы, проекты и клиенты. Выберите раздел и период для проверки результатов." tabs={<nav aria-label="Разделы аналитики">{["overview", "projects", "customers", "requisites", "bonuses", "reconciliation"].map(id => TAB_META.find(tab => tab.id === id)!).map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => { setActiveTab(tab.id); setError(null); }}>{tab.shortLabel}</button>)}</nav>}>
-    <div className={s.header}><div className={s.headingGroup}><details className={s.datePicker}><summary>{formatDate(scope.from || null)} — {formatDate(scope.to || null)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></summary><div className={s.datePopup}><div className={s.period}><label>С<input type="date" aria-label="Начало периода" value={scope.from} onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, { ...scope, from: event.target.value }))} /></label><label>По<input type="date" aria-label="Конец периода" value={scope.to} onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, { ...scope, to: event.target.value }))} /></label></div><p className={s.note}>{activeMeta.basis}</p></div></details></div><div className={s.controls}>
-      <select className={s.field} aria-label="Быстрый выбор периода" value="" onChange={event => setScopes(current => updateAnalyticsScope(current, activeTab, presetScope(event.target.value as PeriodPreset)))}><option value="" disabled>Выбрать период</option><option value="month">Этот месяц</option><option value="previousMonth">Прошлый месяц</option><option value="quarter">Квартал</option><option value="30days">30 дней</option><option value="year">Этот год</option></select>
+    <SectionHeader title={activeTab === "overview" ? "Результаты бизнеса" : activeMeta.label} mascot="admin" description="Финансы, проекты и клиенты. Выберите раздел и период для проверки результатов." tabs={<nav aria-label="Разделы аналитики">{["overview", "projects", "customers", "requisites", "bonuses", "reconciliation"].map(id => TAB_META.find(tab => tab.id === id)!).map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>{tab.shortLabel}</button>)}</nav>}>
+    <div className={s.header}><div className={s.headingGroup}><details className={s.datePicker}><summary>{formatDate(scope.from || null)} — {formatDate(scope.to || null)}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></summary><div className={s.datePopup}><div className={s.period}><label>С<input type="date" aria-label="Начало периода" value={scope.from} onChange={event => changeScope({ ...scope, from: event.target.value })} /></label><label>По<input type="date" aria-label="Конец периода" value={scope.to} onChange={event => changeScope({ ...scope, to: event.target.value })} /></label></div><p className={s.note}>{activeMeta.basis}</p></div></details></div><div className={s.controls}>
+      <select className={s.field} aria-label="Быстрый выбор периода" value="" onChange={event => changeScope(presetScope(event.target.value as PeriodPreset))}><option value="" disabled>Выбрать период</option><option value="month">Этот месяц</option><option value="previousMonth">Прошлый месяц</option><option value="quarter">Квартал</option><option value="30days">30 дней</option><option value="year">Этот год</option></select>
       {activeTab !== "reconciliation" && <><button type="button" className={s.button} disabled={loading || scopeError} onClick={refresh}>Обновить</button><a className={s.primary} href={scopeError || !data ? undefined : `/api/admin/analytics/export?${new URLSearchParams({ section: exportSection, ...scope })}`} aria-disabled={scopeError || !data}>Экспорт Excel</a></>}
     </div></div></SectionHeader>
     {scopeError ? <div className={s.error}>Укажите обе даты; начало периода не должно быть позже конца.</div> : activeTab === "reconciliation" && ready && state.status === "authenticated" ? <AnalyticsReconciliation scope={scope} /> : error ? <div className={s.error}>{error}<button className={s.button} onClick={refresh} type="button">Повторить</button></div> : !ready || !data ? <DashboardSkeleton /> : <>

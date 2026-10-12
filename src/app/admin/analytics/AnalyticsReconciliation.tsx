@@ -26,20 +26,19 @@ export function AnalyticsReconciliation({ scope }: { scope: { from: string; to: 
   const controller = React.useRef<AbortController | null>(null);
   const mounted = React.useRef(true);
   const context = JSON.stringify([scope.from, scope.to, title.trim(), file?.name, file?.size, file?.lastModified]);
-  const load = React.useCallback(async (id?: string) => {
+  const read = React.useCallback((id?: string) => {
     controller.current?.abort();
     const request = new AbortController(); controller.current = request;
-    setBusy("load"); setError(null);
-    try {
-      const response = await fetch(`/api/admin/analytics/reconciliation?${new URLSearchParams(id ? { id } : {})}`, { cache: "no-store", signal: request.signal });
+    return fetch(`/api/admin/analytics/reconciliation?${new URLSearchParams(id ? { id } : {})}`, { cache: "no-store", signal: request.signal }).then(async response => {
       const result = await response.json().catch(() => null) as { batches?: Batch[]; selected?: Selected | null; error?: { message?: string } } | null;
       if (!response.ok || !result) throw new Error(result?.error?.message ?? "Не удалось загрузить сверки.");
       if (request.signal.aborted) return;
       setBatches(result.batches ?? []); setSelected(result.selected ?? null);
-    } catch (reason) { if (!request.signal.aborted) setError(reason instanceof Error ? reason.message : "Ошибка загрузки."); }
-    finally { if (!request.signal.aborted) setBusy(null); }
+    }).catch((reason: unknown) => { if (!request.signal.aborted) setError(reason instanceof Error ? reason.message : "Ошибка загрузки."); })
+      .finally(() => { if (!request.signal.aborted) setBusy(null); });
   }, []);
-  React.useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false; controller.current?.abort(); }; }, [load]);
+  function load(id?: string) { setBusy("load"); setError(null); return read(id); }
+  React.useEffect(() => { mounted.current = true; void read(); return () => { mounted.current = false; controller.current?.abort(); }; }, [read]);
   async function submit(mode: "preview" | "commit") {
     if (!file || busy || mode === "commit" && (!preview || preview.context !== context || commitUncertain)) return;
     const request = new AbortController(); controller.current?.abort(); controller.current = request;

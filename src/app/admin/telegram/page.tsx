@@ -153,14 +153,23 @@ export default function AdminTelegramPage() {
   const [policyDraft, setPolicyDraft] = React.useState<RatingPolicy | null>(null);
   const [policyBusy, setPolicyBusy] = React.useState(false);
   const [policyMessage, setPolicyMessage] = React.useState<string | null>(null);
+  const scope = state.status === "authenticated" && !forbidden ? state.user.id : null;
+  const [readScope, setReadScope] = React.useState(scope);
+  if (readScope !== scope) { setReadScope(scope); setStatus(null); setLoading(true); setError(null); }
+  const sequence = React.useRef(0);
+  const activeRead = React.useRef<AbortController | null>(null);
 
-  const load = React.useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/admin/telegram", { cache: "no-store" });
+  const read = React.useCallback((silent = false) => {
+    if (!scope) return Promise.resolve();
+    activeRead.current?.abort();
+    const controller = new AbortController(); activeRead.current = controller;
+    const request = ++sequence.current;
+    const current = () => !controller.signal.aborted && request === sequence.current;
+    return fetch("/api/admin/telegram", { cache: "no-store", signal: controller.signal }).then(async response => {
       const data = (await response.json()) as TelegramStatus & { error?: { message?: string } };
       if (!response.ok) throw new Error(data.error?.message || `Ошибка ${response.status}`);
+      if (!current()) return;
+      setError(null);
       setStatus(data); setScenarioId((current) => current || data.scenarios[0]?.id || "");
       setPolicyDraft(data.ratingPolicy);
       setGreenwichUserId((current) => current || data.greenwich.users.find((user) => user.hasTelegramChatId)?.id || "");
@@ -181,11 +190,19 @@ export default function AdminTelegramPage() {
         });
         return nextUserId;
       });
-    } catch (cause) { setStatus(null); setError(cause instanceof Error ? cause.message : "Не удалось получить настройки Telegram"); }
-    finally { if (!silent) setLoading(false); }
-  }, []);
+    }).catch((cause: unknown) => { if (current()) { setStatus(null); setError(cause instanceof Error ? cause.message : "Не удалось получить настройки Telegram"); } })
+      .finally(() => { if (current() && !silent) setLoading(false); });
+  }, [scope]);
+  const load = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    await read(silent);
+  }, [read]);
 
-  React.useEffect(() => { if (!forbidden) void load(); }, [forbidden, load]);
+  React.useEffect(() => {
+    void read();
+    return () => { activeRead.current?.abort(); sequence.current += 1; };
+  }, [read]);
   const selectedScenario = status?.scenarios.find((item) => item.id === scenarioId) ?? null;
   const filteredScenarios = status?.scenarios.filter((item) => group === "all" || item.group === group) ?? [];
   const selectedUser = status?.greenwich.users.find((user) => user.id === greenwichUserId) ?? null;
@@ -211,6 +228,7 @@ export default function AdminTelegramPage() {
 
   async function saveRatingPolicy() {
     if (!policyDraft || policyBusy) return;
+    activeRead.current?.abort(); sequence.current += 1;
     setPolicyBusy(true);
     setPolicyMessage(null);
     try {

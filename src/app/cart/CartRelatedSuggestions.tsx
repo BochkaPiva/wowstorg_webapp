@@ -1,12 +1,9 @@
 "use client";
 
 import React from "react";
-
-import {
-  clearDismissedRelated,
-  dismissRelatedSuggestion,
-  loadDismissedRelatedIds,
-} from "@/lib/cart-related-dismiss";
+import { cartRelatedDismissScope } from "@/lib/cart-related-dismiss";
+import { useLocalStorageText } from "@/lib/use-local-storage-text";
+import { useReadResource } from "@/lib/use-json-resource";
 
 import {
   buildDrumRows,
@@ -31,6 +28,14 @@ type Props = {
 };
 
 const FLAT_LIMIT = 8;
+const EMPTY_GROUPS: CartRelatedSuggestionGroup[] = [];
+
+function dismissedIds(text: string | null): Set<string> {
+  try {
+    const value: unknown = JSON.parse(text ?? "[]");
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === "string" && id.length > 0) : []);
+  } catch { return new Set(); }
+}
 
 function normalizeSuggestion(raw: unknown): CartRelatedSuggestion | null {
   if (!raw || typeof raw !== "object") return null;
@@ -158,76 +163,32 @@ export function CartRelatedSuggestions({
   variant = "cart",
   onAdd,
 }: Props) {
-  const [groups, setGroups] = React.useState<CartRelatedSuggestionGroup[]>([]);
   const [expanded, setExpanded] = React.useState(false);
-  const [dismissed, setDismissed] = React.useState<Set<string>>(() => loadDismissedRelatedIds(cartScope));
-
+  const dismissScope = cartRelatedDismissScope(cartScope);
+  const [stored, writeDismissed] = useLocalStorageText(`cartRelatedDismissed:${dismissScope}`);
+  const [legacy, writeLegacy] = useLocalStorageText(dismissScope === "cart" ? "cartRelatedDismissed:default" : null);
+  const text = stored ?? legacy;
+  const [previous, setPrevious] = React.useState({ scope: dismissScope, count: itemIds.length });
+  const [reset, setReset] = React.useState<{ scope: string; before: string | null } | null>(null);
+  if (previous.scope !== dismissScope || previous.count !== itemIds.length) {
+    setPrevious({ scope: dismissScope, count: itemIds.length });
+    if (previous.scope !== dismissScope) setReset(null);
+    else if (previous.count === 0 && itemIds.length > 0) setReset({ scope: dismissScope, before: text });
+  }
+  if (reset?.scope === dismissScope && reset.before !== text) setReset(null);
+  const resetPending = reset?.scope === dismissScope && reset.before === text;
+  const dismissed = React.useMemo(() => resetPending ? new Set<string>() : dismissedIds(text), [resetPending, text]);
+  const setDismissed = React.useCallback((next: Set<string>) => writeDismissed(JSON.stringify([...next])), [writeDismissed]);
   React.useEffect(() => {
-    setDismissed(loadDismissedRelatedIds(cartScope));
-  }, [cartScope]);
-
-  const prevItemCountRef = React.useRef<number | null>(null);
+    if (stored === null && legacy !== null) { writeDismissed(legacy); writeLegacy(null); }
+  }, [stored, legacy, writeDismissed, writeLegacy]);
   React.useEffect(() => {
-    const count = itemIds.length;
-    if (prevItemCountRef.current === null) {
-      prevItemCountRef.current = count;
-      return;
-    }
-    if (prevItemCountRef.current === 0 && count > 0) {
-      clearDismissedRelated(cartScope);
-      setDismissed(new Set());
-    }
-    prevItemCountRef.current = count;
-  }, [itemIds.length, cartScope]);
+    if (resetPending) { writeDismissed("[]"); writeLegacy(null); }
+  }, [resetPending, writeDismissed, writeLegacy]);
 
   const itemIdsKey = itemIds.join(",");
   const qtysKey = qtys.join(",");
 
-  const requestKey = React.useMemo(
-    () =>
-      [
-        itemIdsKey,
-        qtysKey,
-        startDate ?? "",
-        endDate ?? "",
-        rentalStartPartOfDay,
-        rentalEndPartOfDay,
-        excludeOrderId ?? "",
-      ].join("|"),
-    [itemIdsKey, qtysKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
-  );
-
-  const catalogItemIdsKey = React.useMemo(
-    () => (itemIdsKey ? itemIdsKey.split(",").sort().join(",") : ""),
-    [itemIdsKey],
-  );
-
-  const catalogRequestKey = React.useMemo(
-    () =>
-      [
-        catalogItemIdsKey,
-        qtysKey,
-        startDate ?? "",
-        endDate ?? "",
-        rentalStartPartOfDay,
-        rentalEndPartOfDay,
-        excludeOrderId ?? "",
-      ].join("|"),
-    [catalogItemIdsKey, qtysKey, startDate, endDate, rentalStartPartOfDay, rentalEndPartOfDay, excludeOrderId],
-  );
-
-  const fetchKey = variant === "catalog" ? catalogRequestKey : requestKey;
-
-  React.useEffect(() => {
-    if (disabled || !itemIdsKey) {
-      setGroups([]);
-      return;
-    }
-
-    let cancelled = false;
-    const controller = new AbortController();
-    async function load() {
-      try {
         const params = new URLSearchParams();
         params.set("itemIds", itemIdsKey);
         params.set("qtys", qtysKey);
@@ -238,34 +199,17 @@ export function CartRelatedSuggestions({
           params.set("rentalEndPartOfDay", rentalEndPartOfDay);
         }
         if (excludeOrderId) params.set("excludeOrderId", excludeOrderId);
-        const res = await fetch(`/api/catalog/related?${params.toString()}`, {
+  const url = disabled || !itemIdsKey ? null : `/api/catalog/related?${params}`;
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+        const res = await fetch(url!, {
           cache: "no-store",
-          signal: controller.signal,
+          signal,
         });
         const data = (await res.json().catch(() => null)) as { groups?: unknown } | null;
-        if (!cancelled) {
-          setGroups(res.ok ? normalizeGroups(data?.groups) : []);
-        }
-      } catch (error) {
-        if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) setGroups([]);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [
-    disabled,
-    fetchKey,
-    itemIdsKey,
-    qtysKey,
-    startDate,
-    endDate,
-    rentalStartPartOfDay,
-    rentalEndPartOfDay,
-    excludeOrderId,
-  ]);
+        return res.ok ? normalizeGroups(data?.groups) : [];
+  }, [url]);
+  const resource = useReadResource(url, read, "Рекомендации недоступны");
+  const groups = resource.data ?? EMPTY_GROUPS;
 
   const visibleGroups = React.useMemo(
     () =>
@@ -353,7 +297,7 @@ export function CartRelatedSuggestions({
           <button
             type="button"
             className="cart-related-dismiss"
-            onClick={() => setDismissed(dismissRelatedSuggestion(cartScope, s.relatedItemId))}
+            onClick={() => setDismissed(new Set([...dismissed, s.relatedItemId]))}
           >
             Не нужно
           </button>

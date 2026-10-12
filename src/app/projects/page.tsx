@@ -15,6 +15,7 @@ import {
 } from "@/lib/project-ui-labels";
 import { useAuth } from "@/app/providers";
 import { withDetailReturn } from "@/lib/detail-return";
+import { useJsonResource, useReadResource } from "@/lib/use-json-resource";
 import {
   normalizeProjectWidgetTypes,
   PROJECT_WIDGET_REGISTRY,
@@ -107,6 +108,7 @@ function buildProjectsPageQuery(args: {
 }
 
 type CustomerOpt = { id: string; name: string };
+const EMPTY_CUSTOMERS: CustomerOpt[] = [];
 type ProjectUserOpt = { id: string; displayName: string };
 type ProjectWorkspaceTemplateOpt = {
   id: string;
@@ -193,10 +195,6 @@ function ProjectsContent() {
   const returnTo = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
   const detailSource = tab === "archive" ? "projects-archive" : "projects";
 
-  React.useEffect(() => {
-    setTab(tabFromSearchParams(searchParams));
-  }, [searchParams]);
-
   const [sort, setSort] = React.useState(() => searchParams.get("sort") || "updated_desc");
   const [qInput, setQInput] = React.useState(() => searchParams.get("q") ?? "");
   const [qDebounced, setQDebounced] = React.useState(() => searchParams.get("q") ?? "");
@@ -210,18 +208,51 @@ function ProjectsContent() {
     return () => window.clearTimeout(t);
   }, [qInput]);
 
-  React.useEffect(() => {
-    setSort(searchParams.get("sort") || "updated_desc");
-    setQInput(searchParams.get("q") ?? "");
-    setQDebounced(searchParams.get("q") ?? "");
-    setStageFilter(parseStageFilter(searchParams.get("stage")));
-    setBallFilter(parseBallFilter(searchParams.get("ball")));
-  }, [searchParams]);
+  const filterSource = JSON.stringify([
+    tabFromSearchParams(searchParams), searchParams.get("sort") || "updated_desc",
+    (searchParams.get("q") ?? "").trim(), parseStageFilter(searchParams.get("stage")),
+    parseBallFilter(searchParams.get("ball")),
+  ]);
+  const [appliedFilterSource, setAppliedFilterSource] = React.useState(filterSource);
+  if (appliedFilterSource !== filterSource) {
+    setAppliedFilterSource(filterSource);
+    const ownScope = JSON.stringify([tab, sort, qDebounced.trim(), stageFilter, ballFilter]);
+    // An acknowledgement of our URL must not erase text typed after the debounce.
+    if (filterSource !== ownScope) {
+      setTab(tabFromSearchParams(searchParams));
+      setSort(searchParams.get("sort") || "updated_desc");
+      setQInput(searchParams.get("q") ?? "");
+      setQDebounced(searchParams.get("q") ?? "");
+      setStageFilter(parseStageFilter(searchParams.get("stage")));
+      setBallFilter(parseBallFilter(searchParams.get("ball")));
+    }
+  }
 
   const [projects, setProjects] = React.useState<ProjectCard[]>([]);
-  const [listError, setListError] = React.useState<string | null>(null);
-  const [customers, setCustomers] = React.useState<CustomerOpt[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const allowed = state.status === "authenticated" && role === "WOWSTORG";
+  const ownerKey = allowed ? state.user.id : null;
+  const qs = buildProjectsListQuery({ tab, sort, q: qDebounced, stage: stageFilter, ball: ballFilter });
+  const projectsUrl = `/api/projects${qs ? `?${qs}` : ""}`;
+  const readProjects = React.useCallback(async (signal?: AbortSignal): Promise<ProjectCard[]> => {
+    let response: Response;
+    try { response = await fetch(projectsUrl, { cache: "no-store", signal }); }
+    catch { throw new Error("Сеть или сервер недоступны. Проверьте подключение и попробуйте снова."); }
+    const data = (await response.json().catch(() => null)) as
+      | { projects?: ProjectCard[]; error?: { message?: string } } | null;
+    if (!response.ok) throw new Error(data?.error?.message ?? `Не удалось загрузить проекты (${response.status})`);
+    return data?.projects ?? [];
+  }, [projectsUrl]);
+  const projectsRead = useReadResource(ownerKey ? JSON.stringify([ownerKey, projectsUrl]) : null, readProjects, "Не удалось загрузить проекты");
+  const loading = projectsRead.loading;
+  const listError = projectsRead.error;
+  const loadProjects = projectsRead.refresh;
+  const [projectsSource, setProjectsSource] = React.useState(projectsRead.data);
+  if (projectsSource !== projectsRead.data) {
+    setProjectsSource(projectsRead.data);
+    setProjects(projectsRead.data ?? []);
+  }
+  const customersRead = useJsonResource<{ customers: CustomerOpt[] }>(allowed ? "/api/customers?all=true" : null, "Не удалось загрузить заказчиков");
+  const customers = customersRead.data?.customers ?? EMPTY_CUSTOMERS;
   const [archiveProject, setArchiveProject] = React.useState<ProjectCard | null>(null);
   const [archiveStatus, setArchiveStatus] = React.useState<"COMPLETED" | "CANCELLED">("COMPLETED");
   const [archiveNote, setArchiveNote] = React.useState("");
@@ -259,45 +290,6 @@ function ProjectsContent() {
     [customers, customerInputTrim],
   );
 
-  const loadProjects = React.useCallback(() => {
-    if (state.status === "loading") return;
-    if (state.status !== "authenticated" || role !== "WOWSTORG") {
-      setLoading(false);
-      return;
-    }
-    const qs = buildProjectsListQuery({
-      tab,
-      sort,
-      q: qDebounced,
-      stage: stageFilter,
-      ball: ballFilter,
-    });
-    setLoading(true);
-    setListError(null);
-    fetch(`/api/projects${qs ? `?${qs}` : ""}`, { cache: "no-store" })
-      .then(async (r) => {
-        const data = (await r.json().catch(() => null)) as
-          | { projects?: ProjectCard[]; error?: { message?: string } }
-          | null;
-        if (!r.ok) {
-          setProjects([]);
-          setListError(data?.error?.message ?? `Не удалось загрузить проекты (${r.status})`);
-          return;
-        }
-        setListError(null);
-        setProjects(data?.projects ?? []);
-      })
-      .catch(() => {
-        setProjects([]);
-        setListError("Сеть или сервер недоступны. Проверьте подключение и попробуйте снова.");
-      })
-      .finally(() => setLoading(false));
-  }, [state.status, role, tab, sort, qDebounced, stageFilter, ballFilter]);
-
-  React.useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
-
   React.useEffect(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
     const pageQs = buildProjectsPageQuery({
@@ -309,16 +301,6 @@ function ProjectsContent() {
     });
     router.replace(pageQs ? `${pathname}?${pageQs}` : pathname, { scroll: false });
   }, [state.status, role, tab, sort, qDebounced, stageFilter, ballFilter, pathname, router]);
-
-  React.useEffect(() => {
-    if (state.status !== "authenticated" || role !== "WOWSTORG") return;
-    fetch("/api/customers?all=true", { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then((data: { customers?: CustomerOpt[] } | null) => {
-        setCustomers(data?.customers ?? []);
-      })
-      .catch(() => setCustomers([]));
-  }, [state.status, role]);
 
   React.useEffect(() => {
     if (state.status !== "authenticated" || role !== "WOWSTORG") return;
@@ -590,6 +572,7 @@ function ProjectsContent() {
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
               <div className="font-semibold">Не удалось загрузить список</div>
               <p className="mt-1 text-red-800">{listError}</p>
+              <button type="button" onClick={() => void loadProjects()} className="mt-2 font-bold underline">Повторить</button>
               <p className="mt-2 text-xs text-red-700/90">
                 Если недавно обновляли приложение, на базе должна быть миграция с полем{" "}
                 <code className="rounded bg-red-100/80 px-1">Project.archiveNote</code> — выполните{" "}

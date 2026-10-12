@@ -6,6 +6,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
+import { useReadResource } from "@/lib/use-json-resource";
 import { TeamRatingPanel, type LoyaltyTeamUser } from "./TeamRatingPanel";
 
 type Tier = { id?: string; name: string; minScore: number; discountPercent: number; sortOrder: number };
@@ -107,35 +108,33 @@ function formatDate(value: string) {
 
 export default function LoyaltyAdminPage() {
   const { state } = useAuth();
-  const [data, setData] = React.useState<LoyaltyData | null>(null);
   const [policy, setPolicy] = React.useState<Policy | null>(null);
   const [tab, setTab] = React.useState<Tab>("people");
-  const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [itemQuery, setItemQuery] = React.useState("");
   const [offer, setOffer] = React.useState({ userId: "", title: "", description: "", discountPercent: 40, startsAt: "", endsAt: "", itemIds: [] as string[] });
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/admin/loyalty", { cache: "no-store" });
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+      const response = await fetch("/api/admin/loyalty", { cache: "no-store", signal });
       const json = await readJsonSafe<LoyaltyData | ApiErrorPayload>(response);
       if (!response.ok) throw new Error(getApiError(json as ApiErrorPayload | null, "Не удалось загрузить центр лояльности"));
       if (!json || !("policy" in json)) throw new Error("Сервер не вернул данные. Попробуйте обновить страницу");
-      setData(json);
-      setPolicy(json.policy);
-      setOffer((current) => ({ ...current, userId: current.userId || json.users.find((user: LoyaltyData["users"][number]) => user.isActive)?.id || "" }));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить данные");
-    } finally {
-      setLoading(false);
-    }
+      return json;
   }, []);
-
-  React.useEffect(() => { void load(); }, [load]);
+  const allowed = state.status === "authenticated" && state.user.role === "WOWSTORG";
+  const { data, loading, error: loadError, refresh } = useReadResource(allowed ? "/api/admin/loyalty" : null, read, "Не удалось загрузить данные");
+  const error = actionError ?? loadError;
+  const [formSource, setFormSource] = React.useState(data);
+  if (formSource !== data) {
+    setFormSource(data);
+    if (data) {
+      setPolicy(data.policy);
+      setOffer(current => ({ ...current, userId: current.userId || data.users.find(user => user.isActive)?.id || "" }));
+    }
+  }
+  const load = React.useCallback(async () => { setError(null); await refresh(); }, [refresh]);
 
   async function post(body: unknown) {
     setSaving(true);

@@ -249,7 +249,7 @@ export function ProjectFreeBoard({
   const [openedEntity, setOpenedEntity] = React.useState<{ type: ProjectFreeBoardLinkedItemType; id: string } | null>(null);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
   const [activeItemId, setActiveItemId] = React.useState<string | null>(null);
-  const [historyVersion, setHistoryVersion] = React.useState(0);
+  const [historyAvailability, setHistoryAvailability] = React.useState({ canUndo: false, canRedo: false });
   const [zoom, setZoom] = React.useState(1);
   const [pan, setPan] = React.useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = React.useState(false);
@@ -299,6 +299,10 @@ export function ProjectFreeBoard({
     setItems(next);
   }, []);
 
+  const publishHistoryAvailability = React.useCallback(() => {
+    setHistoryAvailability({ canUndo: undoRef.current.length > 0, canRedo: redoRef.current.length > 0 });
+  }, []);
+
   const pushHistory = React.useCallback((key: string, force = false) => {
     const now = Date.now();
     const last = lastHistoryCaptureRef.current;
@@ -306,8 +310,8 @@ export function ProjectFreeBoard({
     undoRef.current = [...undoRef.current.slice(-49), cloneProjectFreeBoardItems(itemsRef.current)];
     redoRef.current = [];
     lastHistoryCaptureRef.current = { key, at: now };
-    setHistoryVersion((value) => value + 1);
-  }, []);
+    publishHistoryAvailability();
+  }, [publishHistoryAvailability]);
 
   const persistPending = React.useCallback(() => {
     const operations = pendingRef.current;
@@ -363,7 +367,7 @@ export function ProjectFreeBoard({
     return () => { controller.abort(); window.removeEventListener("project-contractors-changed", changed); window.removeEventListener("focus", refreshLinks); };
   }, [projectId]);
 
-  const flush = React.useCallback(async () => {
+  const flush = React.useCallback(async function flushBoardQueue() {
     if (!loaded || readOnly || flushingRef.current) return;
     let envelope = inFlightRef.current;
     if (!envelope) {
@@ -396,7 +400,7 @@ export function ProjectFreeBoard({
         conflictRetriesRef.current += 1;
         await refreshCanonicalRevisions();
         flushingRef.current = false;
-        window.setTimeout(() => void flush(), 80);
+        window.setTimeout(() => void flushBoardQueue(), 80);
         return;
       }
       const body = (await response.json().catch(() => null)) as BatchResponse | {
@@ -421,7 +425,7 @@ export function ProjectFreeBoard({
                   && !invalidItemIds.has(item.payload.targetId));
             }));
             setMessage("Устаревшая связь удалена, остальные изменения сохраняются");
-            window.setTimeout(() => void flush(), 100);
+            window.setTimeout(() => void flushBoardQueue(), 100);
             return;
           }
         }
@@ -458,7 +462,7 @@ export function ProjectFreeBoard({
     } finally {
       flushingRef.current = false;
       if (aliveRef.current && !inFlightRef.current && pendingRef.current.length) {
-        window.setTimeout(() => void flush(), 120);
+        window.setTimeout(() => void flushBoardQueue(), 120);
       }
     }
   }, [actorUserId, loaded, persistPending, projectId, readOnly, refreshCanonicalRevisions, replaceItems]);
@@ -496,6 +500,7 @@ export function ProjectFreeBoard({
           readProjectBoardRecovery(storageKey(actorUserId, projectId, "inflight")),
           readProjectBoardRecovery(storageKey(actorUserId, projectId, "pending")),
         ]);
+        if (cancelled) return;
         const currentLinkables = body.board.linkables ?? EMPTY_LINKABLES;
         inFlightRef.current = storedInFlight;
         pendingRef.current = storedPending?.operations ?? [];
@@ -503,13 +508,12 @@ export function ProjectFreeBoard({
           applyOptimisticOperations(canonical, inFlightRef.current?.operations ?? []),
           pendingRef.current,
         );
-        if (cancelled) return;
         replaceItems(optimistic);
         setServerReadOnly(body.board.readOnly);
         setLinkables(currentLinkables);
         undoRef.current = [];
         redoRef.current = [];
-        setHistoryVersion((value) => value + 1);
+        publishHistoryAvailability();
         setLoaded(true);
         if (body.board.invalidItemIds.length) {
           setMessage("Некоторые старые элементы скрыты: их данные требуют восстановления.");
@@ -531,7 +535,7 @@ export function ProjectFreeBoard({
       aliveRef.current = false;
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     };
-  }, [actorUserId, projectId, replaceItems]);
+  }, [actorUserId, projectId, publishHistoryAvailability, replaceItems]);
 
   React.useEffect(() => {
     if (!loaded || (!inFlightRef.current && !pendingRef.current.length)) return;
@@ -769,7 +773,6 @@ export function ProjectFreeBoard({
     replaceItems(restored);
     enqueueMany(operations, 80);
     lastHistoryCaptureRef.current = null;
-    setHistoryVersion((value) => value + 1);
   }, [enqueueMany, replaceItems]);
 
   const undo = React.useCallback(() => {
@@ -777,14 +780,16 @@ export function ProjectFreeBoard({
     const target = undoRef.current.pop();
     if (!target) return;
     restoreSnapshot(target, redoRef);
-  }, [readOnly, restoreSnapshot]);
+    publishHistoryAvailability();
+  }, [publishHistoryAvailability, readOnly, restoreSnapshot]);
 
   const redo = React.useCallback(() => {
     if (readOnly) return;
     const target = redoRef.current.pop();
     if (!target) return;
     restoreSnapshot(target, undoRef);
-  }, [readOnly, restoreSnapshot]);
+    publishHistoryAvailability();
+  }, [publishHistoryAvailability, readOnly, restoreSnapshot]);
 
   React.useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
@@ -1389,7 +1394,7 @@ export function ProjectFreeBoard({
             </div>
             <div className="mt-2 min-h-0 space-y-1 overflow-y-auto rounded-lg border border-violet-200/80 bg-white/60 p-2">
               {item.payload.itemIds.slice(0, 4).map((itemId) => {
-                const member = itemsRef.current.find((candidate) => candidate.id === itemId);
+                const member = items.find((candidate) => candidate.id === itemId);
                 return (
                   <div key={itemId} className="truncate text-xs font-semibold text-zinc-600">
                     {member ? itemDisplayName(member) : "Удалённый блок"}
@@ -1435,8 +1440,7 @@ export function ProjectFreeBoard({
     error: message || "Не удалось сохранить",
     invalid: message || "Проверьте данные блока",
   };
-  const canUndo = historyVersion >= 0 && undoRef.current.length > 0;
-  const canRedo = historyVersion >= 0 && redoRef.current.length > 0;
+  const { canUndo, canRedo } = historyAvailability;
   const activeLinkables = linkPickerType
     ? (linkables[LINKABLE_COLLECTION[linkPickerType]] ?? []).filter((item) => {
         const query = linkQuery.trim().toLocaleLowerCase("ru-RU");

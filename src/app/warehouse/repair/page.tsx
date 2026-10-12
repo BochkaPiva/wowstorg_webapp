@@ -7,6 +7,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import { useReadResource } from "@/lib/use-json-resource";
 import "@/app/inventory/inventory.css";
 
 type Incident = {
@@ -17,51 +18,52 @@ type Incident = {
 };
 type Row = { key: string; id: string; itemId?: string; name: string; qty: number; manual: boolean; incident?: Incident };
 type Action = { row: Row; kind: "restore" | "write-off"; qty: string };
+type Discrepancy = { id: string; name: string; recorded: number; linked: number };
 const date = (value: string) => new Date(value).toLocaleDateString("ru-RU");
 
 function RepairPageInner() {
   const searchParams = useSearchParams();
   const { state } = useAuth();
   const allowed = state.status === "authenticated" && state.user.role === "WOWSTORG";
-  const [condition, setCondition] = React.useState("NEEDS_REPAIR");
+  const urlCondition = searchParams.get("condition");
+  const [condition, setCondition] = React.useState(() => urlCondition === "BROKEN" ? "BROKEN" : "NEEDS_REPAIR");
+  const [conditionSource, setConditionSource] = React.useState(urlCondition);
+  if (conditionSource !== urlCondition) {
+    setConditionSource(urlCondition);
+    if (urlCondition === "BROKEN" || urlCondition === "NEEDS_REPAIR") setCondition(urlCondition);
+  }
   const [history, setHistory] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [source, setSource] = React.useState("all");
-  const [rows, setRows] = React.useState<Row[]>([]);
-  const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [action, setAction] = React.useState<Action | null>(null);
-  const [error, setError] = React.useState("");
+  const [actionError, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
-  const [discrepancies, setDiscrepancies] = React.useState<{ id: string; name: string; recorded: number; linked: number }[]>([]);
-  const sequence = React.useRef(0);
-  React.useEffect(() => {
-    const value = searchParams.get("condition");
-    if (value === "BROKEN" || value === "NEEDS_REPAIR") setCondition(value);
-  }, [searchParams]);
-  const load = React.useCallback(async () => {
-    if (!allowed) return;
-    const request = ++sequence.current;
-    setLoading(true);
-    setError("");
-    try {
-      const responses = await Promise.all([
-        fetch(`/api/warehouse/incidents?condition=${condition}&status=${history ? "CLOSED" : "OPEN"}`, { cache: "no-store" }),
-        ...(!history ? [fetch(`/api/warehouse/repair-items?condition=${condition}`, { cache: "no-store" })] : []),
-      ]);
-      if (responses.some(r => !r.ok)) throw new Error("Не удалось загрузить ремонт. Повторите попытку.");
-      const [incidents, items] = await Promise.all(responses.map(r => r.json()));
-      if (request !== sequence.current) return;
-      setDiscrepancies(items?.discrepancies ?? []);
-      setRows([
-        ...(incidents.incidents as Incident[]).map(i => ({ key: "order-" + i.id, id: i.id, itemId: i.item?.id, name: i.item?.name ?? "Позиция", qty: i.remainingQty, manual: false, incident: i })),
-        ...((items?.items ?? []) as { id: string; name: string; qty: number }[]).map(i => ({ key: "manual-" + i.id, id: i.id, itemId: i.id, name: i.name, qty: i.qty, manual: true })),
-      ]);
-    } catch (e) {
-      if (request === sequence.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally { if (request === sequence.current) setLoading(false); }
-  }, [allowed, condition, history]);
-  React.useEffect(() => { setAction(null); void load(); return () => { sequence.current++; }; }, [load]);
+  const scope = allowed ? JSON.stringify([condition, history]) : null;
+  const [actionScope, setActionScope] = React.useState(scope);
+  if (actionScope !== scope) { setActionScope(scope); setAction(null); setError(""); }
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+    const responses = await Promise.all([
+      fetch(`/api/warehouse/incidents?condition=${condition}&status=${history ? "CLOSED" : "OPEN"}`, { cache: "no-store", signal }),
+      ...(!history ? [fetch(`/api/warehouse/repair-items?condition=${condition}`, { cache: "no-store", signal })] : []),
+    ]);
+    if (responses.some(r => !r.ok)) throw new Error("Не удалось загрузить ремонт. Повторите попытку.");
+    const incidents = await responses[0]!.json() as { incidents: Incident[] };
+    const items = responses[1] ? await responses[1].json() as { items?: { id: string; name: string; qty: number }[]; discrepancies?: Discrepancy[] } : null;
+    return {
+      discrepancies: items?.discrepancies ?? [],
+      rows: [
+        ...incidents.incidents.map(i => ({ key: "order-" + i.id, id: i.id, itemId: i.item?.id, name: i.item?.name ?? "Позиция", qty: i.remainingQty, manual: false, incident: i })),
+        ...(items?.items ?? []).map(i => ({ key: "manual-" + i.id, id: i.id, itemId: i.id, name: i.name, qty: i.qty, manual: true })),
+      ] as Row[],
+    };
+  }, [condition, history]);
+  const resource = useReadResource(scope, read, "Ошибка загрузки");
+  const rows = resource.data?.rows ?? [];
+  const discrepancies = resource.data?.discrepancies ?? [];
+  const loading = resource.loading;
+  const error = actionError || resource.error || "";
+  async function load() { setError(""); await resource.refresh(); }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();

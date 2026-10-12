@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -43,35 +44,23 @@ export default function InventoryPositionsPage() {
   const [includeInactive, setIncludeInactive] = React.useState(false);
   // Позиции каталога: по умолчанию показываем только то, что видно в каталоге
   const [internalOnly, setInternalOnly] = React.useState<"all" | "internal" | "public">("public");
-  const [items, setItems] = React.useState<Position[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const sp = new URLSearchParams();
-      if (query.trim()) sp.set("query", query.trim());
-      if (includeInactive) sp.set("includeInactive", "true");
-      if (internalOnly !== "all") sp.set("internalOnly", internalOnly === "internal" ? "true" : "false");
-      const res = await fetch(`/api/inventory/positions?${sp.toString()}`, { cache: "no-store" });
-      const txt = await res.text();
-      const data = txt ? (JSON.parse(txt) as { items?: Position[]; error?: { message?: string } }) : {};
-      if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить позиции");
-      setItems(data.items ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
-    }
+  const [submittedQuery, setSubmittedQuery] = React.useState("");
+  const filterScope = JSON.stringify([includeInactive, internalOnly]);
+  const [queryScope, setQueryScope] = React.useState(filterScope);
+  if (queryScope !== filterScope) {
+    setQueryScope(filterScope);
+    setSubmittedQuery(query.trim());
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden, includeInactive, internalOnly]);
+  const sp = new URLSearchParams();
+  if (submittedQuery) sp.set("query", submittedQuery);
+  if (includeInactive) sp.set("includeInactive", "true");
+  if (internalOnly !== "all") sp.set("internalOnly", internalOnly === "internal" ? "true" : "false");
+  const { data, loading, error, refresh } = useJsonResource<{ items?: Position[] }>(state.status === "authenticated" && !forbidden ? `/api/inventory/positions?${sp}` : null, "Не удалось загрузить позиции");
+  const items = data?.items ?? [];
+  function load() {
+    if (submittedQuery !== query.trim()) { setSubmittedQuery(query.trim()); return; }
+    return refresh();
+  }
 
   return (
     <AppShell title="Инвентарь · Позиции">

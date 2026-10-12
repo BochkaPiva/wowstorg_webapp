@@ -4,6 +4,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import { useReadResource } from "@/lib/use-json-resource";
 import "../../inventory.css";
 
 type Item = { id: string; name: string; isActive: boolean; available?: number };
@@ -21,38 +22,44 @@ type PackageGetResponse = {
 };
 
 export default function PackageEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  return <PackageEditor key={id} id={id} />;
+}
+
+function PackageEditor({ id }: { id: string }) {
   const { state } = useAuth();
   const user = state.status === "authenticated" ? state.user : null;
   const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
-  // Next 16: dynamic params are async
-  const { id } = React.use(params);
-
-  const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
 
   const [kitName, setKitName] = React.useState("");
   const [kitDescription, setKitDescription] = React.useState("");
   const [isActive, setIsActive] = React.useState(true);
-  const [items, setItems] = React.useState<Item[]>([]);
   const [lines, setLines] = React.useState<Record<string, string>>({});
   const [search, setSearch] = React.useState("");
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/packages/${id}`, { cache: "no-store" });
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+      const res = await fetch(`/api/inventory/packages/${id}`, { cache: "no-store", signal });
       const txt = await res.text();
       const data = txt ? (JSON.parse(txt) as PackageGetResponse) : {};
       if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить пакет");
       if (!data.kit) throw new Error("Пакет не найден");
-      const kit = data.kit;
+      return data;
+  }, [id]);
+  const resource = useReadResource(state.status === "authenticated" && !forbidden ? id : null, read, "Ошибка");
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  const items = resource.data?.items ?? [];
+  const [formSource, setFormSource] = React.useState(resource.data);
+  if (formSource !== resource.data) {
+    setFormSource(resource.data);
+    const kit = resource.data?.kit;
+    if (kit) {
       setKitName(kit.name ?? "");
       setKitDescription(kit.description ?? "");
       setIsActive(Boolean(kit.isActive));
-      const itemsList = data.items ?? [];
-      setItems(itemsList);
+      const itemsList = resource.data?.items ?? [];
       const lineMap: Record<string, string> = {};
       const availableById = new Map(itemsList.map((i) => [i.id, i.available ?? 0]));
       for (const line of kit.lines ?? []) {
@@ -62,18 +69,9 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
         lineMap[line.itemId] = String(avail > 0 ? Math.min(qty, avail) : qty);
       }
       setLines(lineMap);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
     }
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden, id]);
+  async function load() { setError(null); await resource.refresh(); }
 
   async function save() {
     setBusy(true);

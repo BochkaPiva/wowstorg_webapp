@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 import { LoadingRegion, Skeleton } from "@/app/_ui/Skeleton";
 
 type CalendarPayload = {
@@ -108,32 +109,9 @@ function fmtDayRu(ymd: string): string {
 /** Календарь загрузки (выдача по дням) для дашборда Wowstorg на главной. */
 export function IssuanceCalendar({ className = "" }: { className?: string }) {
   const [year, setYear] = React.useState(() => new Date().getUTCFullYear());
-  const [data, setData] = React.useState<CalendarPayload | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch(`/api/dashboard/issuance-calendar?year=${year}`, { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error("Не удалось загрузить календарь");
-        return r.json() as Promise<CalendarPayload>;
-      })
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [year]);
+  const { data, loading, error } = useJsonResource<CalendarPayload>(
+    `/api/dashboard/issuance-calendar?year=${year}`, "Не удалось загрузить календарь",
+  );
 
   const columns = React.useMemo(() => {
     if (!data) return [];

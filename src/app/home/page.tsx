@@ -13,6 +13,7 @@ import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import type { OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
+import { useJsonResource } from "@/lib/use-json-resource";
 import { formatRentalPeriodRangeRu, type RentalPartOfDay } from "@/lib/rental-days";
 
 import { IssuanceCalendar } from "./IssuanceCalendar";
@@ -322,9 +323,7 @@ function achievementImageSrc(code: string, level: AchievementLevel): string {
 }
 
 function GreenwichAchievementsStrip({ isGreenwich }: { isGreenwich: boolean }) {
-  const [data, setData] = React.useState<AchievementSnapshot | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const { data, loading, error } = useJsonResource<AchievementSnapshot>(isGreenwich ? "/api/greenwich/achievements" : null, "Ошибка загрузки достижений");
   const sortedCards = React.useMemo(() => {
     const cards = data?.cards ?? [];
     return [...cards].sort((a, b) => {
@@ -334,28 +333,6 @@ function GreenwichAchievementsStrip({ isGreenwich }: { isGreenwich: boolean }) {
       return a.title.localeCompare(b.title, "ru");
     });
   }, [data?.cards]);
-
-  React.useEffect(() => {
-    if (!isGreenwich) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/greenwich/achievements", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: AchievementSnapshot) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Ошибка загрузки достижений");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isGreenwich]);
 
   return (
     <>
@@ -480,32 +457,7 @@ type GreenwichDashboardData = {
 };
 
 function GreenwichDashboardBlock({ isGreenwich }: { isGreenwich: boolean }) {
-  const [data, setData] = React.useState<GreenwichDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!isGreenwich) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/dashboard/greenwich", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: GreenwichDashboardData) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isGreenwich]);
+  const { data, loading, error } = useJsonResource<GreenwichDashboardData>(isGreenwich ? "/api/dashboard/greenwich" : null, "Ошибка загрузки");
 
   return (
     <section className="greenwich-orders-panel">
@@ -610,31 +562,8 @@ function auditDotTone(status: InventoryAuditStatus["severity"]) {
 }
 
 function useInventoryAuditStatus() {
-  const [row, setRow] = React.useState<InventoryAuditStatus | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/admin/inventory-audit/status", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j: { status?: InventoryAuditStatus }) => {
-        if (!cancelled) setRow(j.status ?? null);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { row, loading, error };
+  const { data, loading, error } = useJsonResource<{ status?: InventoryAuditStatus }>("/api/admin/inventory-audit/status", "Ошибка загрузки");
+  return { row: data?.status ?? null, loading, error };
 }
 
 function InventoryAuditBadge() {
@@ -853,29 +782,31 @@ function OperationEventCard({ event, compact = false }: { event: OperationsEvent
 
 function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
   const [data, setData] = React.useState<OperationsDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [snoozingSignalId, setSnoozingSignalId] = React.useState<string | null>(null);
+  const sequence = React.useRef(0);
+  const loading = isWowstorg && !loaded;
 
-  const loadOperations = React.useCallback(async (showLoading = false) => {
+  const loadOperations = React.useCallback((signal?: AbortSignal) => {
     if (!isWowstorg) return;
-    if (showLoading) setLoading(true);
-    try {
-      const response = await fetch("/api/dashboard/wowstorg/operations", { cache: "no-store" });
+    const request = ++sequence.current;
+    const current = () => !signal?.aborted && request === sequence.current;
+    return fetch("/api/dashboard/wowstorg/operations", { cache: "no-store", signal }).then(async response => {
       const json = await readJsonSafe<OperationsDashboardData>(response);
       if (!response.ok || !json) throw new Error("Не удалось загрузить план");
+      if (!current()) return;
       setData(json);
       setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      if (showLoading) setLoading(false);
-    }
+    }).catch((e: unknown) => {
+      if (current()) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    }).finally(() => { if (current()) setLoaded(true); });
   }, [isWowstorg]);
 
   React.useEffect(() => {
     if (!isWowstorg) return;
-    void loadOperations(true);
+    const controller = new AbortController();
+    void loadOperations(controller.signal);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadOperations();
     }, 45_000);
@@ -885,6 +816,8 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
     window.addEventListener("focus", refreshWhenActive);
     document.addEventListener("visibilitychange", refreshWhenActive);
     return () => {
+      controller.abort();
+      sequence.current += 1;
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshWhenActive);
       document.removeEventListener("visibilitychange", refreshWhenActive);
@@ -912,6 +845,8 @@ function OperationsDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error("Не удалось отложить сигнал");
+      // A poll started before this acknowledgement cannot restore the dismissed signal.
+      sequence.current += 1;
       setData((current) =>
         current
           ? {
@@ -1005,32 +940,7 @@ function CollapsibleIssuanceCalendar() {
 }
 
 function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
-  const [data, setData] = React.useState<WowstorgDashboardData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!isWowstorg) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/dashboard/wowstorg", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: WowstorgDashboardData) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isWowstorg]);
+  const { data, loading, error } = useJsonResource<WowstorgDashboardData>(isWowstorg ? "/api/dashboard/wowstorg" : null, "Ошибка загрузки");
 
   return (
     <div className="wow-dashboard">
@@ -1195,34 +1105,17 @@ function WowstorgDashboardBlock({ isWowstorg }: { isWowstorg: boolean }) {
 
 export default function HomeDashboardPage() {
   const { state } = useAuth();
-  const [hasActiveOrders, setHasActiveOrders] = React.useState<boolean | null>(null);
 
   const isWowstorg =
     state.status === "authenticated" && state.user.role === "WOWSTORG";
   const isGreenwich =
     state.status === "authenticated" && state.user.role === "GREENWICH";
 
-  React.useEffect(() => {
-    if (!isGreenwich && !isWowstorg) {
-      setHasActiveOrders(null);
-      return;
-    }
-    let cancelled = false;
-    const endpoint = isGreenwich ? "/api/dashboard/greenwich" : "/api/dashboard/wowstorg";
-    void fetch(endpoint, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { activeCount?: number }) => {
-        if (cancelled) return;
-        setHasActiveOrders((data.activeCount ?? 0) > 0);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setHasActiveOrders(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isGreenwich, isWowstorg]);
+  const activity = useJsonResource<{ activeCount?: number }>(
+    isGreenwich ? "/api/dashboard/greenwich" : isWowstorg ? "/api/dashboard/wowstorg" : null,
+    "Ошибка загрузки",
+  );
+  const hasActiveOrders = activity.data ? (activity.data.activeCount ?? 0) > 0 : activity.error ? true : null;
 
   const showTowerLauncher = isGreenwich && hasActiveOrders === false;
 

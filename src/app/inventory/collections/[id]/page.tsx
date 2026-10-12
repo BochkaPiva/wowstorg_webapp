@@ -4,6 +4,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import { useReadResource } from "@/lib/use-json-resource";
 import "../../inventory.css";
 
 type Item = { id: string; name: string; isActive: boolean };
@@ -20,50 +21,49 @@ type CollectionGetResponse = {
 };
 
 export default function CollectionEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  return <CollectionEditor key={id} id={id} />;
+}
+
+function CollectionEditor({ id }: { id: string }) {
   const { state } = useAuth();
   const user = state.status === "authenticated" ? state.user : null;
   const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
-  const { id } = React.use(params);
-  const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
 
   const [collectionName, setCollectionName] = React.useState("");
   const [collectionSlug, setCollectionSlug] = React.useState("");
   const [collectionOrder, setCollectionOrder] = React.useState(0);
-  const [items, setItems] = React.useState<Item[]>([]);
   const [selectedItemIds, setSelectedItemIds] = React.useState<string[]>([]);
   const [search, setSearch] = React.useState("");
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/collections/${id}`, { cache: "no-store" });
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+      const res = await fetch(`/api/inventory/collections/${id}`, { cache: "no-store", signal });
       const txt = await res.text();
       const data = txt ? (JSON.parse(txt) as CollectionGetResponse) : {};
       if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить категорию");
       if (!data.collection) throw new Error("Категория не найдена");
-      const c = data.collection;
+      return data;
+  }, [id]);
+  const resource = useReadResource(state.status === "authenticated" && !forbidden ? id : null, read, "Ошибка");
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  const items = resource.data?.items ?? [];
+  const [formSource, setFormSource] = React.useState(resource.data);
+  if (formSource !== resource.data) {
+    setFormSource(resource.data);
+    const c = resource.data?.collection;
+    if (c) {
       setCollectionName(c.name ?? "");
       setCollectionSlug(c.slug ?? "");
       setCollectionOrder(typeof c.order === "number" ? c.order : 0);
-      setItems(data.items ?? []);
       const ids = (c.items ?? []).map((x) => x.itemId);
       setSelectedItemIds(ids);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
     }
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden, id]);
+  async function load() { setError(null); await resource.refresh(); }
 
   async function save() {
     setBusy(true);

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { MAX_ITEM_RELATIONS_PER_SOURCE } from "@/lib/item-related-constants";
 
@@ -9,6 +10,12 @@ import "./position-edit.css";
 type RelationKind = "REQUIRED" | "RECOMMENDED";
 
 type SearchItem = { id: string; name: string; isActive: boolean; internalOnly: boolean };
+type RelationsResponse = {
+  relations?: Array<{
+    relatedItemId: string; kind: RelationKind; sortOrder: number; defaultSuggestedQty: number;
+    note: string | null; relatedItem: { name: string; isActive: boolean; internalOnly: boolean };
+  }>;
+};
 
 type DraftRow = {
   key: string;
@@ -27,109 +34,49 @@ function newKey() {
 }
 
 export function PositionRelatedItemsEditor({ positionId }: { positionId: string }) {
+  return <RelatedItemsEditor key={positionId} positionId={positionId} />;
+}
+
+function RelatedItemsEditor({ positionId }: { positionId: string }) {
   const [rows, setRows] = React.useState<DraftRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
 
   const [query, setQuery] = React.useState("");
-  const [searchItems, setSearchItems] = React.useState<SearchItem[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = React.useState("");
   const [searchOpen, setSearchOpen] = React.useState(false);
-  const [searching, setSearching] = React.useState(false);
+  const resource = useJsonResource<RelationsResponse>(`/api/inventory/positions/${positionId}/related`, "Не удалось загрузить связи");
+  const loading = resource.loading;
+  const [formSource, setFormSource] = React.useState(resource.data);
+  if (formSource !== resource.data) {
+    setFormSource(resource.data);
+    if (resource.data) setRows((resource.data.relations ?? []).map(r => ({
+      key: `relation:${positionId}:${r.relatedItemId}`,
+      relatedItemId: r.relatedItemId, relatedName: r.relatedItem.name,
+      isActive: r.relatedItem.isActive, internalOnly: r.relatedItem.internalOnly,
+      kind: r.kind, sortOrder: r.sortOrder, defaultSuggestedQty: r.defaultSuggestedQty, note: r.note ?? "",
+    })));
+  }
 
   const existingRelatedIds = React.useMemo(
     () => new Set([positionId, ...rows.map((r) => r.relatedItemId)]),
     [positionId, rows],
   );
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/positions/${positionId}/related`, { cache: "no-store" });
-      const data = (await res.json().catch(() => null)) as {
-        relations?: Array<{
-          relatedItemId: string;
-          kind: RelationKind;
-          sortOrder: number;
-          defaultSuggestedQty: number;
-          note: string | null;
-          relatedItem: { name: string; isActive: boolean; internalOnly: boolean };
-        }>;
-        error?: { message?: string };
-      } | null;
-      if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить связи");
-      setRows(
-        (data?.relations ?? []).map((r) => ({
-          key: newKey(),
-          relatedItemId: r.relatedItemId,
-          relatedName: r.relatedItem.name,
-          isActive: r.relatedItem.isActive,
-          internalOnly: r.relatedItem.internalOnly,
-          kind: r.kind,
-          sortOrder: r.sortOrder,
-          defaultSuggestedQty: r.defaultSuggestedQty,
-          note: r.note ?? "",
-        })),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, [positionId]);
-
+  async function load() { setError(null); await resource.refresh(); }
+  const q = query.trim();
   React.useEffect(() => {
-    void load();
-  }, [load]);
-
-  React.useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
-      setSearchItems([]);
-      setSearching(false);
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    const t = window.setTimeout(async () => {
-      try {
-        const params = new URLSearchParams();
-        params.set("query", q);
-        const res = await fetch(`/api/inventory/positions?${params.toString()}`, { cache: "no-store" });
-        const data = (await res.json().catch(() => null)) as {
-          items?: Array<{ id: string; name: string; isActive: boolean; internalOnly: boolean }>;
-          error?: { message?: string };
-        } | null;
-        if (!cancelled) {
-          if (!res.ok) {
-            setSearchItems([]);
-            setError(data?.error?.message ?? "Не удалось выполнить поиск");
-            return;
-          }
-          setSearchItems(
-            (data?.items ?? [])
-              .filter((i) => !existingRelatedIds.has(i.id))
-              .map((i) => ({
-                id: i.id,
-                name: i.name,
-                isActive: i.isActive,
-                internalOnly: i.internalOnly,
-              })),
-          );
-        }
-      } catch {
-        if (!cancelled) setSearchItems([]);
-      } finally {
-        if (!cancelled) setSearching(false);
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
-  }, [query, existingRelatedIds]);
+    const timer = window.setTimeout(() => setDebouncedQuery(q), 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  const searchResource = useJsonResource<{ items?: SearchItem[] }>(
+    debouncedQuery.length >= 2 && q === debouncedQuery ? `/api/inventory/positions?${new URLSearchParams({ query: debouncedQuery })}` : null,
+    "Не удалось выполнить поиск",
+  );
+  const searchItems = (searchResource.data?.items ?? []).filter(item => !existingRelatedIds.has(item.id));
+  const searching = q.length >= 2 && (q !== debouncedQuery || searchResource.loading);
+  const error = actionError ?? resource.error ?? searchResource.error;
 
   function addRelation(item: SearchItem) {
     if (rows.some((r) => r.relatedItemId === item.id)) {

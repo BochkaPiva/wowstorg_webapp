@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -46,38 +47,28 @@ export default function WarehouseItemsPage() {
 
   const [query, setQuery] = React.useState("");
   const [includeInactive, setIncludeInactive] = React.useState(false);
-  const [items, setItems] = React.useState<Item[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [submitted, setSubmitted] = React.useState({ query: "", includeInactive: false });
+  const [actionError, setError] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [editTotalId, setEditTotalId] = React.useState<string | null>(null);
   const [editTotalValue, setEditTotalValue] = React.useState("");
 
+  const sp = new URLSearchParams();
+  if (submitted.query) sp.set("query", submitted.query);
+  if (submitted.includeInactive) sp.set("includeInactive", "true");
+  sp.set("internalOnly", "true");
+  const resource = useJsonResource<{ items?: Item[] }>(state.status === "authenticated" && !forbidden ? `/api/inventory/positions?${sp}` : null, "Не удалось загрузить реквизит");
+  const items = resource.data?.items ?? [];
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
   async function load() {
-    setLoading(true);
     setError(null);
-    try {
-      const sp = new URLSearchParams();
-      if (query.trim()) sp.set("query", query.trim());
-      if (includeInactive) sp.set("includeInactive", "true");
-      sp.set("internalOnly", "true");
-      const res = await fetch(`/api/inventory/positions?${sp.toString()}`, { cache: "no-store" });
-      const txt = await res.text();
-      const data = txt ? (JSON.parse(txt) as { items?: Item[]; error?: { message?: string } }) : {};
-      if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить реквизит");
-      setItems(data.items ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
+    if (submitted.query !== query.trim() || submitted.includeInactive !== includeInactive) {
+      setSubmitted({ query: query.trim(), includeInactive });
+      return;
     }
+    await resource.refresh();
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden]);
 
   async function patchTotal(id: string, newTotal: number) {
     if (!Number.isInteger(newTotal) || newTotal < 0 || busyId) return;

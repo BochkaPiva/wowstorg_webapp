@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 import Link from "next/link";
 import "@/app/inventory/inventory.css";
 
@@ -28,29 +29,14 @@ export default function WarehouseLossesBasePage() {
 
   const [query, setQuery] = React.useState("");
   const [confirmId, setConfirmId] = React.useState<string | null>(null);
-  const [rows, setRows] = React.useState<LossRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [qtyById, setQtyById] = React.useState<Record<string, string>>({});
-  const [error, setError] = React.useState<string | null>(null);
-
-  const load = React.useCallback(async () => {
-    if (state.status !== "authenticated" || user?.role !== "WOWSTORG") return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/warehouse/losses", { cache: "no-store" });
-      if (!res.ok) throw new Error("Не удалось загрузить утерянное");
-      const data = (await res.json()) as { losses?: LossRow[] };
-      setRows(data.losses ?? []);
-    } catch (e) { setError(e instanceof Error ? e.message : "Ошибка сети"); } finally {
-      setLoading(false);
-    }
-  }, [state.status, user?.role]);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
+  const [actionError, setError] = React.useState<string | null>(null);
+  const resource = useJsonResource<{ losses?: LossRow[] }>(state.status === "authenticated" && user?.role === "WOWSTORG" ? "/api/warehouse/losses" : null, "Не удалось загрузить утерянное");
+  const rows = resource.data?.losses ?? [];
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  async function load() { setError(null); await resource.refresh(); }
 
   async function act(id: string, action: "found" | "write-off") {
     const raw = (qtyById[id] ?? "").trim();

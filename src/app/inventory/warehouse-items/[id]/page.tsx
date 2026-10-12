@@ -4,6 +4,7 @@ import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { useAuth } from "@/app/providers";
+import { useReadResource } from "@/lib/use-json-resource";
 
 type ItemType = "ASSET" | "BULK" | "CONSUMABLE";
 
@@ -29,16 +30,16 @@ function computeAvailableNow(p: Pick<Item, "total" | "inRepair" | "broken" | "mi
 }
 
 export default function WarehouseItemEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  return <WarehouseItemEditor key={id} id={id} />;
+}
+
+function WarehouseItemEditor({ id }: { id: string }) {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  // Next 16: dynamic params are async
-  const { id } = React.use(params);
-
-  const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [item, setItem] = React.useState<Item | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
@@ -51,11 +52,8 @@ export default function WarehouseItemEditPage({ params }: { params: Promise<{ id
     isActive: true,
   });
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/positions/${id}`, { cache: "no-store" });
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+      const res = await fetch(`/api/inventory/positions/${id}`, { cache: "no-store", signal });
       const txt = await res.text();
       const data = txt ? (JSON.parse(txt) as ItemGetResponse) : {};
       if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить");
@@ -64,7 +62,17 @@ export default function WarehouseItemEditPage({ params }: { params: Promise<{ id
       if (!it.internalOnly) {
         throw new Error("Это не складской реквизит");
       }
-      setItem(it);
+      return it;
+  }, [id]);
+  const resource = useReadResource(state.status === "authenticated" && !forbidden ? id : null, read, "Ошибка");
+  const item = resource.data;
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  const [formSource, setFormSource] = React.useState(item);
+  if (formSource !== item) {
+    setFormSource(item);
+    if (item) {
+      const it = item;
       setForm({
         name: it.name,
         description: it.description ?? "",
@@ -75,18 +83,9 @@ export default function WarehouseItemEditPage({ params }: { params: Promise<{ id
         missing: String(it.missing),
         isActive: it.isActive,
       });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
     }
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden, id]);
+  async function load() { setError(null); await resource.refresh(); }
 
   async function save() {
     setBusy(true);

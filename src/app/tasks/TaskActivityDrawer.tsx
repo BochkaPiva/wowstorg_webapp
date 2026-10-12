@@ -100,7 +100,24 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <span className="task-drawer__label">{children}</span>;
 }
 
-export function TaskActivityDrawer({
+type DrawerProps = {
+  taskId: string; users: UserOption[]; columns: ColumnOption[];
+  initialTab?: Tab; initialFocusSubtaskId?: string;
+  onClose: () => void; onChanged: () => void;
+};
+
+const subscribeHost = () => () => {};
+const serverHost = () => null;
+function portalHost() {
+  try { return window.parent && window.parent !== window ? window.parent.document.body : document.body; }
+  catch { return document.body; }
+}
+
+export function TaskActivityDrawer(props: DrawerProps) {
+  return <TaskDrawer key={props.taskId} {...props} />;
+}
+
+function TaskDrawer({
   taskId,
   users,
   columns,
@@ -108,47 +125,36 @@ export function TaskActivityDrawer({
   initialFocusSubtaskId,
   onClose,
   onChanged,
-}: {
-  taskId: string;
-  users: UserOption[];
-  columns: ColumnOption[];
-  initialTab?: Tab;
-  initialFocusSubtaskId?: string;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
+}: DrawerProps) {
   const [tab, setTab] = React.useState<Tab>(initialTab);
   const [task, setTask] = React.useState<TaskDetail | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [loaded, setLoaded] = React.useState(false);
+  const loading = !loaded;
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [comment, setComment] = React.useState("");
   const [newSubtask, setNewSubtask] = React.useState("");
   const [newSubtaskParentId, setNewSubtaskParentId] = React.useState<string | null>(null);
-  const [host, setHost] = React.useState<HTMLElement | null>(null);
+  const host = React.useSyncExternalStore(subscribeHost, portalHost, serverHost);
+  const sequence = React.useRef(0);
 
-  React.useEffect(() => {
-    try {
-      setHost(window.parent && window.parent !== window ? window.parent.document.body : document.body);
-    } catch {
-      setHost(document.body);
-    }
-  }, []);
-
-  const load = React.useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    try {
-      const data = await api<{ task: TaskDetail }>(`/api/tasks/tasks/${taskId}`);
+  const load = React.useCallback((signal?: AbortSignal) => {
+    const request = ++sequence.current;
+    const current = () => !signal?.aborted && request === sequence.current;
+    return api<{ task: TaskDetail }>(`/api/tasks/tasks/${taskId}`, { signal }).then(data => {
+      if (!current()) return;
       setTask(data.task);
       setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить задачу");
-    } finally {
-      if (!quiet) setLoading(false);
-    }
+    }).catch((cause: unknown) => {
+      if (current()) setError(cause instanceof Error ? cause.message : "Не удалось загрузить задачу");
+    }).finally(() => { if (current()) setLoaded(true); });
   }, [taskId]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => { controller.abort(); sequence.current += 1; };
+  }, [load]);
   React.useEffect(() => {
     if (!task || !initialFocusSubtaskId || tab !== "subtasks") return;
     const timer = window.setTimeout(() => {
@@ -160,7 +166,7 @@ export function TaskActivityDrawer({
     return () => window.clearTimeout(timer);
   }, [host, initialFocusSubtaskId, tab, task]);
   React.useEffect(() => {
-    const refresh = () => { if (!busy && document.visibilityState === "visible") void load(true); };
+    const refresh = () => { if (!busy && document.visibilityState === "visible") void load(); };
     const timer = window.setInterval(refresh, 12_000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -179,6 +185,7 @@ export function TaskActivityDrawer({
 
   async function patchTask(body: Record<string, unknown>, optimistic: (current: TaskDetail) => TaskDetail) {
     if (!task) return;
+    sequence.current += 1;
     const before = task;
     setTask(optimistic(task));
     setBusy(true);
@@ -189,7 +196,7 @@ export function TaskActivityDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      await load(true);
+      await load();
       onChanged();
     } catch (cause) {
       setTask(before);
@@ -201,6 +208,7 @@ export function TaskActivityDrawer({
 
   async function patchSubtask(item: Subtask, body: Record<string, unknown>, optimistic: (current: Subtask) => Subtask) {
     if (!task) return;
+    sequence.current += 1;
     const before = task;
     setTask({ ...task, checklistItems: task.checklistItems.map((row) => row.id === item.id ? optimistic(row) : row) });
     setBusy(true);
@@ -210,7 +218,7 @@ export function TaskActivityDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      await load(true);
+      await load();
       onChanged();
     } catch (cause) {
       setTask(before);
@@ -223,6 +231,7 @@ export function TaskActivityDrawer({
   async function addComment() {
     const message = comment.trim();
     if (!message || busy) return;
+    sequence.current += 1;
     setBusy(true);
     try {
       await api(`/api/tasks/tasks/${taskId}/activity`, {
@@ -231,7 +240,7 @@ export function TaskActivityDrawer({
         body: JSON.stringify({ message }),
       });
       setComment("");
-      await load(true);
+      await load();
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось сохранить заметку");
@@ -243,6 +252,7 @@ export function TaskActivityDrawer({
   async function createSubtask() {
     const title = newSubtask.trim();
     if (!title || busy) return;
+    sequence.current += 1;
     setBusy(true);
     try {
       await api(`/api/tasks/tasks/${taskId}/checklist`, {
@@ -252,7 +262,7 @@ export function TaskActivityDrawer({
       });
       setNewSubtask("");
       setNewSubtaskParentId(null);
-      await load(true);
+      await load();
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось создать подзадачу");
@@ -263,10 +273,11 @@ export function TaskActivityDrawer({
 
   async function deleteSubtask(item: Subtask) {
     if (!window.confirm(`Удалить подзадачу «${item.title}»?`)) return;
+    sequence.current += 1;
     setBusy(true);
     try {
       await api(`/api/tasks/checklist/${item.id}`, { method: "DELETE" });
-      await load(true);
+      await load();
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Не удалось удалить подзадачу");

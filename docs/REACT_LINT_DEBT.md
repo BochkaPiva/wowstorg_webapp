@@ -82,6 +82,20 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` успешен — 102 ошибки baseline, 0 регрессий; 80 test files / 507 tests; production audit 0; TypeScript и Next production build проходят. API/схема/env и бизнес-математика не изменены. Baseline ещё необходим: оставшиеся модули не объявлены исправленными.
 
+## Пакет 6 — карточка позиции и панель задачи (12.10.2026)
+
+Ошибки: **102 → 99**, суммарно устранены 65 из 164; все правила сохранены.
+
+- Карточка позиции повторяет проверенный lifecycle складской формы: key по id, GET после подтверждения роли, инициализация черновика при фактическом ответе. Поля цены/закупа, категории, stock fields и `expectedUpdatedAt` не потеряны; PATCH/photo/delete остаются явными событиями.
+- Portal панели задачи получает стабильный snapshot host/пустой SSR snapshot, сохраняя выбор parent body и cross-origin fallback. Смена taskId размонтирует прежний draft/запрос и выбирает новый initialTab.
+- Начальный loading панели задачи вычисляется из первого результата. Poll/focus остаются фоновыми, с latest-response guard и cleanup; начало явной мутации инвалидирует предшествующее чтение. Optimistic updates/rollback остаются в компоненте, не в GET-хуке.
+
+Добавлены семь DOM checks: четыре для задачи (SSR/hydration, task identity/tab, poll races, optimistic update/rollback) и три для позиции (draft/retry, id race, auth gate). Тест формы позиции изолирует дочерний редактор связей, который отдельно проверен в пакете 4. Реальные мутации production-данных и браузерная приёмка не заявляются.
+
+Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — 99 ошибок baseline, 0 регрессий; 81 test files / 514 tests; production audit 0; TypeScript и Next production build успешны.
+
+Дополнительно проверен настоящий headless Edge на локальном production build: восстановление/применение сохранённого вида, native dialog создания + keyboard combobox, явный поиск позиций/видимость, цены и сохранение локального ввода при другом render. `scripts/quality/react-lifecycle-browser-check.mjs` принимает только localhost и перехватывает **все** API; 18 запросов к fixtures, 0 записей, 0 page errors. Неизвестные маршруты/любые mutations ломают check, не проходят к БД. API→рабочая БД, настоящий push и браузер задачи этим smoke не проверены; Vercel runtime logs/drains здесь не инспектировались. Playwright — необязательный внешний QA-runtime, новая dependency в package.json не добавлена.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.

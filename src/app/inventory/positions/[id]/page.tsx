@@ -6,6 +6,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { PositionRelatedItemsEditor } from "@/app/inventory/positions/PositionRelatedItemsEditor";
 import { useAuth } from "@/app/providers";
+import { useReadResource } from "@/lib/use-json-resource";
 
 import "../position-edit.css";
 
@@ -47,17 +48,18 @@ function parseStockField(raw: string): number {
 }
 
 export default function PositionEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  return <PositionEditor key={id} id={id} />;
+}
+
+function PositionEditor({ id }: { id: string }) {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  const { id } = React.use(params);
   const photoInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const [item, setItem] = React.useState<Item | null>(null);
-  const [categories, setCategories] = React.useState<Category[]>([]);
   const [busy, setBusy] = React.useState(false);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
@@ -85,20 +87,26 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     [form.total, form.inRepair, form.broken, form.missing],
   );
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/inventory/positions/${id}`, { cache: "no-store" });
+  const read = React.useCallback(async (signal?: AbortSignal) => {
+      const res = await fetch(`/api/inventory/positions/${id}`, { cache: "no-store", signal });
       const txt = await res.text();
       const data = txt
         ? (JSON.parse(txt) as { item?: Item; categories?: Category[]; error?: { message?: string } })
         : {};
       if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить позицию");
       if (!data.item) throw new Error("Позиция не найдена");
-      const it = data.item;
-      setItem(it);
-      setCategories(data.categories ?? []);
+      return data;
+  }, [id]);
+  const resource = useReadResource(state.status === "authenticated" && !forbidden ? id : null, read, "Ошибка");
+  const item = resource.data?.item ?? null;
+  const categories = resource.data?.categories ?? [];
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  const [formSource, setFormSource] = React.useState(resource.data);
+  if (formSource !== resource.data) {
+    setFormSource(resource.data);
+    const it = resource.data?.item;
+    if (it) {
       setForm({
         name: it.name,
         description: it.description ?? "",
@@ -113,18 +121,9 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
         isActive: it.isActive,
         categoryIds: it.categories.map((c) => c.categoryId),
       });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
     }
   }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden, id]);
+  async function load() { setError(null); await resource.refresh(); }
 
   async function save() {
     setBusy(true);

@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CollectionPage from "@/app/inventory/collections/[id]/page";
 import PackagePage from "@/app/inventory/packages/[id]/page";
 import WarehouseItemPage from "@/app/inventory/warehouse-items/[id]/page";
+import PositionPage from "@/app/inventory/positions/[id]/page";
 
 const auth = vi.hoisted(() => ({ status: "authenticated", role: "WOWSTORG" }));
 vi.mock("@/app/providers", () => ({ useAuth: () => ({ state: { status: auth.status, user: { role: auth.role } } }) }));
 vi.mock("@/app/_ui/AppShell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock("@/app/inventory/positions/PositionRelatedItemsEditor", () => ({ PositionRelatedItemsEditor: () => null }));
 type Flight = { url: string; init?: RequestInit; resolve: (response: Response) => void };
 let root: Root;
 let container: HTMLDivElement;
@@ -29,11 +31,12 @@ function input(element: HTMLInputElement, value: string) {
   act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event("input", { bubbles: true })); });
 }
 function save() { const button = [...container.querySelectorAll("button")].find(entry => entry.textContent?.trim() === "Сохранить")!; act(() => button.click()); }
-const stock = { id: "one", name: "Исходное имя", description: null, type: "CONSUMABLE", internalOnly: true, isActive: true, total: 8, inRepair: 0, broken: 0, missing: 0, updatedAt: "2026-10-12" };
+const stock = { id: "one", name: "Исходное имя", description: null, type: "CONSUMABLE", internalOnly: true, isActive: true, total: 8, inRepair: 0, broken: 0, missing: 0, updatedAt: "2026-10-12T00:00:00.000Z" };
 const cases = [
   { label: "collection", Page: CollectionPage, payload: { collection: { name: "Исходное имя", slug: "source", order: 2, items: [{ itemId: "one" }] }, items: [{ id: "one", name: "Позиция", isActive: true }] } },
   { label: "package", Page: PackagePage, payload: { kit: { name: "Исходное имя", description: "Описание", isActive: true, lines: [{ itemId: "one", defaultQty: 8 }] }, items: [{ id: "one", name: "Позиция", isActive: true, available: 3 }] } },
   { label: "warehouse item", Page: WarehouseItemPage, payload: { item: stock } },
+  { label: "catalog position", Page: PositionPage, payload: { item: { ...stock, internalOnly: false, pricePerDay: "100", purchasePricePerUnit: "500", categories: [{ categoryId: "one" }], collections: [], photo1Key: null }, categories: [{ id: "one", name: "Категория", slug: "one" }] } },
 ];
 
 describe.each(cases)("$label form lifecycle", ({ Page, payload, label }) => {
@@ -53,6 +56,12 @@ describe.each(cases)("$label form lifecycle", ({ Page, payload, label }) => {
     expect(body.name).toBe("Ручное имя");
     if (label === "package") expect(body.lines).toEqual([{ itemId: "one", defaultQty: 3 }]);
     if (label === "collection") expect(body.itemIds).toEqual(["one"]);
+    if (label === "catalog position") {
+      expect(body.expectedUpdatedAt).toBe("2026-10-12T00:00:00.000Z");
+      expect(body.pricePerDay).toBe(100);
+      expect(body.purchasePricePerUnit).toBe(500);
+      expect(body.categoryIds).toEqual(["one"]);
+    }
     await respond(failed, { error: { message: "Не удалось сохранить черновик" } }, 409);
     expect(container.textContent).toContain("Не удалось сохранить черновик");
     save();

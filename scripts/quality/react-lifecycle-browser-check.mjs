@@ -10,6 +10,8 @@ const user = { id: "qa-lifecycle", displayName: "QA · проверка", login:
 const item = { id: "qa-item", name: "QA · позиция", description: null, type: "BULK", isActive: true, internalOnly: false, pricePerDay: "100", purchasePricePerUnit: "500", total: 8, inRepair: 0, broken: 0, missing: 0, photo1Key: null, categories: [], collections: [], updatedAt: "2026-10-12T00:00:00.000Z" };
 const saved = { id: "qa", name: "Архив QA", view: "archive", kind: "project", phase: "DONE", from: "2026-09-01", to: "2026-09-30", sort: "amount" };
 const project = { id: "qa-project", title: "QA · проект", mode: "FULL", leadCustomerName: null, status: "LEAD", ball: "CLIENT", archivedAt: null, archiveNote: null, eventStartDate: null, eventEndDate: null, eventDateConfirmed: false, updatedAt: "2026-10-12T00:00:00.000Z", customer: null, owner: user, _count: { orders: 0 }, finance: { revenueTotal: 123, marginAfterTax: 100, marginAfterTaxPct: 81 } };
+const task = { id: "qa-task", title: "QA · задача", description: null, priority: "NORMAL", color: "#334155", sortOrder: 0, startDate: null, dueDate: null, dueTime: null, reminderAt: "2026-10-20T07:00:00.000Z", reminderText: "QA", priorityStickerEnabled: false, priorityStickerConfigured: false, deadlineStickerEnabled: false, reminderStickerEnabled: true, assigneeStickerEnabled: false, completedAt: null, updatedAt: "2026-10-13T00:00:00.000Z", assignee: null, assignees: [], project: null, order: null, checklistItems: [], checklistTotal: 0, checklistDone: 0, commentCount: 0 };
+const taskBoard = { id: "qa-board", title: "QA · доска", description: null, isDefault: true, updatedAt: "2026-10-13T00:00:00.000Z", syncToken: "qa", columns: [{ id: "qa-open", title: "В работе", isDone: false, sortOrder: 0, tasks: [task] }] };
 const calls = [], writes = [], unknown = [], errors = [];
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
@@ -17,6 +19,7 @@ try {
   await context.addInitScript(({ saved }) => {
     localStorage.setItem("wowstorg.work.saved-views.v1", JSON.stringify([null, saved]));
   }, { saved });
+  await context.route(new URL("/qa-task-host", base).href, route => route.fulfill({ contentType: "text/html", body: `<html><body><iframe title="Embedded tasks" style="width:1200px;height:900px" src="${new URL("/tasks?embed=1&projectId=qa-project", base).href}"></iframe></body></html>` }));
   await context.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url());
     calls.push({ path: url.pathname, params: Object.fromEntries(url.searchParams), method: request.method() });
@@ -38,6 +41,9 @@ try {
     else if (url.pathname === "/api/catalog/kits") result = { kits: [] };
     else if (url.pathname === "/api/catalog/related") result = { groups: [] };
     else if (url.pathname === "/api/users/greenwich") result = { users: [] };
+    else if (url.pathname === "/api/tasks/boards") result = { boards: [{ ...taskBoard, _count: { tasks: 1, columns: 1 } }] };
+    else if (url.pathname === "/api/tasks/meta") result = { users: [user], projects: [], orders: [] };
+    else if (url.pathname === "/api/tasks/boards/qa-board") result = { board: taskBoard };
     else if (url.pathname === "/api/inventory/positions") result = { items: [item] };
     else if (url.pathname === "/api/inventory/positions/qa-item") result = { item, categories: [] };
     else if (url.pathname === "/api/inventory/positions/qa-item/related") result = { relations: [] };
@@ -108,8 +114,24 @@ try {
   await page.getByRole("button", { name: "Увеличить", exact: true }).click();
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("cart") ?? "[]")[0]?.qty === 3);
   assert.equal(await cartQuantity.inputValue(), "3");
+
+  await page.goto(new URL("/qa-task-host", base).href);
+  const frame = page.frameLocator("iframe");
+  await frame.locator('.task-card').waitFor();
+  assert.deepEqual(calls.filter(call => call.path === "/api/tasks/boards/qa-board").at(-1).params, { projectId: "qa-project", includeClosedProjectTasks: "1", archived: "0" });
+  await frame.getByRole("button", { name: "Действия с задачей", exact: true }).click();
+  await frame.locator('.task-popover').waitFor();
+  assert.equal(await page.locator('.task-popover').count(), 0);
+  await frame.getByRole("button", { name: "✎ Переименовать и настроить", exact: true }).click();
+  const taskDialog = page.getByRole("dialog"); await taskDialog.waitFor();
+  assert.equal(await frame.getByRole("dialog").count(), 0);
+  await taskDialog.locator("textarea").first().fill("QA · черновик");
+  await taskDialog.locator("textarea").nth(1).fill("Другой ввод");
+  assert.equal(await taskDialog.locator("textarea").first().inputValue(), "QA · черновик");
+  await taskDialog.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await taskDialog.waitFor({ state: "hidden" });
   assert.deepEqual(writes, []);
   assert.deepEqual(unknown, []);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope", "actual catalog card to cart quantity restore, blur and increment"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
+  console.log(JSON.stringify({ checks: ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope", "actual catalog card to cart quantity restore, blur and increment", "native iframe task scope, local menu and parent form draft"], apiCalls: calls.length, writes: writes.length, pageErrors: errors.length, target: base.origin }));
 } finally { await browser.close(); }

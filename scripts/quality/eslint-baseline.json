@@ -22,7 +22,6 @@
     "src/app/proposals/ProposalWorkspace.tsx|react-hooks/set-state-in-effect": 4,
     "src/app/proposals/ProposalWorkspace.tsx|react-hooks/immutability": 1,
     "src/app/proposals/ProposalWorkspace.tsx|react-hooks/refs": 1,
-    "src/app/tasks/page.tsx|react-hooks/set-state-in-effect": 12,
     "src/app/warehouse/queue/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/_ui/InAppNotifications.tsx|react-hooks/set-state-in-effect": 2
   }

@@ -7,6 +7,9 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { BoardSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import { TaskActivityDrawer } from "@/app/tasks/TaskActivityDrawer";
+import { useSearchParams } from "next/navigation";
+import { useClientReady } from "@/lib/use-client-ready";
+import { useLocalStorageText } from "@/lib/use-local-storage-text";
 
 import "./task-board.css";
 
@@ -260,6 +263,9 @@ async function readApi<T>(res: Response): Promise<T> {
   return data as T;
 }
 
+const subscribePortalHost = () => () => {};
+const emptyPortalHost = () => null;
+
 function getModalPortalHost(): HTMLElement | null {
   if (typeof document === "undefined") return null;
   try {
@@ -425,10 +431,12 @@ function StickerTimeInput({ value, onChange, label = "Время" }: { value: st
   const [hours, setHours] = React.useState(value.slice(0, 2) || "13");
   const [minutes, setMinutes] = React.useState(value.slice(3, 5) || "00");
 
-  React.useEffect(() => {
+  const [source, setSource] = React.useState(value);
+  if (source !== value) {
+    setSource(value);
     setHours(value.slice(0, 2) || "13");
     setMinutes(value.slice(3, 5) || "00");
-  }, [value]);
+  }
 
   function commit(nextHours = hours, nextMinutes = minutes) {
     const normalizedHours = String(Math.min(23, Math.max(0, Number(nextHours) || 0))).padStart(2, "0");
@@ -609,15 +617,9 @@ function AnchoredPopover({
   children: React.ReactNode;
 }) {
   const menuRef = React.useRef<HTMLDivElement>(null);
-  const [host, setHost] = React.useState<HTMLElement | null>(null);
+  const host = React.useSyncExternalStore(subscribePortalHost, getTaskSurfacePortalHost, emptyPortalHost);
   const [position, setPosition] = React.useState({ top: 0, left: 0, maxHeight: 480, placement: "below" as "above" | "below" });
 
-  React.useLayoutEffect(() => {
-    // Compact task menus must stay in the task document. In the project card the
-    // board lives in an iframe; portalling to the parent body loses task-board.css
-    // and makes the editor render as unstyled page content.
-    setHost(getTaskSurfacePortalHost());
-  }, []);
 
   const updatePosition = React.useCallback(() => {
     if (!anchor || !host) return;
@@ -908,9 +910,7 @@ function ChecklistTreeItem({
   const [titleDraft, setTitleDraft] = React.useState(node.title);
   const hasPriority = node.priorityStickerEnabled || node.priority !== "NORMAL";
 
-  React.useEffect(() => {
-    if (!editingTitle) setTitleDraft(node.title);
-  }, [editingTitle, node.title]);
+  if (!editingTitle && titleDraft !== node.title) setTitleDraft(node.title);
 
   function finishTitleEdit() {
     const nextTitle = titleDraft.trim();
@@ -1242,21 +1242,18 @@ function TaskCard({
   const draggedRef = React.useRef(false);
   const [openMenu, setOpenMenu] = React.useState<"stickers" | "actions" | StickerMode | null>(null);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
-  const [editingTitle, setEditingTitle] = React.useState(false);
+  const [editingTitle, setEditingTitle] = React.useState(autoEditTitle);
   const [titleDraft, setTitleDraft] = React.useState(task.title);
   const hasPriority = task.priorityStickerEnabled || task.priority !== "NORMAL";
   const textTone = cardTextColor(task.color);
   const taskDone = Boolean(task.completedAt);
 
-  React.useEffect(() => {
-    if (!editingTitle) setTitleDraft(task.title);
-  }, [editingTitle, task.title]);
-
-  React.useEffect(() => {
-    if (!autoEditTitle || editingTitle) return;
-    setTitleDraft(task.title);
-    setEditingTitle(true);
-  }, [autoEditTitle, editingTitle, task.title]);
+  if (!editingTitle && titleDraft !== task.title) setTitleDraft(task.title);
+  const [autoEditSource, setAutoEditSource] = React.useState(autoEditTitle);
+  if (autoEditSource !== autoEditTitle) {
+    setAutoEditSource(autoEditTitle);
+    if (autoEditTitle && !editingTitle) { setTitleDraft(task.title); setEditingTitle(true); }
+  }
 
   function finishTitleEdit() {
     const nextTitle = titleDraft.trim();
@@ -1571,9 +1568,11 @@ function ChecklistEditorItem({
 }) {
   const [title, setTitle] = React.useState(item.title);
 
-  React.useEffect(() => {
+  const [titleSource, setTitleSource] = React.useState(item.title);
+  if (titleSource !== item.title) {
+    setTitleSource(item.title);
     setTitle(item.title);
-  }, [item.title]);
+  }
 
   return (
     <div className="group flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
@@ -1654,26 +1653,7 @@ function TaskEditor({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [newChecklistTitle, setNewChecklistTitle] = React.useState("");
-  const [portalHost, setPortalHost] = React.useState<HTMLElement | null>(null);
-
-  React.useEffect(() => {
-    setPortalHost(getModalPortalHost());
-  }, []);
-
-  React.useEffect(() => {
-    setTitle(task?.title ?? "");
-    setDescription(task?.description ?? "");
-    setAssigneeUserIds(task ? targetAssignees(task).map((person) => person.id) : []);
-    setDueDate(task?.dueDate ?? "");
-    setReminderAt(toLocalDateTime(task?.reminderAt ?? null));
-    setPriority(task?.priority ?? "NORMAL");
-    setColor(task?.color ?? TASK_COLORS[0]!);
-    setProjectId(task?.project?.id ?? defaultProjectId ?? "");
-    setOrderId(task?.order?.id ?? "");
-    setTargetColumnId(columnId ?? columns[0]?.id ?? "");
-    setError(null);
-    setNewChecklistTitle("");
-  }, [columnId, columns, defaultProjectId, task]);
+  const portalHost = React.useSyncExternalStore(subscribePortalHost, getModalPortalHost, emptyPortalHost);
 
   async function save() {
     if (!title.trim()) {
@@ -2024,19 +2004,17 @@ function TaskEditor({
   return portalHost ? createPortal(editorNode, portalHost) : null;
 }
 
-function TasksPageContent() {
+function TasksPageContent({ viewParams }: { viewParams: { projectId: string; embedded: boolean; readOnly: boolean } }) {
   const { state } = useAuth();
-  const [viewParams, setViewParams] = React.useState({ projectId: "", embedded: false, readOnly: false });
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setViewParams({
-      projectId: params.get("projectId")?.trim() || "",
-      embedded: params.get("embed") === "1",
-      readOnly: params.get("readOnly") === "1",
-    });
-  }, []);
   const [boards, setBoards] = React.useState<BoardListItem[]>([]);
   const [boardId, setBoardId] = React.useState("");
+  const selectedBoardId = React.useRef("");
+  const boardReadSequence = React.useRef(0);
+  const selectBoard = React.useCallback((id: string) => {
+    selectedBoardId.current = id;
+    boardReadSequence.current += 1;
+    setBoardId(id);
+  }, []);
   const [board, setBoard] = React.useState<BoardDetail | null>(null);
   const [meta, setMeta] = React.useState<TasksMeta | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -2066,8 +2044,9 @@ function TasksPageContent() {
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [archiveLoading, setArchiveLoading] = React.useState(false);
   const [archiveTasks, setArchiveTasks] = React.useState<Array<BoardTask & { columnTitle: string }>>([]);
-  const [archivePortalHost, setArchivePortalHost] = React.useState<HTMLElement | null>(null);
-  const [boardTheme, setBoardTheme] = React.useState<TaskBoardTheme>("light");
+  const archivePortalHost = React.useSyncExternalStore(subscribePortalHost, getModalPortalHost, emptyPortalHost);
+  const [storedTheme, writeTheme] = useLocalStorageText("wowstorg-task-board-theme");
+  const boardTheme: TaskBoardTheme = storedTheme === "dark" ? "dark" : "light";
   const boardRef = React.useRef<BoardDetail | null>(null);
   const moveQueueByTaskRef = React.useRef<Map<string, Promise<void>>>(new Map());
   const checklistQueueByItemRef = React.useRef<Map<string, Promise<void>>>(new Map());
@@ -2082,11 +2061,6 @@ function TasksPageContent() {
   const pendingMutationsRef = React.useRef(0);
   const isWowstorg = state.status === "authenticated" && state.user.role === "WOWSTORG";
 
-  React.useEffect(() => {
-    setArchivePortalHost(getModalPortalHost());
-    const savedTheme = window.localStorage.getItem("wowstorg-task-board-theme");
-    if (savedTheme === "dark" || savedTheme === "light") setBoardTheme(savedTheme);
-  }, []);
 
   React.useEffect(() => {
     if (!viewParams.embedded) return;
@@ -2131,11 +2105,7 @@ function TasksPageContent() {
   }
 
   function toggleBoardTheme() {
-    setBoardTheme((current) => {
-      const next = current === "light" ? "dark" : "light";
-      window.localStorage.setItem("wowstorg-task-board-theme", next);
-      return next;
-    });
+    writeTheme(boardTheme === "light" ? "dark" : "light");
   }
 
   const applyBoard = React.useCallback((nextBoard: BoardDetail | null) => {
@@ -2167,14 +2137,19 @@ function TasksPageContent() {
   }, [viewParams.projectId]);
 
   const loadBoard = React.useCallback(
-    async (id: string) => {
+    (id: string) => {
+      if (selectedBoardId.current !== id) return Promise.resolve();
+      const request = ++boardReadSequence.current;
       const mutationSequence = mutationSequenceRef.current;
-      const nextBoard = await fetchBoardDetail(id);
-      if (
-        nextBoard
-        && pendingMutationsRef.current === 0
-        && mutationSequenceRef.current === mutationSequence
-      ) applyBoard(nextBoard);
+      const current = () => selectedBoardId.current === id && request === boardReadSequence.current;
+      return fetchBoardDetail(id).then(nextBoard => {
+        const differentBoard = boardRef.current?.id !== id;
+        if (current() && nextBoard && (differentBoard || pendingMutationsRef.current === 0 && mutationSequenceRef.current === mutationSequence)) applyBoard(nextBoard);
+      }).catch((cause: unknown) => {
+        if (current()) setError(cause instanceof Error ? cause.message : "Не удалось загрузить доску");
+      }).finally(() => {
+        if (current()) setLoading(false);
+      });
     },
     [applyBoard, fetchBoardDetail],
   );
@@ -2210,55 +2185,40 @@ function TasksPageContent() {
     const data = await readApi<{ boards: BoardListItem[] }>(await fetch("/api/tasks/boards", { cache: "no-store" }));
     setBoards(data.boards);
     const nextBoardId = boardId || data.boards[0]?.id || "";
-    setBoardId(nextBoardId);
+    selectBoard(nextBoardId);
     if (nextBoardId) await loadBoard(nextBoardId);
-  }, [boardId, isWowstorg, loadBoard]);
+  }, [boardId, isWowstorg, loadBoard, selectBoard]);
 
   React.useEffect(() => {
     if (!isWowstorg) {
-      setLoading(false);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    const controller = new AbortController();
     Promise.all([
-      fetch("/api/tasks/boards", { cache: "no-store" }).then((res) => readApi<{ boards: BoardListItem[] }>(res)),
-      fetch("/api/tasks/meta", { cache: "no-store" }).then((res) => readApi<TasksMeta>(res)),
+      fetch("/api/tasks/boards", { cache: "no-store", signal: controller.signal }).then((res) => readApi<{ boards: BoardListItem[] }>(res)),
+      fetch("/api/tasks/meta", { cache: "no-store", signal: controller.signal }).then((res) => readApi<TasksMeta>(res)),
     ])
-      .then(async ([boardsData, metaData]) => {
+      .then(([boardsData, metaData]) => {
         if (cancelled) return;
         setBoards(boardsData.boards);
         setMeta(metaData);
-        const firstBoardId = boardId || boardsData.boards[0]?.id || "";
-        setBoardId(firstBoardId);
-        if (firstBoardId) {
-          const detail = await readApi<{ board: BoardDetail }>(
-            await fetch(
-              `/api/tasks/boards/${firstBoardId}${
-                viewParams.projectId
-                  ? `?projectId=${encodeURIComponent(viewParams.projectId)}&includeClosedProjectTasks=1`
-                  : ""
-              }`,
-              { cache: "no-store" },
-            ),
-          );
-          if (!cancelled) applyBoard(detail.board);
-        }
+        const firstBoardId = boardsData.boards[0]?.id || "";
+        selectBoard(firstBoardId);
+        if (!firstBoardId) setLoading(false);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Не удалось загрузить доску");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setError(e instanceof Error ? e.message : "Не удалось загрузить доску"); setLoading(false); }
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [applyBoard, boardId, isWowstorg, viewParams.projectId]);
+  }, [isWowstorg, selectBoard]);
 
   React.useEffect(() => {
     if (boardId) void loadBoard(boardId);
+    return () => { boardReadSequence.current += 1; };
   }, [boardId, loadBoard]);
 
   React.useEffect(() => {
@@ -2267,6 +2227,7 @@ function TasksPageContent() {
     const sync = async () => {
       if (
         stopped ||
+        loading ||
         document.visibilityState !== "visible" ||
         pendingMutationsRef.current > 0 ||
         draggingTaskId ||
@@ -2275,10 +2236,13 @@ function TasksPageContent() {
         activityDrawer
       ) return;
       try {
+        const request = ++boardReadSequence.current;
         const mutationSequence = mutationSequenceRef.current;
         const nextBoard = await fetchBoardDetail(boardId);
         if (
           !stopped
+          && selectedBoardId.current === boardId
+          && request === boardReadSequence.current
           && nextBoard
           && pendingMutationsRef.current === 0
           && mutationSequenceRef.current === mutationSequence
@@ -2298,7 +2262,7 @@ function TasksPageContent() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [activityDrawer, applyBoard, boardId, draggingColumnId, draggingTaskId, editor, fetchBoardDetail, isWowstorg]);
+  }, [activityDrawer, applyBoard, boardId, draggingColumnId, draggingTaskId, editor, fetchBoardDetail, isWowstorg, loading]);
 
   async function addColumn() {
     if (!board) return;
@@ -3228,7 +3192,7 @@ function TasksPageContent() {
           {boards.length > 1 ? (
             <select
               value={boardId}
-              onChange={(event) => setBoardId(event.target.value)}
+              onChange={(event) => { setLoading(true); setError(null); selectBoard(event.target.value); }}
               className="task-board-toolbar__select"
             >
               {boards.map((item) => (
@@ -3279,7 +3243,7 @@ function TasksPageContent() {
       {loading ? <BoardSkeleton /> : null}
       {error ? <div className="mx-1 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div> : null}
 
-      {!loading && board ? (
+      {!loading && board && board.id === boardId ? (
         <div className="task-board-viewport">
         <div className={`task-board-columns${viewParams.embedded ? " is-embedded" : ""}`}>
           {board.columns.map((column) => (
@@ -3544,6 +3508,7 @@ function TasksPageContent() {
 
       {editor ? (
         <TaskEditor
+          key={JSON.stringify([editor.task?.id ?? "new", editor.columnId, viewParams.projectId])}
           task={editor.task}
           columnId={editor.columnId}
           columns={board?.columns ?? []}
@@ -3579,18 +3544,17 @@ function TasksPageContent() {
 }
 
 export default function TasksPage() {
-  const [embedded, setEmbedded] = React.useState(false);
-  React.useEffect(() => {
-    setEmbedded(new URLSearchParams(window.location.search).get("embed") === "1");
-  }, []);
+  return <React.Suspense fallback={<AppShell title="Задачи"><BoardSkeleton /></AppShell>}><TasksEntry /></React.Suspense>;
+}
 
-  if (embedded) {
-    return <TasksPageContent />;
-  }
-
-  return (
-    <AppShell title="Задачи">
-      <TasksPageContent />
-    </AppShell>
-  );
+function TasksEntry() {
+  const params = useSearchParams();
+  const ready = useClientReady();
+  const { state } = useAuth();
+  const viewParams = { projectId: params.get("projectId")?.trim() || "", embedded: params.get("embed") === "1", readOnly: params.get("readOnly") === "1" };
+  const content = ready && state.status === "authenticated" && state.user.role === "WOWSTORG"
+    ? <TasksPageContent key={JSON.stringify([state.user.id, viewParams])} viewParams={viewParams} />
+    : state.status === "authenticated" && state.user.role !== "WOWSTORG"
+      ? <div>Раздел доступен только команде Wowstorg.</div> : <BoardSkeleton />;
+  return viewParams.embedded ? content : <AppShell title="Задачи">{content}</AppShell>;
 }

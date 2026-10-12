@@ -125,6 +125,21 @@
 
 Проверки: 15 новых tests, всего **87 файлов / 553 tests**. Полный `npm run build:verified` с входным `NODE_ENV=production` прошёл: 67 исторических ошибок, 0 регрессий, production audit 0, TypeScript/Next build успешны. Расширенный smoke в настоящем headless Edge на локальной production-сборке проверил card → cart, восстановление количества, неизменённый blur и увеличение: 44 fixture GETs, 0 writes, 0 page errors. Фото отдано отдельной fixture; неизвестные API и любые mutations по-прежнему блокируются. Настоящее создание заявки, серверный резерв и production-runtime monitoring этим browser smoke не проверены. Baseline остаётся необходимым для остальных 67 ошибок.
 
+## Пакет 9 — рабочая доска задач (13.10.2026)
+
+Ошибки: **67 → 55**, суммарно устранены 109 из 164; сняты все 12 допусков страницы задач, правила/severity не изменялись.
+
+- URL scope/embedded/readOnly получаются через `useSearchParams` в Suspense. Keyed доска привязана к авторизованному пользователю и view scope; SSR snapshot пустой, прежние GET/редакторы не продолжают публиковаться в другой проект после смены URL/роли.
+- Начальная загрузка metadata/list отделена от detail выбранной доски: не дублирует metadata при board selection. Loading первого чтения исходный; loading смены доски задаётся явным событием. Ответы имеют selected-board/generation guard, ошибки detail ловятся; bootstrap отменяется. Poll не конкурирует с initial loading и сохраняет прежние ограничения по editing/drag/pending mutations, mutation sequence и syncToken.
+- Часы/минуты синхронизируются при реальном изменении исходного значения, не reset-effect. Неполный ввод до blur и прежняя нормализация времени сохранены. Закрытые заголовки отражают серверное значение; открытое inline-редактирование не теряет draft при другом render. Auto-edit нового task запускается при инициализации/изменении соответствующего сигнала, без effect.
+- Полная форма имеет key задачи/колонки/проектного контекста. Новый объект columns после обновления подзадачи не стирает название и остальные незаписанные поля. Отклонённый PATCH сохраняет форму. Поля, тела mutations, optimistic ID resolution и per-entity очереди не менялись.
+- Portal hosts используют `useSyncExternalStore` с пустым SSR snapshot. Компактное меню остаётся в task document со своей CSS; полная форма/архив сохраняют прежний same-origin parent host и cross-origin fallback. Измерение/scroll/resize/focus и реальные DOM-effects остаются.
+- Тема — несекретное UI-предпочтение с тем же storage key, storage-event/same-tab subscription; запись вынесена из replayable updater в событие.
+
+Добавлены 14 DOM regression tests: SSR/hydration, auth/logout, embedded project/readonly scope, metadata request count, stale board response/error, тема, title/time draft, form refresh/PATCH failure, portal ownership, polling/optimistic race и POST temporary id → queued PATCH server id. Отдельно проверена смена доски во время mutation другой доски: selected-board scope имеет приоритет, чужой ответ не попадает в новую доску; неполученная/ошибочная новая доска не показывает строки прежней. API замоканы; реальное сохранение, перенос/удаление и reminders в production этими tests не заявляются. API/schema/env/бизнес-правила не менялись.
+
+Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **88 файлов / 567 tests**, 55 исторических errors без новых регрессий, production audit 0, TypeScript и Next build успешны. Настоящий headless Edge расширен same-origin iframe с реальной страницей задач: project GET scope, compact menu в iframe, full editor в parent body, ввод draft/закрытие без сохранения. Все API перехвачены: 49 fixture GETs, 0 writes, 0 page errors. Harness не является полной визуальной проверкой карточки проекта; production task mutations/reminders/runtime logs и мониторинг не проверялись. Для оставшихся 55 ошибок baseline ещё нужен.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.

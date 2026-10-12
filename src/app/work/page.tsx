@@ -13,6 +13,8 @@ import {
 import { WorkQueueSkeleton } from "@/app/_ui/Skeleton";
 import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import { useAuth } from "@/app/providers";
+import { useJsonResource } from "@/lib/use-json-resource";
+import { useLocalStorageText } from "@/lib/use-local-storage-text";
 import { withDetailReturn } from "@/lib/detail-return";
 import { PROJECT_WIDGET_REGISTRY } from "@/lib/projects/project-widget-registry";
 import { WORK_CREATE, workCreateBody, workCreatedHref, type WorkCreateKind } from "@/lib/work-create";
@@ -190,6 +192,17 @@ const PHASE_LABEL: Record<Phase, string> = {
   PAUSED: "Пауза",
   CANCELLED: "Отменено",
 };
+
+function isSavedView(entry: unknown): entry is SavedView {
+  if (!entry || typeof entry !== "object") return false;
+  const value = entry as Record<string, unknown>;
+  return typeof value.id === "string" && typeof value.name === "string" &&
+    typeof value.from === "string" && typeof value.to === "string" &&
+    VIEW_OPTIONS.some(option => option.value === value.view) &&
+    ["all", "project", "order", "estimate"].some(kind => kind === value.kind) &&
+    (value.phase === "all" || Object.hasOwn(PHASE_LABEL, String(value.phase))) &&
+    ["priority", "date", "updated", "amount"].some(sort => sort === value.sort);
+}
 
 const KIND_LABEL: Record<WorkItem["kind"], string> = {
   PROJECT: "Проект",
@@ -410,9 +423,8 @@ function CustomerCombobox({
     (customer) => customer.name.localeCompare(value.trim(), "ru", { sensitivity: "accent" }) === 0,
   );
 
-  React.useEffect(() => {
-    setActiveIndex(-1);
-  }, [value]);
+  const [activeSource, setActiveSource] = React.useState(value);
+  if (activeSource !== value) { setActiveSource(value); setActiveIndex(-1); }
 
   function selectCustomer(customer: CustomerOption) {
     onChange(customer.name);
@@ -505,9 +517,7 @@ export default function WorkQueuePage() {
   const router = useRouter();
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
-  const [payload, setPayload] = React.useState<QueuePayload | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [view, setView] = React.useState<(typeof VIEW_OPTIONS)[number]["value"]>("attention");
   const [queryInput, setQueryInput] = React.useState("");
@@ -521,7 +531,11 @@ export default function WorkQueuePage() {
   });
   const [sort, setSort] = React.useState<SortMode>("priority");
   const [showCancelled, setShowCancelled] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<SavedView[]>([]);
+  const [savedViewsText, writeSavedViews] = useLocalStorageText("wowstorg.work.saved-views.v1");
+  const savedViews = React.useMemo<SavedView[]>(() => {
+    try { const parsed = JSON.parse(savedViewsText ?? "[]") as unknown; return Array.isArray(parsed) ? parsed.filter(isSavedView).slice(0, 8) : []; }
+    catch { return []; }
+  }, [savedViewsText]);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [previews, setPreviews] = React.useState<Record<string, ProjectPreview>>({});
   const [previewBusy, setPreviewBusy] = React.useState<string | null>(null);
@@ -530,7 +544,6 @@ export default function WorkQueuePage() {
   const createFlight = React.useRef(false);
   const [createTitle, setCreateTitle] = React.useState("");
   const [createCustomer, setCreateCustomer] = React.useState("");
-  const [customers, setCustomers] = React.useState<CustomerOption[]>([]);
   const [convertItem, setConvertItem] = React.useState<WorkItem | null>(null);
   const [convertCustomer, setConvertCustomer] = React.useState("");
   const [deleteEstimateItem, setDeleteEstimateItem] = React.useState<WorkItem | null>(null);
@@ -545,39 +558,9 @@ export default function WorkQueuePage() {
     return () => window.clearTimeout(timer);
   }, [queryInput]);
 
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("wowstorg.work.saved-views.v1");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as SavedView[];
-      if (Array.isArray(parsed)) setSavedViews(parsed.slice(0, 8));
-    } catch {
-      // Повреждённое локальное представление не должно ломать очередь.
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (state.status !== "authenticated" || state.user.role !== "WOWSTORG") return;
-    const controller = new AbortController();
-
-    void fetch("/api/customers", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await responseMessage(response));
-        return response.json() as Promise<{ customers?: CustomerOption[] }>;
-      })
-      .then((data) => setCustomers(Array.isArray(data.customers) ? data.customers : []))
-      .catch((customerError) => {
-        if (customerError instanceof DOMException && customerError.name === "AbortError") return;
-        console.error("[work] customers lookup failed", customerError);
-      });
-
-    return () => controller.abort();
-  }, [state]);
-
-  const load = React.useCallback(async () => {
-    if (forbidden) return;
-    setLoading(true);
-    setError(null);
+  const allowed = state.status === "authenticated" && !forbidden;
+  const customerResource = useJsonResource<{ customers?: CustomerOption[] }>(allowed ? "/api/customers" : null, "Не удалось загрузить заказчиков");
+  const customers = Array.isArray(customerResource.data?.customers) ? customerResource.data.customers : [];
     const params = new URLSearchParams({ view, kind });
     if (query) params.set("q", query);
     if (phase !== "all") params.set("phase", phase);
@@ -586,20 +569,9 @@ export default function WorkQueuePage() {
       params.set("to", to);
     }
     if (view === "archive" && showCancelled) params.set("includeCancelled", "true");
-    try {
-      const response = await fetch(`/api/work-queue?${params}`, { cache: "no-store" });
-      if (!response.ok) throw new Error(await responseMessage(response));
-      setPayload((await response.json()) as QueuePayload);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить очередь");
-    } finally {
-      setLoading(false);
-    }
-  }, [forbidden, from, kind, phase, query, showCancelled, to, view]);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: payload, loading, error: loadError, refresh } = useJsonResource<QueuePayload>(allowed ? `/api/work-queue?${params}` : null, "Не удалось загрузить очередь");
+  const error = actionError ?? loadError;
+  const load = React.useCallback(async () => { setError(null); await refresh(); }, [refresh]);
 
   async function loadPreview(item: WorkItem) {
     if (item.kind !== "PROJECT" || previews[item.id]) return;
@@ -642,8 +614,7 @@ export default function WorkQueuePage() {
   }
 
   function persistSavedViews(next: SavedView[]) {
-    setSavedViews(next);
-    window.localStorage.setItem("wowstorg.work.saved-views.v1", JSON.stringify(next));
+    writeSavedViews(JSON.stringify(next));
   }
 
   function saveCurrentView() {

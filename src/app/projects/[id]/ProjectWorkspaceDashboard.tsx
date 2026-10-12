@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
+import { useLocalStorageText } from "@/lib/use-local-storage-text";
 
 import {
   PROJECT_WIDGET_REGISTRY,
@@ -134,12 +135,28 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
   return expanded ? createPortal(widgetNode, document.body) : widgetNode;
 }
 
-export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: {
+type DashboardProps = {
   projectId: string;
   widgets: ProjectWorkspaceWidgetInput[];
   renderWidget: (type: ProjectWidgetType, expanded: boolean, onExpand?: () => void) => React.ReactNode;
-}) {
-  const [collapsedTypes, setCollapsedTypes] = React.useState<Set<ProjectWidgetType>>(new Set());
+};
+
+function readCollapsedTypes(text: string | null) {
+  try {
+    const stored: unknown = JSON.parse(text ?? "[]");
+    return new Set(Array.isArray(stored) ? stored.filter((type): type is ProjectWidgetType => PROJECT_WIDGET_REGISTRY.some(item => item.type === type)) : []);
+  } catch { return new Set<ProjectWidgetType>(); }
+}
+
+export function ProjectWorkspaceDashboard(props: DashboardProps) {
+  return <WorkspaceDashboard key={props.projectId} {...props} />;
+}
+
+function WorkspaceDashboard({ projectId, widgets, renderWidget }: DashboardProps) {
+  const [collapsedText, writeCollapsed] = useLocalStorageText(`project-workspace-collapsed:${projectId}`);
+  const [collapsedTypes, setCollapsedTypes] = React.useState(() => readCollapsedTypes(collapsedText));
+  const [collapsedSource, setCollapsedSource] = React.useState(collapsedText);
+  if (collapsedSource !== collapsedText) { setCollapsedSource(collapsedText); setCollapsedTypes(readCollapsedTypes(collapsedText)); }
   const [expandedType, setExpandedType] = React.useState<ProjectWidgetType | null>(null);
   const [returnToBoard, setReturnToBoard] = React.useState(false);
   function closeExpanded() {
@@ -167,15 +184,6 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
   });
 
   React.useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(`project-workspace-collapsed:${projectId}`) ?? "[]") as string[];
-      setCollapsedTypes(new Set(stored.filter((type): type is ProjectWidgetType => PROJECT_WIDGET_REGISTRY.some((item) => item.type === type))));
-    } catch {
-      setCollapsedTypes(new Set());
-    }
-  }, [projectId]);
-
-  React.useEffect(() => {
     if (!expandedType) return;
     document.body.classList.add("project-workspace-expanded");
     const close = (event: KeyboardEvent) => closeOnEscape(event);
@@ -188,17 +196,11 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
 
   function toggleCollapsed(type: ProjectWidgetType) {
     if (type === "CONTRACTORS" && !collapsedTypes.has(type) && !window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return;
-    setCollapsedTypes((current) => {
-      const next = new Set(current);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      try {
-        localStorage.setItem(`project-workspace-collapsed:${projectId}`, JSON.stringify(Array.from(next)));
-      } catch {
-        // Local preference is best-effort; server layout remains the source of truth.
-      }
-      return next;
-    });
+    const next = new Set(collapsedTypes);
+    if (next.has(type)) next.delete(type);
+    else next.add(type);
+    setCollapsedTypes(next);
+    writeCollapsed(JSON.stringify(Array.from(next)));
   }
 
   const visible = widgets.filter((widget) => widget.isVisible).sort((a, b) => a.sortOrder - b.sortOrder);
@@ -220,7 +222,7 @@ export function ProjectWorkspaceDashboard({ projectId, widgets, renderWidget }: 
           <WorkspaceWidget
             key={widget.type}
             widget={widget}
-            collapsed={collapsedTypes.has(widget.type)}
+            collapsed={expandedType !== widget.type && collapsedTypes.has(widget.type)}
             expanded={expandedType === widget.type}
             onToggleCollapsed={() => toggleCollapsed(widget.type)}
             onToggleExpanded={() => {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import "../inventory.css";
@@ -122,7 +123,7 @@ export default function WarehouseItemsPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Складской реквизит</h1><p>Внутренние инструменты и расходники. Не показываются в каталоге.</p></div><div className="flex flex-wrap gap-2"><Link href="/inventory/warehouse-items/new" className="inv-button inv-primary">+ Новая позиция</Link><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div></header>
+<SectionHeader title="Складской реквизит" description="Внутренние инструменты и расходники. Не показываются в каталоге." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2"><Link href="/inventory/warehouse-items/new" className="inv-button inv-primary">+ Новая позиция</Link><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div>} />
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div className="md:col-span-2">

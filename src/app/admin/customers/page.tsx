@@ -5,6 +5,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
@@ -147,12 +148,7 @@ export default function AdminCustomersPage() {
       {forbidden ? <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg.</div> : (
         <main className="mx-auto grid max-w-[1480px] gap-5 pb-12">
           <Link href="/admin" className="w-fit rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:border-zinc-400">← Админка</Link>
-          <section className="overflow-hidden rounded-[28px] border border-violet-200 bg-[linear-gradient(120deg,#fff_0%,#fff_58%,#f1eaff_100%)] shadow-sm">
-            <div className="grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-end md:p-8">
-              <div><div className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">Единый справочник</div><h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950 md:text-4xl">Заказчики без дублей</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">Заявки, проекты и отдельные сметы привязаны к одной карточке. LTV и история клиента больше не дробятся из-за регистра, пробелов или знаков.</p></div>
-              <div className="grid grid-cols-3 gap-2">{[["Активных", activeCount], ["Дублей", mergeData.summary.duplicateCards], ["Объединено", mergedCount]].map(([label, value]) => <div key={label} className="min-w-24 rounded-2xl border border-white/80 bg-white/80 p-3 shadow-sm"><div className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{label}</div><div className="mt-1 text-2xl font-black text-zinc-950">{value}</div></div>)}</div>
-            </div>
-          </section>
+          <SectionHeader title="Заказчики" mascot="admin" description="Одна карточка для заявок, проектов и смет. Найдите совпадения и сохраните историю клиента вместе." metrics={!loading && !error ? [{ label: "активных", value: activeCount }, { label: "дублей", value: mergeData.summary.duplicateCards }, { label: "объединено", value: mergedCount }] : undefined} />
           {(error || notice) && <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error ?? notice}</div>}
 
           <section className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-sm md:p-6">

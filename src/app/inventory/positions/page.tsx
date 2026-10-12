@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { ToggleSwitch } from "@/app/_ui/ToggleSwitch";
 import { useAuth } from "@/app/providers";
@@ -78,10 +79,10 @@ export default function InventoryPositionsPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Позиции</h1><p>Каталог реквизита: цены, состояние и общий остаток.</p></div><div className="flex flex-wrap gap-2">
+<SectionHeader title="Позиции" description="Каталог реквизита: цены, состояние и общий остаток." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2">
           <Link href="/inventory/positions/new" className="inv-button inv-primary">+ Новая позиция</Link>
           <Link href="/api/inventory/positions/export" className="inv-button">↓ Скачать</Link>
-          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div></header>
+          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div>} />
 
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] lg:items-end">

@@ -486,7 +486,7 @@ function ProjectsContent() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-5">
-          <SectionHeader title="Все проекты" description="Мероприятия команды: текущая работа и завершённые проекты." actions={
+          <SectionHeader title="Все проекты" mascot="projects" description="Мероприятия команды: текущая работа и завершённые проекты." actions={
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -495,6 +495,8 @@ function ProjectsContent() {
                 >
                   Создать проект
                 </button>
+              </div>
+            } tabs={
                 <div
                   className="inline-flex shrink-0 items-center rounded-lg border border-zinc-200 bg-zinc-50 p-1"
                   role="group"
@@ -502,6 +504,7 @@ function ProjectsContent() {
                 >
                   <button
                     type="button"
+                    aria-pressed={tab === "active"}
                     onClick={() => {
                       setTab("active");
                       setSort("updated_desc");
@@ -517,6 +520,7 @@ function ProjectsContent() {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={tab === "archive"}
                     onClick={() => {
                       setTab("archive");
                       setSort("updated_desc");
@@ -531,7 +535,6 @@ function ProjectsContent() {
                     Архив
                   </button>
                 </div>
-              </div>
             }>
             <div>
               <div className="grid gap-2 xl:grid-cols-[minmax(22rem,1fr)_minmax(10rem,13rem)_minmax(12rem,15rem)_minmax(9rem,12rem)]">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
 import styles from "./cleanup.module.css";
@@ -76,7 +77,7 @@ export default function AdminCleanupPage(){
   return <AppShell title="Админка · Очистка">{forbidden?<p>Этот раздел доступен только сотрудникам ВАУСТОРГ.</p>:
     <main className={styles.workspace}>
       <Link href="/admin" className={styles.back}>← Администрирование</Link>
-      <header className={styles.hero}><div><span className={styles.eyebrow}>Служебный инструмент</span><h2>Очистка данных</h2><p>Удаление тестовых и больше не нужных сущностей с обязательным предпросмотром связей.</p></div><span className={styles.dangerBadge}>Безвозвратно</span></header>
+      <SectionHeader title="Очистка данных" mascot="admin" description="Безвозвратное удаление тестовых и больше не нужных сущностей. Сначала проверьте связи и последствия — восстановить удалённое из интерфейса нельзя." />
       <nav className={styles.tabs} aria-label="Тип данных">
         <button type="button" className={entity==="orders"?styles.activeTab:""} onClick={()=>changeEntity("orders")}><strong>Заявки</strong><span>Основные и дополнительные</span></button>
         <button type="button" className={entity==="projects"?styles.activeTab:""} onClick={()=>changeEntity("projects")}><strong>Проекты</strong><span>Только завершённые</span></button>

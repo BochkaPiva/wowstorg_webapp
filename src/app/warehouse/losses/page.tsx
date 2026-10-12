@@ -5,6 +5,7 @@ import Link from "next/link";
 import "@/app/inventory/inventory.css";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 
@@ -94,7 +95,7 @@ export default function WarehouseLossesBasePage() {
 
   return (
     <AppShell title="Утерянный реквизит"><div className="inventory-workspace">
-      <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Утерянное</h1><p>Найденное возвращается в остаток. Списание уменьшает общее количество.</p></div><button className="inv-button" disabled={loading || !!busyId} onClick={() => void load()}>Обновить</button></header>
+      <SectionHeader title="Утерянное" mascot="inventory" description="Найденное возвращается в остаток. Списание уменьшает общее количество." links={<Link href="/inventory/items">← Инвентарь</Link>} actions={<button type="button" disabled={loading || !!busyId} onClick={() => void load()}>Обновить</button>} />
       <div className="inventory-filters"><input aria-label="Поиск утерянного" placeholder="Позиция или заказчик" value={query} onChange={e => setQuery(e.target.value)} /></div>
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">

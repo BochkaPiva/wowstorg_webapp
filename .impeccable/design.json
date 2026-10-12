@@ -1,9 +1,44 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-08T06:51:32Z",
+  "generatedAt": "2026-10-12T03:07:52Z",
   "title": "Design System: WowStorg",
   "extensions": {
     "colorMeta": {
+      "section-header-plum-start": {
+        "role": "secondary",
+        "displayName": "Сливовый край шапки",
+        "tonalRamp": ["oklch(15% 0.07068 306.94)", "oklch(26% 0.07068 306.94)", "oklch(38% 0.07068 306.94)", "oklch(49% 0.07068 306.94)", "oklch(61% 0.07068 306.94)", "oklch(72% 0.07068 306.94)", "oklch(84% 0.07068 306.94)", "oklch(95% 0.07068 306.94)"]
+      },
+      "section-header-plum": {
+        "role": "secondary",
+        "displayName": "Сливовая основа шапки",
+        "tonalRamp": ["oklch(15% 0.05848 309.36)", "oklch(26% 0.05848 309.36)", "oklch(38% 0.05848 309.36)", "oklch(49% 0.05848 309.36)", "oklch(61% 0.05848 309.36)", "oklch(72% 0.05848 309.36)", "oklch(84% 0.05848 309.36)", "oklch(95% 0.05848 309.36)"]
+      },
+      "section-header-plum-end": {
+        "role": "secondary",
+        "displayName": "Глубокий сливовый край",
+        "tonalRamp": ["oklch(15% 0.03850 308.56)", "oklch(26% 0.03850 308.56)", "oklch(38% 0.03850 308.56)", "oklch(49% 0.03850 308.56)", "oklch(61% 0.03850 308.56)", "oklch(72% 0.03850 308.56)", "oklch(84% 0.03850 308.56)", "oklch(95% 0.03850 308.56)"]
+      },
+      "section-header-plum-glow": {
+        "role": "secondary",
+        "displayName": "Тональное выделение сцены",
+        "tonalRamp": ["oklch(15% 0.10257 309.08)", "oklch(26% 0.10257 309.08)", "oklch(38% 0.10257 309.08)", "oklch(49% 0.10257 309.08)", "oklch(61% 0.10257 309.08)", "oklch(72% 0.10257 309.08)", "oklch(84% 0.10257 309.08)", "oklch(95% 0.10257 309.08)"]
+      },
+      "section-header-muted": {
+        "role": "neutral",
+        "displayName": "Светлые пояснения шапки",
+        "tonalRamp": ["oklch(15% 0.03586 311.40)", "oklch(26% 0.03586 311.40)", "oklch(38% 0.03586 311.40)", "oklch(49% 0.03586 311.40)", "oklch(61% 0.03586 311.40)", "oklch(72% 0.03586 311.40)", "oklch(84% 0.03586 311.40)", "oklch(95% 0.03586 311.40)"]
+      },
+      "section-header-line": {
+        "role": "neutral",
+        "displayName": "Граница групп в шапке",
+        "tonalRamp": ["oklch(15% 0.06991 314.48)", "oklch(26% 0.06991 314.48)", "oklch(38% 0.06991 314.48)", "oklch(49% 0.06991 314.48)", "oklch(61% 0.06991 314.48)", "oklch(72% 0.06991 314.48)", "oklch(84% 0.06991 314.48)", "oklch(95% 0.06991 314.48)"]
+      },
+      "section-header-action-ink": {
+        "role": "neutral",
+        "displayName": "Текст жёлтого действия в шапке",
+        "tonalRamp": ["oklch(15% 0.04903 309.78)", "oklch(26% 0.04903 309.78)", "oklch(38% 0.04903 309.78)", "oklch(49% 0.04903 309.78)", "oklch(61% 0.04903 309.78)", "oklch(72% 0.04903 309.78)", "oklch(84% 0.04903 309.78)", "oklch(95% 0.04903 309.78)"]
+      },
       "wow-ink": {
         "role": "neutral",
         "displayName": "Чёрные чернила",
@@ -342,6 +377,18 @@
       }
     },
     "typographyMeta": {
+      "section-header-title": {
+        "displayName": "Заголовок операционной шапки",
+        "purpose": "Desktop заголовок общей шапки; не переопределяет остальные h1."
+      },
+      "section-header-title-medium": {
+        "displayName": "Заголовок шапки до 1000px",
+        "purpose": "Локальный средний вариант общей шапки."
+      },
+      "section-header-title-mobile": {
+        "displayName": "Заголовок шапки до 700px",
+        "purpose": "Локальный мобильный вариант общей шапки; длинные названия переносятся."
+      },
       "headline": {
         "displayName": "Рабочий заголовок",
         "purpose": "Заголовок списка КП; точные headline параметры студии остаются локальными."
@@ -377,6 +424,11 @@
     ],
     "motion": [
       {
+        "name": "section-header-controls",
+        "value": "background-color 150ms ease, color 150ms ease",
+        "purpose": "Спокойный hover actions; tabs меняют background-color. Reduced motion отключает переходы; иллюстрация статична."
+      },
+      {
         "name": "wow-ease",
         "value": "cubic-bezier(0.16, 1, 0.3, 1)",
         "purpose": "Существующее easing глобального shell."
@@ -403,6 +455,14 @@
       }
     ],
     "breakpoints": [
+      {
+        "name": "section-header-medium",
+        "value": "1000px"
+      },
+      {
+        "name": "section-header-mobile",
+        "value": "700px"
+      },
       {
         "name": "shell-drawer",
         "value": "1023px"
@@ -434,6 +494,14 @@
     ]
   },
   "components": [
+    {
+      "name": "Операционная шапка раздела",
+      "kind": "custom",
+      "refersTo": "section-header",
+      "description": "Согласованная семья по образцу Grinvich «Мои заявки»: сливовая основа, белый заголовок, группы действий и вкладок, светлые фильтры ниже. Preview показывает типографику и controls без raster-сцены; реальные work/projects/contractors/inventory/admin сцены и переиспользуемые orders/loyalty PNG описаны в DESIGN.md и public/brand/headers/README.md.",
+      "html": "<header class=\"ds-section-header\"><div class=\"ds-section-hero\"><div class=\"ds-section-copy\"><h1>Рабочая очередь</h1><p>От первого предложения до готового мероприятия. Начните новую работу или продолжите текущую.</p><div class=\"ds-section-actions\"><button type=\"button\">Составить КП</button><button type=\"button\">Составить смету</button><button type=\"button\">Начать проект</button></div><nav class=\"ds-section-tabs\" aria-label=\"Виды очереди\"><button type=\"button\" aria-pressed=\"true\">Вся активная работа</button><button type=\"button\" aria-pressed=\"false\">Архив</button></nav></div></div><div class=\"ds-section-bottom\">Подробные фильтры находятся на светлой поверхности.</div></header>",
+      "css": ".ds-section-header{min-width:0;font-family:Onest,Arial,sans-serif}.ds-section-hero{position:relative;isolation:isolate;overflow:hidden;min-height:260px;border-radius:16px;color:#fff;background:radial-gradient(ellipse at 84% 58%,#492761 0%,transparent 56%),linear-gradient(112deg,#2a163b,#21102d 58%,#160c1e)}.ds-section-copy{position:relative;z-index:1;width:72%;min-height:260px;padding:30px 34px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center}.ds-section-copy h1{margin:0;font-family:'Madefor Display',Onest,Arial,sans-serif;font-size:40px;font-weight:760;line-height:1.12;letter-spacing:-.03em;overflow-wrap:anywhere}.ds-section-copy p{margin:12px 0 0;max-width:62ch;color:#ded0e8;font-size:14px;line-height:1.55}.ds-section-actions,.ds-section-tabs{display:flex;flex-wrap:wrap;gap:4px;max-width:100%;padding:4px;border:1px solid #72577f;border-radius:10px;background:#ffffff0d}.ds-section-actions{margin-top:20px}.ds-section-tabs{margin-top:18px}.ds-section-actions button,.ds-section-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:10px 15px;border:0;border-radius:7px;color:#f1e7f6;background:transparent;font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background-color 150ms ease,color 150ms ease}.ds-section-tabs button{color:#eadcf2;transition:background-color 150ms ease}.ds-section-actions button:first-child,.ds-section-tabs button[aria-pressed=true]{color:#21132b;background:var(--wow-yellow,#ffd21f)}.ds-section-actions button:hover,.ds-section-tabs button:hover{color:#fff;background:#ffffff1a}.ds-section-actions button:first-child:hover{color:#21132b;background:#ffe36b}.ds-section-tabs button[aria-pressed=true]:hover{color:#21132b;background:var(--wow-yellow,#ffd21f)}.ds-section-hero button:focus-visible{outline:2px solid #ffd21f;outline-offset:3px}.ds-section-actions button:disabled{opacity:.55;cursor:not-allowed}.ds-section-bottom{margin-top:14px;padding:16px;border:1px solid var(--wow-line,#d4d4cf);border-radius:12px;background:#fff;color:var(--wow-ink,#0a0a0a);font-size:14px}@media(max-width:1000px){.ds-section-copy{width:78%;padding:26px}.ds-section-copy h1{font-size:34px}}@media(max-width:700px){.ds-section-hero{min-height:0}.ds-section-copy{width:100%;min-height:0;padding:24px 20px;background:linear-gradient(90deg,#21102df5,#21102dc4 70%,#21102d73)}.ds-section-copy h1{font-size:28px}.ds-section-copy p{max-width:92%}.ds-section-actions,.ds-section-tabs{width:100%}.ds-section-actions button{flex:1 1 140px;padding-inline:8px}.ds-section-tabs button{flex:1 1 auto}.ds-section-bottom{padding:12px}}@media(prefers-reduced-motion:reduce){.ds-section-actions button,.ds-section-tabs button{transition:none}}"
+    },
     {
       "name": "Основная кнопка КП",
       "kind": "button",
@@ -514,7 +582,7 @@
   ],
   "narrative": {
     "northStar": "Спокойное рабочее пространство",
-    "overview": "Светлая рабочая основа, чёрное меню и точные цветовые акценты поддерживают быстрые решения команды event-агентства. Уверенность выражается через читаемые названия, доступные действия и содержательные фотографии. Визуальная плотность зависит от задачи: каталогу нужны изображения, спискам — сопоставимые строки, редактору — свободный рабочий холст.\n\nЭто Scan-mode фиксация существующего мира, а не новая идентичность. Глобальные токены извлечены из `src/app/globals.css`; локальные повторяемые варианты — из модулей каталога подрядчиков и КП. В frontmatter намеренно сохранены обе семьи акцентов: локальная реализация КП пока не полностью использует глобальные custom properties. При доработке существующего компонента его CSS остаётся источником точного значения; для общего shell используются глобальные токены. Новых CSS-переменных этот документ не вводит.",
+    "overview": "Светлая рабочая основа, чёрное меню и точные цветовые акценты поддерживают быстрые решения команды event-агентства. Уверенность выражается через читаемые названия, доступные действия и содержательные фотографии. Визуальная плотность зависит от задачи: каталогу нужны изображения, спискам — сопоставимые строки, редактору — свободный рабочий холст.\n\nЭто Scan-mode фиксация существующего мира, а не новая идентичность. Глобальные токены извлечены из `src/app/globals.css`; локальные повторяемые варианты — из модулей каталога подрядчиков и КП. В frontmatter намеренно сохранены обе семьи акцентов: локальная реализация КП пока не полностью использует глобальные custom properties. При доработке существующего компонента его CSS остаётся источником точного значения; для общего shell используются глобальные токены. Новых CSS-переменных этот документ не вводит.\n\nСогласованное расширение от 12.10.2026 добавляет общую операционную шапку раздела по выбранному пользователем образцу Grinvich «Мои заявки». Тёмная сливовая область и тематический динозавр обозначают вход в крупный рабочий раздел; светлые списки, формы и редакторы сохраняют действующую плотность. Источники: `src/app/_ui/{SectionHeader.tsx,section-header.module.css}`, `src/app/work/WorkQueueHeader.tsx`, контракт `.impeccable/surfaces/section-headers.md`, provenance `public/brand/headers/README.md`. Это локальная семья шапок, а не замена визуального мира приложения. Статус реализации и границы проверки зафиксированы в `.impeccable/review/section-headers-verification.md`.",
     "keyCharacteristics": [
       "Светлые нейтральные рабочие поверхности и чёрная навигация.",
       "Жёлтый основной action; фиолетовые выбор, ссылки и вспомогательные действия.",

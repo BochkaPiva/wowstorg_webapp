@@ -2,9 +2,12 @@
   --work-border: var(--wow-line, #d4d4cf);
   --work-muted: #6f706d;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
   padding-bottom: 64px;
 }
+.work-page > * { min-width: 0; }
 
 .work-launch { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 28px; border: 1px solid var(--work-border); border-radius: 16px; background: #fff; padding: 28px 32px 22px; overflow: hidden; }
 .work-launch__content { position: relative; z-index: 1; min-width: 0; }

@@ -3,6 +3,7 @@
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 
 type AuditSeverity = "OK" | "WARNING" | "CRITICAL" | "FAILED";
@@ -123,14 +124,7 @@ export default function InventoryAuditAdminPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg.</div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-sm font-semibold text-zinc-900">Проверка расхождений</div>
-                <div className="mt-1 text-xs text-zinc-600">
-                  Автопроверка: ежедневно (cron). Время запуска задается расписанием cron; ручной запуск: кнопка ниже.
-                </div>
-              </div>
+          <SectionHeader title="Аудит инвентаря" mascot="inventory" description="Проверка остатков и история расхождений. Автопроверка выполняется ежедневно; ручную можно запустить здесь." actions={
               <button
                 type="button"
                 onClick={runManualAudit}
@@ -139,13 +133,13 @@ export default function InventoryAuditAdminPage() {
               >
                 {running ? "Запуск…" : "Запустить проверку"}
               </button>
-            </div>
+            }>
             {error ? (
               <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
                 {error}
               </div>
             ) : null}
-          </div>
+          </SectionHeader>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-4 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">

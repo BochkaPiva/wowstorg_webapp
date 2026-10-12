@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import * as React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
 import { TeamRatingPanel, type LoyaltyTeamUser } from "./TeamRatingPanel";
@@ -165,23 +165,13 @@ export default function LoyaltyAdminPage() {
         <div className="mx-auto max-w-7xl pb-16">
           <Link href="/admin" className="mb-5 inline-flex text-sm font-bold text-zinc-600 transition-colors hover:text-zinc-950">← Администрирование</Link>
 
-          <section className="relative grid overflow-hidden rounded-2xl border border-[#ded5ef] bg-[#f7f4fc] text-[#24132f] lg:min-h-[228px] lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div className="relative z-10 flex flex-col justify-center px-6 py-7 md:px-9">
-              <p className="text-sm font-bold text-[#6426cf]">Единый центр Grinvich</p>
-              <h2 className="mt-2 max-w-3xl text-3xl font-black tracking-[-0.03em] md:text-4xl">Рейтинг, скидки и предупреждения</h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#665970] md:text-base">Здесь видно, почему меняется рейтинг, кто лидирует в этом месяце и какие персональные условия действуют сейчас.</p>
-            </div>
-            <div className="relative hidden min-h-[228px] bg-[#ffd21f] lg:block" aria-hidden>
-              <Image src="/brand/dino-rating-star-cutout.png" alt="" fill sizes="300px" className="object-contain object-bottom p-2 pt-3" priority />
-            </div>
-          </section>
-
-          <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Разделы лояльности">
+          <SectionHeader title="Лояльность Grinvich" mascot="loyalty" description="Рейтинг команды, персональные условия и история изменений — в одном месте." actions={<button type="button" onClick={() => void load()} disabled={loading}>Обновить</button>} tabs={
+          <div role="tablist" aria-label="Разделы лояльности">
             {([['people','Команда'],['offers','Предложения'],['rules','Правила'],['history','История и доставка']] as Array<[Tab,string]>).map(([id, label]) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${tab === id ? "bg-[#6426cf] text-white" : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-50"}`}>{label}</button>
             ))}
-            <button type="button" onClick={() => void load()} className="ml-auto rounded-full px-4 py-2 text-sm font-bold text-zinc-600 transition-colors hover:bg-white" disabled={loading}>Обновить</button>
           </div>
+          } />
 
           {error && <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-900"><div className="text-sm font-black">Не удалось загрузить данные</div><p className="mt-1 text-sm leading-5">{error}</p><button type="button" onClick={() => void load()} className="mt-3 rounded-lg bg-red-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-red-800">Попробовать снова</button></div>}
           {notice && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div>}

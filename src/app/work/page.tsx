@@ -872,10 +872,9 @@ export default function WorkQueuePage() {
         <div className="work-empty">Раздел доступен только команде Wowstorg.</div>
       ) : (
         <div className="work-page">
-          <WorkQueueHeader onCreate={kind => { setCreateError(null); setCreateKind(kind); }} />
-
-          <section className="work-controls" aria-label="Фильтры рабочей очереди">
-            <div className="work-controls__toolbar">
+          <WorkQueueHeader onCreate={kind => { setCreateError(null); setCreateKind(kind); }}
+            metrics={payload && !loading && !error ? [{ label: "проектов в выборке", value: payload.meta.projects }, { label: "заявок", value: payload.meta.standaloneOrders }, { label: "расчётов", value: payload.meta.estimates }] : undefined}
+            tabs={
               <div className="work-presets" role="tablist" aria-label="Быстрые представления">
                 {VIEW_OPTIONS.map((option) => (
                   <button
@@ -890,6 +889,10 @@ export default function WorkQueuePage() {
                   </button>
                 ))}
               </div>
+            } />
+
+          <section className="work-controls" aria-label="Фильтры рабочей очереди">
+            <div className="work-controls__toolbar">
               <button type="button" className="work-saveView" onClick={saveCurrentView}>
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M5.5 3.5h9v13L10 13.8l-4.5 2.7v-13Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
@@ -977,14 +980,6 @@ export default function WorkQueuePage() {
                   />
                   <span>Показывать отменённые</span>
                 </label>
-              </div>
-            ) : null}
-            {payload ? (
-              <div className="work-meta" aria-label="Состав очереди">
-                <span><strong>{payload.meta.total}</strong> всего</span>
-                <span><strong>{payload.meta.projects}</strong> проектов</span>
-                <span><strong>{payload.meta.standaloneOrders}</strong> заявок</span>
-                <span><strong>{payload.meta.estimates}</strong> расчётов</span>
               </div>
             ) : null}
           </section>

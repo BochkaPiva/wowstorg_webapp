@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import {
@@ -260,10 +261,7 @@ export default function AdminUsersPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link href="/admin" className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
-              ← Админка
-            </Link>
+          <SectionHeader title="Пользователи" mascot="admin" description="Команда, роли и доступ к рабочему пространству." links={<Link href="/admin">Администрирование</Link>} actions={
             <button
               type="button"
               onClick={() => {
@@ -275,7 +273,7 @@ export default function AdminUsersPage() {
             >
               Добавить пользователя
             </button>
-          </div>
+          } />
 
           {error && !modal && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">

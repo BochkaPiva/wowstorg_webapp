@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 
 type ScenarioGroup = "connection" | "orders" | "confirmations" | "operations";
@@ -307,10 +308,9 @@ export default function AdminTelegramPage() {
   return <AppShell title="Telegram"><div className="mx-auto w-full max-w-[1480px] pb-16">
     <Link href="/admin" className="group mb-5 inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 transition-colors hover:text-zinc-950"><span aria-hidden="true" className="transition-transform group-hover:-translate-x-0.5">←</span> Администрирование</Link>
     {forbidden ? <div className="border border-zinc-300 bg-white p-6 text-sm text-zinc-700">Раздел доступен только сотрудникам Wowstorg.</div> : <>
-      <section className="overflow-hidden border border-zinc-300 border-t-4 border-t-[#ffd21f] bg-white">
-        <div className="grid gap-8 px-6 py-8 lg:grid-cols-[1fr_auto] lg:items-end lg:px-9"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[#6426cf]">Администрирование · Telegram</p><h1 className="mt-3 max-w-4xl text-4xl font-black tracking-[-0.045em] text-zinc-950 md:text-6xl">Центр проверки бота</h1><p className="mt-4 max-w-3xl text-base leading-7 text-zinc-600">Проверяйте реальные шаблоны, маршруты доставки и inline-кнопки до того, как уведомление понадобится в работе.</p></div><button type="button" onClick={() => void load()} disabled={loading} className="inline-flex h-12 items-center justify-center gap-2 border border-zinc-300 bg-white px-5 text-sm font-bold text-zinc-950 transition-colors hover:bg-zinc-100 disabled:opacity-50"><Icon name="refresh" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить статус</button></div>
+      <SectionHeader title="Центр проверки бота" mascot="admin" description="Проверяйте реальные шаблоны, маршруты доставки и inline-кнопки до того, как уведомление понадобится в работе." actions={<button type="button" onClick={() => void load()} disabled={loading}><Icon name="refresh" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить статус</button>}>
         {loading ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4">{[0,1,2,3].map((item) => <div key={item} className="h-24 animate-pulse border-r border-zinc-200 bg-zinc-50 last:border-r-0" />)}</div> : status ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4"><StatusCell label="Bot API" value={status.telegram.hasBotToken ? "Токен подключён" : "Токен не задан"} ok={status.telegram.hasBotToken} detail={`${status.telegram.sendTimeoutMs ?? 0} мс`} /><StatusCell label="Склад" value={status.telegram.warehouseChatId ? "Маршрут готов" : "Чат не задан"} ok={Boolean(status.telegram.warehouseChatId)} detail={status.telegram.warehouseTopicId ? `Топик ${status.telegram.warehouseTopicId}` : "Без топика"} /><StatusCell label="Webhook" value={status.telegram.webhookSecretConfigured ? "Защищён" : "Нужна настройка"} ok={status.telegram.webhookSecretConfigured} detail={status.telegram.webhookUrl ?? "URL не задан"} /><StatusCell label="Greenwich" value={`${status.greenwich.withTelegramChatId} из ${status.greenwich.activeUsers} подключено`} ok={status.greenwich.activeUsers === status.greenwich.withTelegramChatId && status.greenwich.activeUsers > 0} detail="Личные получатели" /></div> : null}
-      </section>
+      </SectionHeader>
 
       {!loading && status ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-rose-500 bg-white">
         <div className="grid gap-6 border-b border-zinc-200 bg-[#0b0b0b] px-6 py-7 text-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">

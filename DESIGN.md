@@ -26,6 +26,13 @@ colors:
   proposal-muted: "#68636d"
   proposal-field-line: "#d8d4de"
   proposal-surface-line: "#ddd8e2"
+  section-header-plum-start: "#2a163b"
+  section-header-plum: "#21102d"
+  section-header-plum-end: "#160c1e"
+  section-header-plum-glow: "#492761"
+  section-header-muted: "#ded0e8"
+  section-header-line: "#72577f"
+  section-header-action-ink: "#21132b"
 typography:
   headline:
     fontFamily: "Onest, Arial, sans-serif"
@@ -50,6 +57,24 @@ typography:
     fontWeight: 760
     lineHeight: 1.2
     letterSpacing: "-0.025em"
+  section-header-title:
+    fontFamily: "Madefor Display, Onest, Arial, sans-serif"
+    fontSize: "40px"
+    fontWeight: 760
+    lineHeight: 1.12
+    letterSpacing: "-0.03em"
+  section-header-title-medium:
+    fontFamily: "Madefor Display, Onest, Arial, sans-serif"
+    fontSize: "34px"
+    fontWeight: 760
+    lineHeight: 1.12
+    letterSpacing: "-0.03em"
+  section-header-title-mobile:
+    fontFamily: "Madefor Display, Onest, Arial, sans-serif"
+    fontSize: "28px"
+    fontWeight: 760
+    lineHeight: 1.12
+    letterSpacing: "-0.03em"
 rounded:
   wow-sm: "8px"
   wow-default: "12px"
@@ -108,6 +133,15 @@ components:
   skeleton:
     backgroundColor: "{colors.wow-surface-soft}"
     rounded: "{rounded.skeleton}"
+  section-header:
+    backgroundColor: "{colors.section-header-plum}"
+    textColor: "{colors.wow-surface}"
+    rounded: "{rounded.wow-lg}"
+  section-header-action-primary:
+    backgroundColor: "{colors.wow-yellow}"
+    textColor: "{colors.section-header-action-ink}"
+    rounded: "7px"
+    padding: "10px 15px"
 ---
 
 # Design System: WowStorg
@@ -129,6 +163,8 @@ components:
 - Содержательные фотографии целиком, ясные строки услуг и чисел.
 - Короткие функциональные переходы и skeleton при загрузке.
 
+Согласованное расширение от 12.10.2026 добавляет общую операционную шапку раздела по выбранному пользователем образцу Grinvich «Мои заявки». Тёмная сливовая область и тематический динозавр обозначают вход в крупный рабочий раздел; светлые списки, формы и редакторы сохраняют действующую плотность. Источники: `src/app/_ui/{SectionHeader.tsx,section-header.module.css}`, `src/app/work/WorkQueueHeader.tsx`, контракт `.impeccable/surfaces/section-headers.md`, provenance `public/brand/headers/README.md`. Это локальная семья шапок, а не замена визуального мира приложения. Статус реализации и границы проверки зафиксированы в `.impeccable/review/section-headers-verification.md`.
+
 ## Colors
 
 Палитра сочетает тёплую нейтральную основу с насыщенными, ограниченными по роли акцентами; нормативные значения находятся в frontmatter.
@@ -140,6 +176,8 @@ components:
 ### Secondary
 
 Фиолетовый (`wow-purple`, локальные `proposal-purple` и `proposal-focus`) служит выбору, рабочим ссылкам, quiet actions и фокусу. Светлые фиолетовые поверхности различают активные категории, варианты и разделы; тёмный глобальный вариант доступен в существующей палитре.
+
+Локальная семья `section-header-plum*` задаёт сливовую градиентную основу общей шапки; `section-header-muted` — её пояснения и подписи сводки, `section-header-line` — границу групп controls. Белые заголовки сохраняют контраст; жёлтые основное действие и выбранная вкладка используют `section-header-action-ink`. Эта палитра принадлежит шапке, светлые рабочие поверхности ниже не получают её заливку.
 
 ### Tertiary
 
@@ -165,6 +203,8 @@ components:
 
 Цены используют табличные цифры; названия услуг и КП допускают перенос длинных слов. В клиентском представлении сохраняются переносы авторского текста. Верхний регистр существует в малых групповых метках меню и категорий, а не во всех кнопках.
 
+**Section header title:** отдельные роли `section-header-title`, `section-header-title-medium`, `section-header-title-mobile` задают общую шапку с Madefor Display. Средний вариант включается до 1000px, мобильный — до 700px; длинное название переносится. Это не изменение остальных h1. Пояснение в шапке — Onest, 14px/1.55; подписи сводки — 12px, значения — 17px с табличными цифрами.
+
 ## Layout
 
 Общий shell — desktop grid с боковым меню шириной 248px и гибким рабочим столбцом. Основной контент ограничен 1500px и центрируется; внешние поля адаптируются через `clamp(14px, 2vw, 30px)`. При ширине до 1023px меню переходит в выдвижную панель шириной `min(88vw, 320px)`.
@@ -176,6 +216,8 @@ components:
 В проекте раскрытый блок КП использует тот же редактор внутри полноэкранного слоя с собственной прокруткой, без повторного AppShell. Встроенная поверхность сохраняет светлый фон и отступы (`24px clamp(16px, 3vw, 48px) 40px`); шапка блока остаётся доступной, фокус удерживается внутри раскрытого интерфейса и возвращается при закрытии. Это локальное поведение проектного конструктора.
 
 Печать КП показывает клиентское представление, скрывает меню и рабочие controls, снимает ограничения контейнера. Строки услуг избегают разрыва внутри страницы. Это поведение документа КП, не глобальный print reset.
+
+Общая шапка выделяет заголовок, пояснение, необязательную сводку и группы действий/вкладок слева; тематическая иллюстрация без рамки стоит справа. Desktop copy занимает 72% с отступами 30px 34px, hero имеет минимальную высоту 260px. До 1000px copy занимает 78% с отступами 26px; до 700px занимает всю ширину с отступами 24px 20px и затемняющей подложкой, высота определяется содержимым. Мобильная иллюстрация уходит к правому краю и снижается до opacity .4; действия и вкладки переносятся внутри доступной ширины. Светлый блок подробных фильтров расположен отдельно, на 14px ниже hero, с отступами 16px (12px на mobile). Только hero обрезает декоративную иллюстрацию; выпадающие области фильтров остаются вне его clipping.
 
 ## Elevation & Depth
 
@@ -238,6 +280,14 @@ Native checkbox «Только различия» скрывает совпад�
 ### Loading and motion
 
 `Skeleton` скрывает декоративные полосы от assistive technology; `LoadingRegion` объявляет загрузку через polite status и busy. Геометрия skeleton зависит от будущего содержимого. Глобальный shimmer длится 1.25s и отключается при reduced motion. Обычные переходы состояния shell используют 160ms и существующий `wow-ease`; краткое появление мобильного меню остаётся локальным. Новая студия не добавляет декоративных анимаций.
+
+### Operational section headers
+
+`SectionHeader` объединяет обязательные название и пояснение с необязательными `metrics`, `actions`, `tabs`, `links` и светлой нижней областью `children`. Hero использует радиус глобального `wow-lg`, тональные градиенты без тени. Группы действий и вкладок имеют полупрозрачную подложку, сливовую границу, радиус 10px и внутренний промежуток 4px. Первый action и выбранная вкладка жёлтые; остальные controls спокойные и светлые. Кнопки и ссылки actions имеют цель не менее 44px, hover меняет цвет за 150ms, focus-visible — жёлтый outline 2px с отступом 3px; disabled снижает opacity. Reduced motion отключает переходы. Выбор вкладки сохраняет `aria-selected`/`aria-pressed` вызывающего компонента.
+
+Семантические сцены: `work` — координатор с планшетом и карточками задач; `projects` — продюсер с планом мероприятия; `contractors` — координатор подрядчиков с портфолио; `inventory` — кладовщик со сканером и коробкой; `admin` — администратор с ноутбуком и ключами. Близкие подстраницы переиспользуют сцену семьи. Для `orders` и `loyalty` остаются существующие PNG; новые пять сцен — прозрачные WebP 720×720, каждая меньше 150 KB, с точными prompts в соседних sidecars. Арт декоративный: `aria-hidden`, пустой alt, без pointer events; он не заменяет название, текстовое состояние или control. Его не размножают в плотных карточках и телах рабочих страниц.
+
+`WorkQueueHeader` сохраняет три разных запуска — «Составить КП», «Составить смету», «Начать проект» — с одним жёлтым основным действием. Сводка очереди относится к текущей выборке (`payload.meta`) и скрывается при загрузке/ошибке. Интеграции семьи: рабочая очередь; списки проектов и КП; подрядчики; инвентарь и близкие складские разделы; административные страницы. Фильтры, обработчики, права и навигационные назначения принадлежат существующим страницам.
 
 ## Do's and Don'ts
 

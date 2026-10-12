@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { PROPOSAL_STATUS, proposalMoney } from "@/lib/proposals";
 import { proposalRequest } from "./api";
@@ -64,8 +65,7 @@ export default function ProposalsPage() {
   const filtered = items.filter((item) => `${item.title} ${item.owner.type === "PROJECT" ? item.owner.title : item.owner.customer?.name ?? item.owner.leadCustomerName ?? ""}`.toLocaleLowerCase("ru-RU").includes(search.trim().toLocaleLowerCase("ru-RU")));
   return <AppShell title="Коммерческие предложения" backHref="/contractors">
     <div className={styles.page}>
-      <div className={styles.heading}><div><h1>Коммерческие предложения</h1><p>Соберите мероприятие сейчас. Создайте проект, когда клиент будет готов.</p></div>{!creating ? <button className={styles.primary} disabled={busy} onClick={() => setCreating(true)}>Составить КП</button> : null}</div>
-      <nav className={styles.tabs} aria-label="Подрядчики"><Link href="/contractors">Каталог</Link><Link href="/proposals" aria-current="page">Коммерческие предложения</Link></nav>
+      <SectionHeader title="Коммерческие предложения" description="Соберите мероприятие сейчас. Создайте проект, когда клиент будет готов." mascot="projects" actions={!creating ? <button type="button" disabled={busy} onClick={() => setCreating(true)}>Составить КП</button> : undefined} links={<><Link href="/contractors">Каталог подрядчиков</Link><Link href="/work">Рабочая очередь</Link></>} />
       {creating && (seed || seedLoading || seedError) ? <div className={styles.seedContext} role="status">{seedLoading ? "Подготавливаем выбранную услугу…" : seedError ? <>{seedError} <Link href="/contractors">Вернуться в каталог</Link> <button className={styles.quiet} onClick={() => { setSeed(null); setSeedError(""); }}>Начать пустое КП</button></> : seed ? <><strong>{seed.offer.title}</strong><span>{seed.contractor} · {offerPrice(seed.offer)}</span><span>Добавим в раздел «{seed.offer.category.name}». Цену и состав можно изменить в КП.</span><button className={styles.quiet} onClick={() => setSeed(null)}>Убрать услугу</button></> : null}</div> : null}
       {creating ? <form className={styles.createForm} onSubmit={create}>
         <label>Название мероприятия<input name="title" disabled={busy} required minLength={2} maxLength={200} placeholder="Например, корпоратив в декабре" autoFocus /></label>

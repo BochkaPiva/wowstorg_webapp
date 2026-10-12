@@ -4,6 +4,7 @@ import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import "@/app/inventory/inventory.css";
@@ -86,7 +87,7 @@ function RepairPageInner() {
     [row.name, row.incident?.order?.customerName, row.incident?.order?.eventName, row.incident?.order?.employeeName, row.incident?.comment].filter(Boolean).join(" ").toLocaleLowerCase("ru").includes(query));
   return <AppShell title="Ремонт и поломки">
     {!allowed ? <p>Раздел доступен сотрудникам склада.</p> : <div className="inventory-workspace">
-      <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Ремонт и поломки</h1><p>Один случай — один источник. Восстановление возвращает доступность, списание уменьшает общий остаток.</p></div><button className="inv-button" onClick={() => void load()} disabled={loading || busy}>Обновить</button></header>
+      <SectionHeader title="Ремонт и поломки" mascot="inventory" description="Один случай — один источник. Восстановление возвращает доступность, списание уменьшает общий остаток." links={<Link href="/inventory/items">← Инвентарь</Link>} actions={<button type="button" onClick={() => void load()} disabled={loading || busy}>Обновить</button>} />
       <div className="inventory-toolbar">
         <div className="inventory-segments" aria-label="Состояние">
           <button aria-pressed={condition === "NEEDS_REPAIR"} disabled={busy} onClick={() => setCondition("NEEDS_REPAIR")}>Требует ремонта</button>

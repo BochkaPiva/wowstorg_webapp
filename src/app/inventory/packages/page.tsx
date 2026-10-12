@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import "../inventory.css";
 
@@ -52,10 +53,10 @@ export default function InventoryPackagesPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>Пакеты</h1><p>Готовые комплекты и их состав.</p></div><div className="flex flex-wrap gap-2">
+<SectionHeader title="Пакеты" description="Готовые комплекты и их состав." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2">
           <Link href="/inventory/packages/new" className="inv-button inv-primary">+ Новый пакет</Link>
 
-          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div></header>
+          <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div>} />
 
           {loading ? (
             <div className="text-sm text-zinc-600">Загрузка…</div>

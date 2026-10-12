@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
 import "../inventory.css";
@@ -86,7 +87,7 @@ export default function InRentPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-          <header className="inventory-heading"><div><Link href="/inventory/items" className="inventory-back">← Инвентарь</Link><h1>В аренде</h1><p>Выданный реквизит, ожидаемые возвраты и просрочки.</p></div><div className="flex flex-wrap gap-2"><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div></header>
+<SectionHeader title="В аренде" description="Выданный реквизит, ожидаемые возвраты и просрочки." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2"><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div>} />
           {loading ? (
             <ListSkeleton rows={6} />
           ) : error ? (

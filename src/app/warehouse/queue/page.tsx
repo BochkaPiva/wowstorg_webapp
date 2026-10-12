@@ -462,7 +462,7 @@ function WarehouseQueueContent() {
         <div className="queue-empty">Этот раздел доступен только сотрудникам Wowstorg.</div>
       ) : (
         <div className="queue-page">
-          <SectionHeader title="Все заявки" description="Реквизит, выдача и возврат. Текущие заявки и история работы." actions={
+          <SectionHeader title="Все заявки" mascot="orders" description="Реквизит, выдача и возврат. Текущие заявки и история работы." tabs={
               <div className="queue-tabs" role="tablist" aria-label="Область заявок">
                 <button type="button" role="tab" aria-selected={tab === "active"} onClick={() => { setTab("active"); setSort(DEFAULT_SORT); }}>Активные</button>
                 <button type="button" role="tab" aria-selected={tab === "archive"} onClick={() => { setTab("archive"); setSort(ARCHIVE_DEFAULT_SORT); }}>Архив</button>

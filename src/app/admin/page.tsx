@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import styles from "./admin-index.module.css";
 
@@ -34,10 +35,7 @@ export default function AdminIndexPage() {
     <AppShell title="Администрирование">
       {forbidden ? <p>Этот раздел доступен только сотрудникам ВАУСТОРГ.</p> : (
         <div className={styles.workspace}>
-          <header className={styles.heading}>
-            <h2>Администрирование</h2>
-            <p>Команда, заказчики и контроль работы — выберите нужный раздел.</p>
-          </header>
+          <SectionHeader title="Администрирование" mascot="admin" description="Команда, заказчики и контроль работы — выберите нужный раздел." links={<><Link href="/admin/analytics">Аналитика</Link><Link href="/admin/loyalty">Лояльность Grinvich</Link><Link href="/inventory/items">Инвентарь</Link></>} />
 
           <div className={styles.groups}>
             {groups.map(group => (

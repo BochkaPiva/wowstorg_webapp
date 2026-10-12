@@ -1,22 +1,15 @@
 "use client";
 
-import Image from "next/image";
+import type { ReactNode } from "react";
 import Link from "next/link";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { WorkEntityIcon } from "@/app/_ui/WorkEntityIcon";
 import type { WorkCreateKind } from "@/lib/work-create";
 
-export function WorkQueueHeader({ onCreate }: { onCreate: (kind: WorkCreateKind) => void }) {
-  return <header className="work-launch">
-    <div className="work-launch__content">
-      <h2>От идеи — к мероприятию</h2>
-      <p>Начните с предложения клиенту, расчёта или нового проекта.</p>
-      <div className="work-launch__actions" aria-label="Начать новую работу">
-        <div><button className="work-launch__button work-launch__button--primary" onClick={() => onCreate("proposal")}><WorkEntityIcon kind="PROPOSAL" />Составить КП</button><span>Программа и презентация</span></div>
-        <div><button className="work-launch__button" onClick={() => onCreate("estimate")}><WorkEntityIcon kind="ESTIMATE" />Составить смету</button><span>Расчёт без проекта</span></div>
-        <div><button className="work-launch__button" onClick={() => onCreate("project")}><WorkEntityIcon kind="PROJECT" />Начать проект</button><span>Команда и выполнение</span></div>
-      </div>
-      <nav className="work-launch__links" aria-label="Рабочие разделы"><Link href="/proposals">Все КП</Link><Link href="/projects">Все проекты</Link><Link href="/contractors">Подрядчики</Link></nav>
-    </div>
-    <div className="work-launch__art" aria-hidden="true"><Image src="/brand/dino-catalog.webp" alt="" width={180} height={355} sizes="180px" /></div>
-  </header>;
+export function WorkQueueHeader({ onCreate, tabs, metrics }: { onCreate: (kind: WorkCreateKind) => void; tabs?: ReactNode; metrics?: Array<{ label: string; value: ReactNode }> }) {
+  return <SectionHeader title="Рабочая очередь" description="От первого предложения до готового мероприятия. Начните новую работу или продолжите текущую." mascot="work" metrics={metrics} tabs={tabs} actions={<>
+    <button type="button" onClick={() => onCreate("proposal")}><WorkEntityIcon kind="PROPOSAL" />Составить КП</button>
+    <button type="button" onClick={() => onCreate("estimate")}><WorkEntityIcon kind="ESTIMATE" />Составить смету</button>
+    <button type="button" onClick={() => onCreate("project")}><WorkEntityIcon kind="PROJECT" />Начать проект</button>
+  </>} links={<><Link href="/proposals">Все КП</Link><Link href="/projects">Все проекты</Link><Link href="/contractors">Подрядчики</Link></>} />;
 }

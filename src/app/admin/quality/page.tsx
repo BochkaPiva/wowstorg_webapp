@@ -4,6 +4,7 @@ import Link from "next/link";
 import * as React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
+import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
 import { readJsonSafe } from "@/lib/fetchJson";
 import "./quality.css";
@@ -92,12 +93,8 @@ export default function AdminQualityPage() {
   return (
     <AppShell title="Качество сервиса">
       <div className="quality-page">
+        <SectionHeader title="Качество сервиса" mascot="admin" description="Обратная связь Grinvich после закрытия заявок. Низкие оценки собраны отдельно для разбора причины." />
         <section className="quality-overview">
-          <div className="quality-overview__intro">
-            <span>Обратная связь Grinvich</span>
-            <h2>Как оценивают работу Wowstorg</h2>
-            <p>Оценки появляются после закрытия заявки. Низкие баллы собраны отдельно, чтобы команда могла быстро разобрать причину.</p>
-          </div>
           <div className="quality-average">
             <span>Средняя оценка</span>
             <strong>{data?.summary.averageRating?.toFixed(2) ?? "—"}<small>/ 5</small></strong>

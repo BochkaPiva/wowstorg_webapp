@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
+import { useAuth } from "@/app/providers";
 import { PROPOSAL_STATUS, proposalMoney } from "@/lib/proposals";
 import { proposalRequest } from "./api";
 import styles from "./proposals.module.css";
@@ -18,39 +20,39 @@ type ProposalListItem = {
 };
 
 export default function ProposalsPage() {
+  return <React.Suspense fallback={<ListSkeleton />}><ProposalsPageInner /></React.Suspense>;
+}
+
+function ProposalsPageInner() {
   const router = useRouter();
-  const [items, setItems] = React.useState<ProposalListItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const params = useSearchParams();
+  const { state } = useAuth();
+  const allowed = state.status === "authenticated" && state.user.role === "WOWSTORG";
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
+  const [actionError, setError] = React.useState("");
+  const [creating, setCreating] = React.useState(() => params.get("new") === "1");
   const [scope, setScope] = React.useState("all");
   const [search, setSearch] = React.useState("");
-  const [seed, setSeed] = React.useState<{ contractor: string; offer: Offer } | null>(null);
-  const [seedLoading, setSeedLoading] = React.useState(false);
-  const [seedError, setSeedError] = React.useState("");
-  const load = React.useCallback(async (signal?: AbortSignal) => {
-    setLoading(true); setError("");
-    try { setItems((await proposalRequest<{ proposals: ProposalListItem[] }>(`/api/proposals?scope=${scope}`, "GET", undefined, signal)).proposals); }
-    catch (cause) { if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "Ошибка загрузки"); }
-    finally { if (!signal?.aborted) setLoading(false); }
-  }, [scope]);
-  React.useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("new") === "1") setCreating(true);
-    const offerId = params.get("seedOfferId"), contractorId = params.get("contractorId");
-    if (!offerId) return;
-    setSeedLoading(true);
-    const controller = new AbortController();
-    if (!contractorId) { setSeedError("Услуга не найдена. Вернитесь в каталог и выберите её ещё раз."); setSeedLoading(false); return; }
-    void proposalRequest<{ contractor: ContractorDetail }>(`/api/contractors/${encodeURIComponent(contractorId)}`, "GET", undefined, controller.signal).then(({ contractor }) => {
-      const offer = contractor.offers.find((entry) => entry.id === offerId);
-      if (!offer) throw new Error("Услуга больше не доступна. Выберите другую в каталоге.");
-      setSeed({ contractor: contractor.name, offer });
-    }).catch((cause) => { if (!controller.signal.aborted) setSeedError(cause instanceof Error ? cause.message : "Не удалось загрузить услугу"); }).finally(() => { if (!controller.signal.aborted) setSeedLoading(false); });
-    return () => controller.abort();
-  }, []);
+  const proposals = useJsonResource<{ proposals: ProposalListItem[] }>(allowed ? `/api/proposals?scope=${scope}` : null, "Ошибка загрузки");
+  const items = proposals.data?.proposals ?? [];
+  const loading = proposals.loading;
+  const error = actionError || proposals.error || "";
+  async function load() { setError(""); await proposals.refresh(); }
+  const offerId = params.get("seedOfferId"), contractorId = params.get("contractorId");
+  const seedSource = JSON.stringify([offerId, contractorId]);
+  const [dismissedSeed, setDismissedSeed] = React.useState<string | null>(null);
+  const seedRemoved = dismissedSeed === seedSource;
+  const seedResource = useJsonResource<{ contractor: ContractorDetail }>(
+    allowed && !seedRemoved && offerId && contractorId ? `/api/contractors/${encodeURIComponent(contractorId)}` : null,
+    "Не удалось загрузить услугу",
+  );
+  const seedOffer: Offer | undefined = seedResource.data?.contractor.offers.find((entry) => entry.id === offerId);
+  const seed = !seedRemoved && seedOffer && seedResource.data ? { contractor: seedResource.data.contractor.name, offer: seedOffer } : null;
+  const seedLoading = seedResource.loading;
+  const seedError = seedRemoved || !offerId ? "" : !contractorId
+    ? "Услуга не найдена. Вернитесь в каталог и выберите её ещё раз."
+    : seedResource.error || (seedResource.data && !seedOffer ? "Услуга больше не доступна. Выберите другую в каталоге." : "");
+  const removeSeed = () => setDismissedSeed(seedSource);
   async function create(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (busy || seedLoading || seedError) return;
     const data = new FormData(event.currentTarget); setBusy(true); setError("");
@@ -66,7 +68,7 @@ export default function ProposalsPage() {
   return <AppShell title="Коммерческие предложения" backHref="/contractors">
     <div className={styles.page}>
       <SectionHeader title="Коммерческие предложения" description="Соберите мероприятие сейчас. Создайте проект, когда клиент будет готов." mascot="projects" actions={!creating ? <button type="button" disabled={busy} onClick={() => setCreating(true)}>Составить КП</button> : undefined} links={<><Link href="/contractors">Каталог подрядчиков</Link><Link href="/work">Рабочая очередь</Link></>} />
-      {creating && (seed || seedLoading || seedError) ? <div className={styles.seedContext} role="status">{seedLoading ? "Подготавливаем выбранную услугу…" : seedError ? <>{seedError} <Link href="/contractors">Вернуться в каталог</Link> <button className={styles.quiet} onClick={() => { setSeed(null); setSeedError(""); }}>Начать пустое КП</button></> : seed ? <><strong>{seed.offer.title}</strong><span>{seed.contractor} · {offerPrice(seed.offer)}</span><span>Добавим в раздел «{seed.offer.category.name}». Цену и состав можно изменить в КП.</span><button className={styles.quiet} onClick={() => setSeed(null)}>Убрать услугу</button></> : null}</div> : null}
+      {creating && (seed || seedLoading || seedError) ? <div className={styles.seedContext} role="status">{seedLoading ? "Подготавливаем выбранную услугу…" : seedError ? <>{seedError} <Link href="/contractors">Вернуться в каталог</Link> <button className={styles.quiet} onClick={removeSeed}>Начать пустое КП</button></> : seed ? <><strong>{seed.offer.title}</strong><span>{seed.contractor} · {offerPrice(seed.offer)}</span><span>Добавим в раздел «{seed.offer.category.name}». Цену и состав можно изменить в КП.</span><button className={styles.quiet} onClick={removeSeed}>Убрать услугу</button></> : null}</div> : null}
       {creating ? <form className={styles.createForm} onSubmit={create}>
         <label>Название мероприятия<input name="title" disabled={busy} required minLength={2} maxLength={200} placeholder="Например, корпоратив в декабре" autoFocus /></label>
         <label>Заказчик (необязательно)<input name="customer" disabled={busy} minLength={2} maxLength={200} placeholder="Компания или имя клиента" /></label>

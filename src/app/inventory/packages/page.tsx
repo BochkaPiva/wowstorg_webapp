@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -21,31 +22,11 @@ export default function InventoryPackagesPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  const [items, setItems] = React.useState<Package[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/inventory/packages", { cache: "no-store" });
-      const txt = await res.text();
-      const data = txt ? (JSON.parse(txt) as { packages?: Package[]; error?: { message?: string } }) : {};
-      if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить пакеты");
-      setItems(data.packages ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden]);
+  const { data, loading, error, refresh: load } = useJsonResource<{ packages?: Package[] }>(
+    state.status === "authenticated" && !forbidden ? "/api/inventory/packages" : null,
+    "Не удалось загрузить пакеты",
+  );
+  const items = data?.packages ?? [];
 
   return (
     <AppShell title="Инвентарь · Пакеты">

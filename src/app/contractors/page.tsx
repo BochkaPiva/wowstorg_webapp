@@ -42,8 +42,16 @@ export default function ContractorsPage() {
   const opener = React.useRef<HTMLElement | null>(null);
   const dirty = React.useRef(false);
   const saving = React.useRef(false);
+  const onDirtyChange = React.useCallback((value: boolean) => { dirty.current = value; }, []);
+  const onSavingChange = React.useCallback((value: boolean) => { saving.current = value; }, []);
   const generation = React.useRef(0);
   const moreFlight = React.useRef(false);
+  const catalogSource = JSON.stringify([query, categoryId, reload]);
+  const [loadedCatalogSource, setLoadedCatalogSource] = React.useState(catalogSource);
+  if (loadedCatalogSource !== catalogSource) {
+    setLoadedCatalogSource(catalogSource);
+    setLoading(true); setError(""); setNextCursor(null);
+  }
 
   React.useEffect(() => { const timer = setTimeout(() => setQuery(search.trim()), 250); return () => clearTimeout(timer); }, [search]);
   React.useEffect(() => {
@@ -54,15 +62,20 @@ export default function ContractorsPage() {
   const catalogUrl = React.useCallback((cursor?: string) => `/api/contractors?${new URLSearchParams({ paged: "1", limit: "24", search: query, categoryId, ...(cursor ? { cursor } : {}) })}`, [query, categoryId]);
   React.useEffect(() => {
     const controller = new AbortController(); generation.current += 1;
-    setLoading(true); setError(""); setNextCursor(null);
-    void catalogRequest<CatalogPage>(catalogUrl(), { signal: controller.signal }).then((data) => { setContractors(data.contractors); setNextCursor(data.nextCursor); }).catch((cause) => { if (!controller.signal.aborted) { setContractors([]); setError(cause instanceof Error ? cause.message : "Каталог не загрузился"); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    void catalogRequest<CatalogPage>(catalogUrl(), { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) { setContractors(data.contractors); setNextCursor(data.nextCursor); } }).catch((cause) => { if (!controller.signal.aborted) { setContractors([]); setError(cause instanceof Error ? cause.message : "Каталог не загрузился"); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [catalogUrl, reload]);
   const detailId = panel?.kind === "view" ? panel.id : null;
+  const detailSource = JSON.stringify([detailId, detailReload]);
+  const [loadedDetailSource, setLoadedDetailSource] = React.useState(detailSource);
+  if (loadedDetailSource !== detailSource) {
+    setLoadedDetailSource(detailSource);
+    setDetail(null); setDetailError("");
+  }
   React.useEffect(() => {
-    setDetail(null); setDetailError(""); if (!detailId) return;
+    if (!detailId) return;
     const controller = new AbortController();
-    void catalogRequest<{ contractor: ContractorDetail }>(`/api/contractors/${detailId}`, { signal: controller.signal }).then((data) => setDetail(data.contractor)).catch((cause) => { if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : "Карточка не загрузилась"); });
+    void catalogRequest<{ contractor: ContractorDetail }>(`/api/contractors/${detailId}`, { signal: controller.signal }).then((data) => { if (!controller.signal.aborted) setDetail(data.contractor); }).catch((cause) => { if (!controller.signal.aborted) setDetailError(cause instanceof Error ? cause.message : "Карточка не загрузилась"); });
     return () => controller.abort();
   }, [detailId, detailReload]);
   function switchPanel(next: Panel) {
@@ -112,7 +125,7 @@ export default function ContractorsPage() {
           </div>
         </article>)}</section>{nextCursor ? <div className={styles.loadMore}><button className={styles.secondary} disabled={moreLoading} onClick={() => void loadMore()}>{moreLoading ? "Загружаем…" : "Показать ещё"}</button></div> : null}</> : !error ? <div className={styles.catalogEmpty}><strong>{query || categoryId ? "Ничего не найдено" : "Соберите свою базу подрядчиков"}</strong><span>{query || categoryId ? "Попробуйте другой запрос или категорию." : "Добавьте первого подрядчика и его услуги — они появятся здесь."}</span><button className={styles.secondary} onClick={() => query || categoryId ? (setSearch(""), setCategoryId("")) : switchPanel({ kind: "create" })}>{query || categoryId ? "Сбросить поиск" : "Добавить подрядчика"}</button></div> : null}
       </div>
-      {panel ? <CatalogDialog label="Карточка подрядчика" onClose={() => switchPanel(null)}><CatalogInspector key={`${panel.kind === "view" ? panel.id : panel.kind}:${panelEpoch}`} kind={panel.kind} contractor={detail?.id === detailId ? detail : null} categories={categories} loadError={detailError} onClose={() => switchPanel(null)} onRetry={() => setDetailReload((value) => value + 1)} onSaved={saved} dirty={dirty} saving={saving} /></CatalogDialog> : null}
+      {panel ? <CatalogDialog label="Карточка подрядчика" onClose={() => switchPanel(null)}><CatalogInspector key={`${panel.kind === "view" ? panel.id : panel.kind}:${panelEpoch}`} kind={panel.kind} contractor={detail?.id === detailId ? detail : null} categories={categories} loadError={detailError} onClose={() => switchPanel(null)} onRetry={() => setDetailReload((value) => value + 1)} onSaved={saved} onDirtyChange={onDirtyChange} onSavingChange={onSavingChange} /></CatalogDialog> : null}
     </div>
   </div></AppShell>;
 }

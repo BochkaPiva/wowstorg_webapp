@@ -90,19 +90,18 @@ function ProgressCheck() {
   );
 }
 
-export function OrderDateChangeDialog({ open, orderId, allowPastDates = false, initialValue, onClose, onApplied }: Props) {
+export function OrderDateChangeDialog(props: Props) {
+  if (!props.open) return null;
+  const { initialValue: value } = props;
+  const key = JSON.stringify([props.orderId, value.readyByDate, value.startDate, value.endDate, value.rentalStartPartOfDay, value.rentalEndPartOfDay]);
+  return <OpenOrderDateChangeDialog key={key} {...props} />;
+}
+
+function OpenOrderDateChangeDialog({ open, orderId, allowPastDates = false, initialValue, onClose, onApplied }: Props) {
   const [draft, setDraft] = React.useState<DateDraft>(initialValue);
   const [phase, setPhase] = React.useState<Phase>("editing");
   const [conflicts, setConflicts] = React.useState<Conflict[]>([]);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setDraft(initialValue);
-    setPhase("editing");
-    setConflicts([]);
-    setError(null);
-  }, [initialValue, open]);
 
   React.useEffect(() => {
     if (!open) return;

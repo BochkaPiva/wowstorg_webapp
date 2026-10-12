@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
+import { useClientReady } from "@/lib/use-client-ready";
 
 type Dot = { x: number; y: number; vx: number; vy: number; r: number };
 
@@ -22,12 +23,7 @@ export function RelaxZone() {
   const rafRef = React.useRef<number | null>(null);
   const mouseRef = React.useRef({ x: -10_000, y: -10_000, active: false });
   const reducedRef = React.useRef(false);
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+  const mounted = useClientReady();
 
   React.useEffect(() => {
     if (!mounted) return;

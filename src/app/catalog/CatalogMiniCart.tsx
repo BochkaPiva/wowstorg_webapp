@@ -5,6 +5,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import type { CartLine } from "@/lib/cart";
+import { useClientReady } from "@/lib/use-client-ready";
 
 export type MiniCartItem = {
   id: string;
@@ -30,11 +31,6 @@ type CatalogMiniCartProps = {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// No events: this snapshot only distinguishes SSR/hydration from the client.
-const subscribeToClient = () => () => {};
-const clientSnapshot = () => true;
-const serverSnapshot = () => false;
-
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(value) + " ₽";
 }
@@ -51,7 +47,7 @@ export function CatalogMiniCart({
   onSetQty,
   onClear,
 }: CatalogMiniCartProps) {
-  const mounted = React.useSyncExternalStore(subscribeToClient, clientSnapshot, serverSnapshot);
+  const mounted = useClientReady();
   const panelRef = React.useRef<HTMLElement | null>(null);
   const closeRef = React.useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = React.useRef<HTMLElement | null>(null);

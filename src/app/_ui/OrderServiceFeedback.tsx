@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { readJsonSafe } from "@/lib/fetchJson";
+import { useJsonResource } from "@/lib/use-json-resource";
 import "./order-service-feedback.css";
 
 export type ServiceFeedback = {
@@ -60,10 +61,13 @@ export function OrderFeedbackEditor({
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
+  const feedbackSource = JSON.stringify([orderId, feedback?.id, feedback?.updatedAt, feedback?.rating, feedback?.comment]);
+  const [draftSource, setDraftSource] = React.useState(feedbackSource);
+  if (draftSource !== feedbackSource) {
+    setDraftSource(feedbackSource);
     setRating(feedback?.rating ?? 0);
     setComment(feedback?.comment ?? "");
-  }, [feedback]);
+  }
 
   async function submit() {
     if (rating < 1) {
@@ -146,23 +150,16 @@ export function OrderFeedbackEditor({
 }
 
 export function PendingOrderFeedbackCard({ enabled }: { enabled: boolean }) {
-  const [pending, setPending] = React.useState<PendingOrder | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  return enabled ? <EnabledPendingOrderFeedbackCard /> : null;
+}
+
+function EnabledPendingOrderFeedbackCard() {
+  const { data, loading } = useJsonResource<{ pending?: PendingOrder | null }>("/api/greenwich/feedback", "Не удалось загрузить оценку");
+  const [dismissed, setDismissed] = React.useState(false);
+  const pending = dismissed ? null : data?.pending ?? null;
   const [skipping, setSkipping] = React.useState(false);
   const [skipError, setSkipError] = React.useState<string | null>(null);
   const [completed, setCompleted] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    setLoading(true);
-    void fetch("/api/greenwich/feedback", { cache: "no-store" })
-      .then((response) => readJsonSafe<{ pending?: PendingOrder | null }>(response))
-      .then((payload) => { if (!cancelled) setPending(payload?.pending ?? null); })
-      .catch(() => { if (!cancelled) setPending(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [enabled]);
 
   async function skip() {
     if (!pending) return;
@@ -176,7 +173,7 @@ export function PendingOrderFeedbackCard({ enabled }: { enabled: boolean }) {
       });
       const payload = await readJsonSafe<{ skipped?: boolean } | ApiError>(response);
       if (!response.ok) throw new Error((payload as ApiError | null)?.error?.message ?? "Не удалось отложить оценку");
-      setPending(null);
+      setDismissed(true);
     } catch (cause) {
       setSkipError(cause instanceof Error ? cause.message : "Не удалось отложить оценку");
     } finally {
@@ -184,7 +181,7 @@ export function PendingOrderFeedbackCard({ enabled }: { enabled: boolean }) {
     }
   }
 
-  if (!enabled || loading || (!pending && !completed)) return null;
+  if (loading || (!pending && !completed)) return null;
   if (completed) {
     return (
       <section className="service-feedbackThanks" aria-live="polite">

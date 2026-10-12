@@ -150,15 +150,14 @@ export function ProjectContractorsPanel({ projectId, readOnly }: { projectId: st
   const [category, setCategory] = React.useState("");
   const refreshSequence = React.useRef(0);
   const invalidateRefresh = React.useCallback(() => { ++refreshSequence.current; }, []);
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(() => {
     const sequence = ++refreshSequence.current;
-    try {
-      const result = await catalogRequest<ProjectContractorsPayload>(`/api/projects/${projectId}/contractors`);
+    return catalogRequest<ProjectContractorsPayload>(`/api/projects/${projectId}/contractors`).then((result) => {
       if (sequence !== refreshSequence.current) return;
       setData(result); setError(null);
-    } catch (cause) {
+    }).catch((cause: unknown) => {
       if (sequence === refreshSequence.current) setError(cause instanceof Error ? cause.message : "Не удалось загрузить состав");
-    }
+    });
   }, [projectId]);
   React.useEffect(() => {
     void refresh();

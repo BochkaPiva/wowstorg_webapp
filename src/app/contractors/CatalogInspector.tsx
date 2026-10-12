@@ -12,11 +12,17 @@ import styles from "./contractors.module.css";
 type Props = {
   kind: "view" | "create" | "category"; contractor: ContractorDetail | null; categories: Category[]; loadError: string;
   onClose: () => void; onRetry: () => void; onSaved: (id?: string, notice?: string) => void;
-  dirty: React.RefObject<boolean>; saving: React.RefObject<boolean>;
+  onDirtyChange: (value: boolean) => void; onSavingChange: (value: boolean) => void;
 };
 type Edit = { kind: "contractor" } | { kind: "offer"; offer: Offer | null } | null;
 
-export function CatalogInspector({ kind, contractor, categories, loadError, onClose, onRetry, onSaved, dirty, saving }: Props) {
+export function CatalogInspector({ kind, contractor, categories, loadError, onClose, onRetry, onSaved, onDirtyChange, onSavingChange }: Props) {
+  // The form owns its guards. The page receives explicit lifecycle notifications,
+  // rather than letting a child mutate refs supplied as read-only props.
+  const dirty = React.useRef(false);
+  const saving = React.useRef(false);
+  function setDirty(value: boolean) { dirty.current = value; onDirtyChange(value); }
+  function setSaving(value: boolean) { saving.current = value; onSavingChange(value); }
   const [edit, setEdit] = React.useState<Edit>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -30,7 +36,7 @@ export function CatalogInspector({ kind, contractor, categories, loadError, onCl
   function changeEdit(next: Edit) {
     if (saving.current) return;
     if (dirty.current && !window.confirm("Есть несохранённые поля. Продолжить без сохранения?")) return;
-    dirty.current = false; setError(""); setEdit(next); setConflict(false);
+    setDirty(false); setError(""); setEdit(next); setConflict(false);
     setPriceType(next?.kind === "offer" ? next.offer?.priceType ?? "FIXED" : "FIXED");
   }
   async function request<T>(url: string, method: string, body: unknown): Promise<T> {
@@ -41,15 +47,15 @@ export function CatalogInspector({ kind, contractor, categories, loadError, onCl
   }
   async function run(action: () => Promise<void>) {
     if (saving.current || conflict) return;
-    saving.current = true; setBusy(true); setError("");
+    setSaving(true); setBusy(true); setError("");
     try { await action(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Проверьте соединение и попробуйте ещё раз."); }
-    finally { saving.current = false; setBusy(false); }
+    finally { setSaving(false); setBusy(false); }
   }
   function choosePhoto(file?: File) {
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) { setError("Выберите PNG, JPEG или WebP размером до 10 МБ."); return; }
-    dirty.current = true; setPhoto(file); setPreview(URL.createObjectURL(file)); setError("");
+    setDirty(true); setPhoto(file); setPreview(URL.createObjectURL(file)); setError("");
   }
   async function sendPhoto(id: string, file: File) {
     const form = new FormData(); form.set("file", file);
@@ -63,16 +69,16 @@ export function CatalogInspector({ kind, contractor, categories, loadError, onCl
         const result = await request<{ contractor: { id: string } }>("/api/contractors", "POST", { ...payload, ...(fields.get("phone") || fields.get("email") ? { contact: { personName: fields.get("person") || null, phone: fields.get("phone") || null, email: fields.get("email") || null } } : {}) });
         let notice = "Подрядчик добавлен. Теперь добавьте первую услугу.";
         if (photo) { try { await sendPhoto(result.contractor.id, photo); } catch { notice = "Карточка создана, но фото не загрузилось. Повторите загрузку в карточке — не создавайте подрядчика заново."; } }
-        dirty.current = false; onSaved(result.contractor.id, notice);
+        setDirty(false); onSaved(result.contractor.id, notice);
       } else if (contractor) {
         await request(`/api/contractors/${contractor.id}`, "PATCH", { ...payload, expectedRevision: contractor.revision });
-        dirty.current = false; setEdit(null); onSaved(contractor.id, "Карточка сохранена.");
+        setDirty(false); setEdit(null); onSaved(contractor.id, "Карточка сохранена.");
       }
     });
   }
   async function submitCategory(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); const fields = new FormData(event.currentTarget);
-    await run(async () => { await request("/api/contractor-categories", "POST", { name: fields.get("name"), description: fields.get("description") || null }); dirty.current = false; onSaved(undefined, "Категория добавлена."); });
+    await run(async () => { await request("/api/contractor-categories", "POST", { name: fields.get("name"), description: fields.get("description") || null }); setDirty(false); onSaved(undefined, "Категория добавлена."); });
   }
   async function submitOffer(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!contractor || edit?.kind !== "offer") return;
@@ -82,12 +88,12 @@ export function CatalogInspector({ kind, contractor, categories, loadError, onCl
       const payload = { categoryId: fields.get("categoryId"), title: fields.get("title"), description: fields.get("description") || null, priceType, clientPrice: priceType === "ON_REQUEST" ? null : number("clientPrice"), clientPriceMax: priceType === "RANGE" ? number("clientPriceMax") : null, internalCost: number("internalCost"), unitLabel: fields.get("unitLabel") || null };
       const offer = edit.offer;
       await request(`/api/contractors/${contractor.id}/offers${offer ? `/${offer.id}` : ""}`, offer ? "PATCH" : "POST", { ...payload, ...(offer ? { expectedRevision: offer.revision } : {}) });
-      dirty.current = false; setEdit(null); onSaved(contractor.id, "Услуга сохранена. Её уже можно добавить в КП.");
+      setDirty(false); setEdit(null); onSaved(contractor.id, "Услуга сохранена. Её уже можно добавить в КП.");
     });
   }
   function refreshConflict() {
     if (dirty.current && !window.confirm("Загрузить актуальную карточку? Несохранённые поля будут сброшены.")) return;
-    dirty.current = false; setEdit(null); setConflict(false); setError(""); onRetry();
+    setDirty(false); setEdit(null); setConflict(false); setError(""); onRetry();
   }
   const editingContractor = kind === "create" || edit?.kind === "contractor";
   const editingOffer = edit?.kind === "offer";
@@ -97,14 +103,14 @@ export function CatalogInspector({ kind, contractor, categories, loadError, onCl
     <header className={styles.inspectorHead}><div><h3>{title}</h3>{contractor && edit ? <p>{contractor.name}</p> : null}</div><button className={styles.closeButton} disabled={busy} onClick={onClose} aria-label="Закрыть карточку"><CatalogIcon kind="close" /></button></header>
     {error ? <div className={styles.error} role="alert">{error}{conflict ? <><p>Поля сохранены в форме. Не отправляем их поверх изменений коллеги.</p><button className={styles.quiet} onClick={refreshConflict}>Загрузить актуальную карточку</button></> : null}</div> : null}
     {kind === "view" && !contractor ? loadError ? <div className={styles.error} role="alert">{loadError}<button className={styles.quiet} onClick={onRetry}>Повторить</button></div> : <LoadingRegion label="Загрузка карточки подрядчика" className={styles.detailSkeleton}><Skeleton className={styles.skeletonMedia} /><Skeleton className={styles.skeletonTitle} /><Skeleton /><Skeleton /></LoadingRegion> : null}
-    {kind === "category" ? <form className={styles.form} onSubmit={submitCategory} onChange={() => { dirty.current = true; }}><fieldset disabled={busy || conflict}><label>Название<input className={styles.input} name="name" minLength={2} maxLength={120} required placeholder="Например, Музыканты" /></label><label>Описание<textarea className={styles.textarea} name="description" /></label><button className={styles.primary}>{busy ? "Сохраняем…" : "Добавить категорию"}</button></fieldset></form> : null}
-    {editingContractor ? <form key={kind} className={styles.form} onSubmit={submitContractor} onChange={() => { dirty.current = true; }}><fieldset disabled={busy || conflict}>
+    {kind === "category" ? <form className={styles.form} onSubmit={submitCategory} onChange={() => { setDirty(true); }}><fieldset disabled={busy || conflict}><label>Название<input className={styles.input} name="name" minLength={2} maxLength={120} required placeholder="Например, Музыканты" /></label><label>Описание<textarea className={styles.textarea} name="description" /></label><button className={styles.primary}>{busy ? "Сохраняем…" : "Добавить категорию"}</button></fieldset></form> : null}
+    {editingContractor ? <form key={kind} className={styles.form} onSubmit={submitContractor} onChange={() => { setDirty(true); }}><fieldset disabled={busy || conflict}>
       {kind === "create" ? <label className={styles.photoPicker}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { choosePhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} />{preview ? <Image src={preview} alt="Фото нового подрядчика" fill sizes="360px" unoptimized /> : <span className={styles.photoPlaceholder}><strong>Добавить фото</strong><small>PNG, JPEG или WebP · до 10 МБ</small></span>}</label> : null}
       <label>Название<input className={styles.input} name="name" required minLength={2} maxLength={200} defaultValue={kind === "create" ? "" : contractor?.name} /></label><label>Чем полезен<textarea className={styles.textarea} name="description" maxLength={1000} defaultValue={kind === "create" ? "" : contractor?.shortDescription ?? ""} /></label><div className={styles.formGrid}><label>Город<input className={styles.input} name="city" maxLength={120} defaultValue={kind === "create" ? "" : contractor?.city ?? ""} /></label><label>Сайт<input className={styles.input} name="website" type="url" placeholder="https://" defaultValue={kind === "create" ? "" : contractor?.websiteUrl ?? ""} /></label></div>
       {kind === "create" ? <><label>Контактное лицо<input className={styles.input} name="person" /></label><div className={styles.formGrid}><label>Телефон<input className={styles.input} name="phone" type="tel" /></label><label>Email<input className={styles.input} name="email" type="email" /></label></div></> : null}
       <label>Внутренние заметки<textarea className={styles.textarea} name="notes" maxLength={5000} defaultValue={kind === "create" ? "" : contractor?.internalNotes ?? ""} /><small>Только для команды, не попадают в клиентское КП.</small></label><div className={styles.formActions}><button className={styles.primary}>{busy ? "Сохраняем…" : kind === "create" ? "Создать карточку" : "Сохранить"}</button>{kind !== "create" ? <BackButton onClick={() => changeEdit(null)}>К карточке</BackButton> : null}</div>
     </fieldset></form> : null}
-    {editingOffer && contractor ? <form key={edit.offer?.id ?? "new"} className={styles.form} onSubmit={submitOffer} onChange={() => { dirty.current = true; }}><fieldset disabled={busy || conflict}>
+    {editingOffer && contractor ? <form key={edit.offer?.id ?? "new"} className={styles.form} onSubmit={submitOffer} onChange={() => { setDirty(true); }}><fieldset disabled={busy || conflict}>
       <label>Название услуги<input className={styles.input} name="title" minLength={2} maxLength={200} required defaultValue={edit.offer?.title ?? ""} placeholder="Например, ведение корпоратива" /></label><label>Категория<select className={styles.select} name="categoryId" required defaultValue={edit.offer?.category.id ?? ""}><option value="">Выберите категорию</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Что входит<textarea className={styles.textarea} name="description" defaultValue={edit.offer?.description ?? ""} /></label><label>Как считается цена<select className={styles.select} value={priceType} onChange={(event) => setPriceType(event.target.value as ContractorPriceType)}>{Object.entries(CONTRACTOR_PRICE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {priceType !== "ON_REQUEST" ? <div className={styles.formGrid}><label>{priceType === "FROM" || priceType === "RANGE" ? "Цена от" : "Цена клиенту"}<input className={styles.input} name="clientPrice" type="number" required min="0" step="0.01" defaultValue={edit.offer?.clientPrice ?? ""} /></label>{priceType === "RANGE" ? <label>Цена до<input className={styles.input} name="clientPriceMax" type="number" required min="0" step="0.01" defaultValue={edit.offer?.clientPriceMax ?? ""} /></label> : null}</div> : <p className={styles.help}>Цена по запросу не считается нулём. В КП будет видно, что её нужно уточнить.</p>}
       <div className={styles.formGrid}><label>Внутренняя стоимость<input className={styles.input} name="internalCost" type="number" min="0" step="0.01" defaultValue={edit.offer?.internalCost ?? ""} /></label><label>Единица<input className={styles.input} name="unitLabel" placeholder="час, человек, мероприятие" defaultValue={edit.offer?.unitLabel ?? ""} /></label></div><p className={styles.help}>Сохранение фиксирует дату подтверждения цены. Уже собранные КП не изменятся.</p><div className={styles.formActions}><button className={styles.primary}>{busy ? "Сохраняем…" : "Сохранить услугу"}</button><BackButton onClick={() => changeEdit(null)}>К карточке</BackButton></div>

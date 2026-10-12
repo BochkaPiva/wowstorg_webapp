@@ -107,10 +107,12 @@ function DiscreteWorkspaceSlider<T extends string | number>({
 }) {
   const selectedIndex = Math.max(0, values.findIndex((item) => item === value));
   const [previewIndex, setPreviewIndex] = React.useState(selectedIndex);
+  const [previewSource, setPreviewSource] = React.useState(selectedIndex);
 
-  React.useEffect(() => {
+  if (previewSource !== selectedIndex) {
+    setPreviewSource(selectedIndex);
     setPreviewIndex(selectedIndex);
-  }, [selectedIndex]);
+  }
 
   const commitPreview = React.useCallback((index: number) => {
     const nextValue = values[index] ?? value;
@@ -189,16 +191,6 @@ export function ProjectWorkspaceSettings({
   const [templateNotice, setTemplateNotice] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (editing) return;
-    setDraftOwnerId(owner.id);
-    setDraftMemberIds(members.map((item) => item.user.id));
-    const nextWidgets = buildProjectWorkspaceDraft(widgets);
-    draftWidgetsRef.current = nextWidgets;
-    setDraftWidgets(nextWidgets);
-    setLayoutHistory([]);
-  }, [editing, members, owner.id, widgets]);
-
-  React.useEffect(() => {
     if (!editing) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -223,7 +215,13 @@ export function ProjectWorkspaceSettings({
   }
 
   const beginEditing = React.useCallback(async () => {
+    if (editing) return;
     setError(null);
+    setDraftOwnerId(owner.id);
+    setDraftMemberIds(members.map((item) => item.user.id));
+    const nextWidgets = buildProjectWorkspaceDraft(widgets);
+    draftWidgetsRef.current = nextWidgets;
+    setDraftWidgets(nextWidgets);
     setLayoutHistory([]);
     setEditing(true);
     if (meta) return;
@@ -235,7 +233,7 @@ export function ProjectWorkspaceSettings({
     } catch (cause) {
       setError(cause instanceof Error && cause.message ? cause.message : "Не удалось загрузить список сотрудников");
     }
-  }, [meta]);
+  }, [editing, meta, owner.id, members, widgets]);
 
   React.useEffect(() => {
     if (readOnly) return;

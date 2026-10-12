@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -21,31 +22,11 @@ export default function InventoryCollectionsPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  const [items, setItems] = React.useState<Collection[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/inventory/collections", { cache: "no-store" });
-      const txt = await res.text();
-      const data = txt ? (JSON.parse(txt) as { collections?: Collection[]; error?: { message?: string } }) : {};
-      if (!res.ok) throw new Error(data?.error?.message ?? "Не удалось загрузить категории");
-      setItems(data.collections ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forbidden]);
+  const { data, loading, error, refresh: load } = useJsonResource<{ collections?: Collection[] }>(
+    state.status === "authenticated" && !forbidden ? "/api/inventory/collections" : null,
+    "Не удалось загрузить категории",
+  );
+  const items = data?.collections ?? [];
 
   return (
     <AppShell title="Инвентарь · Категории">

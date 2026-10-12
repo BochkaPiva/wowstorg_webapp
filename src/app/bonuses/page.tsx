@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
@@ -93,37 +94,14 @@ function bonusStatusLabel(status: MonthlyBonus["status"]): string {
 export default function BonusesPage() {
   const { state } = useAuth();
   const isGrinvich = state.status === "authenticated" && state.user.role === "GREENWICH";
-  const [data, setData] = React.useState<BonusesData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const { data: payload, loading, error: loadError } = useJsonResource<BonusesData>(
+    isGrinvich ? "/api/greenwich/bonuses" : null,
+    "Не удалось загрузить бонусы",
+  );
+  const data = payload && "rating" in payload ? payload : null;
+  const error = loadError ?? (payload && !data ? "Не удалось загрузить бонусы" : null);
   const [copied, setCopied] = React.useState(false);
   const primaryBonus = data?.activeBonuses[0] ?? null;
-
-  React.useEffect(() => {
-    if (!isGrinvich) {
-      setLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    void fetch("/api/greenwich/bonuses", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const json = (await response.json().catch(() => null)) as BonusesData | { error?: { message?: string } } | null;
-        if (!response.ok || !json || !("rating" in json)) {
-          throw new Error(json && "error" in json ? json.error?.message : "Не удалось загрузить бонусы");
-        }
-        setData(json);
-      })
-      .catch((requestError: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить бонусы");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [isGrinvich]);
 
   async function copyCode() {
     if (!primaryBonus) return;

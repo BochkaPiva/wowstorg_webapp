@@ -21,13 +21,11 @@ export default function NewCollectionPage() {
   const forbidden = state.status === "authenticated" && user?.role !== "WOWSTORG";
 
   const [name, setName] = React.useState("");
-  const [slug, setSlug] = React.useState("");
+  const [slugOverride, setSlugOverride] = React.useState<string | null>(null);
+  const slug = slugOverride ?? slugFromName(name);
+  const setSlug = (value: string) => setSlugOverride(value || null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (slug === "" || slug === slugFromName(name)) setSlug(slugFromName(name) || "");
-  }, [name]);
 
   async function create() {
     setBusy(true);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -52,34 +53,10 @@ function fmtDateRu(iso: string) {
 export default function InRentPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
-  const [data, setData] = React.useState<Payload | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/inventory/in-rent", { cache: "no-store" });
-      const txt = await res.text();
-      const json = txt ? (JSON.parse(txt) as Payload | { error?: { message?: string } }) : null;
-      if (!res.ok) {
-        const msg =
-          json && "error" in json && json.error?.message ? json.error.message : "Не удалось загрузить раздел";
-        throw new Error(msg);
-      }
-      setData(json as Payload);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void load();
-  }, [forbidden, load]);
+  const { data, loading, error, refresh: load } = useJsonResource<Payload>(
+    state.status === "authenticated" && !forbidden ? "/api/inventory/in-rent" : null,
+    "Не удалось загрузить раздел",
+  );
 
   return (
     <AppShell title="Инвентарь · В аренде">

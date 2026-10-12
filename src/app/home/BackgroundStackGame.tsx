@@ -1,4 +1,5 @@
 "use client";
+import { useClientReady } from "@/lib/use-client-ready";
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -309,16 +310,11 @@ class Block {
 export function BackgroundStackGame() {
   const gameRef = React.useRef<HTMLDivElement | null>(null);
   const dialogRef = React.useRef<HTMLElement | null>(null);
-  const [mounted, setMounted] = React.useState(false);
+  const mounted = useClientReady();
   const [open, setOpen] = React.useState(false);
   const [score, setScore] = React.useState(0);
   const [gameStatus, setGameStatus] = React.useState<GameState>("ready");
   const [feedback, setFeedback] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   React.useEffect(() => {
     if (!open) return;

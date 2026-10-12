@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
@@ -36,31 +37,10 @@ export default function AchievementsPage() {
   const isGreenwich =
     state.status === "authenticated" && state.user.role === "GREENWICH";
 
-  const [data, setData] = React.useState<AchievementSnapshot | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!isGreenwich) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void fetch("/api/greenwich/achievements", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json: AchievementSnapshot) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Ошибка загрузки достижений");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isGreenwich]);
+  const { data, loading, error } = useJsonResource<AchievementSnapshot>(
+    isGreenwich ? "/api/greenwich/achievements" : null,
+    "Ошибка загрузки достижений",
+  );
 
   return (
     <AppShell title="Очивки Grinvich">

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -154,12 +153,7 @@ export default function WarehouseItemEditPage({ params }: { params: Promise<{ id
     <AppShell title="Инвентарь · Складской реквизит">
       <div className="space-y-4 max-w-4xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/inventory/warehouse-items"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-          >
-            ← Назад
-          </Link>
+
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -249,9 +248,7 @@ export default function PositionEditPage({ params }: { params: Promise<{ id: str
     <AppShell title="Инвентарь · Позиция">
       <div className="pos-edit">
         <div className="pos-edit-toolbar">
-          <Link href="/inventory/positions" className="pos-edit-back">
-            ← К позициям
-          </Link>
+
           <div className="pos-edit-actions">
             <button
               type="button"

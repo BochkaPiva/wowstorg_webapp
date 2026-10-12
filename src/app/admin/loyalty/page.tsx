@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import * as React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -163,7 +162,7 @@ export default function LoyaltyAdminPage() {
     <AppShell title="Лояльность Grinvich">
       {forbidden ? <p className="text-sm text-zinc-600">Раздел доступен только Wowstorg.</p> : (
         <div className="mx-auto max-w-7xl pb-16">
-          <Link href="/admin" className="mb-5 inline-flex text-sm font-bold text-zinc-600 transition-colors hover:text-zinc-950">← Администрирование</Link>
+
 
           <SectionHeader title="Лояльность Grinvich" mascot="loyalty" description="Рейтинг команды, персональные условия и история изменений — в одном месте." actions={<button type="button" onClick={() => void load()} disabled={loading}>Обновить</button>} tabs={
           <div role="tablist" aria-label="Разделы лояльности">

@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "./BackLink";
 import Link from "next/link";
 import Image from "next/image";
 import React from "react";
@@ -384,7 +385,7 @@ export function InAppNotifications({ enabled }: { enabled: boolean }) {
           <header className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                {showHistory ? <button type="button" onClick={() => setShowHistory(false)} className="rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900" aria-label="Вернуться к актуальным уведомлениям">←</button> : null}
+                {showHistory ? <BackButton onClick={() => setShowHistory(false)} aria-label="Вернуться к актуальным уведомлениям">Актуальные</BackButton> : null}
                 <h2 className="text-sm font-bold text-zinc-950">{showHistory ? "История" : "Актуальное"}</h2>
               </div>
               {!showHistory && unreadCount > 0 ? <p className="mt-0.5 text-xs text-zinc-500">{unreadCount} требуют просмотра</p> : null}

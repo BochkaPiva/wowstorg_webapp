@@ -58,15 +58,6 @@ export default function NewWarehouseItemPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace inventory-editor space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href="/inventory/warehouse-items"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-            >
-              ← К складскому реквизиту
-            </Link>
-          </div>
-
           <div className="inventory-form-section">
             <div className="text-base font-semibold text-zinc-900">Складской реквизит</div>
             <div className="mt-1 text-sm text-zinc-600">

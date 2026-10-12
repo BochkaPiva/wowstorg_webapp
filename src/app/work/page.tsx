@@ -892,15 +892,6 @@ export default function WorkQueuePage() {
             } />
 
           <section className="work-controls" aria-label="Фильтры рабочей очереди">
-            <div className="work-controls__toolbar">
-              <button type="button" className="work-saveView" onClick={saveCurrentView}>
-                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <path d="M5.5 3.5h9v13L10 13.8l-4.5 2.7v-13Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                </svg>
-                Сохранить вид
-              </button>
-            </div>
-
             {savedViews.length ? (
               <div className="work-savedViews">
                 <span>Сохранённые виды</span>
@@ -925,11 +916,12 @@ export default function WorkQueuePage() {
                   <circle cx="8.8" cy="8.8" r="5.3" stroke="currentColor" strokeWidth="1.5" />
                   <path d="m12.7 12.7 3.8 3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
-                <span>Поиск</span>
+                <span className="sr-only">Поиск</span>
                 <input
+                  type="search"
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.target.value)}
-                  placeholder="Клиент, проект, заявка или сотрудник"
+                  placeholder="Найти клиента, проект или заявку"
                 />
               </label>
               <label>
@@ -959,11 +951,16 @@ export default function WorkQueuePage() {
                   <option value="amount">По сумме</option>
                 </select>
               </label>
+              <button type="button" className="work-saveView" onClick={saveCurrentView} aria-label="Сохранить текущий вид" title="Сохранить текущий вид">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M5.5 3.5h9v13L10 13.8l-4.5 2.7v-13Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                </svg>
+              </button>
               {(view === "all" || view === "month" || view === "warehouse" || view === "archive") ? (
-                <>
+                <div className="work-dateFilters">
                   <label><span>С</span><input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
                   <label><span>По</span><input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
-                </>
+                </div>
               ) : null}
             </div>
             {view === "archive" ? (

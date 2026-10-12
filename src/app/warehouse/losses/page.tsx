@@ -95,7 +95,7 @@ export default function WarehouseLossesBasePage() {
 
   return (
     <AppShell title="Утерянный реквизит"><div className="inventory-workspace">
-      <SectionHeader title="Утерянное" mascot="inventory" description="Найденное возвращается в остаток. Списание уменьшает общее количество." links={<Link href="/inventory/items">← Инвентарь</Link>} actions={<button type="button" disabled={loading || !!busyId} onClick={() => void load()}>Обновить</button>} />
+      <SectionHeader title="Утерянное" mascot="inventory" description="Найденное возвращается в остаток. Списание уменьшает общее количество." actions={<button type="button" disabled={loading || !!busyId} onClick={() => void load()}>Обновить</button>} />
       <div className="inventory-filters"><input aria-label="Поиск утерянного" placeholder="Позиция или заказчик" value={query} onChange={e => setQuery(e.target.value)} /></div>
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-12T03:07:52Z",
+  "generatedAt": "2026-10-12T04:51:39Z",
   "title": "Design System: WowStorg",
   "extensions": {
     "colorMeta": {
@@ -424,6 +424,11 @@
     ],
     "motion": [
       {
+        "name": "quiet-return",
+        "value": "color 150ms ease-out",
+        "purpose": "Общий BackLink/BackButton меняет только цвет; reduced motion отключает переход."
+      },
+      {
         "name": "section-header-controls",
         "value": "background-color 150ms ease, color 150ms ease",
         "purpose": "Спокойный hover actions; tabs меняют background-color. Reduced motion отключает переходы; иллюстрация статична."
@@ -455,6 +460,18 @@
       }
     ],
     "breakpoints": [
+      {
+        "name": "work-filter-wrap",
+        "value": "1100px"
+      },
+      {
+        "name": "work-input-and-date-mobile",
+        "value": "760px"
+      },
+      {
+        "name": "work-filter-phone",
+        "value": "500px"
+      },
       {
         "name": "section-header-medium",
         "value": "1000px"
@@ -494,6 +511,22 @@
     ]
   },
   "components": [
+    {
+      "name": "Спокойный возврат к разделу",
+      "kind": "nav",
+      "refersTo": "return-link",
+      "description": "Один возврат под toolbar AppShell: SVG-стрелка и название фактического назначения. Для внутреннего возврата используется button с той же геометрией; контекстная ссылка корзины в каталог сохраняется отдельно.",
+      "html": "<nav aria-label=\"Возврат к разделу\"><a class=\"ds-return\" href=\"#projects\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" aria-hidden=\"true\"><path d=\"M16 10H4m0 0 5-5m-5 5 5 5\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" /></svg><span>Все проекты</span></a></nav>",
+      "css": ".ds-return{display:inline-flex;align-items:center;gap:8px;width:fit-content;max-width:100%;min-height:44px;border:0;border-radius:4px;padding:4px 0;background:transparent;color:var(--wow-muted,#686863);font-family:Onest,Arial,sans-serif;font-size:14px;font-weight:650;line-height:1.4;text-align:left;text-decoration:none;cursor:pointer;transition:color 150ms ease-out}.ds-return svg{flex:0 0 auto}.ds-return:hover{color:var(--wow-purple,#5e20bb)}.ds-return:focus-visible{outline:2px solid var(--wow-purple,#5e20bb);outline-offset:4px}.ds-return:disabled{opacity:.5;cursor:default}@media(prefers-reduced-motion:reduce){.ds-return{transition:none}}"
+    },
+    {
+      "name": "Компактная полоса фильтров очереди",
+      "kind": "custom",
+      "refersTo": "work-filter-field",
+      "description": "Однострочный поиск, три native select и bookmark 44×44px делят полноширинную полосу. До 1100px selectors переходят ниже; до 500px сортировка занимает всю ширину. Preview показывает controls; сохранённые виды, условные даты и архивные настройки остаются в реальной странице.",
+      "html": "<div class=\"ds-work-filters\"><label class=\"ds-work-search\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" aria-hidden=\"true\"><circle cx=\"8.8\" cy=\"8.8\" r=\"5.3\" stroke=\"currentColor\" stroke-width=\"1.5\" /><path d=\"m12.7 12.7 3.8 3.8\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" /></svg><input type=\"search\" aria-label=\"Поиск\" placeholder=\"Найти клиента, проект или заявку\" /></label><label><span>Тип</span><select><option>Все типы</option></select></label><label><span>Фаза</span><select><option>Все фазы</option></select></label><label><span>Сортировка</span><select><option>По ближайшей дате</option></select></label><button class=\"ds-work-save\" type=\"button\" aria-label=\"Сохранить текущий вид\" title=\"Сохранить текущий вид\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 20 20\" fill=\"none\" aria-hidden=\"true\"><path d=\"M5.5 3.5h9v13L10 13.8l-4.5 2.7v-13Z\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linejoin=\"round\" /></svg></button></div>",
+      "css": ".ds-work-filters{display:grid;grid-template-columns:minmax(220px,1fr) 120px 150px 200px 44px;align-items:center;gap:8px;padding:10px 12px;background:#fff;font-family:Onest,Arial,sans-serif}.ds-work-filters label{display:grid;min-width:0;min-height:44px;gap:1px;border:1px solid #cecfca;border-radius:8px;padding:4px 10px;background:#fff;transition:border-color 150ms ease,box-shadow 150ms ease}.ds-work-filters label:hover{border-color:#a7a8a3}.ds-work-filters label:focus-within{border-color:var(--wow-purple,#5e20bb);box-shadow:0 0 0 3px color-mix(in srgb,var(--wow-purple,#5e20bb) 11%,transparent)}.ds-work-filters label>span{color:#6f706d;font-size:10px;font-weight:600;line-height:12px;letter-spacing:.04em}.ds-work-filters input,.ds-work-filters select{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#101010;font-family:inherit;font-size:13px;font-weight:600;line-height:20px}.ds-work-filters input::placeholder{color:var(--wow-muted,#686863);opacity:1}.ds-work-filters .ds-work-search{grid-template-columns:18px minmax(0,1fr);align-items:center;gap:8px}.ds-work-search svg{color:#5e605c}.ds-work-search input{font-size:14px;font-weight:400}.ds-work-filters select{appearance:none;padding-right:26px;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23595a57' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right center;cursor:pointer}.ds-work-save{display:inline-flex;align-items:center;justify-content:center;min-height:44px;width:44px;border:0;border-radius:8px;padding:0;background:transparent;color:#4f3a75;cursor:pointer}.ds-work-save:hover{background:var(--wow-purple-soft,#eee7ff)}.ds-work-save:focus-visible{outline:2px solid var(--wow-purple,#5e20bb);outline-offset:2px}@media(max-width:1100px){.ds-work-filters{grid-template-columns:repeat(3,minmax(0,1fr)) 44px}.ds-work-filters .ds-work-search{grid-column:1/4}.ds-work-save{grid-column:4;grid-row:1}.ds-work-filters>label:last-of-type{grid-column:3/5}}@media(max-width:760px){.ds-work-filters .ds-work-search input{font-size:16px}}@media(max-width:500px){.ds-work-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px}.ds-work-filters .ds-work-search{grid-column:1/3}.ds-work-save{grid-column:3}.ds-work-filters>label:nth-of-type(3){grid-column:2/4}.ds-work-filters>label:last-of-type{grid-column:1/-1}}"
+    },
     {
       "name": "Операционная шапка раздела",
       "kind": "custom",

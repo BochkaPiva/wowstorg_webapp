@@ -76,7 +76,7 @@ export default function AdminCleanupPage(){
 
   return <AppShell title="Админка · Очистка">{forbidden?<p>Этот раздел доступен только сотрудникам ВАУСТОРГ.</p>:
     <main className={styles.workspace}>
-      <Link href="/admin" className={styles.back}>← Администрирование</Link>
+
       <SectionHeader title="Очистка данных" mascot="admin" description="Безвозвратное удаление тестовых и больше не нужных сущностей. Сначала проверьте связи и последствия — восстановить удалённое из интерфейса нельзя." />
       <nav className={styles.tabs} aria-label="Тип данных">
         <button type="button" className={entity==="orders"?styles.activeTab:""} onClick={()=>changeEntity("orders")}><strong>Заявки</strong><span>Основные и дополнительные</span></button>

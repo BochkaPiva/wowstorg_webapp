@@ -1111,7 +1111,6 @@ export default function OrderDetailsPage() {
     projectId: order?.project?.id,
   });
   const backHref = safeDetailReturnTo(searchParams.get("returnTo"), returnFallback.href);
-  const backLabel = returnFallback.label;
 
   const [internalNoteDraft, setInternalNoteDraft] = React.useState("");
   const [internalNoteOpen, setInternalNoteOpen] = React.useState(false);
@@ -1962,14 +1961,6 @@ export default function OrderDetailsPage() {
     const body = (
       <div className="space-y-3">
         <p className="text-sm text-red-600">{error ?? "Заявка не найдена"}</p>
-        {!embed ? (
-          <Link
-            href={backHref}
-            className="inline-block rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-          >
-            ← Назад
-          </Link>
-        ) : null}
       </div>
     );
     return embed ? (
@@ -1983,17 +1974,6 @@ export default function OrderDetailsPage() {
 
   const inner = (
       <div className="order-detail w-full min-w-0 space-y-5 overflow-x-clip">
-        {!embed ? (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href={backHref}
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-700 transition-colors hover:border-zinc-950 hover:text-zinc-950"
-            >
-              ← {backLabel}
-            </Link>
-          </div>
-        ) : null}
-
         <div
           className={[
             orderShellClass,

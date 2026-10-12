@@ -53,7 +53,7 @@ export default function InventoryCollectionsPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-<SectionHeader title="Категории" description="Группировка реквизита для удобного поиска в каталоге." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2">
+<SectionHeader title="Категории" description="Группировка реквизита для удобного поиска в каталоге." mascot="inventory" actions={<div className="flex flex-wrap gap-2">
           <Link href="/inventory/collections/new" className="inv-button inv-primary">+ Новая категория</Link>
 
           <button type="button" onClick={() => void load()} disabled={loading} className="inv-button">Обновить</button></div>} />

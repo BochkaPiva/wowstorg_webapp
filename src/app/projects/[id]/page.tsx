@@ -1462,9 +1462,6 @@ export default function ProjectDetailPage() {
             <button type="button" onClick={() => void load()} className={primaryBtn}>
               Повторить
             </button>
-            <Link href={backHref} className={secondaryBtn}>
-              {returnFallback.label}
-            </Link>
           </div>
         </section>
       ) : (
@@ -1507,7 +1504,6 @@ export default function ProjectDetailPage() {
             <div className="project-detail-hero__surface">
               <div className="project-detail-hero__primary min-w-0">
                 <div className="project-detail-hero__crumbs">
-                  <Link href={backHref} className="project-detail-hero__back" aria-label={returnFallback.label}>←</Link>
                   <span className="truncate">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</span>
                   <span aria-hidden className="project-detail-hero__crumb-separator">/</span>
                   <span className="shrink-0">{project.members.length} участн.</span>

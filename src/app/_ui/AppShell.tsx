@@ -8,6 +8,8 @@ import React from "react";
 import { InAppNotifications } from "@/app/_ui/InAppNotifications";
 import { AppWorkspaceSkeleton } from "@/app/_ui/Skeleton";
 import { useAuth } from "@/app/providers";
+import { BackLink } from "./BackLink";
+import { sectionBackHref, sectionBackLabel } from "@/lib/section-return";
 
 type NavItem = {
   href: string;
@@ -105,21 +107,6 @@ function Navigation({ role, onNavigate }: { role: string; onNavigate?: () => voi
   );
 }
 
-function sectionBackHref(path: string, role: string): string {
-  if (path.startsWith("/orders/")) return role === "WOWSTORG" ? "/warehouse/queue" : "/orders";
-  if (path.startsWith("/projects/")) return "/projects";
-  if (path.startsWith("/estimates/")) return "/work?view=estimates";
-  if (path.startsWith("/work/")) return "/work";
-  if (path.startsWith("/warehouse/")) return "/home";
-  if (path.startsWith("/admin/")) return "/admin";
-  if (path === "/inventory/items") return "/home";
-  if (path.startsWith("/inventory/")) return "/inventory/items";
-
-  const parts = path.split("?")[0]?.split("#")[0]?.split("/").filter(Boolean) ?? [];
-  if (parts.length <= 1) return "/home";
-  return `/${parts.slice(0, -1).join("/")}`;
-}
-
 export function AppShell({
   title,
   children,
@@ -168,6 +155,7 @@ export function AppShell({
   }
 
   const showBack = pathname !== "/home";
+  const returnHref = backHref ?? sectionBackHref(pathname, state.user.role);
   const headerSubtitle = state.user.role === "GREENWICH"
     ? state.user.displayName
     : `${state.user.displayName} · ВАУСТОРГ`;
@@ -195,17 +183,6 @@ export function AppShell({
             >
               <span className="app-menuIcon" aria-hidden="true"><i /><i /><i /></span>
             </button>
-            {showBack ? (
-              <button
-                type="button"
-                className="app-backButton"
-                onClick={() => router.push(backHref ?? sectionBackHref(pathname, state.user.role))}
-                aria-label="Назад к разделу"
-              >
-                <span aria-hidden="true">←</span>
-                <span>Назад</span>
-              </button>
-            ) : null}
             <div className="app-topbar__titleBlock">
               <h1>{title}</h1>
               <p>{headerSubtitle}</p>
@@ -218,7 +195,10 @@ export function AppShell({
         </header>
 
         <div className="app-content">
-          <main className="app-content__main">{children}</main>
+          <main className="app-content__main">
+            {showBack ? <nav className="app-pageReturn" aria-label="Возврат к разделу"><BackLink href={returnHref}>{sectionBackLabel(returnHref)}</BackLink></nav> : null}
+            {children}
+          </main>
         </div>
       </div>
 

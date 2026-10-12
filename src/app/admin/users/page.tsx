@@ -2,7 +2,6 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
@@ -261,7 +260,7 @@ export default function AdminUsersPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="space-y-6">
-          <SectionHeader title="Пользователи" mascot="admin" description="Команда, роли и доступ к рабочему пространству." links={<Link href="/admin">Администрирование</Link>} actions={
+          <SectionHeader title="Пользователи" mascot="admin" description="Команда, роли и доступ к рабочему пространству." actions={
             <button
               type="button"
               onClick={() => {

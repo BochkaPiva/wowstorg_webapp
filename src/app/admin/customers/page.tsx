@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
 import { createPortal } from "react-dom";
 
@@ -147,7 +146,7 @@ export default function AdminCustomersPage() {
     <AppShell title="Админка · Заказчики">
       {forbidden ? <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg.</div> : (
         <main className="mx-auto grid max-w-[1480px] gap-5 pb-12">
-          <Link href="/admin" className="w-fit rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:border-zinc-400">← Админка</Link>
+
           <SectionHeader title="Заказчики" mascot="admin" description="Одна карточка для заявок, проектов и смет. Найдите совпадения и сохраните историю клиента вместе." metrics={!loading && !error ? [{ label: "активных", value: activeCount }, { label: "дублей", value: mergeData.summary.duplicateCards }, { label: "объединено", value: mergedCount }] : undefined} />
           {(error || notice) && <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error ?? notice}</div>}
 

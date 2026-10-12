@@ -87,7 +87,7 @@ function RepairPageInner() {
     [row.name, row.incident?.order?.customerName, row.incident?.order?.eventName, row.incident?.order?.employeeName, row.incident?.comment].filter(Boolean).join(" ").toLocaleLowerCase("ru").includes(query));
   return <AppShell title="Ремонт и поломки">
     {!allowed ? <p>Раздел доступен сотрудникам склада.</p> : <div className="inventory-workspace">
-      <SectionHeader title="Ремонт и поломки" mascot="inventory" description="Один случай — один источник. Восстановление возвращает доступность, списание уменьшает общий остаток." links={<Link href="/inventory/items">← Инвентарь</Link>} actions={<button type="button" onClick={() => void load()} disabled={loading || busy}>Обновить</button>} />
+      <SectionHeader title="Ремонт и поломки" mascot="inventory" description="Один случай — один источник. Восстановление возвращает доступность, списание уменьшает общий остаток." actions={<button type="button" onClick={() => void load()} disabled={loading || busy}>Обновить</button>} />
       <div className="inventory-toolbar">
         <div className="inventory-segments" aria-label="Состояние">
           <button aria-pressed={condition === "NEEDS_REPAIR"} disabled={busy} onClick={() => setCondition("NEEDS_REPAIR")}>Требует ремонта</button>

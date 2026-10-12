@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
+import { BackLink } from "@/app/_ui/BackLink";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -1355,12 +1356,6 @@ export default function CartPage() {
                     <div className="mt-1 text-zinc-600">
                       Заказчик: <strong>{projectContext.customerName}</strong>
                     </div>
-                    <Link
-                      href={`/projects/${projectContext.id}`}
-                      className="mt-2 inline-block font-medium text-violet-700 hover:text-violet-900"
-                    >
-                      ← К карточке проекта
-                    </Link>
                   </div>
                 ) : null}
 
@@ -1887,7 +1882,7 @@ export default function CartPage() {
         {mounted &&
           typeof document !== "undefined" &&
           createPortal(
-            <Link
+            <BackLink
               href={
                 isQuickSupplement
                   ? `/catalog?quickParentId=${quickParentId}`
@@ -1902,11 +1897,10 @@ export default function CartPage() {
                       })()
                     : "/catalog"
               }
-              className="cart-floatCatalog"
-              aria-label="В каталог"
+              className="cart-returnToCatalog"
             >
-              ← В каталог
-            </Link>,
+              Каталог
+            </BackLink>,
             document.body
           )}
       </section>

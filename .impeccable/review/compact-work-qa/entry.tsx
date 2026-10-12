@@ -1,0 +1,11 @@
+import React from "react";
+import { createRoot } from "react-dom/client";
+import WorkQueuePage from "../../../src/app/work/page";
+import UsersPage from "../../../src/app/admin/users/page";
+import CustomersPage from "../../../src/app/admin/customers/page";
+import LoyaltyPage from "../../../src/app/admin/loyalty/page";
+import { AppShell } from "../../../src/app/_ui/AppShell";
+import { SectionHeader } from "../../../src/app/_ui/SectionHeader";
+const path = location.pathname;
+const content = path === "/admin/users" ? <UsersPage /> : path === "/admin/customers" ? <CustomersPage /> : path === "/admin/loyalty" ? <LoyaltyPage /> : path.startsWith("/orders/") ? <AppShell title="Заявка · Тест" backHref="/work?view=archive&query=Тест"><SectionHeader title="Тестовая заявка" description="Фикстура навигации: настоящая оболочка, без рабочей базы." mascot="orders" /></AppShell> : <WorkQueuePage />;
+createRoot(document.getElementById("root")!).render(content);

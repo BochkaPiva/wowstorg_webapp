@@ -3893,6 +3893,8 @@ body.project-estimate-cell-selecting * {
   border-radius: 0 0 14px 14px;
 }
 
+.app-pageReturn { margin-bottom: 12px; }
+
 /* Fullscreen content scrolls independently of the locked project page.
    The board owns its canvas pan/zoom instead of an outer scroll area. */
 .project-workspace-widget[data-expanded="true"]:not([data-widget="FREE_BOARD"]) > .project-workspace-widget__body {

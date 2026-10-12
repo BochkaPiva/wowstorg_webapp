@@ -1717,6 +1717,7 @@
 }
 
 /* Плавающая кнопка «В каталог» — слева, всегда видна */
+.cart-returnToCatalog { position: fixed; bottom: 24px; left: 24px; z-index: 9998; padding-inline: 12px; background: var(--wow-paper, #f4f4f0); }
 .cart-floatCatalog {
   position: fixed;
   bottom: 1.5rem;

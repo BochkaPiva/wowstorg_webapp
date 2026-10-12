@@ -186,7 +186,6 @@ export default function StandaloneEstimatePage() {
             <div className="standalone-estimate-hero__surface">
               <div className="standalone-estimate-hero__primary">
                 <div className="standalone-estimate-hero__crumbs">
-                  <Link href="/work?view=estimates" aria-label="К независимым сметам">←</Link>
                   <span>Независимая смета</span>
                   <i aria-hidden>/</i>
                   <span>{readOnly ? "перенесена в проект" : "черновик"}</span>

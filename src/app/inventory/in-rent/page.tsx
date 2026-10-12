@@ -87,7 +87,7 @@ export default function InRentPage() {
         <div className="text-sm text-zinc-600">Этот раздел доступен только Wowstorg (склад).</div>
       ) : (
         <div className="inventory-workspace space-y-4">
-<SectionHeader title="В аренде" description="Выданный реквизит, ожидаемые возвраты и просрочки." mascot="inventory" links={<Link href="/inventory/items" className="inventory-back">← Инвентарь</Link>} actions={<div className="flex flex-wrap gap-2"><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div>} />
+<SectionHeader title="В аренде" description="Выданный реквизит, ожидаемые возвраты и просрочки." mascot="inventory" actions={<div className="flex flex-wrap gap-2"><button className="inv-button" onClick={() => void load()} disabled={loading}>Обновить</button></div>} />
           {loading ? (
             <ListSkeleton rows={6} />
           ) : error ? (

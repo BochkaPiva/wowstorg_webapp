@@ -960,14 +960,6 @@ export default function CatalogPage() {
                   ? "Здесь нет дат и реальной заявки: ты просто собираешь demo-корзину без резервирования."
                   : "Корзина и заявка отдельные от обычной: полная цена, привязка к проекту.")}
             </p>
-            <Link
-              href={returnTo ?? `/projects/${projectId}`}
-              className={`mt-2 inline-block font-medium ${
-                isProjectDemoCatalog ? "text-violet-700 hover:text-violet-900" : "text-violet-700 hover:text-violet-900"
-              }`}
-            >
-              ← К карточке проекта
-            </Link>
           </div>
         ) : null}
 

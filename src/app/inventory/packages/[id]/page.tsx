@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -134,12 +133,7 @@ export default function PackageEditPage({ params }: { params: Promise<{ id: stri
     <AppShell title="Инвентарь · Пакет">
       <div className="inventory-workspace inventory-editor space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link
-            href="/inventory/packages"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
-          >
-            ← К пакетам
-          </Link>
+
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

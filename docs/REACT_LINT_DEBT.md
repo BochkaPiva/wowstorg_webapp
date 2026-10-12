@@ -23,7 +23,7 @@
 
 Внешний вид, API, схема БД, права доступа и финансовые формулы не менялись.
 
-Добавлены восемь DOM regression tests в `tests/react-lifecycle-debt.test.tsx`, включая React StrictMode, server render/hydration, focus и Escape. Vitest поддерживает `.test.tsx`; jsdom 29.1.1 — точная dev-only зависимость, совместимая с Node 24.14.1 в CI. Next-компоненты и DayPicker замоканы: эти тесты проверяют наши lifecycle-сценарии, а не реальную навигацию Next или визуальную работу календарной библиотеки. Полноценная проверка в браузере не заявляется.
+Добавлены восемь DOM regression tests в `tests/react-lifecycle-debt.test.tsx`, включая React StrictMode, server render/hydration, focus и Escape. Vitest поддерживает `.test.tsx`; jsdom 29.1.1 — точная dev-only зависимость, совместимая с Node 24.14.1 в CI. Тестовые workers явно используют `NODE_ENV=test`: Vercel запускает quality gate с `NODE_ENV=production`, где React не экспортирует тестовый `act`. Окружение самого Next build не меняется. Next-компоненты и DayPicker замоканы: эти тесты проверяют наши lifecycle-сценарии, а не реальную навигацию Next или визуальную работу календарной библиотеки. Полноценная проверка в браузере не заявляется.
 
 Проверки: `npm run build:verified` успешно завершён — `lint:ci`: 158 исторических ошибок, 0 регрессий; 68 test files / 446 tests проходят; production audit: 0 уязвимостей; Next production build и TypeScript проходят. Полный audit сохраняет прежние 5 high в dev-only ESLint → braces цепочке; jsdom не добавил advisories.
 

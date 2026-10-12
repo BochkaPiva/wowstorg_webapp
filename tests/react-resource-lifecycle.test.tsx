@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useJsonResource } from "@/lib/use-json-resource";
+import { useJsonResource, useReadResource } from "@/lib/use-json-resource";
 import { Providers, useAuth } from "@/app/providers";
 import { OrderDateChangeDialog } from "@/app/orders/[id]/OrderDateChangeDialog";
 import { OrderFeedbackEditor } from "@/app/_ui/OrderServiceFeedback";
@@ -50,6 +50,31 @@ const output = () => container.querySelector("output")!;
 const latest = () => flights[flights.length - 1]!;
 
 describe("JSON resource lifecycle", () => {
+  it("publishes coupled read-only requests atomically and handles a synchronous reader failure", async () => {
+    function Pair() {
+      const reader = React.useCallback(async (signal?: AbortSignal) => {
+        const responses = await Promise.all([fetch("/left", { signal }), fetch("/right", { signal })]);
+        const data = await Promise.all(responses.map((response) => response.json() as Promise<{ name: string }>));
+        return { name: data.map((entry) => entry.name).join(" + ") };
+      }, []);
+      const resource = useReadResource("pair", reader, "Ошибка чтения");
+      return <output data-loading={resource.loading}>{resource.data?.name ?? "нет данных"}</output>;
+    }
+    render(<Pair />);
+    await respond(flights.filter((entry) => entry.url === "/left").at(-1)!, { name: "Левый" });
+    expect(output().dataset.loading).toBe("true");
+    expect(output().textContent).toBe("нет данных");
+    await respond(flights.filter((entry) => entry.url === "/right").at(-1)!, { name: "Правый" });
+    expect(output().textContent).toBe("Левый + Правый");
+    function Failing() {
+      const reader = React.useCallback((): Promise<{ name: string }> => { throw new Error("Чтение не началось"); }, []);
+      const resource = useReadResource("failure", reader, "Ошибка чтения");
+      return <output data-loading={resource.loading}>{resource.error}</output>;
+    }
+    await act(async () => root.render(<Failing />));
+    expect(output().dataset.loading).toBe("false");
+    expect(output().textContent).toBe("Чтение не началось");
+  });
   it("ignores a late refresh captured by an action for a previous resource", async () => {
     let oldRefresh: (() => Promise<void>) | undefined;
     function Capture({ url }: { url: string }) {

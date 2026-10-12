@@ -5,6 +5,7 @@ import React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 type AuditSeverity = "OK" | "WARNING" | "CRITICAL" | "FAILED";
 
@@ -54,54 +55,18 @@ function severityPillClass(severity: AuditSeverity) {
 export default function InventoryAuditAdminPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
-  const [loading, setLoading] = React.useState(false);
   const [running, setRunning] = React.useState(false);
-  const [rows, setRows] = React.useState<AuditRun[]>([]);
-  const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null);
-  const [selectedItems, setSelectedItems] = React.useState<AuditItemResult[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const loadRuns = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await fetch("/api/admin/inventory-audit/runs?limit=25", { cache: "no-store" });
-      const j = (await r.json()) as { rows?: AuditRun[]; error?: string };
-      if (!r.ok) throw new Error(j.error ?? "Не удалось загрузить аудиты");
-      setRows(j.rows ?? []);
-      if (!selectedRunId && (j.rows?.length ?? 0) > 0) {
-        setSelectedRunId(j.rows![0].id);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedRunId]);
-
-  React.useEffect(() => {
-    if (forbidden) return;
-    void loadRuns();
-  }, [forbidden, loadRuns]);
-
-  React.useEffect(() => {
-    if (!selectedRunId) {
-      setSelectedItems([]);
-      return;
-    }
-    let cancelled = false;
-    void fetch(`/api/admin/inventory-audit/runs/${selectedRunId}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j: { run?: { itemResults?: AuditItemResult[] } }) => {
-        if (!cancelled) setSelectedItems(j.run?.itemResults ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setSelectedItems([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedRunId]);
+  const allowed = state.status === "authenticated" && !forbidden;
+  const runs = useJsonResource<{ rows?: AuditRun[] }>(allowed ? "/api/admin/inventory-audit/runs?limit=25" : null, "Не удалось загрузить аудиты");
+  const rows = runs.data?.rows ?? [];
+  const loading = runs.loading;
+  const [chosenRunId, setSelectedRunId] = React.useState<string | null>(null);
+  const selectedRunId = chosenRunId ?? rows[0]?.id ?? null;
+  const details = useJsonResource<{ run?: { itemResults?: AuditItemResult[] } }>(allowed && selectedRunId ? `/api/admin/inventory-audit/runs/${selectedRunId}` : null, "Не удалось загрузить результат аудита");
+  const selectedItems = details.data?.run?.itemResults ?? [];
+  const [actionError, setError] = React.useState<string | null>(null);
+  const error = actionError ?? runs.error;
+  async function loadRuns() { setError(null); await runs.refresh(); }
 
   async function runManualAudit() {
     setRunning(true);

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useReadResource } from "@/lib/use-json-resource";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -45,13 +46,10 @@ function CustomerMark({ customer, large = false }: { customer: Customer; large?:
 export default function AdminCustomersPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
-  const [customers, setCustomers] = React.useState<Customer[]>([]);
-  const [mergeData, setMergeData] = React.useState<MergeData>(emptyMergeData);
   const [targets, setTargets] = React.useState<Record<string, string>>({});
   const [confirming, setConfirming] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [actionError, setError] = React.useState<string | null>(null);
   const [createName, setCreateName] = React.useState("");
   const [createNotes, setCreateNotes] = React.useState("");
   const [editing, setEditing] = React.useState<Customer | null>(null);
@@ -61,28 +59,29 @@ export default function AdminCustomersPage() {
   const [logoFile, setLogoFile] = React.useState<File | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    try {
+  const read = React.useCallback(async (signal?: AbortSignal) => {
       const [customersResponse, mergeResponse] = await Promise.all([
-        fetch("/api/customers?all=true", { cache: "no-store" }),
-        fetch("/api/customers/merge", { cache: "no-store" }),
+        fetch("/api/customers?all=true", { cache: "no-store", signal }),
+        fetch("/api/customers/merge", { cache: "no-store", signal }),
       ]);
       const customersPayload = (await customersResponse.json()) as { customers?: Customer[]; error?: { message?: string } };
       const mergePayload = (await mergeResponse.json()) as MergeData & { error?: { message?: string } };
       if (!customersResponse.ok) throw new Error(customersPayload.error?.message ?? "Не удалось загрузить заказчиков");
       if (!mergeResponse.ok) throw new Error(mergePayload.error?.message ?? "Не удалось проверить дубли");
-      setCustomers(customersPayload.customers ?? []);
-      setMergeData(mergePayload);
-      setTargets(Object.fromEntries(mergePayload.groups.map((group) => [group.identityKey, group.suggestedTargetId])));
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные");
-    } finally {
-      setLoading(false);
-    }
+      return { customers: customersPayload.customers ?? [], mergeData: mergePayload };
   }, []);
-
-  React.useEffect(() => { if (!forbidden) void load(); }, [forbidden, load]);
+  const resource = useReadResource(state.status === "authenticated" && !forbidden ? "admin-customers" : null, read, "Не удалось загрузить данные");
+  const customers = resource.data?.customers ?? [];
+  const mergeData = resource.data?.mergeData ?? emptyMergeData;
+  const loading = resource.loading;
+  const error = actionError ?? resource.error;
+  const targetSource = JSON.stringify(mergeData.groups.map((group) => [group.identityKey, group.suggestedTargetId, group.customers.map((customer) => customer.id)]));
+  const [targetsSource, setTargetsSource] = React.useState(targetSource);
+  if (targetsSource !== targetSource) {
+    setTargetsSource(targetSource);
+    setTargets(Object.fromEntries(mergeData.groups.map((group) => [group.identityKey, group.suggestedTargetId])));
+  }
+  async function load() { setError(null); await resource.refresh(); }
 
   async function create(event: React.FormEvent) {
     event.preventDefault(); setError(null); setNotice(null); setSaving(true);

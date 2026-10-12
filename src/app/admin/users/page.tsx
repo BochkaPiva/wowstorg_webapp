@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useJsonResource } from "@/lib/use-json-resource";
 import { createPortal } from "react-dom";
 
 import { AppShell } from "@/app/_ui/AppShell";
@@ -45,9 +46,12 @@ export default function AdminUsersPage() {
   const { state } = useAuth();
   const forbidden = state.status === "authenticated" && state.user.role !== "WOWSTORG";
 
-  const [users, setUsers] = React.useState<UserRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const allowed = state.status === "authenticated" && !forbidden;
+  const list = useJsonResource<{ users?: UserRow[] }>(allowed ? "/api/admin/users" : null, "Не удалось загрузить список пользователей");
+  const users = list.data?.users ?? [];
+  const loading = list.loading;
+  const [actionError, setError] = React.useState<string | null>(null);
+  const error = actionError ?? list.error;
   const [modal, setModal] = React.useState<"create" | UserRow | null>(null);
   const [form, setForm] = React.useState({
     login: "",
@@ -64,105 +68,10 @@ export default function AdminUsersPage() {
     password: "",
   });
   const [saving, setSaving] = React.useState(false);
-  const [adminAchievements, setAdminAchievements] = React.useState<AdminAchievementsResponse | null>(null);
-  const [adminAchievementsLoading, setAdminAchievementsLoading] = React.useState(false);
-  const [adminAchievementsError, setAdminAchievementsError] = React.useState<string | null>(null);
-  const achievementsAbortRef = React.useRef<AbortController | null>(null);
+  const achievementsUrl = allowed && modal && modal !== "create" && editForm.role === "GREENWICH" ? `/api/admin/users/${modal.id}/achievements` : null;
+  const { data: adminAchievements, loading: adminAchievementsLoading, error: adminAchievementsError } = useJsonResource<AdminAchievementsResponse>(achievementsUrl, "Ошибка загрузки ачивок");
 
-  const load = React.useCallback(async () => {
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/users", { cache: "no-store" });
-      const text = await res.text();
-      let data: { users?: UserRow[]; error?: { message?: string } } = {};
-      if (text) {
-        try {
-          data = JSON.parse(text) as { users?: UserRow[]; error?: { message?: string } };
-        } catch {
-          setError("Не удалось загрузить список пользователей");
-          setUsers([]);
-          return;
-        }
-      }
-      if (!res.ok) {
-        setError(data?.error?.message ?? `Ошибка ${res.status}`);
-        setUsers([]);
-        return;
-      }
-      setUsers(data.users ?? []);
-    } catch (e) {
-      setError("Ошибка сети или сервера");
-      setUsers([]);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (!forbidden) void load();
-  }, [forbidden, load]);
-
-  React.useEffect(() => {
-    setLoading(false);
-  }, [users]);
-
-  React.useEffect(() => {
-    achievementsAbortRef.current?.abort();
-    achievementsAbortRef.current = null;
-
-    if (forbidden || !modal || modal === "create" || !("id" in modal)) {
-      setAdminAchievements(null);
-      setAdminAchievementsError(null);
-      setAdminAchievementsLoading(false);
-      return;
-    }
-
-    if (editForm.role !== "GREENWICH") {
-      setAdminAchievements(null);
-      setAdminAchievementsError(null);
-      setAdminAchievementsLoading(false);
-      return;
-    }
-
-    const ac = new AbortController();
-    achievementsAbortRef.current = ac;
-    setAdminAchievementsLoading(true);
-    setAdminAchievementsError(null);
-    setAdminAchievements(null);
-
-    void fetch(`/api/admin/users/${modal.id}/achievements`, { cache: "no-store", signal: ac.signal })
-      .then(async (res) => {
-        const text = await res.text();
-        let parsed: unknown = {};
-        if (text) {
-          try {
-            parsed = JSON.parse(text) as unknown;
-          } catch {
-            throw new Error("Не удалось разобрать ответ сервера");
-          }
-        }
-        if (!res.ok) {
-          const msg =
-            parsed && typeof parsed === "object" && "error" in parsed
-              ? String((parsed as { error?: { message?: string } }).error?.message ?? "")
-              : "";
-          throw new Error(msg || `Ошибка ${res.status}`);
-        }
-        return parsed as AdminAchievementsResponse;
-      })
-      .then((json) => {
-        if (ac.signal.aborted) return;
-        setAdminAchievements(json);
-      })
-      .catch((e: unknown) => {
-        if (ac.signal.aborted) return;
-        setAdminAchievements(null);
-        setAdminAchievementsError(e instanceof Error ? e.message : "Ошибка загрузки ачивок");
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setAdminAchievementsLoading(false);
-      });
-
-    return () => ac.abort();
-  }, [forbidden, modal, editForm.role]);
+  async function load() { setError(null); await list.refresh(); }
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();

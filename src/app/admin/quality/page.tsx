@@ -6,7 +6,8 @@ import * as React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { ListSkeleton } from "@/app/_ui/Skeleton";
-import { readJsonSafe } from "@/lib/fetchJson";
+import { useJsonResource } from "@/lib/use-json-resource";
+import { useAuth } from "@/app/providers";
 import "./quality.css";
 
 type QualityData = {
@@ -31,8 +32,6 @@ type QualityData = {
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 };
 
-type ApiError = { error?: { message?: string } };
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
@@ -49,9 +48,8 @@ function ReadonlyStars({ rating }: { rating: number }) {
 }
 
 export default function AdminQualityPage() {
-  const [data, setData] = React.useState<QualityData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const { state } = useAuth();
+  const allowed = state.status === "authenticated" && state.user.role === "WOWSTORG";
   const [rating, setRating] = React.useState("all");
   const [sort, setSort] = React.useState("newest");
   const [search, setSearch] = React.useState("");
@@ -63,30 +61,18 @@ export default function AdminQualityPage() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  React.useEffect(() => setPage(1), [rating, sort, debouncedSearch]);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    const params = new URLSearchParams({ page: String(page), pageSize: "20", sort });
-    if (rating !== "all") params.set("rating", rating);
-    if (debouncedSearch) params.set("q", debouncedSearch);
-    setLoading(true);
-    setError(null);
-    void fetch(`/api/admin/quality?${params}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const payload = await readJsonSafe<QualityData | ApiError>(response);
-        if (!response.ok || !payload || !("summary" in payload)) {
-          throw new Error((payload as ApiError | null)?.error?.message ?? "Не удалось загрузить оценки");
-        }
-        setData(payload);
-      })
-      .catch((cause) => {
-        if (controller.signal.aborted) return;
-        setError(cause instanceof Error ? cause.message : "Не удалось загрузить оценки");
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [page, rating, sort, debouncedSearch]);
+  const filterScope = JSON.stringify([rating, sort, debouncedSearch]);
+  const [pageScope, setPageScope] = React.useState(filterScope);
+  if (pageScope !== filterScope) {
+    setPageScope(filterScope);
+    setPage(1);
+  }
+  const params = new URLSearchParams({ page: String(page), pageSize: "20", sort });
+  if (rating !== "all") params.set("rating", rating);
+  if (debouncedSearch) params.set("q", debouncedSearch);
+  const { data: payload, loading, error: loadError } = useJsonResource<QualityData>(allowed ? `/api/admin/quality?${params}` : null, "Не удалось загрузить оценки");
+  const data = payload && "summary" in payload ? payload : null;
+  const error = loadError ?? (payload && !data ? "Не удалось загрузить оценки" : state.status === "authenticated" && !allowed ? "Этот раздел доступен только сотрудникам ВАУСТОРГ." : null);
 
   const maxDistribution = Math.max(1, ...(data?.summary.distribution.map((entry) => entry.count) ?? [1]));
 

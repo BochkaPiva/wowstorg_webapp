@@ -4,13 +4,8 @@
   "errors": {
     "src/app/admin/analytics/AnalyticsReconciliation.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/admin/analytics/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/admin/customers/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/admin/inventory-audit/page.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/admin/loyalty/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/admin/order-cleanup/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/admin/quality/page.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/admin/telegram/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/admin/users/page.tsx|react-hooks/set-state-in-effect": 3,
     "src/app/cart/CartRelatedSuggestions.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/cart/page.tsx|react-hooks/set-state-in-effect": 12,
     "src/app/catalog/page.tsx|react-hooks/refs": 4,

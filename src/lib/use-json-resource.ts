@@ -5,11 +5,12 @@ import { readJsonSafe } from "./fetchJson";
 
 type Result<T> = { key: string | null; data: T | null; error: string | null };
 
-/** GET-only resource. A null URL disables it; refresh is an explicit user action.
+/** Read-only resource. A null key disables it; refresh is an explicit user action.
  * Initial/key-change loading is derived, not set by an effect. Only the latest
  * request may publish a result, including transports that ignore AbortSignal.
+ * Keep the reader stable with useCallback; key must identify its input scope.
  */
-export function useJsonResource<T>(url: string | null, errorMessage: string) {
+export function useReadResource<T>(url: string | null, reader: (signal?: AbortSignal) => Promise<T>, errorMessage: string) {
   const [result, setResult] = useState<Result<T> | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [source, setSource] = useState(url);
@@ -26,18 +27,16 @@ export function useJsonResource<T>(url: string | null, errorMessage: string) {
     if (!url || activeUrl.current !== url) return Promise.resolve();
     const version = ++flight.current;
     const current = () => !signal?.aborted && version === flight.current;
-    return fetch(url, { cache: "no-store", signal })
-      .then(async (response) => {
-        const payload = await readJsonSafe<T & { error?: { message?: string } }>(response);
-        if (!response.ok || payload == null) throw new Error(payload?.error?.message ?? errorMessage);
-        return payload;
-      })
+    let response: Promise<T>;
+    try { response = reader(signal); }
+    catch (cause) { response = Promise.reject(cause); }
+    return response
       .then((payload) => { if (current()) setResult({ key: url, data: payload, error: null }); })
       .catch((cause: unknown) => {
         if (current()) setResult({ key: url, data: null, error: cause instanceof Error ? cause.message : errorMessage });
       })
       .finally(() => { if (current()) setRefreshing(false); });
-  }, [url, errorMessage]);
+  }, [url, reader, errorMessage]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -63,4 +62,17 @@ export function useJsonResource<T>(url: string | null, errorMessage: string) {
     loading: Boolean(url) && (!matching || refreshing),
     refresh,
   };
+}
+
+/** HTTP GET adapter; preserves both standard jsonError and legacy string errors. */
+export function useJsonResource<T>(url: string | null, errorMessage: string) {
+  const reader = useCallback(async (signal?: AbortSignal): Promise<T> => {
+    if (!url) throw new Error(errorMessage);
+    const response = await fetch(url, { cache: "no-store", signal });
+    const payload = await readJsonSafe<T & { error?: string | { message?: string } }>(response);
+    const message = typeof payload?.error === "string" ? payload.error : payload?.error?.message;
+    if (!response.ok || payload == null) throw new Error(message ?? errorMessage);
+    return payload;
+  }, [url, errorMessage]);
+  return useReadResource(url, reader, errorMessage);
 }

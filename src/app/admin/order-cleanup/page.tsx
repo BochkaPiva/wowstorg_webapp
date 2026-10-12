@@ -6,6 +6,7 @@ import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
 import { readJsonSafe } from "@/lib/fetchJson";
+import { useJsonResource } from "@/lib/use-json-resource";
 import styles from "./cleanup.module.css";
 
 type Entity = "orders" | "projects";
@@ -23,10 +24,6 @@ export default function AdminCleanupPage(){
   const {state}=useAuth();
   const forbidden=state.status==="authenticated"&&state.user.role!=="WOWSTORG";
   const [entity,setEntity]=React.useState<Entity>("orders");
-  const [orders,setOrders]=React.useState<OrderRow[]>([]);
-  const [projects,setProjects]=React.useState<ProjectRow[]>([]);
-  const [orderPreview,setOrderPreview]=React.useState<OrderPreview|null>(null);
-  const [projectPreview,setProjectPreview]=React.useState<ProjectPreview|null>(null);
   const [selected,setSelected]=React.useState<Set<string>>(new Set());
   const [queryInput,setQueryInput]=React.useState("");
   const [query,setQuery]=React.useState("");
@@ -35,27 +32,24 @@ export default function AdminCleanupPage(){
   const [statuses,setStatuses]=React.useState<Set<string>>(new Set(ORDER_STATUSES.map(([value])=>value)));
   const [showStatuses,setShowStatuses]=React.useState(false);
   const [confirmation,setConfirmation]=React.useState("");
-  const [loading,setLoading]=React.useState(true);
   const [busy,setBusy]=React.useState(false);
-  const [error,setError]=React.useState<string|null>(null);
+  const [actionError,setError]=React.useState<string|null>(null);
   const [success,setSuccess]=React.useState<string|null>(null);
 
   React.useEffect(()=>{const timer=window.setTimeout(()=>setQuery(queryInput.trim()),250);return()=>window.clearTimeout(timer)},[queryInput]);
   const ids=React.useMemo(()=>[...selected].sort(),[selected]);
   const idsKey=ids.join(",");
-  const load=React.useCallback(async()=>{
-    setLoading(true);setError(null);
-    const params=new URLSearchParams({entity,sort});
-    if(query)params.set("q",query);if(idsKey)params.set("selected",idsKey);
-    if(entity==="orders"){if(source!=="all")params.set("source",source);params.set("status",[...statuses].join(","));}
-    try{
-      const response=await fetch(`/api/admin/order-cleanup?${params}`,{cache:"no-store"});
-      const data=await readJsonSafe<{orders?:OrderRow[];projects?:ProjectRow[];preview?:OrderPreview|ProjectPreview|null;error?:{message?:string}}>(response);
-      if(!response.ok)throw new Error(data?.error?.message??"Не удалось загрузить данные");
-      if(entity==="orders"){setOrders(data?.orders??[]);setOrderPreview((data?.preview as OrderPreview|null)??null)}else{setProjects(data?.projects??[]);setProjectPreview((data?.preview as ProjectPreview|null)??null)}
-    }catch(cause){setError(cause instanceof Error?cause.message:"Ошибка сети или сервера")}finally{setLoading(false)}
-  },[entity,idsKey,query,sort,source,statuses]);
-  React.useEffect(()=>{if(!forbidden)void load()},[forbidden,load]);
+  const params=new URLSearchParams({entity,sort});
+  if(query)params.set("q",query);if(idsKey)params.set("selected",idsKey);
+  if(entity==="orders"){if(source!=="all")params.set("source",source);params.set("status",[...statuses].join(","));}
+  const resource=useJsonResource<{orders?:OrderRow[];projects?:ProjectRow[];preview?:OrderPreview|ProjectPreview|null}>(state.status==="authenticated"&&!forbidden?`/api/admin/order-cleanup?${params}`:null,"Не удалось загрузить данные");
+  const orders=resource.data?.orders??[];
+  const projects=resource.data?.projects??[];
+  const orderPreview=entity==="orders"?(resource.data?.preview as OrderPreview|null)??null:null;
+  const projectPreview=entity==="projects"?(resource.data?.preview as ProjectPreview|null)??null:null;
+  const loading=resource.loading;
+  const error=actionError??resource.error;
+  async function load(){setError(null);await resource.refresh()}
 
   function changeEntity(next:Entity){setEntity(next);setSelected(new Set());setConfirmation("");setSuccess(null);setError(null);setSort(next==="orders"?"readyBy_asc":"updated_desc")}
   function toggle(id:string){setSuccess(null);setConfirmation("");setSelected(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next})}
@@ -63,7 +57,7 @@ export default function AdminCleanupPage(){
   function clearSelection(){setSelected(new Set());setConfirmation("");setSuccess(null)}
   const orderBlocked=Boolean(orderPreview?.blockingProjectLinkedOrders.length);
   const projectBlocked=Boolean(projectPreview?.nonCompletedProjects.length);
-  const canDelete=selected.size>0&&confirmation==="DELETE"&&!orderBlocked&&!projectBlocked&&!busy;
+  const canDelete=selected.size>0&&confirmation==="DELETE"&&!orderBlocked&&!projectBlocked&&!busy&&!loading&&Boolean(entity==="orders"?orderPreview:projectPreview)&&!resource.error;
   async function deleteSelected(){
     if(!canDelete)return;setBusy(true);setError(null);setSuccess(null);
     try{

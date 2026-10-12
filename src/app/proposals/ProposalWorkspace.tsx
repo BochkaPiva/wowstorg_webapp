@@ -13,6 +13,8 @@ import { PROPOSAL_STATUS, proposalMoney, proposalTotals, type Proposal, type Pro
 import { proposalNextStep } from "@/lib/proposal-guidance";
 import { proposalBudget } from "@/lib/proposal-summary";
 import { useAuth } from "@/app/providers";
+import { useClientReady } from "@/lib/use-client-ready";
+import { useReadResource } from "@/lib/use-json-resource";
 import { formFields, proposalCommandLabel, readProposalRecovery, restoreFormFields, type ProposalCommand, type ProposalHistoryEntry, type ProposalRecovery } from "@/lib/proposal-recovery";
 import { acknowledgedCatalogItem, dispatchProposalCommand, isQueuedId, projectProposalCommands, resolveCreatedProposalItem } from "@/lib/proposal-outbox";
 import { ProposalApiError, proposalCommandRequest, proposalRequest } from "./api";
@@ -33,8 +35,11 @@ function PlusIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d
 function MoreIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>; }
 
 function Photo({ url, name }: { url?: string | null; name: string }) {
+  return <PhotoSource key={url ?? ""} url={url} name={name} />;
+}
+
+function PhotoSource({ url, name }: { url?: string | null; name: string }) {
   const [failed, setFailed] = React.useState(false);
-  React.useEffect(() => setFailed(false), [url]);
   return <div className={styles.photo}>{url && !failed ? <Image src={url} alt={name} fill sizes="100px" unoptimized onError={() => setFailed(true)} /> : <span>{name.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join("")}</span>}</div>;
 }
 
@@ -47,15 +52,22 @@ function priceLabel(price: number | null, type: ContractorPriceType, qty = 1, ma
 const roleLabel: Record<ProposalItem["selectionRole"], string> = { PRIMARY: "Включено", ALTERNATIVE: "Альтернатива", OPTIONAL: "Дополнительно", EXCLUDED: "Не включать" };
 
 export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId: string; embedded?: boolean }) {
+  const { state: auth } = useAuth();
+  const ready = useClientReady();
+  if (!ready || auth.status !== "authenticated" || auth.user.role !== "WOWSTORG") {
+    const loading = <LoadingRegion className={styles.loading}><Skeleton /><Skeleton /><Skeleton /></LoadingRegion>;
+    return embedded ? loading : <AppShell title="Конструктор КП" backHref="/proposals">{loading}</AppShell>;
+  }
+  return <ProposalEditor key={`${auth.user.id}:${proposalId}:${embedded}`} proposalId={proposalId} embedded={embedded} actorUserId={auth.user.id} />;
+}
+
+function ProposalEditor({ proposalId, embedded, actorUserId }: { proposalId: string; embedded: boolean; actorUserId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { state: auth } = useAuth();
-  const recoveryKey = auth.status === "authenticated" ? `wowstorg:proposal-recovery:v1:${auth.user.id}:${proposalId}` : null;
+  const recoveryKey = `wowstorg:proposal-recovery:v1:${actorUserId}:${proposalId}`;
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [contractors, setContractors] = React.useState<Contractor[]>([]);
-  const [catalogLoading, setCatalogLoading] = React.useState(false);
-  const [catalogLoaded, setCatalogLoaded] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [conflict, setConflict] = React.useState(false);
@@ -76,7 +88,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   const [catalogReload, setCatalogReload] = React.useState(0);
   const [catalogMoreLoading, setCatalogMoreLoading] = React.useState(false);
   const catalogGeneration = React.useRef(0);
-  const catalogMoreFlight = React.useRef(false);
+  const catalogMoreFlight = React.useRef<{ key: string; controller: AbortController } | null>(null);
   const inFlight = React.useRef(false);
   const drawerRef = React.useRef<HTMLElement>(null);
   const [pickerAnchor, setPickerAnchor] = React.useState<HTMLElement | null>(null);
@@ -91,6 +103,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   const [queued, setQueued] = React.useState<ProposalCommand[]>([]);
   const queuedRef = React.useRef<ProposalCommand[]>([]);
   const previews = React.useRef(new Map<string, ProposalItem>());
+  const [previewItems, setPreviewItems] = React.useState<ReadonlyMap<string, ProposalItem>>(() => new Map());
   const [paused, setPaused] = React.useState(false);
   const mounted = React.useRef(true);
   const [storageWarning, setStorageWarning] = React.useState("");
@@ -101,6 +114,21 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   const contextVersion = React.useRef(0);
   const persistedJournal = React.useRef("");
   const [drag, setDrag] = React.useState<{ target: ProposalDrop | null; source: string } | null>(null);
+
+  const visibleProposal = React.useMemo(() => proposal ? projectProposalCommands(proposal, [...(pending ? [pending] : []), ...queued], previewItems) : null, [proposal, pending, queued, previewItems]);
+  const variant = visibleProposal?.variants.find((entry) => entry.id === variantId) ?? visibleProposal?.variants[0];
+  const sections = variant?.sections ?? [];
+  const items = sections.flatMap((section) => section.items);
+  const totals = proposalTotals(items);
+  const budget = proposalBudget(items);
+  const target = sections.find((section) => section.id === sectionId) ?? sections[0];
+
+  function updatePreviews(update: (next: Map<string, ProposalItem>) => void) {
+    const next = new Map(previews.current);
+    update(next);
+    previews.current = next;
+    setPreviewItems(next);
+  }
 
   function persistRecovery(next?: Partial<ProposalRecovery>) {
     if (!recoveryKey || !proposal || recoveryGate.current) return false;
@@ -127,17 +155,6 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   React.useEffect(() => {
-    if (!proposal || !recoveryKey || recoveryRead.current === recoveryKey) return;
-    recoveryRead.current = recoveryKey;
-    try {
-      const saved = readProposalRecovery(localStorage.getItem(recoveryKey));
-      if (!saved) return;
-      if (saved.drawer || saved.sectionFields || saved.pending || saved.queued.length) { recoveryGate.current = true; setRecovery(saved); }
-      else if (saved.revision === proposal.revision) { setUndoStack(saved.undo); setRedoStack(saved.redo); }
-    } catch { setStorageWarning("Локальное восстановление недоступно в этом браузере."); }
-  }, [proposal, recoveryKey]);
-
-  React.useEffect(() => {
     if (!restoredFields.current) return;
     const saved = restoredFields.current;
     if (saved.drawer) restoreFormFields(drawerRef.current?.querySelector("form") ?? null, saved.drawer.fields);
@@ -161,15 +178,25 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     setDrawerState(null); setSectionForm(false); return true;
   }
 
-  const load = React.useCallback(async (signal?: AbortSignal) => {
-    const data = await proposalRequest<{ proposal: Proposal }>(`/api/proposals/${proposalId}`, "GET", undefined, signal);
-    setProposal(data.proposal); setConflict(false); setError("");
-    setVariantId((current) => data.proposal.variants.some((variant) => variant.id === current) ? current : data.proposal.variants[0]?.id ?? "");
-  }, [proposalId]);
+  const load = React.useCallback((signal?: AbortSignal) => {
+    return proposalRequest<{ proposal: Proposal }>(`/api/proposals/${proposalId}`, "GET", undefined, signal).then((data) => {
+      if (signal?.aborted || !mounted.current) return;
+      setProposal(data.proposal); setConflict(false); setError("");
+      setVariantId((current) => data.proposal.variants.some((variant) => variant.id === current) ? current : data.proposal.variants[0]?.id ?? "");
+      if (recoveryRead.current === recoveryKey) return;
+      recoveryRead.current = recoveryKey;
+      try {
+        const saved = readProposalRecovery(localStorage.getItem(recoveryKey));
+        if (!saved) return;
+        if (saved.drawer || saved.sectionFields || saved.pending || saved.queued.length) { recoveryGate.current = true; setRecovery(saved); }
+        else if (saved.revision === data.proposal.revision) { setUndoStack(saved.undo); setRedoStack(saved.redo); }
+      } catch { setStorageWarning("Локальное восстановление недоступно в этом браузере."); }
+    });
+  }, [proposalId, recoveryKey]);
   React.useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal).catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Ошибка загрузки"); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    void proposalRequest<{ categories: Category[] }>("/api/contractor-categories", "GET", undefined, controller.signal).then((data) => setCategories(data.categories)).catch(() => { /* Custom sections remain available if categories cannot load. */ });
+    void proposalRequest<{ categories: Category[] }>("/api/contractor-categories", "GET", undefined, controller.signal).then((data) => { if (!controller.signal.aborted) setCategories(data.categories); }).catch(() => { /* Custom sections remain available if categories cannot load. */ });
     return () => controller.abort();
   }, [load]);
   React.useEffect(() => {
@@ -197,30 +224,40 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   const catalogSectionId = drawer?.kind === "catalog" ? drawer.sectionId : null;
   React.useEffect(() => { const timer = setTimeout(() => setCatalogQuery(search.trim()), 250); return () => clearTimeout(timer); }, [search]);
   const catalogUrl = React.useCallback((cursor?: string) => `/api/contractors?${new URLSearchParams({ paged: "1", limit: "24", search: catalogQuery, categoryId: categoryFilter, ...(cursor ? { cursor } : {}) })}`, [catalogQuery, categoryFilter]);
+  const catalogKey = catalogSectionId ? `${catalogSectionId}:${catalogReload}:${catalogUrl()}` : null;
+  const readCatalog = React.useCallback((signal?: AbortSignal) => proposalRequest<{ contractors: Contractor[]; nextCursor: string | null }>(catalogUrl(), "GET", undefined, signal), [catalogUrl]);
+  const catalogResource = useReadResource(catalogKey, readCatalog, "Каталог не загрузился");
+  const [catalogSource, setCatalogSource] = React.useState<{ key: string | null; data: typeof catalogResource.data }>({ key: null, data: null });
+  if (catalogSource.key !== catalogKey || catalogSource.data !== catalogResource.data) {
+    setCatalogSource({ key: catalogKey, data: catalogResource.data });
+    setContractors(catalogResource.data?.contractors ?? []);
+    setCatalogCursor(catalogResource.data?.nextCursor ?? null);
+    setCatalogMoreLoading(false);
+  }
+  const catalogLoading = catalogResource.loading;
+  const catalogLoaded = Boolean(catalogResource.data);
   React.useEffect(() => {
     catalogGeneration.current += 1;
-    if (!catalogSectionId) return;
-    const controller = new AbortController(); setCatalogLoading(true); setCatalogLoaded(false); setCatalogCursor(null);
-    void proposalRequest<{ contractors: Contractor[]; nextCursor: string | null }>(catalogUrl(), "GET", undefined, controller.signal).then((data) => { setContractors(data.contractors); setCatalogCursor(data.nextCursor); setCatalogLoaded(true); }).catch((cause) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Каталог не загрузился"); }).finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
-    return () => controller.abort();
-  }, [catalogSectionId, catalogUrl, catalogReload]);
+    return () => {
+      catalogGeneration.current += 1;
+      if (catalogMoreFlight.current?.key === catalogKey) {
+        catalogMoreFlight.current.controller.abort();
+        catalogMoreFlight.current = null;
+      }
+    };
+  }, [catalogKey]);
   async function moreCatalog() {
-    if (!catalogCursor || catalogMoreFlight.current || catalogLoading) return;
-    const version = catalogGeneration.current; catalogMoreFlight.current = true; setCatalogMoreLoading(true);
+    if (!catalogKey || !catalogCursor || catalogMoreFlight.current?.key === catalogKey || catalogLoading) return;
+    const version = catalogGeneration.current;
+    const flight = { key: catalogKey, controller: new AbortController() };
+    catalogMoreFlight.current = flight; setCatalogMoreLoading(true);
     try {
-      const data = await proposalRequest<{ contractors: Contractor[]; nextCursor: string | null }>(catalogUrl(catalogCursor));
+      const data = await proposalRequest<{ contractors: Contractor[]; nextCursor: string | null }>(catalogUrl(catalogCursor), "GET", undefined, flight.controller.signal);
       if (version === catalogGeneration.current) { setContractors((current) => [...current, ...data.contractors.filter((row) => !current.some((old) => old.id === row.id))]); setCatalogCursor(data.nextCursor); }
     } catch (cause) { if (version === catalogGeneration.current) setError(cause instanceof Error ? cause.message : "Не удалось загрузить ещё"); }
-    finally { catalogMoreFlight.current = false; setCatalogMoreLoading(false); }
+    finally { if (catalogMoreFlight.current === flight) catalogMoreFlight.current = null; if (version === catalogGeneration.current) setCatalogMoreLoading(false); }
   }
 
-  const visibleProposal = React.useMemo(() => proposal ? projectProposalCommands(proposal, [...(pending ? [pending] : []), ...queued], previews.current) : null, [proposal, pending, queued]);
-  const variant = visibleProposal?.variants.find((entry) => entry.id === variantId) ?? visibleProposal?.variants[0];
-  const sections = variant?.sections ?? [];
-  const items = sections.flatMap((section) => section.items);
-  const totals = proposalTotals(items);
-  const budget = proposalBudget(items);
-  const target = sections.find((section) => section.id === sectionId) ?? sections[0];
   const canvasSections = wholeEvent ? sections : target ? [target] : [];
   const readOnly = proposal?.owner?.type === "PROJECT" && Boolean(proposal.owner.archivedAt);
   const locked = (busy && !pending) || conflict || readOnly || paused || Boolean(recovery);
@@ -289,13 +326,13 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     if (!persistRecovery({ queued: nextQueue, ...(savedForm === "drawer" ? { drawer: null } : {}), ...(savedForm === "section" ? { sectionFields: null } : {}) })) return;
     if (operation.action === "ADD_CATALOG_ITEM") {
       const match = catalogOffers.find(row => row.offer.id === operation.offerId);
-      if (match) previews.current.set(command.operation.mutationId, {
+      if (match) updatePreviews(next => next.set(command.operation.mutationId, {
         id: `queued:${command.operation.mutationId}`, offerId: match.offer.id, selectionRole: "PRIMARY", qty: 1,
         clientUnitPrice: match.offer.clientPrice, internalUnitCost: null, priceTypeSnapshot: match.offer.priceType,
         unitLabel: match.offer.unitLabel, contractorNameSnapshot: match.contractor.name, offerTitleSnapshot: match.offer.title,
         offerDescriptionSnapshot: match.offer.description, clientNote: null,
         assetSnapshot: match.contractor.photoUrl ? [{ url: match.contractor.photoUrl }] : null,
-      });
+      }));
     }
     if (savedForm === "drawer") { dirty.current = false; setDrawerState(null); }
     if (savedForm === "section") { sectionDirty.current = false; setSectionForm(false); }
@@ -345,7 +382,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
           persistLatest.current({ revision: data.proposal.revision, pending: null, undo: nextUndo, redo: nextRedo });
         }
       } else persistLatest.current({ revision: data.proposal.revision, pending: null, undo: nextUndo, redo: nextRedo });
-      previews.current.delete(command.operation.mutationId);
+      updatePreviews(next => next.delete(command.operation.mutationId));
       transferId.current = null;
       if (command.direction) setNotice(command.direction === "undo" ? "Действие отменено" : "Действие возвращено");
       const after = afterCommands.current.get(command.operation.mutationId);
@@ -444,7 +481,8 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
   function cancelUnsent(ids: Set<string>) {
     const next = queuedRef.current.filter(c => !ids.has(c.operation.mutationId));
     if (!persistRecovery({ queued: next })) return;
-    for (const id of ids) { previews.current.delete(id); afterCommands.current.delete(id); }
+    updatePreviews(next => { for (const id of ids) next.delete(id); });
+    for (const id of ids) afterCommands.current.delete(id);
     queuedRef.current = next; setQueued(next);
   }
   function toggleCatalogOffer(sectionId: string, offerId: string) {
@@ -479,7 +517,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
     if (pending) { setError("Сначала проверьте неподтверждённый запрос — повтор использует тот же идентификатор и не создаст дубли."); return; }
     if ((dirty.current || sectionDirty.current || queuedRef.current.length) && !window.confirm("Загрузить серверную версию и убрать локальные изменения? Сначала скачайте локальную копию, если её нужно сохранить.")) return;
     inFlight.current = true; setBusy(true);
-    try { await load(); dirty.current = false; sectionDirty.current = false; queuedRef.current = []; setQueued([]); setPaused(false); previews.current.clear(); afterCommands.current.clear(); setSectionForm(false); transferId.current = null; setDrawerState(null); setUndoStack([]); setRedoStack([]); if (!recovery && recoveryKey) { try { localStorage.removeItem(recoveryKey); } catch { /* Browser storage may be unavailable. */ } } setNotice("Загружена актуальная версия с сервера"); }
+    try { await load(); dirty.current = false; sectionDirty.current = false; queuedRef.current = []; setQueued([]); setPaused(false); updatePreviews(next => next.clear()); afterCommands.current.clear(); setSectionForm(false); transferId.current = null; setDrawerState(null); setUndoStack([]); setRedoStack([]); if (!recovery && recoveryKey) { try { localStorage.removeItem(recoveryKey); } catch { /* Browser storage may be unavailable. */ } } setNotice("Загружена актуальная версия с сервера"); }
     catch (cause) { failure(cause); }
     finally { inFlight.current = false; setBusy(false); }
   }
@@ -598,7 +636,7 @@ export function ProposalWorkspace({ proposalId, embedded = false }: { proposalId
           </section>
           {drawer ? <ContextPopover className={`${styles.drawer} ${drawer.kind === "catalog" ? styles.picker : ""}`} anchor={drawer.kind === "catalog" ? pickerAnchor : null} surfaceRef={drawerRef} dismissOutside={drawer.kind === "catalog"} onClose={() => openDrawer(null)} onChangeCapture={(event) => { if ((event.target as HTMLElement).closest("form")) dirty.current = true; }} label={drawer.kind === "catalog" ? "Подбор услуг" : "Параметры КП"}><div className={styles.drawerHeading}><h2>{drawer.kind === "catalog" ? `В раздел «${sections.find(s => s.id === drawer.sectionId)?.title ?? ""}»` : drawer.kind === "item" ? "Настроить услугу" : drawer.kind === "manual" ? "Своя услуга" : drawer.kind === "transfer" ? "Перенос в смету" : drawer.kind === "document" ? "Оформление КП" : drawer.kind === "export" ? "Скачать КП" : "Создать проект"}</h2><button className={base.quiet} onClick={() => openDrawer(null)}>Закрыть</button></div><fieldset className={styles.drawerFields} disabled={Boolean(readOnly) && drawer.kind !== "export"}>
             {drawer.kind === "item" && sections.length > 1 ? <label className={styles.moveDestination}>Раздел услуги<select aria-label="Перенести услугу в раздел" disabled={locked} value={sections.find((section) => section.items.some((item) => item.id === drawer.item.id))?.id ?? target?.id} onChange={(event) => moveItem(drawer.item.id, event.target.value, null)}>{sections.map((section) => <option key={section.id} value={section.id}>{section.title}</option>)}</select><small>Переносит услугу целиком. Можно отменить через Ctrl+Z.</small></label> : null}
-            {drawer.kind === "catalog" ? <><div className={styles.catalogFilters}><label>Поиск<input autoFocus aria-label="Найти подрядчика или услугу" placeholder="Подрядчик или услуга" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label>Категория<select aria-label="Категория услуг" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>{catalogLoading ? <LoadingRegion className={styles.loading}><Skeleton /><Skeleton /></LoadingRegion> : !catalogLoaded ? <button className={base.secondary} onClick={() => void openCatalog(drawer.sectionId)}>Повторить загрузку каталога</button> : catalogOffers.length ? <div className={styles.offerList}>{catalogOffers.map(({ contractor, offer }) => {
+            {drawer.kind === "catalog" ? <><div className={styles.catalogFilters}><label>Поиск<input autoFocus aria-label="Найти подрядчика или услугу" placeholder="Подрядчик или услуга" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label>Категория<select aria-label="Категория услуг" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Все категории</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>{catalogResource.error ? <p className={styles.context} role="alert">{catalogResource.error}</p> : null}{catalogLoading ? <LoadingRegion className={styles.loading}><Skeleton /><Skeleton /></LoadingRegion> : !catalogLoaded ? <button className={base.secondary} onClick={() => void openCatalog(drawer.sectionId)}>Повторить загрузку каталога</button> : catalogOffers.length ? <div className={styles.offerList}>{catalogOffers.map(({ contractor, offer }) => {
               const added = sections.find((section) => section.id === drawer.sectionId)?.items.some((item) => item.offerId === offer.id);
               return <label className={styles.offer} key={offer.id} data-added={added || undefined}><input type="checkbox" aria-label={`Выбрать ${offer.title} — ${contractor.name}`} checked={Boolean(added)} disabled={locked} onChange={() => toggleCatalogOffer(drawer.sectionId, offer.id)} /><Photo url={contractor.photoUrl} name={contractor.name} /><div><h3>{offer.title}</h3><p>{contractor.name}</p><p>{offer.description}</p><strong>{priceLabel(offer.clientPrice, offer.priceType, 1, offer.clientPriceMax)}{offer.unitLabel ? ` / ${offer.unitLabel}` : ""}</strong><small>{added ? "В составе мероприятия" : priceFreshness(offer.priceConfirmedAt) === "FRESH" ? "Цена подтверждена" : "Цену нужно уточнить"}</small></div></label>;
             })}</div> : <p className={styles.context}>Нет подходящих услуг. Выберите все категории или измените запрос.</p>}{catalogCursor && catalogLoaded ? <button className={base.secondary} disabled={catalogMoreLoading} onClick={() => void moreCatalog()}>{catalogMoreLoading ? "Загружаем…" : "Показать ещё услуги"}</button> : null}<div className={styles.catalogFooter}><button className={base.quiet} disabled={locked} onClick={() => setDrawer({ kind: "manual", sectionId: drawer.sectionId })}>Своя услуга</button><button className={base.secondary} onClick={() => openDrawer(null)}>Готово</button></div></> : null}

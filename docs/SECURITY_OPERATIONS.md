@@ -32,7 +32,7 @@
 | P1 | Обновление PostgreSQL | Обновлено до стабильной 17.11.0.003, SQL server_version 17.11, ACTIVE_HEALTHY; backup/restore и проверки — `SECURITY_AUTH_LIMITS_2026-10-10.md` |
 | P1 | Off-device DB + Storage backups | Выбор приватного места/шифрования; проверить полный restore и зафиксировать измеренный RPO/RTO |
 | P1 | Required checks / repository visibility | Административное решение владельца; workflow не равен branch protection, repo всё ещё public |
-| P2 | 48 исторических React lint errors (было 164) | Пакеты 1–10 от 12–13.10.2026: 116 ошибок исправлены, DOM regression tests добавлены. [План/прогресс](REACT_LINT_DEBT.md). Следующие модули проверять также в браузере; не заменять setState-in-effect на setTimeout лишь для обхода правила |
+| P2 | 42 исторических React lint errors (было 164) | Пакеты 1–11 от 12–13.10.2026: 122 ошибки исправлены, DOM regression tests добавлены. [План/прогресс](REACT_LINT_DEBT.md). Следующие модули проверять также в браузере; не заменять setState-in-effect на setTimeout лишь для обхода правила |
 | P2 | Dev-only ESLint advisory | Production audit 0; full audit ранее 5 high. Проверять опубликованный patch, не делать force downgrade Next |
 | P2 | Мобильная и Office приёмка КП | Реальный browser + PowerPoint/Slides/LibreOffice; ZIP/PDF signature не подтверждают визуальную корректность |
 | P2 | Полный CSP / upload policy / audit observability | Отдельная проверка совместимости и угроз, текущая ограниченная CSP не предотвращает весь XSS |

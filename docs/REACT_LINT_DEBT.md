@@ -153,11 +153,25 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` успешно прошёл — **89 файлов / 580 tests**, 48 исторических errors без file/rule регрессий, production audit 0, TypeScript и Next production build успешны. Это не завершение всего долга; baseline остаётся необходимым. Runtime logs/drains production отдельно не проверялись.
 
+## Пакет 11 — единая студия КП (13.10.2026)
+
+Ошибки: **48 → 42**, суммарно устранены 122 из 164. Все шесть допусков `ProposalWorkspace` сняты; правила/severity сохранены.
+
+- Keyed внутренний редактор привязан к авторизованному пользователю/КП/embedded scope, появляется после согласованного пустого SSR snapshot. Никакие GET или recovery reads не стартуют до подтверждения WOWSTORG. Смена scope размонтирует прежний редактор; cancelled GET и categories не публикуются.
+- Восстановление журнала привязано к фактическому первому ответу GET: одновременно с серверной моделью появляется recovery gate или matching history. Поля/очередь не отправляются автоматически, более новая revision не получает replay. Business journal не перенесён в hook UI-предпочтений.
+- Локальная проекция читает immutable `previewItems` state, не `previews.current` в render; события публикуют новую Map вместе с рабочим ref. UUID/payload, dispatch revision, разрешение temporary IDs, отмена ещё не отправленной команды, очередь, CAS/conflict/recovery/history и формулы не менялись. Target вычислен до использования в сохранении журнала, без обращения к ещё не объявленной переменной.
+- Первичная загрузка каталога — отдельный GET-only ресурс с ключом section/reload/query/category и generation/abort guards. Результат инициализирует пагинацию до commit; локальное добавление/удаление КП не перезагружает каталог. Старый запрос следующей страницы отменяется и не меняет новый scope/flight. Ошибка и retry остаются внутри подбора. Debounce 250 мс сохранён.
+- Ошибка фотографии принадлежит конкретному src в keyed `PhotoSource`, не reset-effect; сторонний render не повторяет сбойный источник.
+
+Добавлены 18 DOM regression tests: auth/SSR/hydration, identity/cancelled read, explicit recovery/new revision/history, optimistic preview, ADD→deselect→REMOVE с настоящим ID после acknowledgement, отмена неотправленного добавления, сохранение нового draft при старом POST, 409/unknown retries/newer receipt pause, storage denial, debounce/pagination races/retry, photo callback/source и archived/export revision. API, Image и export panel изолированы; native popover API в jsdom полифилится. Эти tests не доказывают реальные картинки, production DB/storage или генерацию PDF/PPTX; существующие export tests сохранены.
+
+Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **90 файлов / 598 tests**, 42 исторических errors без новых file/rule регрессий, production audit 0, TypeScript/Next production build успешны. Первый gate остановился на отсутствии `this: HTMLElement` в тестовом полифиле; после исправления полный gate выполнен заново и прошёл. Изолированный `--proposal-only` smoke в настоящем headless Edge проверил native popover, ADD→снятие выбора→acknowledged REMOVE, UUID/ID/CAS и retained item draft: 8 перехваченных API calls, ровно 2 валидированные fixture POSTs, 0 forbidden writes, 0 page errors. Все API перехвачены, реальные requests к БД не пропускаются; это не production DB/storage/export/Office smoke. Production runtime logs/drains отдельно не инспектировались. Baseline ещё необходим для оставшихся 42 ошибок.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.
 2. Оставшиеся страницы заявок, независимых смет, проекта, складской очереди и уведомлений: чтения/черновики с сохранением mutation guards.
-3. КП и проектная смета: refs/immutability/memoization; сначала разобрать владение изменяемым состоянием и подписки, затем правки с проверкой autosave, undo/redo и экспорта. Это наиболее рискованный оставшийся пакет; для 48 ошибок baseline ещё нужен.
+3. Проектная смета и её вложенные формы: refs/immutability/memoization; сначала разобрать владение изменяемым состоянием и подписки, затем правки с проверкой autosave и undo/redo. Это наиболее рискованный оставшийся пакет; для 42 ошибок baseline ещё нужен.
 4. Финальная проверка: нулевой baseline, чистый строгий lint, затем удаление временного механизма допусков. Предупреждения ESLint учитывать отдельно — они не входят в эти 164/158 ошибок.
 
 Порядок можно менять по риску/пересечениям. Цель — устранить весь долг; пакет 1 не является завершением этой работы.

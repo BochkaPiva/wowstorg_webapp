@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import React from "react";
 import { createPortal } from "react-dom";
+import { useJsonResource } from "@/lib/use-json-resource";
 
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
 
@@ -183,8 +184,11 @@ type EstimateCatalogItem = {
   pricePerDay: number;
   availability?: {
     availableNow?: number;
+    availableForDates?: number;
   };
 };
+
+const EMPTY_ESTIMATE_CATALOG: ReadonlyArray<EstimateCatalogItem> = [];
 
 type LocalDraftLineInternalExpense = {
   id: string;
@@ -341,22 +345,6 @@ function parseMoneyInputOrNull(s: string): number | null {
   if (t === "") return null;
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-const ORDER_STATUS_LABEL: Record<string, string> = {
-  SUBMITTED: "Новая",
-  ESTIMATE_SENT: "Смета отправлена",
-  CHANGES_REQUESTED: "Правки",
-  APPROVED_BY_GREENWICH: "Согласована",
-  PICKING: "Сборка",
-  ISSUED: "Выдана",
-  RETURN_DECLARED: "Ожидает приемки",
-  CLOSED: "Закрыта",
-  CANCELLED: "Отменена",
-};
-
-function orderStatusLabel(status: string) {
-  return ORDER_STATUS_LABEL[status] ?? status;
 }
 
 function formatDateRu(dateOnly: string | null | undefined) {
@@ -724,7 +712,7 @@ function normalizeEstimateCustomColumnsForCompare(columns: ProjectEstimateCustom
 
 function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
   return sortSectionsBySortOrder(sections)
-    .map((section, sectionIndex) => ({
+    .map((section) => ({
       title: section.title.trim(),
       sortOrder: section.sortOrder,
       kind: section.kind,
@@ -752,18 +740,6 @@ function normalizeLocalSectionsForCompare(sections: LocalDraftSection[]) {
       })),
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder);
-}
-
-function isDraftRequisiteSection(
-  section: EstSection | LocalDraftSection,
-): section is EstSection & { kind: "DRAFT_REQUISITE" } {
-  return section.kind === "DRAFT_REQUISITE";
-}
-
-function isRequisiteSectionWithOrder(
-  section: EstSection | LocalDraftSection,
-): section is EstSection & { kind: "REQUISITE"; linkedOrderId: string } {
-  return section.kind === "REQUISITE" && Boolean(section.linkedOrderId);
 }
 
 function parseDraftLineMeta(line: EstLine) {
@@ -892,7 +868,24 @@ function maxQtyAllowedForRequisiteLine(
   return Math.min(physical, dateRem);
 }
 
-export function ProjectEstimatePanel({
+export function ProjectEstimatePanel(props: React.ComponentProps<typeof EstimatePanelEditor>) {
+  const scope = `${props.projectId}:${props.apiBase ?? ""}:${Boolean(props.standalone)}`;
+  const [versionScope, setVersionScope] = React.useState(scope);
+  const [uncontrolledVersion, setUncontrolledVersion] = React.useState<number | null>(null);
+  if (versionScope !== scope) {
+    setVersionScope(scope);
+    setUncontrolledVersion(null);
+  }
+  const version = props.selectedVersionNumber !== undefined ? props.selectedVersionNumber : uncontrolledVersion;
+  const notifyVersion = props.onSelectedVersionNumberChange;
+  const selectVersion = React.useCallback((value: number | null) => {
+    if (notifyVersion) notifyVersion(value);
+    else setUncontrolledVersion(value);
+  }, [notifyVersion]);
+  return <EstimatePanelEditor key={`${scope}:${version ?? "primary"}`} {...props} selectedVersionNumber={version} onSelectedVersionNumberChange={selectVersion} />;
+}
+
+function EstimatePanelEditor({
   projectId,
   readOnly,
   apiBase,
@@ -915,6 +908,8 @@ export function ProjectEstimatePanel({
 }) {
   const estimateApiBase = apiBase ?? `/api/projects/${projectId}`;
   const [data, setData] = React.useState<EstimatePayload | null>(null);
+  const activeEstimate = data?.current;
+  const projectOrders = data?.projectOrders;
   /** null = основная смета с сервера; число = явный выбор */
   const [uncontrolledSelectedVersion, setUncontrolledSelectedVersion] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -933,7 +928,7 @@ export function ProjectEstimatePanel({
   const actionsWrapRef = React.useRef<HTMLDivElement>(null);
   const downloadWrapRef = React.useRef<HTMLDivElement>(null);
   const saveBarRef = React.useRef<HTMLDivElement | null>(null);
-  const [localSectionsDraft, setLocalSectionsDraft] = React.useState<LocalDraftSection[]>([]);
+  const [localSectionsDraft, setLocalSectionsDraftState] = React.useState<LocalDraftSection[]>([]);
   const [customColumns, setCustomColumns] = React.useState<ProjectEstimateCustomColumn[]>([]);
   const [customColumnsOpen, setCustomColumnsOpen] = React.useState(false);
   const [savedEstimateSnapshot, setSavedEstimateSnapshot] = React.useState<SavedEstimateSnapshot>({
@@ -946,11 +941,11 @@ export function ProjectEstimatePanel({
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
   const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
   const [clientChargeTaxEnabled, setClientChargeTaxEnabled] = React.useState(false);
-  const [estimateDraftDirty, setEstimateDraftDirty] = React.useState(false);
+  const [estimateDraftDirty, setEstimateDraftDirtyState] = React.useState(false);
   const [estimateSaving, setEstimateSaving] = React.useState(false);
   const [estimateSaveStatus, setEstimateSaveStatus] = React.useState<EstimateSaveStatus>("IDLE");
   const [estimateSaveMessage, setEstimateSaveMessage] = React.useState<string | null>(null);
-  const [estimateConflictDetected, setEstimateConflictDetected] = React.useState(false);
+  const [estimateConflictDetected, setEstimateConflictDetectedState] = React.useState(false);
   const [lastEstimateSavedAt, setLastEstimateSavedAt] = React.useState<Date | null>(null);
   const [showFloatingSave, setShowFloatingSave] = React.useState(false);
   const [draggingSectionId, setDraggingSectionId] = React.useState<string | null>(null);
@@ -964,12 +959,14 @@ export function ProjectEstimatePanel({
   const estimateBroadcastChannelRef = React.useRef<BroadcastChannel | null>(null);
   const restoredEstimateScrollKeyRef = React.useRef<string | null>(null);
   const estimateSaveInFlightRef = React.useRef(false);
-  const autoSaveRef = React.useRef<() => void>(() => undefined);
   const localSectionsDraftRef = React.useRef<LocalDraftSection[]>([]);
   const estimateUndoRef = React.useRef<LocalDraftSection[][]>([]);
   const estimateRedoRef = React.useRef<LocalDraftSection[][]>([]);
   const estimateHistoryGroupRef = React.useRef<{ key: string; at: number } | null>(null);
-  const [estimateHistoryVersion, setEstimateHistoryVersion] = React.useState(0);
+  const [estimateHistoryAvailability, setEstimateHistoryAvailability] = React.useState({ canUndo: false, canRedo: false });
+  const estimateHistoryVersionRef = React.useRef<number | null>(null);
+  const estimateReadSequenceRef = React.useRef(0);
+  const estimateMountedRef = React.useRef(true);
   const selectedVersion =
     selectedVersionNumberProp !== undefined ? selectedVersionNumberProp : uncontrolledSelectedVersion;
 
@@ -984,9 +981,26 @@ export function ProjectEstimatePanel({
     [onSelectedVersionNumberChange],
   );
 
-  estimateDraftDirtyRef.current = estimateDraftDirty;
-  estimateConflictRef.current = estimateConflictDetected;
-  localSectionsDraftRef.current = localSectionsDraft;
+  const setEstimateDraftDirty = React.useCallback((value: boolean) => {
+    estimateDraftDirtyRef.current = value;
+    setEstimateDraftDirtyState(value);
+  }, []);
+  const setEstimateConflictDetected = React.useCallback((value: boolean) => {
+    estimateConflictRef.current = value;
+    setEstimateConflictDetectedState(value);
+  }, []);
+  const setLocalSectionsDraft = React.useCallback((action: React.SetStateAction<LocalDraftSection[]>) => {
+    const next = typeof action === "function" ? action(localSectionsDraftRef.current) : action;
+    localSectionsDraftRef.current = next;
+    setLocalSectionsDraftState(next);
+  }, []);
+  const publishEstimateHistory = React.useCallback(() => {
+    setEstimateHistoryAvailability({ canUndo: estimateUndoRef.current.length > 0, canRedo: estimateRedoRef.current.length > 0 });
+  }, []);
+  const readEventSections = React.useCallback(() => {
+    const requisites = activeEstimate?.sections.filter(section => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE") ?? [];
+    return sortSectionsBySortOrder([...requisites, ...localSectionsDraftRef.current]);
+  }, [activeEstimate]);
 
   React.useEffect(() => {
     if (!titleDialog) return;
@@ -1005,19 +1019,33 @@ export function ProjectEstimatePanel({
     };
   }, [busy, titleDialog]);
 
-  const load = React.useCallback(
-    (v: number | null, options?: { ignoreStoredDraft?: boolean }) => {
-      setLoading(true);
+  React.useEffect(() => {
+    estimateMountedRef.current = true;
+    return () => { estimateMountedRef.current = false; estimateReadSequenceRef.current += 1; };
+  }, []);
+
+  const readEstimate = React.useCallback(
+    (v: number | null, options?: { ignoreStoredDraft?: boolean }, signal?: AbortSignal) => {
+      const sequence = ++estimateReadSequenceRef.current;
+      const current = () => estimateMountedRef.current && !signal?.aborted && sequence === estimateReadSequenceRef.current;
       const q = v != null ? `?version=${v}` : "";
-      fetch(`${estimateApiBase}/estimate${q}`, { cache: "no-store" })
+      return fetch(`${estimateApiBase}/estimate${q}`, { cache: "no-store", signal })
         .then((r) => r.json())
         .then((j: EstimatePayload & { error?: { message?: string } }) => {
+          if (!current()) return;
           if (j.error?.message) {
             setError(j.error.message);
             setData(null);
           } else {
             setData(j);
             const versionNumber = j.current?.versionNumber ?? null;
+            if (estimateHistoryVersionRef.current !== versionNumber) {
+              estimateHistoryVersionRef.current = versionNumber;
+              estimateUndoRef.current = [];
+              estimateRedoRef.current = [];
+              estimateHistoryGroupRef.current = null;
+              publishEstimateHistory();
+            }
             serverEstimateRevisionRef.current = j.current?.revision ?? 0;
             const baseSections = j.current?.sections ? sortSectionsBySortOrder(cloneLocalSections(j.current.sections)) : [];
             const baseCustomColumns = cloneEstimateCustomColumns(j.current?.customColumns ?? []);
@@ -1131,26 +1159,27 @@ export function ProjectEstimatePanel({
           }
         })
         .catch(() => {
+          if (!current()) return;
           setError("Не удалось загрузить смету");
           setData(null);
         })
-        .finally(() => setLoading(false));
+        .finally(() => { if (current()) setLoading(false); });
     },
-    [estimateApiBase, projectId],
+    [estimateApiBase, projectId, publishEstimateHistory, setEstimateConflictDetected, setEstimateDraftDirty, setLocalSectionsDraft],
   );
 
+  const load = React.useCallback((v: number | null, options?: { ignoreStoredDraft?: boolean }) => {
+    setLoading(true);
+    return readEstimate(v, options);
+  }, [readEstimate]);
+
   React.useEffect(() => {
-    load(selectedVersion);
-  }, [load, selectedVersion]);
+    const controller = new AbortController();
+    void readEstimate(selectedVersion, undefined, controller.signal);
+    return () => controller.abort();
+  }, [readEstimate, selectedVersion]);
 
   const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
-
-  React.useEffect(() => {
-    estimateUndoRef.current = [];
-    estimateRedoRef.current = [];
-    estimateHistoryGroupRef.current = null;
-    setEstimateHistoryVersion((value) => value + 1);
-  }, [currentVersionNumber]);
 
   React.useEffect(() => {
     if (
@@ -1186,7 +1215,7 @@ export function ProjectEstimatePanel({
         estimateBroadcastChannelRef.current = null;
       }
     };
-  }, [currentVersionNumber, load, projectId, standalone]);
+  }, [currentVersionNumber, load, projectId, setEstimateConflictDetected, standalone]);
 
   React.useEffect(() => {
     function onRefresh() {
@@ -1227,15 +1256,15 @@ export function ProjectEstimatePanel({
 
   React.useEffect(() => {
     if (!onResolvedVersionChange) return;
-    if (!data?.current) {
+    if (!activeEstimate) {
       onResolvedVersionChange(null);
       return;
     }
     onResolvedVersionChange({
-      id: data.current.id,
-      versionNumber: data.current.versionNumber,
+      id: activeEstimate.id,
+      versionNumber: activeEstimate.versionNumber,
     });
-  }, [data?.current, onResolvedVersionChange]);
+  }, [activeEstimate, onResolvedVersionChange]);
 
   const estimateDraftStorageKey =
     currentVersionNumber != null ? draftEstimateStorageKey(projectId, currentVersionNumber) : null;
@@ -1283,7 +1312,9 @@ export function ProjectEstimatePanel({
   }, [effectiveEstimateViewMode, estimateScrollStorageKey, standalone]);
 
   React.useEffect(() => {
-    if (!estimateDraftStorageKey) return;
+    // A selected version is known before its GET completes; do not delete its
+    // recovery journal while the fresh editor still has an empty initial draft.
+    if (!activeEstimate || !estimateDraftStorageKey) return;
     if (!estimateDraftDirty) {
       window.localStorage.removeItem(estimateDraftStorageKey);
       return;
@@ -1299,6 +1330,7 @@ export function ProjectEstimatePanel({
     };
     window.localStorage.setItem(estimateDraftStorageKey, JSON.stringify(payload));
   }, [
+    activeEstimate,
     clientTaxEnabled,
     clientChargeTaxEnabled,
     commissionEnabled,
@@ -1310,10 +1342,7 @@ export function ProjectEstimatePanel({
   ]);
 
   React.useEffect(() => {
-    if (readOnly || !data?.current || !estimateDraftDirty || typeof IntersectionObserver === "undefined") {
-      setShowFloatingSave(false);
-      return;
-    }
+    if (readOnly || !activeEstimate || !estimateDraftDirty || typeof IntersectionObserver === "undefined") return;
     const el = saveBarRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -1324,12 +1353,21 @@ export function ProjectEstimatePanel({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [data?.current, estimateDraftDirty, readOnly]);
+  }, [activeEstimate, estimateDraftDirty, readOnly]);
 
-  function mutateLocalSections(
+  function markEstimateDraftDirty() {
+    estimateDraftRevisionRef.current += 1;
+    setEstimateDraftDirty(true);
+    if (!estimateConflictRef.current) {
+      setEstimateSaveStatus("IDLE");
+      setEstimateSaveMessage(null);
+    }
+  }
+
+  const mutateLocalSections = React.useCallback((
     mutator: (prev: LocalDraftSection[]) => LocalDraftSection[],
     historyGroup?: string,
-  ) {
+  ) => {
     const previous = localSectionsDraftRef.current;
     const next = mutator(previous);
     if (next === previous) return;
@@ -1346,14 +1384,14 @@ export function ProjectEstimatePanel({
     estimateRedoRef.current = [];
     localSectionsDraftRef.current = next;
     setLocalSectionsDraft(next);
-    setEstimateHistoryVersion((value) => value + 1);
+    publishEstimateHistory();
     estimateDraftRevisionRef.current += 1;
     setEstimateDraftDirty(true);
     if (!estimateConflictRef.current) {
       setEstimateSaveStatus("IDLE");
       setEstimateSaveMessage(null);
     }
-  }
+  }, [publishEstimateHistory, setEstimateDraftDirty, setLocalSectionsDraft]);
 
   function restoreEstimateHistory(direction: "UNDO" | "REDO") {
     if (readOnly || busy || estimateSaving) return;
@@ -1368,7 +1406,7 @@ export function ProjectEstimatePanel({
     const restored = cloneLocalDraftSections(target);
     localSectionsDraftRef.current = restored;
     setLocalSectionsDraft(restored);
-    setEstimateHistoryVersion((value) => value + 1);
+    publishEstimateHistory();
     markEstimateDraftDirty();
   }
 
@@ -1452,14 +1490,6 @@ export function ProjectEstimatePanel({
     markEstimateDraftDirty();
   }
 
-  function markEstimateDraftDirty() {
-    estimateDraftRevisionRef.current += 1;
-    setEstimateDraftDirty(true);
-    if (!estimateConflictRef.current) {
-      setEstimateSaveStatus("IDLE");
-      setEstimateSaveMessage(null);
-    }
-  }
 
   function openEstimateTitleDialog(mode: EstimateTitleDialogMode) {
     if (readOnly) return;
@@ -1893,7 +1923,7 @@ export function ProjectEstimatePanel({
 
   async function reorderSection(sectionId: string, targetSectionId: string) {
     if (readOnly || busy) return;
-    const ordered = sortSectionsBySortOrder(renderedSections);
+    const ordered = readEventSections();
     const currentIndex = ordered.findIndex((section) => section.id === sectionId);
     const targetIndex = ordered.findIndex((section) => section.id === targetSectionId);
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
@@ -1961,7 +1991,7 @@ export function ProjectEstimatePanel({
   }
 
   function moveSection(sectionId: string, direction: -1 | 1) {
-    const ordered = sortSectionsBySortOrder(renderedSections);
+    const ordered = readEventSections();
     const currentIndex = ordered.findIndex((section) => section.id === sectionId);
     const target = ordered[currentIndex + direction];
     if (currentIndex < 0 || !target || target.kind === "DRAFT_REQUISITE") return;
@@ -1986,7 +2016,7 @@ export function ProjectEstimatePanel({
       .elementFromPoint(event.clientX, event.clientY)
       ?.closest<HTMLElement>("[data-estimate-section-id]");
     const targetId = candidate?.dataset.estimateSectionId;
-    const targetSection = renderedSections.find((section) => section.id === targetId);
+    const targetSection = readEventSections().find((section) => section.id === targetId);
     if (targetId && targetSection?.kind !== "DRAFT_REQUISITE") {
       drag.targetId = targetId;
       setDragOverSectionId(targetId);
@@ -2318,6 +2348,9 @@ export function ProjectEstimatePanel({
       });
       const j = await res.json().catch(() => null);
       if (res.ok) {
+        // A completed save from an unmounted version must not clear the journal
+        // now owned by a newly mounted editor for that same version.
+        if (!estimateMountedRef.current) return;
         if (standalone) {
           setSavedEstimateSnapshot({
             sections: cloneLocalDraftSections(snapshotSections),
@@ -2384,9 +2417,9 @@ export function ProjectEstimatePanel({
     }
   }
 
-  autoSaveRef.current = () => {
+  const autoSaveLatest = React.useEffectEvent(() => {
     void saveEstimateDraft("AUTO");
-  };
+  });
 
   React.useEffect(() => {
     if (
@@ -2400,7 +2433,7 @@ export function ProjectEstimatePanel({
     ) {
       return;
     }
-    const timer = window.setTimeout(() => autoSaveRef.current(), 1400);
+    const timer = window.setTimeout(() => autoSaveLatest(), 1400);
     return () => window.clearTimeout(timer);
   }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, readOnly]);
 
@@ -2446,7 +2479,7 @@ export function ProjectEstimatePanel({
     estimateUndoRef.current = [];
     estimateRedoRef.current = [];
     estimateHistoryGroupRef.current = null;
-    setEstimateHistoryVersion((value) => value + 1);
+    publishEstimateHistory();
     estimateConflictRef.current = false;
     setEstimateConflictDetected(false);
     setEstimateDraftDirty(false);
@@ -2464,14 +2497,14 @@ export function ProjectEstimatePanel({
   const exportHrefInternal = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=internal`;
   const exportHrefClient = `${exportBase}${exportBase.includes("?") ? "&" : "?"}variant=client`;
   const availableImportOrders = React.useMemo(() => {
-    if (!data?.projectOrders || !data.current) return [];
+    if (!projectOrders || !activeEstimate) return [];
     const imported = new Set(
-      data.current.sections
+      activeEstimate.sections
         .filter((s) => s.kind === "REQUISITE" && s.linkedOrderId)
         .map((s) => s.linkedOrderId as string),
     );
-    return data.projectOrders.filter((o) => !imported.has(o.id) && !o.assignedEstimate);
-  }, [data]);
+    return projectOrders.filter((o) => !imported.has(o.id) && !o.assignedEstimate);
+  }, [activeEstimate, projectOrders]);
   const orderedProjectOrders = React.useMemo(
     () =>
       [...(data?.projectOrders ?? [])].sort((a, b) => {
@@ -2498,16 +2531,16 @@ export function ProjectEstimatePanel({
   }, [orderedProjectOrders]);
 
   const renderedSections = React.useMemo((): Array<EstSection | LocalDraftSection> => {
-    if (!data?.current) return [];
-    const requisites = data.current.sections.filter(
+    if (!activeEstimate) return [];
+    const requisites = activeEstimate.sections.filter(
       (section) => section.kind === "REQUISITE" || section.kind === "DRAFT_REQUISITE",
     );
     return sortSectionsBySortOrder([...requisites, ...localSectionsDraft]);
-  }, [data?.current, localSectionsDraft]);
+  }, [activeEstimate, localSectionsDraft]);
 
   const dirtyLocalLineIds = React.useMemo(() => {
     const dirtyIds = new Set<string>();
-    if (!data?.current || !estimateDraftDirty) return dirtyIds;
+    if (!activeEstimate || !estimateDraftDirty) return dirtyIds;
     const baseline = savedEstimateSnapshot.sections;
     const normalizedBase = new Map(
       sortSectionsBySortOrder(baseline).map((section) => [section.id, normalizeLocalSectionsForCompare([section])[0]]),
@@ -2532,7 +2565,7 @@ export function ProjectEstimatePanel({
     });
 
     return dirtyIds;
-  }, [data?.current, estimateDraftDirty, localSectionsDraft, savedEstimateSnapshot.sections]);
+  }, [activeEstimate, estimateDraftDirty, localSectionsDraft, savedEstimateSnapshot.sections]);
 
   const totals = React.useMemo(() => {
     const lineSummary = summarizeProjectEstimateSections(renderedSections);
@@ -2612,8 +2645,7 @@ export function ProjectEstimatePanel({
           : estimateDraftDirty
             ? "Есть изменения"
             : "Сохранено автоматически";
-  const canUndoEstimate = estimateHistoryVersion >= 0 && estimateUndoRef.current.length > 0;
-  const canRedoEstimate = estimateHistoryVersion >= 0 && estimateRedoRef.current.length > 0;
+  const { canUndo: canUndoEstimate, canRedo: canRedoEstimate } = estimateHistoryAvailability;
 
   return (
     <div data-project-estimate-editor className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""} ${standalone ? "project-estimate--standalone" : ""}`}>
@@ -3133,8 +3165,9 @@ export function ProjectEstimatePanel({
                     data-dragging={draggingSectionId === sec.id ? "true" : undefined}
                     data-drag-over={dragOverSectionId === sec.id && draggingSectionId !== sec.id ? "true" : undefined}
                   >
-                  {isRequisiteSectionWithOrder(sec) ? (
+                  {sec.kind === "REQUISITE" && sec.linkedOrderId ? (
                     <RequisiteSectionEditor
+                      key={`${sec.id}:${sec.linkedOrderId}`}
                       sec={sec}
                       projectId={projectId}
                       orderId={sec.linkedOrderId}
@@ -3173,10 +3206,10 @@ export function ProjectEstimatePanel({
                       defaultOpen={sectionIndex === 0}
                       workspaceMode={workspaceMode}
                     >
-                      {isDraftRequisiteSection(sec) ? (
+                      {sec.kind === "DRAFT_REQUISITE" ? (
                         <DraftRequisiteEditor
                           projectId={projectId}
-                          sec={sec}
+                          sec={{ ...sec, kind: "DRAFT_REQUISITE" }}
                           readOnly={readOnly}
                           onDone={() => {
                             load(selectedVersion);
@@ -3612,7 +3645,7 @@ export function ProjectEstimatePanel({
             document.body,
           )
         : null}
-      {showFloatingSave && !workspaceMode && typeof document !== "undefined"
+      {showFloatingSave && !readOnly && Boolean(activeEstimate) && estimateDraftDirty && !workspaceMode && typeof document !== "undefined"
         ? createPortal(
             <button
               type="button"
@@ -3760,41 +3793,16 @@ function StandaloneEstimateCatalog({
   }) => void;
   onClose: () => void;
 }) {
-  const [items, setItems] = React.useState<EstimateCatalogItem[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const catalog = useJsonResource<{ items: EstimateCatalogItem[] }>("/api/catalog/items?all=true", "Не удалось загрузить каталог");
+  const items = catalog.data?.items ?? EMPTY_ESTIMATE_CATALOG;
+  const loading = catalog.loading;
+  const error = catalog.error;
   const [search, setSearch] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [qty, setQty] = React.useState("1");
   const [days, setDays] = React.useState("1");
   const [note, setNote] = React.useState("");
   const [addedMessage, setAddedMessage] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    fetch("/api/catalog/items?all=true", {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = (await response.json().catch(() => null)) as {
-          items?: EstimateCatalogItem[];
-          error?: { message?: string };
-        } | null;
-        if (!response.ok) throw new Error(payload?.error?.message ?? "Не удалось загрузить каталог");
-        setItems(payload?.items ?? []);
-      })
-      .catch((reason: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : "Не удалось загрузить каталог");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, []);
 
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLocaleLowerCase("ru-RU");
@@ -4091,12 +4099,14 @@ function EstimateSectionBlock({
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
   const [isOpen, setIsOpen] = React.useState(defaultOpen);
-
-  React.useEffect(() => {
-    setTitleDraft(sec.title);
-    setEditingTitle(false);
-    setIsOpen(defaultOpen);
-  }, [defaultOpen, sec.id, sec.title]);
+  const [titleSource, setTitleSource] = React.useState({ id: sec.id, title: sec.title, defaultOpen });
+  if (titleSource.id !== sec.id || titleSource.title !== sec.title || titleSource.defaultOpen !== defaultOpen) {
+    const changedIdentity = titleSource.id !== sec.id;
+    setTitleSource({ id: sec.id, title: sec.title, defaultOpen });
+    if (changedIdentity || !editingTitle) setTitleDraft(sec.title);
+    if (changedIdentity) setEditingTitle(false);
+    if (changedIdentity || titleSource.defaultOpen !== defaultOpen) setIsOpen(defaultOpen);
+  }
 
   function finishTitleEdit() {
     const t = titleDraft.trim();
@@ -4969,14 +4979,10 @@ function CompactEstimateTable({
     window.addEventListener("pointerup", finish, { once: true });
   }
 
-  React.useEffect(() => {
-    const availableIds = new Set(lines.map((line) => line.id));
-    setSelectedLineIds((previous) => {
-      const next = new Set([...previous].filter((lineId) => availableIds.has(lineId)));
-      if (next.size === previous.size && [...next].every((lineId) => previous.has(lineId))) return previous;
-      return next;
-    });
-  }, [lines]);
+  const availableLineIds = new Set(lines.map(line => line.id));
+  if ([...selectedLineIds].some(lineId => !availableLineIds.has(lineId))) {
+    setSelectedLineIds(new Set([...selectedLineIds].filter(lineId => availableLineIds.has(lineId))));
+  }
 
   React.useEffect(() => {
     if (!bulkNotice) return;
@@ -6270,18 +6276,16 @@ function RequisiteSectionEditor({
     demontageInternalPaymentMethod: "NON_CASH" as OrderServicePaymentMethod,
   });
 
-  const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>({});
+  const readRequisiteUnits = () => Object.fromEntries(Object.entries(sec.lineLocalExtras ?? {})
+    .flatMap(([key, value]) => typeof value?.unit === "string" && value.unit.trim() ? [[key, value.unit]] : []));
+  const unitSignature = JSON.stringify([sec.id, sec.lineLocalExtras ?? {}]);
+  const [unitSource, setUnitSource] = React.useState(unitSignature);
+  const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>(readRequisiteUnits);
   const [requisiteQtyDraft, setRequisiteQtyDraft] = React.useState<Record<string, string>>({});
-
-  React.useEffect(() => {
-    const ex = sec.lineLocalExtras ?? {};
-    const next: Record<string, string> = {};
-    for (const [k, v] of Object.entries(ex)) {
-      const u = v?.unit;
-      if (typeof u === "string" && u.trim()) next[k] = u;
-    }
-    setRequisiteUnitDraft(next);
-  }, [sec.id, sec.lineLocalExtras]);
+  if (unitSource !== unitSignature) {
+    setUnitSource(unitSignature);
+    setRequisiteUnitDraft(readRequisiteUnits());
+  }
 
   async function persistRequisiteLineLocalExtras(next: Record<string, { unit?: string | null }>) {
     try {
@@ -6336,20 +6340,22 @@ function RequisiteSectionEditor({
     [lines, requisiteQtyDraft],
   );
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const orderRes = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+  const orderReadSequence = React.useRef(0);
+  const readOrder = React.useCallback((signal?: AbortSignal) => {
+    const sequence = ++orderReadSequence.current;
+    const current = () => !signal?.aborted && sequence === orderReadSequence.current;
+    return fetch(`/api/orders/${orderId}`, { cache: "no-store", signal }).then(async orderRes => {
       const orderJson = (await orderRes.json().catch(() => null)) as {
         order?: RequisiteOrder;
         error?: { message?: string };
       } | null;
+      if (!current()) return;
       if (!orderRes.ok || !orderJson?.order) {
         setError(orderJson?.error?.message ?? "Не удалось загрузить связанную заявку");
         setOrder(null);
         return;
       }
+      if (!current()) return;
       const nextOrder = orderJson.order;
       setOrder(nextOrder);
       setRequisiteQtyDraft({});
@@ -6398,7 +6404,7 @@ function RequisiteSectionEditor({
       const rep = encodeURIComponent(nextOrder.rentalEndPartOfDay ?? "MORNING");
       const catalogRes = await fetch(
         `/api/catalog/items?all=true&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&rentalStartPartOfDay=${rsp}&rentalEndPartOfDay=${rep}&excludeOrderId=${encodeURIComponent(orderId)}`,
-        { cache: "no-store" },
+        { cache: "no-store", signal },
       );
       const catalogJson = (await catalogRes.json().catch(() => null)) as
         | {
@@ -6414,6 +6420,7 @@ function RequisiteSectionEditor({
             }>;
           }
         | null;
+      if (!current()) return;
       setCatalogItems(
         (catalogJson?.items ?? []).map((item) => ({
           id: item.id,
@@ -6434,17 +6441,24 @@ function RequisiteSectionEditor({
               : Number(item.pricePerDay),
         })),
       );
-    } catch {
+    }).catch(() => {
+      if (!current()) return;
       setError("Не удалось загрузить связанную заявку");
       setOrder(null);
-    } finally {
-      setLoading(false);
-    }
+    }).finally(() => { if (current()) setLoading(false); });
   }, [orderId]);
 
+  const load = React.useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return readOrder();
+  }, [readOrder]);
+
   React.useEffect(() => {
-    void load();
-  }, [load]);
+    const controller = new AbortController();
+    void readOrder(controller.signal);
+    return () => { controller.abort(); orderReadSequence.current += 1; };
+  }, [readOrder]);
 
   function setServiceField<K extends keyof typeof services>(key: K, value: (typeof services)[K]) {
     setServices((prev) => ({ ...prev, [key]: value }));
@@ -6874,8 +6888,6 @@ function RequisiteSectionEditor({
                       }}
                       className={`mt-0.5 w-full ${cellXs} tabular-nums`}
                       disabled={!editable}
-                      aria-valuemin={1}
-                      aria-valuemax={maxQty > 0 ? maxQty : undefined}
                     />
                   </label>
                   <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
@@ -7082,6 +7094,22 @@ function RequisiteSectionEditor({
   );
 }
 
+function draftRequisiteLines(sec: EstSection) {
+  return sec.lines.map((line) => {
+    const meta = parseDraftLineMeta(line);
+    return {
+      id: line.id,
+      itemId: line.itemId ?? "",
+      name: line.name,
+      qty: String(meta.qty),
+      plannedDays: String(meta.plannedDays),
+      pricePerDaySnapshot: meta.pricePerDay,
+      comment: meta.extraDescription,
+      maxQtyPhysical: meta.maxQtyPhysical,
+    };
+  });
+}
+
 function DraftRequisiteEditor({
   projectId,
   sec,
@@ -7097,87 +7125,9 @@ function DraftRequisiteEditor({
   const [error, setError] = React.useState<string | null>(null);
   const [legendOpen, setLegendOpen] = React.useState(false);
   const [draftDirty, setDraftDirty] = React.useState(false);
-  const [catalogItems, setCatalogItems] = React.useState<
-    Array<{
-      id: string;
-      name: string;
-      total: number;
-      inRepair: number;
-      broken: number;
-      missing: number;
-      availableNow?: number;
-      availableForDates?: number;
-      pricePerDay?: number;
-    }>
-  >([]);
-  const [catalogLoading, setCatalogLoading] = React.useState(true);
-  const [materializeOpen, setMaterializeOpen] = React.useState(false);
-  const [projectMaterializeDefaults, setProjectMaterializeDefaults] = React.useState<{
-    startDate: string;
-    endDate: string;
-  } | null>(null);
-  const [materializeAssignments, setMaterializeAssignments] = React.useState<DraftMaterializeAssignment[]>([]);
-  const [matBusy, setMatBusy] = React.useState(false);
-  const [matError, setMatError] = React.useState<string | null>(null);
-  const [lines, setLines] = React.useState(() =>
-    sec.lines.map((line) => {
-      const meta = parseDraftLineMeta(line);
-      return {
-        id: line.id,
-        itemId: line.itemId ?? "",
-        name: line.name,
-        qty: String(meta.qty),
-        plannedDays: String(meta.plannedDays),
-        pricePerDaySnapshot: meta.pricePerDay,
-        comment: meta.extraDescription,
-        maxQtyPhysical: meta.maxQtyPhysical,
-      };
-    }),
-  );
-
-  React.useEffect(() => {
-    setLines(
-      sec.lines.map((line) => {
-        const meta = parseDraftLineMeta(line);
-        return {
-          id: line.id,
-          itemId: line.itemId ?? "",
-          name: line.name,
-          qty: String(meta.qty),
-          plannedDays: String(meta.plannedDays),
-          pricePerDaySnapshot: meta.pricePerDay,
-          comment: meta.extraDescription,
-          maxQtyPhysical: meta.maxQtyPhysical,
-        };
-      }),
-    );
-    setError(null);
-    setDraftDirty(false);
-  }, [sec]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setCatalogLoading(true);
-    fetch("/api/catalog/items", { cache: "no-store" })
-      .then((r) => r.json().catch(() => null))
-      .then(
-        (
-          j: null | {
-            items?: Array<{
-              id: string;
-              name: string;
-              total: number;
-              inRepair: number;
-              broken: number;
-              missing: number;
-              pricePerDay?: number | null;
-              availability?: { availableNow?: number; availableForDates?: number };
-            }>;
-          },
-        ) => {
-          if (cancelled) return;
-          setCatalogItems(
-            (j?.items ?? []).map((item) => ({
+  const catalog = useJsonResource<{ items: EstimateCatalogItem[] }>("/api/catalog/items", "Не удалось загрузить каталог");
+  const catalogLoading = catalog.loading;
+  const catalogItems = React.useMemo(() => (catalog.data?.items ?? []).map((item) => ({
               id: item.id,
               name: item.name,
               total: item.total,
@@ -7192,20 +7142,24 @@ function DraftRequisiteEditor({
                   : undefined,
               pricePerDay:
                 item.pricePerDay === undefined || item.pricePerDay === null ? undefined : Number(item.pricePerDay),
-            })),
-          );
-        },
-      )
-      .catch(() => {
-        if (!cancelled) setCatalogItems([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCatalogLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+            })), [catalog.data]);
+  const [materializeOpen, setMaterializeOpen] = React.useState(false);
+  const [projectMaterializeDefaults, setProjectMaterializeDefaults] = React.useState<{
+    startDate: string;
+    endDate: string;
+  } | null>(null);
+  const [materializeAssignments, setMaterializeAssignments] = React.useState<DraftMaterializeAssignment[]>([]);
+  const [matBusy, setMatBusy] = React.useState(false);
+  const [matError, setMatError] = React.useState<string | null>(null);
+  const parsedLines = draftRequisiteLines(sec);
+  const sourceSignature = JSON.stringify(parsedLines);
+  const [lineSource, setLineSource] = React.useState(sourceSignature);
+  const [lines, setLines] = React.useState(() => parsedLines);
+  if (!draftDirty && lineSource !== sourceSignature) {
+    setLineSource(sourceSignature);
+    setLines(parsedLines);
+    setError(null);
+  }
 
   React.useEffect(() => {
     let cancelled = false;
@@ -7510,8 +7464,6 @@ function DraftRequisiteEditor({
                     }}
                     className={`mt-1 w-full ${inputField} tabular-nums`}
                     disabled={readOnly}
-                    aria-valuemin={1}
-                    aria-valuemax={maxQtyCap}
                   />
                 </label>
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">

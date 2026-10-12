@@ -17,6 +17,10 @@ const proposalItem = { id: "qa-existing", offerId: null, selectionRole: "PRIMARY
 const proposal = { id: "qa-proposal", title: "QA · КП", revision: 10, status: "DRAFT", clientIntro: "Клиентский текст", clientOutro: null, owner: { type: "STANDALONE", customer: null, leadCustomerName: null, convertedAt: null }, variants: [{ id: "qa-variant", title: "Основной", isRecommended: true, sections: [{ id: "qa-section", title: "Оборудование QA", category: { id: "qa-category", name: "Оборудование QA" }, items: [proposalItem] }] }] };
 const proposalContractor = { id: "qa-contractor", name: "Подрядчик QA", photoUrl: null, offers: [{ id: "qa-offer", title: "Услуга QA", description: "Каталожный текст", clientPrice: 300, clientPriceMax: null, priceType: "FIXED", unitLabel: "шт.", priceConfirmedAt: "2026-10-13", category: { id: "qa-category", name: "Оборудование QA" } }] };
 const fixtureWrites = [];
+const estimateOnly = process.argv.includes("--estimate-only");
+const estimateLine = { id: "qa-line", position: 0, lineNumber: 1, name: "QA line", description: null, lineType: "OTHER", costClient: "100", costInternal: "20", unit: "шт", qty: 1, unitPriceClient: 100, internalExpenses: [], customValues: {}, itemId: null, orderLineId: null };
+const estimateFinance = { revenueTotal: 100, marginAfterTax: 80, marginAfterTaxPct: 80 };
+const estimate = { projectTitle: "QA estimate", projectOrders: [], versions: [{ id: "qa-version", versionNumber: 1, title: "QA estimate", isPrimary: true, sortOrder: 1, includeInProjectTotals: true, createdAt: "2026-10-13", createdBy: { displayName: "QA" }, financials: estimateFinance }], current: { id: "qa-version", versionNumber: 1, revision: 10, title: "QA estimate", commissionEnabled: false, clientTaxEnabled: false, clientChargeTaxEnabled: false, customColumns: [], sections: [{ id: "qa-section", title: "QA section", sortOrder: 1, kind: "LOCAL", linkedOrderId: null, lines: [estimateLine] }] } };
 let releaseProposalAdd;
 const proposalAddSeen = new Promise(resolve => { releaseProposalAdd = resolve; });
 const calls = [], writes = [], unknown = [], errors = [];
@@ -30,6 +34,13 @@ try {
   await context.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url());
     calls.push({ path: url.pathname, params: Object.fromEntries(url.searchParams), method: request.method() });
+    if (estimateOnly && request.method() === "PATCH" && url.pathname === "/api/standalone-estimates/qa-estimate/estimate") {
+      const command = request.postDataJSON(); fixtureWrites.push(command);
+      assert.equal(fixtureWrites.length, 1); assert.equal(command.versionNumber, 1);
+      assert.equal(command.expectedRevision, undefined);
+      assert.deepEqual({ qty: command.localSections[0].lines[0].qty, price: command.localSections[0].lines[0].unitPriceClient, total: command.localSections[0].lines[0].costClient }, { qty: 2, price: 150, total: 300 });
+      await route.fulfill({ json: { revision: 11 } }); return;
+    }
     if (request.method() === "POST" && url.pathname === "/api/proposals/qa-proposal/mutations") {
       const command = request.postDataJSON(); fixtureWrites.push(command);
       assert.match(command.mutationId, /^[0-9a-f-]{36}$/);
@@ -54,6 +65,8 @@ try {
     else if (url.pathname === "/api/work-queue") result = { items: [], meta: { total: 0, projects: 0, standaloneOrders: 0, estimates: 0, undated: 0, from: "2026-09-01", to: "2026-09-30" } };
     else if (url.pathname === "/api/projects") result = { projects: [project] };
     else if (url.pathname === "/api/projects/meta") result = { users: [user], currentUserId: user.id, templates: [] };
+    else if (url.pathname === "/api/standalone-estimates/qa-estimate") result = { estimate: { id: "qa-estimate", title: "QA estimate", leadCustomerName: "QA", convertedAt: null, convertedProjectId: null, createdAt: "2026-10-13", updatedAt: "2026-10-13", customer: null, owner: user } };
+    else if (url.pathname === "/api/standalone-estimates/qa-estimate/estimate") result = estimate;
     else if (url.pathname === "/api/catalog/items") result = { items: [{ ...item, photo2Key: null, availability: { availableNow: 5, availableForDates: 5 } }], pagination: { page: 1, pageSize: 32, total: 1, totalPages: 1 } };
     else if (url.pathname === "/api/catalog/categories") result = { categories: [] };
     else if (url.pathname === "/api/catalog/kits") result = { kits: [] };
@@ -75,7 +88,19 @@ try {
   });
   const page = await context.newPage();
   page.on("pageerror", error => errors.push(error.message));
-  if (!process.argv.includes("--proposal-only")) {
+  if (estimateOnly) {
+    await page.goto(new URL("/estimates/qa-estimate", base).href);
+    const quantity = page.locator('[data-estimate-line="qa-line"][data-estimate-column="qty"]');
+    await quantity.waitFor(); await quantity.fill("2");
+    const price = page.locator('[data-estimate-line="qa-line"][data-estimate-column="unitPriceClient"]'); await price.fill("150");
+    await page.getByRole("button", { name: "Отменить последнее изменение", exact: true }).click();
+    assert.equal(await price.inputValue(), "100"); assert.equal(await quantity.inputValue(), "2");
+    await page.getByRole("button", { name: "Вернуть отменённое изменение", exact: true }).click();
+    assert.equal(await price.inputValue(), "150");
+    await page.waitForFunction(() => localStorage.getItem("project-estimate-draft:qa-estimate:v1") === null);
+    assert.equal(fixtureWrites.length, 1);
+  }
+  if (!process.argv.includes("--proposal-only") && !estimateOnly) {
   await page.goto(new URL("/work", base).href);
   await page.getByRole("button", { name: "Архив QA", exact: true }).waitFor();
   await Promise.all([page.waitForResponse(response => response.url().includes("/api/work-queue?") && new URL(response.url()).searchParams.get("view") === "archive"), page.getByRole("button", { name: "Архив QA", exact: true }).click()]);
@@ -153,6 +178,7 @@ try {
   await taskDialog.getByRole("button", { name: "Закрыть", exact: true }).click();
   await taskDialog.waitFor({ state: "hidden" });
   }
+  if (!estimateOnly) {
   await page.goto(new URL("/proposals/qa-proposal", base).href);
   await page.getByRole("heading", { name: proposal.title, exact: true }).waitFor();
   await page.getByRole("button", { name: "Подобрать услуги: Оборудование QA", exact: true }).first().click();
@@ -173,8 +199,9 @@ try {
   await settings.locator('textarea[name="note"]').fill("QA · несохранённый комментарий"); await settings.locator('input[name="qty"]').fill("2");
   assert.equal(await settings.locator('textarea[name="note"]').inputValue(), "QA · несохранённый комментарий");
   page.once("dialog", dialog => dialog.accept()); await settings.getByRole("button", { name: "Закрыть", exact: true }).click(); await settings.waitFor({ state: "hidden" });
+  }
   assert.deepEqual(writes, []);
   assert.deepEqual(unknown, []);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ checks: process.argv.includes("--proposal-only") ? ["native proposal popover, ADD/deselect/acknowledged REMOVE, immutable IDs/CAS, retained item draft"] : ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope", "actual catalog card to cart quantity restore, blur and increment", "native iframe task scope, local menu and parent form draft", "native proposal picker and serialized fixture mutations"], apiCalls: calls.length, fixtureWrites: fixtureWrites.length, forbiddenWrites: writes.length, pageErrors: errors.length, target: base.origin }));
+  console.log(JSON.stringify({ checks: estimateOnly ? ["native estimate grid, same-frame draft, undo/redo, validated autosave, journal cleanup"] : process.argv.includes("--proposal-only") ? ["native proposal popover, ADD/deselect/acknowledged REMOVE, immutable IDs/CAS, retained item draft"] : ["saved-view scope", "native create dialog + keyboard customer selection", "explicit inventory search and visibility scope", "position prices and draft", "project URL filters, debounced query acknowledgement and tab scope", "actual catalog card to cart quantity restore, blur and increment", "native iframe task scope, local menu and parent form draft", "native proposal picker and serialized fixture mutations"], apiCalls: calls.length, fixtureWrites: fixtureWrites.length, forbiddenWrites: writes.length, pageErrors: errors.length, target: base.origin }));
 } finally { await browser.close(); }

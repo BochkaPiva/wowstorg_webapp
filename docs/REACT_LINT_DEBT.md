@@ -167,11 +167,25 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **90 файлов / 598 tests**, 42 исторических errors без новых file/rule регрессий, production audit 0, TypeScript/Next production build успешны. Первый gate остановился на отсутствии `this: HTMLElement` в тестовом полифиле; после исправления полный gate выполнен заново и прошёл. Изолированный `--proposal-only` smoke в настоящем headless Edge проверил native popover, ADD→снятие выбора→acknowledged REMOVE, UUID/ID/CAS и retained item draft: 8 перехваченных API calls, ровно 2 валидированные fixture POSTs, 0 forbidden writes, 0 page errors. Все API перехвачены, реальные requests к БД не пропускаются; это не production DB/storage/export/Office smoke. Production runtime logs/drains отдельно не инспектировались. Baseline ещё необходим для оставшихся 42 ошибок.
 
+## Пакет 12 — смета и вложенные редакторы (13.10.2026)
+
+Ошибки: **42 → 20**, суммарно устранены **144 из 164**. Все 22 допуска `ProjectEstimatePanel` сняты: refs, set-state-in-effect, purity, immutability и preserve-manual-memoization. Правила/severity не отключались; целевой компонент также не имеет warnings.
+
+- Keyed редактор принадлежит проекту/API/standalone/version scope. Смена версии отменяет прежние чтения и сбрасывает историю; изменение только presentation props не размонтирует форму. Controlled и uncontrolled выбор версии сохранён.
+- Состояние для render отделено от синхронного event snapshot: refs обновляются в событиях/ответах, не при render. Undo/redo availability публикуется state; grouping 1200 мс и лимит 60 сохранены. Перестановка разделов использует актуальный event snapshot, не захваченный mutable render result.
+- Первичный GET и dependent order/catalog reads защищены abort/generation. Loading первоначального чтения задан начальным состоянием, повторный — явным действием. Autosave использует Effect Event с актуальным draft вместо присваивания callback-ref при render; прежние debounce 1400 мс, последовательность, CAS и конфликтная пауза сохранены.
+- Recovery journal не удаляется пустым начальным состоянием до ответа GET выбранной версии. Поздний успешный PATCH размонтированного редактора не очищает журнал нового редактора. Более свежий ввод во время PATCH остаётся dirty и отправляется с acknowledged revision.
+- Открытый title draft и выделение строк переживают посторонний render. Requisite units синхронизируются по значению extras, не по ссылке на объект; partial quantity, stock caps и unit PATCH сохранены. Demo-редактор сравнивает meaningful source, не стирает dirty draft новой копией `sec`. Независимые каталожные GET используют общий GET-only hook, не очередь mutations. Floating-save не виден после read-only/очистки dirty состояния.
+
+Добавлены **20 DOM tests**: SSR/hydration/StrictMode, project/version isolation, same-frame edits, undo/redo/branching, in-flight save/newer draft, 409, cross-tab races, stale refresh, stored recovery/destructive deletion, empty rows, selection, read-only, standalone API, rejected save/manual retry, section title, demo failure, requisite units/dated caps и late order reads. Дополнительный тест выявил и закрепил исправление удаления recovery до GET/старым PATCH. API и date picker замоканы; реальные DB writes/stock reservation/materialization, drag/resize и XLSX download этими tests не подтверждаются. Серверные финансовые формулы, API/schema/env не изменены; прежние parity tests проходят.
+
+Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **91 файл / 618 tests**, 20 исторических errors без file/rule регрессий, production audit 0, TypeScript/Next build успешны. Изолированный `--estimate-only` smoke на локальном production build в headless Edge проверил настоящую таблицу, ввод qty/price, undo/redo, autosave body и очистку журнала: **7 API calls, 1 валидированный fixture PATCH, 0 forbidden writes, 0 page errors**. Все API перехвачены; это не проверка production DB или полного archive/conversion процесса. Runtime logs/drains production отдельно не инспектировались. Для оставшихся 20 ошибок baseline ещё необходим.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.
 2. Оставшиеся страницы заявок, независимых смет, проекта, складской очереди и уведомлений: чтения/черновики с сохранением mutation guards.
-3. Проектная смета и её вложенные формы: refs/immutability/memoization; сначала разобрать владение изменяемым состоянием и подписки, затем правки с проверкой autosave и undo/redo. Это наиболее рискованный оставшийся пакет; для 42 ошибок baseline ещё нужен.
+3. Проектная смета и её вложенные формы закрыты пакетом 12. Для оставшихся 20 ошибок baseline ещё нужен; следующие кандидаты — остальные проектные панели, страницы заявок и уведомления.
 4. Финальная проверка: нулевой baseline, чистый строгий lint, затем удаление временного механизма допусков. Предупреждения ESLint учитывать отдельно — они не входят в эти 164/158 ошибок.
 
 Порядок можно менять по риску/пересечениям. Цель — устранить весь долг; пакет 1 не является завершением этой работы.

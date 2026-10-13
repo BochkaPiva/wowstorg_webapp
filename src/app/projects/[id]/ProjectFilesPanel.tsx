@@ -502,6 +502,13 @@ function FolderBlock({
 export function ProjectFilesPanel({
   projectId,
   readOnly,
+}: { projectId: string; readOnly: boolean }) {
+  return <FilesEditor key={projectId} projectId={projectId} readOnly={readOnly} />;
+}
+
+function FilesEditor({
+  projectId,
+  readOnly,
 }: {
   projectId: string;
   readOnly: boolean;
@@ -520,9 +527,16 @@ export function ProjectFilesPanel({
   const [renameDraft, setRenameDraft] = React.useState("");
   const [showRootComposer, setShowRootComposer] = React.useState(false);
 
-  const load = React.useCallback(() => {
-    setLoading(true);
-    fetch(`/api/projects/${projectId}/files`, { cache: "no-store" })
+  const readSequence = React.useRef(0);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readSequence.current += 1; };
+  }, []);
+  const readFiles = React.useCallback((signal?: AbortSignal) => {
+    const sequence = ++readSequence.current;
+    const current = () => mounted.current && !signal?.aborted && sequence === readSequence.current;
+    return fetch(`/api/projects/${projectId}/files`, { cache: "no-store", signal })
       .then((r) => r.json())
       .then(
         (data: {
@@ -531,6 +545,7 @@ export function ProjectFilesPanel({
           fileCount?: number;
           error?: { message?: string };
         } | null) => {
+          if (!current()) return;
           if (data?.folders) {
             setFolders(data.folders);
             setTotalBytes(data.totalBytes ?? 0);
@@ -541,13 +556,21 @@ export function ProjectFilesPanel({
           }
         },
       )
-      .catch(() => setError("Не удалось загрузить файлы"))
-      .finally(() => setLoading(false));
+      .catch(() => { if (current()) setError("Не удалось загрузить файлы"); })
+      .finally(() => { if (current()) setLoading(false); });
   }, [projectId]);
 
+  const load = React.useCallback(() => {
+    if (!mounted.current) return Promise.resolve();
+    setLoading(true);
+    return readFiles();
+  }, [readFiles]);
+
   React.useEffect(() => {
-    load();
-  }, [load]);
+    const controller = new AbortController();
+    void readFiles(controller.signal);
+    return () => { controller.abort(); readSequence.current += 1; };
+  }, [readFiles]);
 
   React.useEffect(() => {
     function onRefresh() {

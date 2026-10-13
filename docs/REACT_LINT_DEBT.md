@@ -181,11 +181,24 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **91 файл / 618 tests**, 20 исторических errors без file/rule регрессий, production audit 0, TypeScript/Next build успешны. Изолированный `--estimate-only` smoke на локальном production build в headless Edge проверил настоящую таблицу, ввод qty/price, undo/redo, autosave body и очистку журнала: **7 API calls, 1 валидированный fixture PATCH, 0 forbidden writes, 0 page errors**. Все API перехвачены; это не проверка production DB или полного archive/conversion процесса. Runtime logs/drains production отдельно не инспектировались. Для оставшихся 20 ошибок baseline ещё необходим.
 
+## Пакет 13 — контакты, файлы и тайминг проекта (13.10.2026)
+
+Ошибки: **20 → 15**, суммарно устранены **149 из 164**. Сняты пять допусков set-state-in-effect; три изменённых компонента проходят целевой ESLint без errors/warnings. Удалён только неиспользуемый contact helper, не действующая возможность интерфейса.
+
+- Внутренние редакторы имеют project key: смена проекта не переносит composer/rename/title/time fields, ошибки и старые данные. Изменение readOnly само по себе не размонтирует форму. Первичные GET не вызывают synchronous loading setter; фактические Promise responses публикуют данные, явный refresh управляет loading и возвращает Promise.
+- Contact/file/schedule reads имеют abort и generation/mounted guards. Поздний initial GET, старый parallel refresh и ответ после смены проекта не заменяют актуальную модель. Await contact refresh действительно ждёт чтение до parent notification. Payloads и серверные permissions не изменены.
+- Recovery тайминга не удаляется до первого успешного GET, включая failed initial read. Поздний PATCH размонтированного schedule editor не очищает его journal. Business draft остаётся в прежнем отдельном storage key; autosave interval 900 мс и API алгоритм не менялись.
+- Day title синхронизируется по исходному значению, не затирает открытый ввод другим render. Initial next-slot time вычисляется из последнего интервала. Copied slots другого дня не сбрасывают time fields; реальное изменение интервалов обновляет подсказанный период по прежним правилам. Optional roster context имеет own generation guard и не блокирует тайминг.
+
+Добавлены **16 DOM tests**: cancelled StrictMode GET, project identity, contact create/edit/entry rejection, actual refresh ordering, file tree/usage refresh races/composer/failure/read-only, schedule SSR/hydration/recovery/initial GET failure, title/time draft, initial time/serialized PATCH, scope cancellation/roster race и old save journal protection. API fixtures; настоящие загрузки Storage, production mutations, drag/drop и визуальная/native browser приёмка этих трёх панелей отдельно не проводились. Это не изменение финансов, API/schema/env или бизнес-правил.
+
+Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **92 файла / 634 tests**, 15 исторических errors без file/rule регрессий, production audit 0, TypeScript/Next build успешны. Предыдущий пакет 12 уже подтверждён CI (оба jobs success) и production READY на `f7c367e1b4505f45b28a99795250c64b4d9d6144`; login HTTP 200. Runtime logs/drains production отдельно не инспектировались. Baseline остаётся нужен для оставшихся 15 ошибок.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.
 2. Оставшиеся страницы заявок, независимых смет, проекта, складской очереди и уведомлений: чтения/черновики с сохранением mutation guards.
-3. Проектная смета и её вложенные формы закрыты пакетом 12. Для оставшихся 20 ошибок baseline ещё нужен; следующие кандидаты — остальные проектные панели, страницы заявок и уведомления.
+3. Проектная смета и её вложенные формы закрыты пакетом 12; контакты, файлы и тайминг — пакетом 13. Для оставшихся 15 ошибок baseline ещё нужен; следующие кандидаты — demo-заявка, legacy конструктор, страницы заявок/проекта/независимой сметы и уведомления.
 4. Финальная проверка: нулевой baseline, чистый строгий lint, затем удаление временного механизма допусков. Предупреждения ESLint учитывать отдельно — они не входят в эти 164/158 ошибок.
 
 Порядок можно менять по риску/пересечениям. Цель — устранить весь долг; пакет 1 не является завершением этой работы.

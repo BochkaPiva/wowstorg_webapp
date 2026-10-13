@@ -81,6 +81,13 @@ function cloneDays(days: Day[]): Day[] {
 export function ProjectSchedulePanel({
   projectId,
   readOnly,
+}: { projectId: string; readOnly: boolean }) {
+  return <ScheduleEditor key={projectId} projectId={projectId} readOnly={readOnly} />;
+}
+
+function ScheduleEditor({
+  projectId,
+  readOnly,
 }: {
   projectId: string;
   readOnly: boolean;
@@ -89,11 +96,14 @@ export function ProjectSchedulePanel({
   const [contractorsBySlot, setContractorsBySlot] = React.useState<Record<string, string[]>>({});
   React.useEffect(() => {
     const controller = new AbortController();
+    let generation = 0;
     const load = async () => {
+      const sequence = ++generation;
       try {
         const response = await fetch(`/api/projects/${projectId}/contractors`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) return; // The roster itself shows migration / permission errors.
         const data: ProjectContractorsPayload = await response.json();
+        if (controller.signal.aborted || sequence !== generation) return;
         const bySlot: Record<string, string[]> = {};
         for (const row of data.assignments) if (row.scheduleSlotId && row.status !== "CANCELLED") (bySlot[row.scheduleSlotId] ??= []).push(row.name);
         setContractorsBySlot(bySlot);
@@ -106,6 +116,7 @@ export function ProjectSchedulePanel({
   const [draftDays, setDraftDays] = React.useState<Day[]>([]);
   const [draftDirty, setDraftDirty] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [readReady, setReadReady] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [newDayNote, setNewDayNote] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -132,11 +143,19 @@ export function ProjectSchedulePanel({
     };
   }, [menuOpen]);
 
-  const load = React.useCallback((showSkeleton = true) => {
-    if (showSkeleton) setLoading(true);
-    fetch(`/api/projects/${projectId}/schedule`, { cache: "no-store" })
+  const readSequence = React.useRef(0);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readSequence.current += 1; };
+  }, []);
+  const readSchedule = React.useCallback((showSkeleton = true, signal?: AbortSignal) => {
+    const sequence = ++readSequence.current;
+    const current = () => mounted.current && !signal?.aborted && sequence === readSequence.current;
+    return fetch(`/api/projects/${projectId}/schedule`, { cache: "no-store", signal })
       .then((r) => r.json())
       .then((j: { days?: Day[]; error?: { message?: string } }) => {
+        if (!current()) return;
         if (j.days) {
           setServerDays(j.days);
           const raw = window.localStorage.getItem(storageKey);
@@ -158,26 +177,35 @@ export function ProjectSchedulePanel({
             setDraftDays(cloneDays(j.days));
             setDraftDirty(false);
           }
+          setReadReady(true);
           setError(null);
         } else setError(j.error?.message ?? "Ошибка загрузки");
       })
-      .catch(() => setError("Ошибка загрузки"))
+      .catch(() => { if (current()) setError("Ошибка загрузки"); })
       .finally(() => {
-        if (showSkeleton) setLoading(false);
+        if (showSkeleton && current()) setLoading(false);
       });
   }, [projectId, storageKey]);
 
-  React.useEffect(() => {
-    load();
-  }, [load]);
+  const load = React.useCallback((showSkeleton = true) => {
+    if (showSkeleton) setLoading(true);
+    return readSchedule(showSkeleton);
+  }, [readSchedule]);
 
   React.useEffect(() => {
+    const controller = new AbortController();
+    void readSchedule(true, controller.signal);
+    return () => controller.abort();
+  }, [readSchedule]);
+
+  React.useEffect(() => {
+    if (!readReady) return;
     if (!draftDirty) {
       window.localStorage.removeItem(storageKey);
       return;
     }
     window.localStorage.setItem(storageKey, JSON.stringify({ days: draftDays }));
-  }, [draftDays, draftDirty, storageKey]);
+  }, [draftDays, draftDirty, readReady, storageKey]);
 
   function mutateDays(mutator: (prev: Day[]) => Day[]) {
     setDraftDays((prev) => mutator(prev));
@@ -268,6 +296,7 @@ export function ProjectSchedulePanel({
         }),
       });
       const j = await res.json().catch(() => null);
+      if (!mounted.current) return;
       if (res.ok) {
         setDraftDirty(false);
         window.localStorage.removeItem(storageKey);
@@ -465,29 +494,31 @@ function DayBlock({
   onDeleteSlot: (slotId: string) => void;
 }) {
   const [note, setNote] = React.useState(day.dateNote);
-  const [from, setFrom] = React.useState("09:00");
-  const [to, setTo] = React.useState("10:30");
+  const slotSource = JSON.stringify(day.slots.map(slot => [slot.id, slot.intervalText]));
+  const nextPeriod = () => {
+    const last = day.slots.at(-1);
+    if (!last) return { from: "09:00", to: "10:30" };
+    const end = parseIntervalEnd(last.intervalText);
+    const minutes = end ? timeToMinutes(end) : null;
+    return minutes == null ? null : { from: minutesToTime(minutes), to: minutesToTime(minutes + 15) };
+  };
+  const [from, setFrom] = React.useState(() => nextPeriod()?.from ?? "09:00");
+  const [to, setTo] = React.useState(() => nextPeriod()?.to ?? "10:30");
   const [desc, setDesc] = React.useState("");
   const [slotError, setSlotError] = React.useState<string | null>(null);
   const [editingName, setEditingName] = React.useState(false);
 
-  React.useEffect(() => {
-    setNote(day.dateNote);
-  }, [day.dateNote]);
-
-  React.useEffect(() => {
-    const lastSlot = day.slots[day.slots.length - 1];
-    if (!lastSlot) {
-      setFrom("09:00");
-      setTo("10:30");
-      return;
+  const [source, setSource] = React.useState({ id: day.id, note: day.dateNote, slots: slotSource });
+  if (source.id !== day.id || source.note !== day.dateNote || source.slots !== slotSource) {
+    const changedIdentity = source.id !== day.id;
+    setSource({ id: day.id, note: day.dateNote, slots: slotSource });
+    if (changedIdentity || (source.note !== day.dateNote && !editingName)) setNote(day.dateNote);
+    if (changedIdentity) setEditingName(false);
+    if (changedIdentity || source.slots !== slotSource) {
+      const period = nextPeriod();
+      if (period) { setFrom(period.from); setTo(period.to); }
     }
-    const end = parseIntervalEnd(lastSlot.intervalText);
-    const endMinutes = end ? timeToMinutes(end) : null;
-    if (endMinutes == null) return;
-    setFrom(minutesToTime(endMinutes));
-    setTo(minutesToTime(endMinutes + 15));
-  }, [day.slots]);
+  }
 
   return (
     <details className="project-schedule-day" open>

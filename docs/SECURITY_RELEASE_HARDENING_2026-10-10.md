@@ -84,7 +84,7 @@ Additive миграция reconcile_manual_schema добавила валиди�
 ## Осталось явно, без ложной отметки «готово»
 
 - Полный npm audit содержит 5 high записей dev-цепочки ESLint -> fast-glob/micromatch -> braces 3.0.3. На момент проверки patched braces отсутствует; npm предлагает downgrade Next ESLint, который не применяли. Production graph чист. Не использовать lint-сервис с непроверенными пользовательскими glob patterns; повторно проверять advisory перед следующим обновлением.
-- На 10.10.2026 было 164 исторические ESLint errors. Пакеты 1–12 от 12–13.10.2026 снизили число до 20; [прогресс и план](REACT_LINT_DEBT.md). npm run lint всё ещё красный; lint:ci запрещает увеличение по файлу/правилу и всегда отклоняет parser fatal. Это постепенное устранение долга, не «чистый lint».
+- На 10.10.2026 было 164 исторические ESLint errors. Пакеты 1–13 от 12–13.10.2026 снизили число до 15; [прогресс и план](REACT_LINT_DEBT.md). npm run lint всё ещё красный; lint:ci запрещает увеличение по файлу/правилу и всегда отклоняет parser fatal. Это постепенное устранение долга, не «чистый lint».
 - GitHub required branch checks / Deployment Checks и private visibility требуют отдельного административного решения/доступа. Добавление workflow само по себе не блокирует merge.
 - Полная мобильная приёмка студии и PPTX в PowerPoint, Google Slides, LibreOffice остаются отдельными acceptance-пунктами. HTTP скачивание/структура файла не равно Office visual smoke.
 - Backup Storage и регулярная off-device проверка disaster recovery не настроены этой разовой процедурой; private maintenance archive нужно включать в будущие DB backups.

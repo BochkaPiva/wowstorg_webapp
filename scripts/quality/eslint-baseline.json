@@ -6,11 +6,8 @@
     "src/app/orders/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/orders/[id]/page.tsx|react-hooks/set-state-in-effect": 4,
     "src/app/projects/[id]/page.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/projects/[id]/ProjectContactsPanel.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/projects/[id]/ProjectDraftOrderPanel.tsx|react-hooks/set-state-in-effect": 2,
     "src/app/projects/[id]/ProjectEventBuilderPanel.tsx|react-hooks/set-state-in-effect": 3,
-    "src/app/projects/[id]/ProjectFilesPanel.tsx|react-hooks/set-state-in-effect": 1,
-    "src/app/projects/[id]/ProjectSchedulePanel.tsx|react-hooks/set-state-in-effect": 3,
     "src/app/warehouse/queue/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/_ui/InAppNotifications.tsx|react-hooks/set-state-in-effect": 2
   }

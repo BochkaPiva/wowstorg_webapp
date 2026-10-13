@@ -103,6 +103,13 @@ function EntryBody({ body }: { body: string }) {
 export function ProjectContactsPanel({
   projectId,
   readOnly,
+}: { projectId: string; readOnly: boolean }) {
+  return <ContactsEditor key={projectId} projectId={projectId} readOnly={readOnly} />;
+}
+
+function ContactsEditor({
+  projectId,
+  readOnly,
 }: {
   projectId: string;
   readOnly: boolean;
@@ -145,11 +152,19 @@ export function ProjectContactsPanel({
     };
   }, [menuOpenFor]);
 
-  const load = React.useCallback(() => {
-    setLoading(true);
-    fetch(`/api/projects/${projectId}/contacts`, { cache: "no-store" })
+  const readSequence = React.useRef(0);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readSequence.current += 1; };
+  }, []);
+  const readContacts = React.useCallback((signal?: AbortSignal) => {
+    const sequence = ++readSequence.current;
+    const current = () => mounted.current && !signal?.aborted && sequence === readSequence.current;
+    return fetch(`/api/projects/${projectId}/contacts`, { cache: "no-store", signal })
       .then((r) => r.json())
       .then((data: { contacts?: Contact[]; error?: { message?: string } } | null) => {
+        if (!current()) return;
         if (data?.contacts) {
           setContacts([...data.contacts].sort((a, b) => a.sortOrder - b.sortOrder));
           setError(null);
@@ -157,13 +172,21 @@ export function ProjectContactsPanel({
           setError(data?.error?.message ?? "Не удалось загрузить контакты");
         }
       })
-      .catch(() => setError("Не удалось загрузить контакты"))
-      .finally(() => setLoading(false));
+      .catch(() => { if (current()) setError("Не удалось загрузить контакты"); })
+      .finally(() => { if (current()) setLoading(false); });
   }, [projectId]);
 
+  const load = React.useCallback(() => {
+    if (!mounted.current) return Promise.resolve();
+    setLoading(true);
+    return readContacts();
+  }, [readContacts]);
+
   React.useEffect(() => {
-    load();
-  }, [load]);
+    const controller = new AbortController();
+    void readContacts(controller.signal);
+    return () => { controller.abort(); readSequence.current += 1; };
+  }, [readContacts]);
 
   function notifyParentRefresh() {
     window.dispatchEvent(new CustomEvent("project-activity-refresh"));
@@ -200,23 +223,6 @@ export function ProjectContactsPanel({
       }
     } finally {
       setCreateBusy(false);
-    }
-  }
-
-  async function toggleActive(c: Contact) {
-    if (readOnly) return;
-    setError(null);
-    const res = await fetch(`/api/projects/${projectId}/contacts/${c.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !c.isActive }),
-    });
-    const data = await res.json().catch(() => null);
-    if (res.ok) {
-      await load();
-      notifyParentRefresh();
-    } else {
-      setError(data?.error?.message ?? "Не удалось обновить контакт");
     }
   }
 

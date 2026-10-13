@@ -194,11 +194,23 @@
 
 Проверки: полный `npm run build:verified` с входным `NODE_ENV=production` прошёл — **92 файла / 634 tests**, 15 исторических errors без file/rule регрессий, production audit 0, TypeScript/Next build успешны. Предыдущий пакет 12 уже подтверждён CI (оба jobs success) и production READY на `f7c367e1b4505f45b28a99795250c64b4d9d6144`; login HTTP 200. Runtime logs/drains production отдельно не инспектировались. Baseline остаётся нужен для оставшихся 15 ошибок.
 
+## Пакет 14 — demo-заявка и legacy-конструктор (13.10.2026)
+
+Ошибки: **15 → 10**, суммарно устранены **154 из 164**; сняты все пять допусков двух компонентов без отключения правил.
+
+- Project-keyed редакторы отделяют формы, catalogue selection и связанные GET от прежнего проекта. Начальные Promise reads публикуют согласованные ответы только по действующей generation/abort/mounted; demo loading/error при явном refresh остаются обработчиками действия, не initial effect.
+- Manual materialize periods инициализируются при открытии manual mode/переходе из single, а не reset-effect. Повторное нажатие уже выбранного режима не стирает даты; повторное открытие формирует периоды по прежним group/line IDs и сегодняшней date-only. Payloads/materialization/dirty guard сохранены.
+- Legacy target section приводится к существующему разделу активного варианта до commit. Нет промежуточного старого target после variant switch, remove или server refresh. Error photo state принадлежит keyed source: обычный render не повторяет failed image, новый URL пробуется отдельно.
+
+Добавлены **9 DOM tests**: demo/context/StrictMode reads, rejected draft/partial quantity, manual mode reselect/reopen, materialize payload/rejection/dirty guard/read-only, builder SSR/hydration/late reads, variant target/CAS mutation, manual mutation rejection и photo callback/new source после 409 refresh. API, Image и Next Link изолированы; native browser, production materialization/transfer и реальные картинки/Storage в этом пакете отдельно не проверялись. Формулы/API/schema/env не менялись.
+
+Полный `npm run build:verified` с входным `NODE_ENV=production` прошёл: **93 файла / 643 tests**, 10 исторических errors без file/rule регрессий, production audit 0, TypeScript/Next build успешны. Пакет 13 подтверждён обоими CI jobs и production READY на `dafb5998b7c02803bc3d8a4f474306a261995bfc`. Runtime logs/drains отдельно не инспектировались. Baseline пока нужен для оставшихся десяти ошибок.
+
 ## Следующие пакеты
 
 1. Изолированные формы/диалоги: reset при открытии и смене сущности, сохранение пользовательского ввода. Отдельно — асинхронные загрузки с отменой/защитой от устаревших ответов.
 2. Оставшиеся страницы заявок, независимых смет, проекта, складской очереди и уведомлений: чтения/черновики с сохранением mutation guards.
-3. Проектная смета и её вложенные формы закрыты пакетом 12; контакты, файлы и тайминг — пакетом 13. Для оставшихся 15 ошибок baseline ещё нужен; следующие кандидаты — demo-заявка, legacy конструктор, страницы заявок/проекта/независимой сметы и уведомления.
+3. Проектные панели закрыты пакетами 12–14. Для оставшихся 10 ошибок baseline ещё нужен; следующий пакет — страницы заявок/проекта/независимой сметы, складской очереди и уведомления.
 4. Финальная проверка: нулевой baseline, чистый строгий lint, затем удаление временного механизма допусков. Предупреждения ESLint учитывать отдельно — они не входят в эти 164/158 ошибок.
 
 Порядок можно менять по риску/пересечениям. Цель — устранить весь долг; пакет 1 не является завершением этой работы.

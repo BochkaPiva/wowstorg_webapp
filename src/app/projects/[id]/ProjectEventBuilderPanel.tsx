@@ -77,8 +77,11 @@ async function apiError(response: Response) {
 }
 
 function Thumbnail({ src, name, size = 44 }: { src?: string | null; name: string; size?: number }) {
+  return <ThumbnailSource key={src ?? ""} src={src} name={name} size={size} />;
+}
+
+function ThumbnailSource({ src, name, size }: { src?: string | null; name: string; size: number }) {
   const [failed, setFailed] = React.useState(false);
-  React.useEffect(() => setFailed(false), [src]);
   return <span className={styles.thumbnail} style={{ width: size, height: size }}>
     {src && !failed
       ? <Image src={src} alt="" width={size} height={size} sizes={`${size}px`} unoptimized onError={() => setFailed(true)} />
@@ -118,6 +121,10 @@ function EventBuilderSkeleton() {
 }
 
 export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
+  return <EventBuilderEditor key={projectId} projectId={projectId} readOnly={readOnly} />;
+}
+
+function EventBuilderEditor({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [contractors, setContractors] = React.useState<Contractor[]>([]);
@@ -138,16 +145,25 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
   const [notice, setNotice] = React.useState<string | null>(null);
   const catalogRef = React.useRef<HTMLElement>(null);
 
-  const load = React.useCallback(async () => {
-    const [proposalResponse, categoriesResponse, contractorsResponse] = await Promise.all([
-      fetch(`/api/projects/${projectId}/proposals`, { cache: "no-store" }),
-      fetch("/api/contractor-categories", { cache: "no-store" }),
-      fetch("/api/contractors", { cache: "no-store" }),
-    ]);
+  const readSequence = React.useRef(0);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readSequence.current += 1; };
+  }, []);
+  const load = React.useCallback((signal?: AbortSignal) => {
+    const sequence = ++readSequence.current;
+    const current = () => mounted.current && !signal?.aborted && sequence === readSequence.current;
+    return Promise.all([
+      fetch(`/api/projects/${projectId}/proposals`, { cache: "no-store", signal }),
+      fetch("/api/contractor-categories", { cache: "no-store", signal }),
+      fetch("/api/contractors", { cache: "no-store", signal }),
+    ]).then(async ([proposalResponse, categoriesResponse, contractorsResponse]) => {
     if (!proposalResponse.ok || !categoriesResponse.ok || !contractorsResponse.ok) throw new Error("Не удалось загрузить конструктор");
     const proposalData = await proposalResponse.json() as { proposal: Proposal | null };
     const categoriesData = await categoriesResponse.json() as { categories: Category[] };
     const contractorsData = await contractorsResponse.json() as { contractors: Contractor[] };
+    if (!current()) return;
     setProposal(proposalData.proposal);
     setCategories(categoriesData.categories);
     setContractors(contractorsData.contractors);
@@ -155,23 +171,24 @@ export function ProjectEventBuilderPanel({ projectId, readOnly }: { projectId: s
       ? current
       : proposalData.proposal?.variants[0]?.id ?? null);
     setLoading(false);
+    });
   }, [projectId]);
 
   React.useEffect(() => {
-    void load().catch((cause) => {
+    const controller = new AbortController();
+    void load(controller.signal).catch((cause) => {
+      if (controller.signal.aborted) return;
       setError(cause instanceof Error ? cause.message : "Ошибка загрузки");
       setLoading(false);
     });
+    return () => controller.abort();
   }, [load]);
 
   const activeVariant = proposal?.variants.find((variant) => variant.id === activeVariantId) ?? proposal?.variants[0] ?? null;
   const targetSection = activeVariant?.sections.find((section) => section.id === targetSectionId) ?? null;
 
-  React.useEffect(() => {
-    if (activeVariant && !activeVariant.sections.some((section) => section.id === targetSectionId)) {
-      setTargetSectionId(activeVariant.sections[0]?.id ?? null);
-    }
-  }, [activeVariant, targetSectionId]);
+  const validTarget = activeVariant?.sections.find(section => section.id === targetSectionId)?.id ?? activeVariant?.sections[0]?.id ?? null;
+  if (targetSectionId !== validTarget) setTargetSectionId(validTarget);
 
   function openCatalogFor(sectionId?: string) {
     if (sectionId) setTargetSectionId(sectionId);

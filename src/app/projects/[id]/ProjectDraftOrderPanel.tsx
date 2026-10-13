@@ -100,6 +100,13 @@ function cloneDraft(draft: DraftOrder | null) {
 export function ProjectDraftOrderPanel({
   projectId,
   readOnly,
+}: { projectId: string; readOnly: boolean }) {
+  return <DraftOrderEditor key={projectId} projectId={projectId} readOnly={readOnly} />;
+}
+
+function DraftOrderEditor({
+  projectId,
+  readOnly,
 }: {
   projectId: string;
   readOnly: boolean;
@@ -130,25 +137,32 @@ export function ProjectDraftOrderPanel({
   const [singleEndDate, setSingleEndDate] = React.useState(todayDateOnly());
   const [manualPeriods, setManualPeriods] = React.useState<MaterializePeriod[]>([]);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [draftRes, catalogRes] = await Promise.all([
-        fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store" }),
-        fetch(`/api/catalog/items`, { cache: "no-store" }),
-      ]);
+  const readSequence = React.useRef(0);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; readSequence.current += 1; };
+  }, []);
+  const readDraft = React.useCallback((signal?: AbortSignal) => {
+    const sequence = ++readSequence.current;
+    const current = () => mounted.current && !signal?.aborted && sequence === readSequence.current;
+    return Promise.all([
+        fetch(`/api/projects/${projectId}/draft-order`, { cache: "no-store", signal }),
+        fetch(`/api/catalog/items`, { cache: "no-store", signal }),
+      ]).then(async ([draftRes, catalogRes]) => {
       const draftJson = (await draftRes.json().catch(() => null)) as
         | { draftOrder?: DraftOrder | null; error?: { message?: string } }
         | null;
       const catalogJson = (await catalogRes.json().catch(() => null)) as
         | { items?: CatalogItem[] }
         | null;
+      if (!current()) return;
 
       if (!draftRes.ok) {
         setError(draftJson?.error?.message ?? "Не удалось загрузить demo-черновик");
         setDraft(null);
       } else {
+        setError(null);
         setDraft(draftJson?.draftOrder ?? null);
         const next = cloneDraft(draftJson?.draftOrder ?? null);
         setTitle(next.title);
@@ -156,17 +170,25 @@ export function ProjectDraftOrderPanel({
         setLines(next.lines);
       }
       setCatalogItems(catalogJson?.items ?? []);
-    } catch {
+    }).catch(() => {
+      if (!current()) return;
       setError("Не удалось загрузить demo-черновик");
       setDraft(null);
-    } finally {
-      setLoading(false);
-    }
+    }).finally(() => { if (current()) setLoading(false); });
   }, [projectId]);
 
+  const load = React.useCallback(() => {
+    if (!mounted.current) return Promise.resolve();
+    setLoading(true);
+    setError(null);
+    return readDraft();
+  }, [readDraft]);
+
   React.useEffect(() => {
-    void load();
-  }, [load]);
+    const controller = new AbortController();
+    void readDraft(controller.signal);
+    return () => controller.abort();
+  }, [readDraft]);
 
   function notifyRefresh() {
     window.dispatchEvent(new CustomEvent("project-activity-refresh"));
@@ -295,11 +317,15 @@ export function ProjectDraftOrderPanel({
     );
   }
 
-  React.useEffect(() => {
-    if (confirmOpen && confirmMode === "manual") {
-      resetManualPeriods();
-    }
-  }, [confirmMode, confirmOpen]);
+  function openConfirmation() {
+    if (confirmMode === "manual") resetManualPeriods();
+    setConfirmOpen(true);
+  }
+
+  function selectConfirmMode(mode: "single" | "manual") {
+    if (mode === "manual" && confirmMode !== mode) resetManualPeriods();
+    setConfirmMode(mode);
+  }
 
   async function materialize() {
     if (dirty) {
@@ -364,7 +390,7 @@ export function ProjectDraftOrderPanel({
         </div>
         {!readOnly ? (
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setConfirmOpen(true)} disabled={busy || lines.length === 0} className={secondaryBtn}>
+            <button type="button" onClick={openConfirmation} disabled={busy || lines.length === 0} className={secondaryBtn}>
               Подтвердить даты
             </button>
             <button type="button" onClick={() => void saveDraft()} disabled={busy || !dirty} className={primaryBtn}>
@@ -532,14 +558,14 @@ export function ProjectDraftOrderPanel({
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmMode("single")}
+                onClick={() => selectConfirmMode("single")}
                 className={confirmMode === "single" ? primaryBtn : secondaryBtn}
               >
                 Один диапазон
               </button>
               <button
                 type="button"
-                onClick={() => setConfirmMode("manual")}
+                onClick={() => selectConfirmMode("manual")}
                 className={confirmMode === "manual" ? primaryBtn : secondaryBtn}
               >
                 Разбить по периодам

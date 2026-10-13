@@ -44,8 +44,95 @@ function change(input: HTMLInputElement | HTMLTextAreaElement, value: string) { 
 function selectBoard(id: string) { const select = element<HTMLSelectElement>(".task-board-toolbar__select"); act(() => { select.value = id; select.dispatchEvent(new Event("change", { bubbles: true })); }); }
 async function flush() { await act(async () => {}); }
 function openEditor() { click('[data-task-card-id="task"] button[aria-label="Действия с задачей"]'); clickText("✎ Переименовать и настроить"); }
+function dragEvent(target: HTMLElement, type: string, values: Record<string, string> = {}) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", { value: { types: Object.keys(values), effectAllowed: "none", dropEffect: "none", getData: (key: string) => values[key] ?? "", setData: (key: string, value: string) => { values[key] = value; } } });
+  Object.defineProperty(event, "clientY", { value: 0 });
+  Object.defineProperty(event, "clientX", { value: 0 });
+  act(() => target.dispatchEvent(event));
+  return values;
+}
 
 describe("task board lifecycle", () => {
+  it("clears drag feedback before a moved card unmounts, including a failed save", async () => {
+    await load();
+    const source = element('[data-task-card-id="task"]');
+    const transfer = dragEvent(source, "dragstart");
+    expect(source.classList.contains("task-card-dragging")).toBe(true);
+    const target = container.querySelectorAll<HTMLElement>(".task-column")[1];
+    dragEvent(target, "dragover", transfer);
+    expect(container.querySelector(".task-drop-placeholder")).not.toBeNull();
+    dragEvent(target, "drop", transfer);
+    // A cross-column move destroys the native drag source; no dragend is sent.
+    expect(source.isConnected).toBe(false);
+    expect(element('[data-task-card-id="task"]').classList.contains("task-card-dragging")).toBe(false);
+    expect(container.querySelector(".task-drop-placeholder")).toBeNull();
+    await flush();
+    const mutation = latest("/api/tasks/tasks/task", "PATCH");
+    expect(JSON.parse(mutation.init!.body as string)).toMatchObject({ columnId: "done", completed: true });
+    await respond(mutation, { error: { message: "Save failed" } }, 503);
+    expect(element('[data-task-card-id="task"]').classList.contains("task-card-dragging")).toBe(false);
+    expect(container.textContent).toContain("Save failed");
+  });
+
+  it("clears a self-drop without changing the task", async () => {
+    await load();
+    const card = element('[data-task-card-id="task"]');
+    const transfer = dragEvent(card, "dragstart");
+    dragEvent(card.parentElement!, "drop", transfer);
+    expect(card.classList.contains("task-card-dragging")).toBe(false);
+    await flush();
+    expect(flights.filter(f => f.init?.method)).toHaveLength(0);
+  });
+
+  it("clears a drop on another card before saving and resumes background sync afterwards", async () => {
+    await bootstrap();
+    const populated = board(); populated.columns[1].tasks = [task("target", "Target")];
+    await respond(latest("/api/tasks/boards/a"), { board: populated });
+    const source = element('[data-task-card-id="task"]');
+    const transfer = dragEvent(source, "dragstart");
+    dragEvent(element('[data-task-card-id="target"]').parentElement!, "drop", transfer);
+    expect(container.querySelector(".task-card-dragging")).toBeNull();
+    expect(container.querySelector(".task-drop-placeholder")).toBeNull();
+    await flush();
+    const mutation = latest("/api/tasks/tasks/task", "PATCH");
+    expect(JSON.parse(mutation.init!.body as string)).toMatchObject({ columnId: "done", completed: true });
+    await respond(mutation, { task: task() });
+    const before = flights.length; act(() => vi.advanceTimersByTime(12000));
+    expect(flights.length).toBeGreaterThan(before);
+    expect(latest("/api/tasks/boards/a")).toBeDefined();
+  });
+
+  it("clears column drag feedback and drops without waiting for native dragend", async () => {
+    await load();
+    const source = element(".task-column__header");
+    const transfer = dragEvent(source, "dragstart");
+    expect(source.closest(".task-column")!.classList.contains("is-dragging")).toBe(true);
+    dragEvent(container.querySelectorAll<HTMLElement>(".task-column")[1], "drop", transfer);
+    expect(container.querySelector(".task-column.is-dragging")).toBeNull();
+    await flush();
+    expect(latest("/api/tasks/columns/open", "PATCH")).toBeDefined();
+  });
+
+  it.each(["dragend", "drop", "blur", "escape", "hidden", "pointerdown"])("recovers drag feedback on %s outside the source card", async (completion) => {
+    await load();
+    const card = element('[data-task-card-id="task"]');
+    dragEvent(card, "dragstart");
+    expect(card.classList.contains("task-card-dragging")).toBe(true);
+    act(() => {
+      if (completion === "escape") document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      else if (completion === "hidden") {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+      } else if (completion === "blur") window.dispatchEvent(new Event("blur"));
+      else document.body.dispatchEvent(new Event(completion, { bubbles: true }));
+    });
+    expect(card.classList.contains("task-card-dragging")).toBe(false);
+    expect(container.querySelector(".task-drop-placeholder")).toBeNull();
+    await flush();
+    expect(flights.filter(f => f.init?.method)).toHaveLength(0);
+  });
+
   it("waits for authorization, aborts bootstrap on logout and keeps SSR hydration consistent", async () => {
     ctx.status = "loading"; act(() => root.unmount()); container.innerHTML = renderToString(<TasksPage />); expect(flights).toHaveLength(0);
     const errors: unknown[] = [];

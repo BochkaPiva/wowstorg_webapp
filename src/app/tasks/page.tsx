@@ -1290,6 +1290,7 @@ function TaskCard({
       ref={cardRef}
       data-task-card-id={task.id}
       draggable
+      onPointerDown={() => { draggedRef.current = false; }}
       onDragStart={(event) => {
         const target = event.target as HTMLElement;
         if (target.closest("button,input,textarea,select,a")) {
@@ -2040,6 +2041,36 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
     columnId: string;
     edge: ColumnDropEdge;
   } | null>(null);
+  const finishDrag = React.useCallback(() => {
+    setDraggingTaskId(null);
+    setDraggingFromColumnId(null);
+    setDraggingColumnId(null);
+    setDragOverColumnId(null);
+    setDragOverTask(null);
+    setDragOverColumn(null);
+  }, []);
+  const dragActive = Boolean(draggingTaskId || draggingColumnId);
+  React.useEffect(() => {
+    if (!dragActive) return;
+    // A moved source is unmounted before native dragend. Recover cancellation
+    // outside the board too; this also prevents background sync staying paused.
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") finishDrag(); };
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") finishDrag(); };
+    document.addEventListener("dragend", finishDrag, true);
+    document.addEventListener("drop", finishDrag);
+    document.addEventListener("pointerdown", finishDrag, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", finishDrag);
+    return () => {
+      document.removeEventListener("dragend", finishDrag, true);
+      document.removeEventListener("drop", finishDrag);
+      document.removeEventListener("pointerdown", finishDrag, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("blur", finishDrag);
+    };
+  }, [dragActive, finishDrag]);
   const [expandedTaskIds, setExpandedTaskIds] = React.useState<Set<string>>(() => new Set());
   const [archiveOpen, setArchiveOpen] = React.useState(false);
   const [archiveLoading, setArchiveLoading] = React.useState(false);
@@ -3192,7 +3223,7 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
           {boards.length > 1 ? (
             <select
               value={boardId}
-              onChange={(event) => { setLoading(true); setError(null); selectBoard(event.target.value); }}
+              onChange={(event) => { finishDrag(); setLoading(true); setError(null); selectBoard(event.target.value); }}
               className="task-board-toolbar__select"
             >
               {boards.map((item) => (
@@ -3267,17 +3298,14 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
               onDrop={(event) => {
                 event.preventDefault();
                 const movedColumnId = event.dataTransfer.getData("application/x-wowstorg-column-id") || draggingColumnId;
+                finishDrag();
                 if (movedColumnId) {
                   const rect = event.currentTarget.getBoundingClientRect();
                   const edge: ColumnDropEdge = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
-                  setDraggingColumnId(null);
-                  setDragOverColumn(null);
                   if (!viewParams.readOnly) void reorderColumn(movedColumnId, column.id, edge);
                   return;
                 }
                 const taskId = event.dataTransfer.getData("text/plain") || draggingTaskId;
-                setDragOverColumnId(null);
-                setDragOverTask(null);
                 if (!viewParams.readOnly && taskId && column.id !== draggingFromColumnId) void moveTaskToColumn(taskId, column.id);
               }}
               className={[
@@ -3310,10 +3338,7 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
                   setDragOverTask(null);
                   setDragOverColumnId(null);
                 }}
-                onDragEnd={() => {
-                  setDraggingColumnId(null);
-                  setDragOverColumn(null);
-                }}
+                onDragEnd={finishDrag}
                 className="task-column__header"
               >
                 <div className="task-column__title-row">
@@ -3410,13 +3435,7 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
                       setDraggingColumnId(null);
                       setDragOverColumn(null);
                     }}
-                    onDragEnd={() => {
-                      setDraggingTaskId(null);
-                      setDraggingFromColumnId(null);
-                      setDragOverColumnId(null);
-                      setDragOverTask(null);
-                      setDragOverColumn(null);
-                    }}
+                    onDragEnd={finishDrag}
                     onDragOverTask={(taskId, columnId, edge) => {
                       if (viewParams.readOnly || !draggingTaskId || draggingTaskId === taskId) {
                         setDragOverTask(null);
@@ -3430,8 +3449,7 @@ function TasksPageContent({ viewParams }: { viewParams: { projectId: string; emb
                       );
                     }}
                     onDropOnTask={(taskId, targetTaskId, targetColumnId, edge) => {
-                      setDragOverTask(null);
-                      setDragOverColumnId(null);
+                      finishDrag();
                       if (viewParams.readOnly) return;
                       if (targetColumnId === draggingFromColumnId) {
                         void reorderTaskWithinColumn(taskId, targetTaskId, targetColumnId, edge);

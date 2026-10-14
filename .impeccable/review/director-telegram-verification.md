@@ -20,7 +20,7 @@ These are descriptive facts about this surface. `DESIGN.md` and `.impeccable/des
 
 ## Visual evidence and provenance
 
-The implementation workflow captured these local fixture components in native headless Edge against the Next development server on port 3128. Viewport labels refer to browser widths, not image pixel widths. The documenter opened each image and confirmed the panel/card content matches the inspected source.
+The implementation workflow captured these local fixture components in native headless Edge against the local Next production-build server on port 3128. Viewport labels refer to browser widths, not image pixel widths. The documenter opened each image and confirmed the panel/card content matches the inspected source.
 
 | Capture | Browser width | Subject |
 | --- | --- | --- |
@@ -49,12 +49,15 @@ The isolated PGlite PostgreSQL/WASM check applied all 77 migrations successfully
 
 The latest full local gate reported 101 test files and 718 passing tests, zero lint errors with 59 warnings, zero production dependency vulnerabilities and a successful Next build. That run includes unrelated, uncommitted ESLint cleanup in the working tree. Its results must not be presented as validation of a shipped commit that excludes those changes; verify the actual release candidate separately.
 
-## Pending release evidence
+## Release evidence — 14 October 2026
 
-- Newly added full HTTP/Prisma/PostgreSQL CI: not yet executed at the time of this report.
-- Production migration: pending; isolated PGlite success does not apply it remotely.
-- Commit/push and deployed release validation: pending.
-- Real director assignment, scoped Telegram menu and actual private status-message delivery: pending live setup/verification.
+- Release candidate `c60e39a7c5506786dcfd46b3b873c58585518ec8` excludes the unrelated ESLint cleanup. [Quality workflow 38517846800](https://github.com/BochkaPiva/wowstorg_webapp/actions/runs/38517846800) completed successfully: both quality and fresh-database/access-boundary jobs.
+- Candidate quality gate: 99 test files / 694 passing tests; baseline retains 10 historical lint errors with zero regressions; production dependency audit reports zero vulnerabilities; Next 16.4 compilation and TypeScript succeed. The remaining dev-dependency audit findings and historical lint cleanup are separate work, not resolved by this feature.
+- The HTTP smoke passed on disposable PostgreSQL 17.11: real cookies/role rejection, director settings PATCH, private webhook → Prisma task creation, concurrent duplicate deliveries, foreign-sender rejection, concurrent same-column moves producing one MOVED activity, source DTO privacy and receipt survival preventing deleted-task recreation. Bot tokens were empty; this did not send actual Telegram messages.
+- Migration `20261014090000_telegram_director_tasks` applied through Prisma to the established working Supabase project `uatjywrbmwxbxfdvepab`; all 77 migrations are up to date. Prisma schema diff reports no difference. Database access check: 90 public tables, zero unprotected tables, zero API-role-accessible tables and zero API-callable routines.
+- Security advisor reports only INFO “RLS Enabled No Policy”, consistent with the intentional server-only access boundary ([Supabase explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)). New tables have no missing-FK-index advisory. Their unused-index notices are expected before first use; no index was removed.
+- Production code deployment remains pending at this documentation commit. The coordinating workflow must verify the deployed SHA and READY status separately.
+- Real director assignment, scoped Telegram menu and actual private status-message delivery remain pending live setup/verification. Tests do not select a real director or notify them.
 
 Update these entries only after the coordinating workflow records direct evidence for the relevant commit, CI run, database or deployment. A local **Ship** design verdict leaves those release checks pending.
 

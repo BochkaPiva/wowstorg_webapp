@@ -1357,16 +1357,15 @@ tbody tr:hover {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  transition: opacity 160ms ease-out, transform 160ms ease-out;
+  transition: opacity 150ms ease-out;
 }
 
 .project-estimate-section-drag-shell[data-dragging="true"] {
   z-index: 2;
-  opacity: 0.52;
-  transform: scale(0.995);
+  opacity: 0.65;
 }
 
-.project-estimate-section-drag-shell[data-drag-over="true"]::before {
+.project-estimate-section-drag-shell[data-drag-over]::before {
   position: absolute;
   z-index: 3;
   top: -7px;
@@ -1379,45 +1378,27 @@ tbody tr:hover {
   pointer-events: none;
 }
 
-.project-estimate-section__drag-handle {
-  display: inline-flex;
-  width: 34px;
-  height: 32px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-  border: 1px solid #d4d4d8;
-  border-radius: 7px;
-  background: #fff;
-  color: #71717a;
+.project-estimate-section-drag-shell[data-drag-over="after"]::before {
+  top: auto;
+  bottom: -7px;
+}
+
+.project-estimate-section__summary[draggable="true"],
+.project-estimate-section__summary[draggable="true"] .project-estimate-section__title-button {
   cursor: grab;
-  transition: border-color 160ms ease-out, background-color 160ms ease-out, color 160ms ease-out;
 }
 
-.project-estimate-section__drag-handle:hover {
-  border-color: #a78bfa;
-  background: #f5f3ff;
-  color: #5b21b6;
-}
-
-.project-estimate-section__drag-handle:active {
+.project-estimate-section-drag-shell[data-dragging="true"] .project-estimate-section__summary {
   cursor: grabbing;
 }
 
-.project-estimate-section__drag-handle:focus-visible {
+.project-estimate-section__summary:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: 2px;
 }
 
-.project-estimate-section__drag-handle:disabled {
-  cursor: wait;
-  opacity: 0.45;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .project-estimate-section-drag-shell,
-  .project-estimate-section__drag-handle {
+  .project-estimate-section-drag-shell {
     transition: none;
   }
 }

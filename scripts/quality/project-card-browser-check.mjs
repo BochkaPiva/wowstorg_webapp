@@ -5,6 +5,8 @@ import { mkdir } from "node:fs/promises";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.argv[3] ?? "playwright");
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:3128");
+const headerDrag = process.argv.includes("--header-drag");
+const captureDir = headerDrag ? ".impeccable/review/estimate-header-drag" : ".impeccable/review/project-card";
 assert(["localhost", "127.0.0.1"].includes(base.hostname));
 const user = { id: "qa", login: "qa", displayName: "QA · Михаил", role: "WOWSTORG" };
 const stamp = "2026-10-14T00:00:00.000Z";
@@ -14,7 +16,7 @@ const person = { id: "r1", contractorId: null, name: "Октава · QA", respo
 const other = { ...person, id: "r2", name: "Андрей Колотилин · QA", responsibility: "Ведение программы и работа с гостями", categoryNames: ["Ведущие"], phone: null, contactName: null, arrivalNote: null, status: "CONFIRMED", latestEntry: null };
 const forbidden = [], errors = [];
 let writes = 0;
-await mkdir(".impeccable/review/project-card", { recursive: true });
+await mkdir(captureDir, { recursive: true });
 const browser = await chromium.launch({ channel: "msedge", headless: true });
 try {
   for (const width of [1440, 2048, 390]) {
@@ -24,6 +26,8 @@ try {
     let project = { id: "project", title: "Конференция команды · QA", mode: "FULL", status: "INTERNAL_PREP", ball: "WOWSTORG", archivedAt: null, eventStartDate: "2026-10-20", eventEndDate: "2026-10-20", eventDateConfirmed: true, createdAt: stamp, updatedAt: stamp, customer: { id: "customer", name: "QA · демонстрационные данные" }, owner: user, createdBy: user, revision: 0, members: [{ userId: "qa", displayName: user.displayName }], _count: { orders: 1, tasks: 0, contacts: 0, projectFiles: 0, scheduleDays: 0 }, estimateCurrent: { id: "version", versionNumber: 1 }, draftOrder: null, activityLogs: [], widgets: ["ESTIMATE", "ORDERS", "CONTRACTORS", "NOTES"].map((type, index) => ({ instanceKey: type.toLowerCase(), type, sortOrder: index, x: 0, y: index, width: 12, heightPreset: "AUTO", isVisible: true })) };
     project.members = [{ user, role: "OWNER" }];
     const version = { id: "version", versionNumber: 1, revision: 0, title: "Смета 1", note: null, sortOrder: 0, includeInProjectTotals: true, isPrimary: true, createdAt: stamp, createdBy: user, commissionEnabled: false, clientTaxEnabled: false, clientChargeTaxEnabled: false, customColumns: [] };
+    const sectionSort = new Map([["local", 0], ["linked", 1]]);
+    const sectionWrites = [];
     const estimate = () => ({ projectTitle: project.title, versions: [{ ...version, financials }], current: { ...version, sections: [{ id: "local", sortOrder: 0, title: "Подрядчики · QA", kind: "CONTRACTOR", linkedOrderId: null, lines: [localLine] }, { id: "linked", sortOrder: 1, title: "Реквизит · QA", kind: "REQUISITE", linkedOrderId: "order", lines: [{ id: "est-ol", position: 0, lineNumber: 1, name: "Комплект стоек · QA", description: null, lineType: "RENTAL", costClient: String(order.lines[0].requestedQty * order.lines[0].pricePerDaySnapshot), costInternal: "0", orderLineId: "ol", itemId: "item" }] }] }, projectOrders: [{ ...order, assignedEstimate: { id: "version", versionNumber: 1, title: "Смета 1" } }] });
     await context.route("**/api/**", async route => {
       const req = route.request(), url = new URL(req.url()), method = req.method();
@@ -32,7 +36,21 @@ try {
       else if (method === "GET" && url.pathname === "/api/me/notifications") json = { rows: [], unreadCount: 0, cursor: { id: "qa", createdAt: stamp } };
       else if (method === "GET" && url.pathname === "/api/me/push-subscriptions") json = { enabled: false, publicKey: null };
       else if (method === "GET" && url.pathname === "/api/projects/project") json = { project: { ...project, orders: [order], widgets: [...project.widgets, ...(boardEnabled ? [{ instanceKey: "board", type: "FREE_BOARD", width: 12, heightPreset: "LARGE", sortOrder: 8, isVisible: true }] : [])] }, features: { projectWorkspaceV2: true, projectEstimateGridV2: true } };
-      else if (method === "GET" && url.pathname === "/api/projects/project/estimate") json = estimate();
+      else if (method === "GET" && url.pathname === "/api/projects/project/estimate") {
+        json = estimate();
+        json.current.sections = json.current.sections.map(section => ({ ...section, sortOrder: sectionSort.get(section.id) })).sort((a, b) => a.sortOrder - b.sortOrder);
+      }
+      else if (headerDrag && method === "PATCH" && url.pathname.startsWith("/api/projects/project/estimate/sections/")) {
+        const id = url.pathname.split("/").at(-1), body = req.postDataJSON();
+        assert(sectionSort.has(id)); assert.deepEqual(Object.keys(body), ["sortOrder"]);
+        sectionSort.set(id, body.sortOrder); sectionWrites.push({ id, ...body }); json = { ok: true }; writes++;
+      }
+      else if (headerDrag && method === "PATCH" && url.pathname === "/api/projects/project/estimate") {
+        const body = req.postDataJSON(); assert.equal(body.expectedRevision, version.revision);
+        assert.equal(body.localSections[0].lines[0].costClient, 30000, "Reordering must not change prices");
+        for (const section of body.localSections) sectionSort.set(section.id, section.sortOrder);
+        json = { ok: true, revision: ++version.revision }; writes++;
+      }
       else if (url.pathname === "/api/projects/project/contractors" && method === "GET") json = { assignments: rows, scheduleSlots: [], proposal: null };
       else if (url.pathname.endsWith("/entries") && url.pathname.includes("/contractors/")) {
         const row = rows.find(row => url.pathname.includes(`/${row.id}/`));
@@ -60,7 +78,7 @@ try {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.evaluate(async () => { for (const image of document.images) image.loading = "eager"; await Promise.race([Promise.all([...document.images].map(image => image.decode().catch(() => {}))), new Promise(resolve => setTimeout(resolve, 5000))]); });
       assert(await page.locator("img").evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)));
-      await page.screenshot({ path: `.impeccable/review/project-card/${name}-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `${captureDir}/${name}-${width}.png`, fullPage: true });
     }
     await page.goto(new URL("/projects/project", base).href);
     await page.getByRole("heading", { name: "Октава · QA", exact: true }).waitFor().catch(async error => { console.error(JSON.stringify({ errors, forbidden, text: await page.locator("body").innerText() })); throw error; });
@@ -68,6 +86,52 @@ try {
     assert.equal(await page.locator('[data-widget="EVENT_BUILDER"]').count(), 0);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await capture("workspace");
+    if (headerDrag) {
+      assert.equal(await page.locator(".project-estimate-section__drag-handle").count(), 0);
+      const local = page.locator('[data-estimate-section-id="local"]');
+      const linked = page.locator('[data-estimate-section-id="linked"]');
+      const summary = local.locator("summary").first();
+      const before = await local.locator("details").first().getAttribute("open");
+      await summary.click({ position: { x: 6, y: 6 } });
+      assert.notEqual(await local.locator("details").first().getAttribute("open"), before, "A click still collapses");
+      // Mouse drag across headers, including the editable name. Native preview is supplied by Chromium.
+      await summary.evaluate(node => node.scrollIntoView({ block: "start" }));
+      await page.evaluate(() => window.scrollBy(0, -140));
+      const from = await local.locator("[data-section-drag-title]").boundingBox();
+      const to = await linked.locator("summary").first().boundingBox();
+      await page.mouse.move(from.x + 12, from.y + from.height / 2); await page.mouse.down();
+      await page.mouse.move(from.x + 12, from.y + from.height / 2 + 12, { steps: 5 });
+      await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+      await page.waitForFunction(() => document.querySelector('[data-estimate-section-id="linked"]')?.getAttribute("data-drag-over") === "after");
+      await capture("dragging");
+      // Restore the target under the pointer after the top-of-document capture.
+      await linked.locator("summary").first().evaluate(node => node.scrollIntoView({ block: "center" }));
+      const drop = await linked.locator("summary").first().boundingBox();
+      await page.mouse.move(drop.x + drop.width / 2, drop.y + drop.height / 2, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForFunction(() => document.querySelector('[data-estimate-section-id]')?.getAttribute("data-estimate-section-id") === "linked");
+      assert.equal(await page.locator("[data-dragging]").count(), 0);
+      assert.equal(await page.getByLabel("Название раздела", { exact: true }).count(), 0, "Drag must not rename");
+      await page.waitForFunction(() => !document.querySelector('[data-widget="ESTIMATE"]')?.textContent?.includes("Сохраняю"));
+      assert.equal(await local.locator("details").first().getAttribute("open"), null, "Reordering preserves collapsed state");
+      await summary.focus(); await page.keyboard.press("Enter");
+      assert.notEqual(await local.locator("details").first().getAttribute("open"), null, "Keyboard collapse/expand works immediately after drag");
+      await page.keyboard.press("Enter");
+      // The same header works from the keyboard and keeps focus after moving.
+      await summary.focus(); await page.keyboard.press("Alt+ArrowUp");
+      await page.waitForFunction(() => document.querySelector('[data-estimate-section-id]')?.getAttribute("data-estimate-section-id") === "local");
+      assert.equal(await summary.evaluate(node => node === document.activeElement), true);
+      await page.waitForFunction(() => !document.querySelector('[data-widget="ESTIMATE"]')?.textContent?.includes("Сохраняю"));
+      await local.locator("[data-section-drag-title]").focus(); await page.keyboard.press("Enter");
+      await local.getByLabel("Название раздела", { exact: true }).waitFor({ state: "visible" });
+      await page.keyboard.press("Escape");
+      assert(sectionWrites.length >= 4, "Both reorders must persist");
+      await page.reload(); await local.waitFor();
+      assert.equal(await page.locator('[data-estimate-section-id]').first().getAttribute("data-estimate-section-id"), "local");
+      await capture("saved");
+      assert.equal(await page.locator("[data-dragging]").count(), 0);
+      await context.close(); continue;
+    }
     await page.getByRole("button", { name: "Действия: Октава · QA", exact: true }).click();
     const contractorMenu = page.getByRole("dialog", { name: "Действия: Октава · QA", exact: true });
     assert.equal(await contractorMenu.getByRole("button", { name: "На доску", exact: true }).count(), 0);
@@ -124,5 +188,5 @@ try {
     await context.close();
   }
   assert.deepEqual(errors, []); assert.deepEqual(forbidden, []);
-  console.log(JSON.stringify({ passed: true, widths: [1440, 2048, 390], writes, scenarios: ["optional-builder", "board-disabled", "journal-in-place", "retry-UUID", "cancel-restore", "order-tariff-preview-save", "sticky-header-layer", "fullscreen", "no-navigation"], API: "intercepted QA fixtures, not production" }));
+  console.log(JSON.stringify({ passed: true, widths: [1440, 2048, 390], writes, scenarios: headerDrag ? ["native-title-drag", "insertion-after", "no-rename", "click-collapse", "preserve-collapsed-state", "keyboard-after-drag", "keyboard-reorder-focus", "persistence-reload", "unchanged-prices", "no-stuck-fade"] : ["optional-builder", "board-disabled", "journal-in-place", "retry-UUID", "cancel-restore", "order-tariff-preview-save", "sticky-header-layer", "fullscreen", "no-navigation"], API: "intercepted QA fixtures, not production" }));
 } finally { await browser.close(); }

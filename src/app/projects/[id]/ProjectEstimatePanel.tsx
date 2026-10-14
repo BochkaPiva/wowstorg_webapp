@@ -5,6 +5,7 @@ import Image from "next/image";
 import React from "react";
 import { createPortal } from "react-dom";
 import { useJsonResource } from "@/lib/use-json-resource";
+import { useEstimateSectionDrag } from "@/lib/use-estimate-section-drag";
 
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
 import { RequisiteActions } from "./RequisiteActions";
@@ -950,9 +951,11 @@ function EstimatePanelEditor({
   const [estimateConflictDetected, setEstimateConflictDetectedState] = React.useState(false);
   const [lastEstimateSavedAt, setLastEstimateSavedAt] = React.useState<Date | null>(null);
   const [showFloatingSave, setShowFloatingSave] = React.useState(false);
-  const [draggingSectionId, setDraggingSectionId] = React.useState<string | null>(null);
-  const [dragOverSectionId, setDragOverSectionId] = React.useState<string | null>(null);
-  const sectionDragRef = React.useRef<{ sectionId: string; pointerId: number; targetId: string } | null>(null);
+  const sectionDrag = useEstimateSectionDrag({
+    disabled: readOnly || busy,
+    sections: () => readEventSections(),
+    reorder: (sourceId, targetId) => { void reorderSection(sourceId, targetId); },
+  });
   const effectiveEstimateViewMode = estimateGridEnabled ? "TABLE" : "CARDS";
   const estimateDraftRevisionRef = React.useRef(0);
   const serverEstimateRevisionRef = React.useRef(0);
@@ -2001,54 +2004,6 @@ function EstimatePanelEditor({
     const target = ordered[currentIndex + direction];
     if (currentIndex < 0 || !target || target.kind === "DRAFT_REQUISITE") return;
     void reorderSection(sectionId, target.id);
-  }
-
-  function startSectionDrag(sectionId: string, event: React.PointerEvent<HTMLButtonElement>) {
-    if (readOnly || busy) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    sectionDragRef.current = { sectionId, pointerId: event.pointerId, targetId: sectionId };
-    setDraggingSectionId(sectionId);
-    setDragOverSectionId(sectionId);
-  }
-
-  function moveSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
-    const drag = sectionDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    const candidate = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>("[data-estimate-section-id]");
-    const targetId = candidate?.dataset.estimateSectionId;
-    const targetSection = readEventSections().find((section) => section.id === targetId);
-    if (targetId && targetSection?.kind !== "DRAFT_REQUISITE") {
-      drag.targetId = targetId;
-      setDragOverSectionId(targetId);
-    }
-    if (event.clientY < 88) window.scrollBy({ top: -12, behavior: "auto" });
-    if (event.clientY > window.innerHeight - 88) window.scrollBy({ top: 12, behavior: "auto" });
-  }
-
-  function finishSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
-    const drag = sectionDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    sectionDragRef.current = null;
-    setDraggingSectionId(null);
-    setDragOverSectionId(null);
-    if (drag.sectionId !== drag.targetId) void reorderSection(drag.sectionId, drag.targetId);
-  }
-
-  function cancelSectionDrag(event: React.PointerEvent<HTMLButtonElement>) {
-    if (sectionDragRef.current?.pointerId !== event.pointerId) return;
-    sectionDragRef.current = null;
-    setDraggingSectionId(null);
-    setDragOverSectionId(null);
   }
 
   function addLineInternalExpense(sectionId: string, lineId: string) {
@@ -3161,14 +3116,16 @@ function EstimatePanelEditor({
                 />
               ) : null}
 
+              <div className="sr-only" role="status" aria-live="polite">{sectionDrag.announcement}</div>
               <div className="project-estimate__sections space-y-3">
                 {renderedSections.map((sec, sectionIndex) => (
                   <div
                     key={sec.id}
                     data-estimate-section-id={sec.id}
                     className="project-estimate-section-drag-shell"
-                    data-dragging={draggingSectionId === sec.id ? "true" : undefined}
-                    data-drag-over={dragOverSectionId === sec.id && draggingSectionId !== sec.id ? "true" : undefined}
+                    {...sectionDrag.bindings(sec.id)}
+                    data-dragging={sectionDrag.drag?.sourceId === sec.id ? "true" : undefined}
+                    data-drag-over={sectionDrag.drag?.targetId === sec.id && sectionDrag.drag.sourceId !== sec.id ? sectionDrag.drag.edge : undefined}
                   >
                   {sec.kind === "REQUISITE" && sec.linkedOrderId ? (
                     <RequisiteSectionEditor
@@ -3184,10 +3141,6 @@ function EstimatePanelEditor({
                       canMoveUp={sectionIndex > 0}
                       canMoveDown={sectionIndex < renderedSections.length - 1 && renderedSections[sectionIndex + 1]?.kind !== "DRAFT_REQUISITE"}
                       onMove={(direction) => void moveSection(sec.id, direction)}
-                      onDragPointerDown={(event) => startSectionDrag(sec.id, event)}
-                      onDragPointerMove={moveSectionDrag}
-                      onDragPointerUp={finishSectionDrag}
-                      onDragPointerCancel={cancelSectionDrag}
                       onDone={() => {
                         refreshActivity();
                       }}
@@ -3200,13 +3153,6 @@ function EstimatePanelEditor({
                       busy={busy}
                       onPatchSection={patchSection}
                       onDeleteSection={deleteSection}
-                      canMoveUp={sectionIndex > 0}
-                      canMoveDown={sectionIndex < renderedSections.length - 1 && renderedSections[sectionIndex + 1]?.kind !== "DRAFT_REQUISITE"}
-                      onMove={(direction) => void moveSection(sec.id, direction)}
-                      onDragPointerDown={sec.kind === "DRAFT_REQUISITE" ? undefined : (event) => startSectionDrag(sec.id, event)}
-                      onDragPointerMove={moveSectionDrag}
-                      onDragPointerUp={finishSectionDrag}
-                      onDragPointerCancel={cancelSectionDrag}
                       defaultOpen={sectionIndex === 0}
                       workspaceMode={workspaceMode}
                     >
@@ -4071,13 +4017,6 @@ function EstimateSectionBlock({
   summaryTrailing,
   defaultOpen = false,
   workspaceMode = false,
-  canMoveUp = false,
-  canMoveDown = false,
-  onMove,
-  onDragPointerDown,
-  onDragPointerMove,
-  onDragPointerUp,
-  onDragPointerCancel,
 }: {
   sec: EstSection | LocalDraftSection;
   orderMeta: { index: number; label: string; dateLabel: string; status: string; eventName: string | null } | null;
@@ -4092,13 +4031,6 @@ function EstimateSectionBlock({
   summaryTrailing?: React.ReactNode;
   defaultOpen?: boolean;
   workspaceMode?: boolean;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  onMove?: (direction: -1 | 1) => void;
-  onDragPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerMove?: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerUp?: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerCancel?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }) {
   const [titleDraft, setTitleDraft] = React.useState(sec.title);
   const [editingTitle, setEditingTitle] = React.useState(false);
@@ -4109,7 +4041,8 @@ function EstimateSectionBlock({
     setTitleSource({ id: sec.id, title: sec.title, defaultOpen });
     if (changedIdentity || !editingTitle) setTitleDraft(sec.title);
     if (changedIdentity) setEditingTitle(false);
-    if (changedIdentity || titleSource.defaultOpen !== defaultOpen) setIsOpen(defaultOpen);
+    // Reordering changes the first section, not the user's expanded/collapsed choice.
+    if (changedIdentity) setIsOpen(defaultOpen);
   }
 
   function finishTitleEdit() {
@@ -4143,7 +4076,12 @@ function EstimateSectionBlock({
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
-      <summary className="project-estimate-section__summary cursor-pointer list-none px-3 py-3 sm:px-4">
+      <summary
+        className="project-estimate-section__summary cursor-pointer list-none px-3 py-3 sm:px-4"
+        draggable={!readOnly && !busy && sec.kind !== "DRAFT_REQUISITE"}
+        title={!readOnly && sec.kind !== "DRAFT_REQUISITE" ? "Перетащите за шапку · Alt + ↑ / ↓ — изменить порядок" : undefined}
+        aria-keyshortcuts={!readOnly && sec.kind !== "DRAFT_REQUISITE" ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+      >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="project-estimate-section__kind flex flex-wrap items-center gap-2">
@@ -4213,6 +4151,8 @@ function EstimateSectionBlock({
                 <button
                   type="button"
                   className="project-estimate-section__title-button"
+                  data-section-drag-title
+                  draggable={!busy}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -4274,34 +4214,6 @@ function EstimateSectionBlock({
                 <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
               </div>
             </div>
-            {!readOnly && sec.kind !== "REQUISITE" && onMove && onDragPointerDown ? (
-              <button
-                type="button"
-                className="project-estimate-section__drag-handle"
-                onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
-                onPointerDown={onDragPointerDown}
-                onPointerMove={onDragPointerMove}
-                onPointerUp={onDragPointerUp}
-                onPointerCancel={onDragPointerCancel}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowUp" && canMoveUp) {
-                    event.preventDefault(); event.stopPropagation(); onMove(-1);
-                  }
-                  if (event.key === "ArrowDown" && canMoveDown) {
-                    event.preventDefault(); event.stopPropagation(); onMove(1);
-                  }
-                }}
-                disabled={busy}
-                title="Перетащить раздел"
-                aria-label="Изменить порядок раздела. Перетащите или используйте стрелки вверх и вниз"
-              >
-                <svg aria-hidden="true" viewBox="0 0 12 18" width="12" height="18" fill="currentColor">
-                  <circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>
-                  <circle cx="3" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/>
-                  <circle cx="3" cy="15" r="1.5"/><circle cx="9" cy="15" r="1.5"/>
-                </svg>
-              </button>
-            ) : null}
             {!readOnly && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") && !editingTitle ? (
               <>
                 <button
@@ -6208,10 +6120,6 @@ function RequisiteSectionEditor({
   canMoveUp,
   canMoveDown,
   onMove,
-  onDragPointerDown,
-  onDragPointerMove,
-  onDragPointerUp,
-  onDragPointerCancel,
   onDone,
 }: {
   sec: EstSection;
@@ -6225,10 +6133,6 @@ function RequisiteSectionEditor({
   canMoveUp: boolean;
   canMoveDown: boolean;
   onMove: (direction: -1 | 1) => void;
-  onDragPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => void;
-  onDragPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onDone: () => void;
 }) {
   const [order, setOrder] = React.useState<RequisiteOrder | null>(null);
@@ -6732,13 +6636,6 @@ function RequisiteSectionEditor({
       summaryTitleAddon={summaryTitleAddon}
       summaryTrailing={summaryTrailing}
       defaultOpen={false}
-      canMoveUp={canMoveUp}
-      canMoveDown={canMoveDown}
-      onMove={onMove}
-      onDragPointerDown={onDragPointerDown}
-      onDragPointerMove={onDragPointerMove}
-      onDragPointerUp={onDragPointerUp}
-      onDragPointerCancel={onDragPointerCancel}
     >
       {loading ? (
         <ProjectModuleContentSkeleton rows={3} />

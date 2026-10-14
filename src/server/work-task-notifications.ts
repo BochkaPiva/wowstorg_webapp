@@ -132,7 +132,6 @@ export async function notifyWorkTaskStatusChanged(args: {
   fromColumnTitle: string;
   toColumnTitle: string;
 }): Promise<void> {
-  if (args.fromColumnTitle === args.toColumnTitle) return;
   try {
     const task = await taskForNotification(args.taskId);
     if (!task) return;
@@ -147,10 +146,31 @@ export async function notifyWorkTaskStatusChanged(args: {
       "",
       taskLink(),
     ].join("\n");
-    await sendTaskTopicMessage(text);
+    await Promise.all([sendTaskTopicMessage(text), notifyDirectorTaskMoved(args)]);
   } catch (e) {
     console.warn("[work-task-notifications] notifyWorkTaskStatusChanged failed", e);
   }
+}
+
+export async function notifyDirectorTaskMoved(args: { taskId: string; actorUserId: string; fromColumnTitle: string; toColumnTitle: string }): Promise<void> {
+  try {
+    const receipt = await prisma.telegramDirectorInbox.findUnique({ where: { taskId: args.taskId }, select: {
+      telegramChatId: true,
+      director: { select: { id: true, isActive: true, role: true, telegramChatId: true } },
+      task: { select: { title: true } },
+    } });
+    if (!receipt?.task || !receipt.director.isActive || receipt.director.role !== "WOWSTORG" || receipt.director.telegramChatId !== receipt.telegramChatId) return;
+    const settings = await prisma.telegramDirectorSettings.findUnique({ where: { id: "primary" }, select: { directorUserId: true } });
+    if (!settings?.directorUserId || settings.directorUserId !== receipt.director.id) return;
+    const actor = await actorName(args.actorUserId);
+    const ok = await sendTelegramMessage(receipt.telegramChatId, [
+      "<b>Ваше поручение перемещено</b>", "",
+      `<b>${escapeTelegramHtml(receipt.task.title.slice(0,500))}</b>`,
+      `${escapeTelegramHtml(args.fromColumnTitle.slice(0,100))} → <b>${escapeTelegramHtml(args.toColumnTitle.slice(0,100))}</b>`,
+      `Изменил: ${escapeTelegramHtml(actor.slice(0,100))}`, "", "Мои поручения: /mytasks",
+    ].join("\n"));
+    if (!ok) console.warn("[telegram-director] task status DM was not accepted");
+  } catch (cause) { console.warn("[telegram-director] task status DM failed", cause); }
 }
 
 export async function sendWorkTaskDeadlineReminder(taskId: string): Promise<boolean> {

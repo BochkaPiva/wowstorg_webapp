@@ -29,7 +29,7 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals(); });
 function render(Page: React.ComponentType) { act(() => root.render(<React.StrictMode><Page /></React.StrictMode>)); }
 async function respond(flight: Flight, payload: unknown, status = 200) { await act(async () => flight.resolve(new Response(JSON.stringify(payload), { status }))); }
-function latest() { return flights.at(-1)!; }
+function latest() { return flights.filter(flight => flight.url !== "/api/admin/telegram/director").at(-1)!; }
 function click(text: string) { const button = [...container.querySelectorAll("button")].find(entry => entry.textContent?.trim() === text)!; act(() => button.click()); }
 function startingScore() { return [...container.querySelectorAll("label")].find(entry => entry.textContent?.includes("Стартовый рейтинг"))!.querySelector<HTMLInputElement>("input")!; }
 
@@ -56,7 +56,7 @@ describe("loyalty and Telegram read lifecycle", () => {
   });
 
   it("chooses an eligible live recipient/order and ignores an aborted Telegram read", async () => {
-    render(TelegramPage); const old = flights[0]!;
+    render(TelegramPage); const old = flights.find(flight => flight.url === "/api/admin/telegram")!;
     await respond(latest(), telegram()); await respond(old, telegram("stale"));
     const selects = container.querySelectorAll<HTMLSelectElement>("select");
     expect(selects[0]!.value).toBe("two"); expect(selects[1]!.value).toBe("first");

@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-10-10T09:48:52.199Z
-> **Файлов route.ts:** 165
+> **Сгенерировано:** 2026-10-14T05:05:58.676Z
+> **Файлов route.ts:** 166
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -22,6 +22,7 @@
 | POST | `/api/admin/order-cleanup/delete` | `src/app/api/admin/order-cleanup/delete/route.ts` |
 | GET | `/api/admin/order-cleanup` | `src/app/api/admin/order-cleanup/route.ts` |
 | GET | `/api/admin/quality` | `src/app/api/admin/quality/route.ts` |
+| GET, PATCH, POST | `/api/admin/telegram/director` | `src/app/api/admin/telegram/director/route.ts` |
 | GET, PATCH, POST | `/api/admin/telegram` | `src/app/api/admin/telegram/route.ts` |
 | GET | `/api/admin/users/[id]/achievements` | `src/app/api/admin/users/[id]/achievements/route.ts` |
 | PATCH | `/api/admin/users/[id]` | `src/app/api/admin/users/[id]/route.ts` |

@@ -6,6 +6,7 @@ import * as React from "react";
 import { AppShell } from "@/app/_ui/AppShell";
 import { SectionHeader } from "@/app/_ui/SectionHeader";
 import { useAuth } from "@/app/providers";
+import { DirectorSettingsPanel } from "./DirectorSettingsPanel";
 
 type ScenarioGroup = "connection" | "orders" | "confirmations" | "operations";
 type ScenarioAudience = "warehouse" | "greenwich";
@@ -329,6 +330,8 @@ export default function AdminTelegramPage() {
       <SectionHeader title="Центр проверки бота" mascot="admin" description="Проверяйте реальные шаблоны, маршруты доставки и inline-кнопки до того, как уведомление понадобится в работе." actions={<button type="button" onClick={() => void load()} disabled={loading}><Icon name="refresh" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Обновить статус</button>}>
         {loading ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4">{[0,1,2,3].map((item) => <div key={item} className="h-24 animate-pulse border-r border-zinc-200 bg-zinc-50 last:border-r-0" />)}</div> : status ? <div className="grid grid-cols-2 border-t border-zinc-200 md:grid-cols-4"><StatusCell label="Bot API" value={status.telegram.hasBotToken ? "Токен подключён" : "Токен не задан"} ok={status.telegram.hasBotToken} detail={`${status.telegram.sendTimeoutMs ?? 0} мс`} /><StatusCell label="Склад" value={status.telegram.warehouseChatId ? "Маршрут готов" : "Чат не задан"} ok={Boolean(status.telegram.warehouseChatId)} detail={status.telegram.warehouseTopicId ? `Топик ${status.telegram.warehouseTopicId}` : "Без топика"} /><StatusCell label="Webhook" value={status.telegram.webhookSecretConfigured ? "Защищён" : "Нужна настройка"} ok={status.telegram.webhookSecretConfigured} detail={status.telegram.webhookUrl ?? "URL не задан"} /><StatusCell label="Greenwich" value={`${status.greenwich.withTelegramChatId} из ${status.greenwich.activeUsers} подключено`} ok={status.greenwich.activeUsers === status.greenwich.withTelegramChatId && status.greenwich.activeUsers > 0} detail="Личные получатели" /></div> : null}
       </SectionHeader>
+
+      <DirectorSettingsPanel botReady={Boolean(status?.telegram.hasBotToken && status.telegram.webhookSecretConfigured)} />
 
       {!loading && status ? <section className="mt-5 overflow-hidden border border-zinc-300 border-t-4 border-t-rose-500 bg-white">
         <div className="grid gap-6 border-b border-zinc-200 bg-[#0b0b0b] px-6 py-7 text-white lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:px-8">

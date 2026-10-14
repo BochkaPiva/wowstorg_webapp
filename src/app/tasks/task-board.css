@@ -225,6 +225,18 @@
 }
 
 .task-card-dragging { opacity: 0.24; }
+.task-board-shell .task-card.task-card-director-gold { color: #2b2110; }
+.task-board-shell .task-card.task-card-director-gold .task-card__title,
+.task-board-shell .task-card.task-card-director-gold .task-card__edit,
+.task-board-shell .task-card.task-card-director-gold .task-card__menu,
+.task-board-shell .task-card.task-card-director-gold .task-card-tool,
+.task-board-shell .task-card.task-card-director-gold .task-card__context-link { color: #2b2110; }
+.task-board-shell .task-card.task-card-director-gold .task-card__title.is-done { color: #625422; }
+.task-board-shell .task-card.task-card-director-gold .task-card__title-input { color: #2b2110; background: #fff6d5; border-color: #84610b; }
+.task-board-shell .task-card.task-card-director-gold .task-round-checkbox:not([aria-pressed="true"]) { border-color: #84610b; background: #fff6d5; color: #2b2110; }
+.task-director-badge { display: inline-flex; align-items: center; gap: 5px; margin-bottom: 7px; padding: 4px 7px; border-radius: 5px; background: #34234d; color: #ffdf75; font-size: 11px; font-weight: 750; line-height: 1.2; }
+.task-director-archive-gold, .task-director-archive-gold .task-archive-title, .task-director-archive-gold .task-archive-description, .task-director-archive-gold .task-archive-meta > span, .task-director-archive-gold .task-archive-restore, .task-director-archive-gold .task-card__context-link { color: #2b2110; }
+.task-director-archive-gold .task-archive-title { opacity: 1; }
 
 /* Task workspace: the drawer belongs to the board, not to the light app chrome. */
 .task-drawer-backdrop {

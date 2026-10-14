@@ -44,3 +44,5 @@
 | `src/app/api/telegram/webhook/route.ts` | `notifyEstimateApprovedFromTelegram`, `notifyReturnDeclaredFromTelegram`, `notifyServiceFeedbackFromTelegram`, `notifyWarehouseAboutGreenwichConfirmation`, `notifyWarehouseAboutUpcomingGreenwichChanges`, `notifyOrderCancelledFromGreenwichReminder`, `recomputeGreenwichAchievementsFromReminderCancel` |
 
 Реализация: `src/server/notifications/schedule-after-response.ts` → `after()` из `next/server`.
+
+С 2026-10-14: `/api/admin/telegram/director` планирует `syncTelegramDirectorMenu` после сохранения назначения; webhook — `telegramDirectorReply` после атомарного приёма команды. `notifyWorkTaskStatusChanged` также отправляет независимый ЛС исходному директору (`notifyDirectorTaskMoved`). Всё best-effort, после коммита, не откатывает основную запись. См. ADR 022.

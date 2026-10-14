@@ -20,12 +20,15 @@ delete cleanEnv.VERCEL; // Loopback tests are not behind the Vercel trusted prox
 for (const key of Object.keys(cleanEnv)) {
   if (/^(TELEGRAM_|SUPABASE_|REMINDERS_|INVENTORY_AUDIT_|CRON_SECRET)/.test(key)) cleanEnv[key] = "";
 }
+// A fixture secret on loopback only. The bot token stays empty: no Telegram sends.
+cleanEnv.TELEGRAM_WEBHOOK_SECRET = "ci-local-director-only";
 const server = spawn(process.execPath, [fileURLToPath(new URL("../../node_modules/next/dist/bin/next", import.meta.url)),
   "start", "--hostname", "127.0.0.1", "--port", "3217"], { env: cleanEnv, stdio: "inherit", windowsHide: true });
 const users = [];
 const budgetKeys = [];
 const budgetKey = (scope, ...parts) => `auth:${scope}:${createHash("sha256").update(JSON.stringify(parts)).digest("hex")}`;
 let standaloneId;
+let directorBoardId;
 async function request(path, cookie, body, expected = 200) {
   const result = await fetch(base + path, { method: body ? "POST" : "GET", headers: {
     ...(cookie ? { cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: base } : {}),
@@ -104,6 +107,36 @@ try {
   const zip = await JSZip.loadAsync(await pptx.arrayBuffer());
   assert(zip.file("ppt/presentation.xml"), "PPTX must contain a presentation");
   await request("/api/admin/analytics?from=2026-01-01&to=2026-12-31", cookie);
+  // Full director path on the disposable PostgreSQL DB, with no external bot.
+  await request("/api/admin/telegram/director", cookies.GREENWICH, null, 403);
+  const taskBoard = await db.workTaskBoard.create({ data: { title: "CI director board", createdById: identities.WOWSTORG.id,
+    columns: { create: [{ title: "Inbox", sortOrder: 0, createdById: identities.WOWSTORG.id }, { title: "Doing", sortOrder: 1000, createdById: identities.WOWSTORG.id }] } }, include: { columns: { orderBy: { sortOrder: "asc" } } } });
+  directorBoardId = taskBoard.id;
+  const directorConfig = await (await request("/api/admin/telegram/director", cookie)).json();
+  const configResponse = await fetch(base + "/api/admin/telegram/director", { method: "PATCH", headers: { cookie, Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedRevision: directorConfig.settings.revision, directorUserId: identities.WOWSTORG.id, telegramChatId: "606060", boardId: taskBoard.id, columnId: taskBoard.columns[0].id }) });
+  assert.equal(configResponse.status, 200);
+  async function directorUpdate(messageId, text, fromId = 606060) {
+    return fetch(base + "/api/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "x-telegram-bot-api-secret-token": cleanEnv.TELEGRAM_WEBHOOK_SECRET },
+      body: JSON.stringify({ update_id: messageId, message: { message_id: messageId, text, chat: { id: 606060, type: "private" }, from: { id: fromId, is_bot: false } } }) });
+  }
+  assert.equal((await directorUpdate(1, "/task")).status, 200);
+  const taskReply = await directorUpdate(2, "CI director task\nText description"); assert.equal(taskReply.status, 200); assert.equal((await taskReply.json()).created, true);
+  const duplicates = await Promise.all([directorUpdate(2, "CI director task\nText description"), directorUpdate(2, "CI director task\nText description")]);
+  assert(duplicates.every(response => response.status === 200));
+  assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 1, "Repeated webhook must not duplicate a task");
+  await directorUpdate(3, "/task forged sender", 999999);
+  assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 1, "Foreign sender must not create a task");
+  const directorTask = await db.workTask.findFirstOrThrow({ where: { boardId: taskBoard.id } });
+  const moveReplies = await Promise.all([1,2].map(() => fetch(`${base}/api/tasks/tasks/${directorTask.id}`, { method: "PATCH", headers: { cookie, Origin: base, "Content-Type": "application/json" },
+    body: JSON.stringify({ columnId: taskBoard.columns[1].id, completed: false, sortOrder: 1000 }) })));
+  assert(moveReplies.every(response => response.status === 200));
+  assert.equal(await db.workTaskActivity.count({ where: { taskId: directorTask.id, kind: "MOVED" } }), 1, "A repeated move must not emit a second transition");
+  const movedDirectorTask = (await (await request(`/api/tasks/tasks/${directorTask.id}`, cookie)).json()).task;
+  assert.deepEqual(movedDirectorTask.directorRequest, { directorName: "CI Test" }, "Source DTO must not expose private Telegram IDs");
+  await db.workTask.delete({ where: { id: directorTask.id } });
+  await directorUpdate(2, "CI director task\nText description");
+  assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 0, "A deleted task must not reappear from a repeated webhook");
   // Exercise admin changes through HTTP, not direct DB mutations. All users are owned fixtures.
   const employee = identities.GREENWICH;
   async function editEmployee(body) {
@@ -156,10 +189,16 @@ try {
   await db.authRateLimit.update({ where:{ key:ipKey }, data:{ expiresAt:new Date(0) } });
   await request("/api/auth/logout", cookie, {});
   await request("/api/proposals", cookie, null, 401);
-  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, session revocation, concurrent auth limits/expiry/cleanup and logout.");
+  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, director webhook/task/retry/committed-move/source-privacy/deletion, session revocation, concurrent auth limits/expiry/cleanup and logout.");
 } finally {
   server.kill();
   if (standaloneId) await db.standaloneProposal.delete({ where: { id: standaloneId } });
+  if (directorBoardId) {
+    await db.telegramDirectorSettings.updateMany({ where: { directorUserId: { in: users } }, data: { directorUserId: null, telegramChatId: null, boardId: null, columnId: null, pendingAfterMessageId: null, pendingExpiresAt: null, lastMessageId: null } });
+    await db.telegramDirectorInbox.deleteMany({ where: { directorUserId: { in: users } } });
+    await db.workTask.deleteMany({ where: { boardId: directorBoardId } });
+    await db.workTaskBoard.delete({ where: { id: directorBoardId } });
+  }
   if (users.length) await db.user.deleteMany({ where: { id: { in: users } } });
   if (budgetKeys.length) await db.authRateLimit.deleteMany({ where:{ key:{ in:budgetKeys } } });
   await db.$disconnect();

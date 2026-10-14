@@ -1,4 +1,5 @@
 "use client";
+import { DIRECTOR_TASK_COLOR } from "@/lib/director-task";
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -71,6 +72,7 @@ type ChecklistPatchBody = Partial<{
 type ChecklistTreeNode = TaskChecklistItem & { children: ChecklistTreeNode[] };
 
 type BoardTask = {
+  directorRequest?: { directorName: string } | null;
   id: string;
   title: string;
   description: string | null;
@@ -1316,6 +1318,7 @@ function TaskCard({
       className={[
         "task-card group",
         isDragging ? "task-card-dragging" : "",
+        task.directorRequest && task.color?.toLowerCase() === DIRECTOR_TASK_COLOR ? "task-card-director-gold" : "",
         textTone,
       ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
@@ -1324,6 +1327,7 @@ function TaskCard({
         <div className="task-card__heading">
           <RoundCheckbox checked={taskDone} onChange={(checked) => onPatchTask(task.id, { completed: checked })} />
           <div className="min-w-0 flex-1">
+            {task.directorRequest ? <span className="task-director-badge" title={`Поручение: ${task.directorRequest.directorName}`}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m3 6 4 4 5-7 5 7 4-4-2 13H5L3 6Z" /><path d="M5 22h14" /></svg>Директор</span> : null}
             <div className="task-card__title-row">
               {editingTitle ? (
                 <input
@@ -1481,6 +1485,7 @@ function ArchivedTaskCard({
     <article
       className={[
         "group overflow-hidden rounded-xl border border-black/10 bg-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.18)]",
+        task.directorRequest && task.color?.toLowerCase() === DIRECTOR_TASK_COLOR ? "task-director-archive-gold" : "",
         textTone,
       ].join(" ")}
       style={{ backgroundColor: task.color ?? "#334155" }}
@@ -1500,16 +1505,18 @@ function ArchivedTaskCard({
           <div className="min-w-0 flex-1">
             <div
               className={[
-                "px-1 py-0.5 text-sm font-semibold leading-snug",
+                "task-archive-title px-1 py-0.5 text-sm font-semibold leading-snug",
                 taskDone ? "opacity-70 line-through" : "",
               ].join(" ")}
               title={task.title}
             >
+              {task.directorRequest ? <span className="task-director-badge" title={`Поручение: ${task.directorRequest.directorName}`}>Директор</span> : null}
+              {task.directorRequest ? <br /> : null}
               {task.title}
             </div>
             <TaskCardContext task={task} />
             {task.description ? (
-              <div className="mt-1 whitespace-pre-wrap break-words px-1 py-0.5 text-xs leading-snug text-slate-100/80">
+              <div className="task-archive-description mt-1 whitespace-pre-wrap break-words px-1 py-0.5 text-xs leading-snug text-slate-100/80">
                 {task.description}
               </div>
             ) : null}
@@ -1517,13 +1524,13 @@ function ArchivedTaskCard({
           <button
             type="button"
             onClick={() => onRestore(task.id)}
-            className="shrink-0 rounded-lg border border-white/20 bg-white/12 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/20"
+            className="task-archive-restore shrink-0 rounded-lg border border-white/20 bg-white/12 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/20"
           >
             Вернуть
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 pl-7">
+        <div className="task-archive-meta mt-3 flex flex-wrap items-center gap-2 pl-7">
           <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 text-[11px] text-slate-100">
             {task.columnTitle}
           </span>

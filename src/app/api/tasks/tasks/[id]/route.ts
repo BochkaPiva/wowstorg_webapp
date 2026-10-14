@@ -135,7 +135,16 @@ export async function PATCH(
     if (sortOrder === undefined) sortOrder = await nextTaskSortOrder(prisma, column.id);
   }
 
-  const task = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
+    // Capture the actual transition under a row lock: fast repeated moves must
+    // not both report the pre-transaction column or notify twice for a no-op.
+    let moveFrom = previousTask.column;
+    if (parsed.data.columnId) {
+      await tx.$queryRaw`SELECT "id" FROM "WorkTask" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.workTask.findUniqueOrThrow({ where: { id }, select: { column: { select: { id: true, title: true } } } });
+      moveFrom = current.column;
+    }
+    const moved = Boolean(parsed.data.columnId && parsed.data.columnId !== moveFrom.id && nextColumnTitle);
     await tx.workTask.update({
       where: { id },
       data: {
@@ -191,13 +200,13 @@ export async function PATCH(
       await syncTaskAssignees(tx, id, assigneeUserIds);
     }
 
-    if (parsed.data.columnId && parsed.data.columnId !== previousTask.column.id && nextColumnTitle) {
+    if (moved && nextColumnTitle) {
       await appendWorkTaskActivity(tx, {
         taskId: id,
         actorUserId: auth.user.id,
         kind: "MOVED",
-        message: `Перемещено: ${previousTask.column.title} → ${nextColumnTitle}`,
-        metadata: { fromColumnId: previousTask.column.id, toColumnId: parsed.data.columnId },
+        message: `Перемещено: ${moveFrom.title} → ${nextColumnTitle}`,
+        metadata: { fromColumnId: moveFrom.id, toColumnId: parsed.data.columnId! },
       });
     }
     if (parsed.data.completed !== undefined && parsed.data.completed !== Boolean(previousTask.completedAt)) {
@@ -239,8 +248,9 @@ export async function PATCH(
         metadata: { fields: updatedFields },
       });
     }
-    return tx.workTask.findUniqueOrThrow({ where: { id }, select: workTaskCardSelect });
+    return { task: await tx.workTask.findUniqueOrThrow({ where: { id }, select: workTaskCardSelect }), moved, fromColumnTitle: moveFrom.title };
   });
+  const task = outcome.task;
 
   if (
     assigneesChanged && assigneeUserIds !== undefined && assigneeUserIds.length > 0
@@ -250,12 +260,12 @@ export async function PATCH(
     });
   }
 
-  if (parsed.data.columnId && parsed.data.columnId !== previousTask.column.id && nextColumnTitle) {
+  if (outcome.moved && nextColumnTitle) {
     scheduleAfterResponse("notifyWorkTaskStatusChanged", async () => {
       await notifyWorkTaskStatusChanged({
         taskId: task.id,
         actorUserId: auth.user.id,
-        fromColumnTitle: previousTask.column.title,
+        fromColumnTitle: outcome.fromColumnTitle,
         toColumnTitle: nextColumnTitle,
       });
     });

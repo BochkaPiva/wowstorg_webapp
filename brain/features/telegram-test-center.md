@@ -46,4 +46,6 @@
 
 ## Ссылки
 
+Назначение директора, приватное меню команд и задачи из бота: [`telegram-director-tasks.md`](./telegram-director-tasks.md).
+
 - [`docs/telegram-notifications.md`](../../docs/telegram-notifications.md)

@@ -23,6 +23,7 @@ export const workTaskCardSelect = Prisma.validator<Prisma.WorkTaskSelect>()({
   archivedAt: true,
   createdAt: true,
   updatedAt: true,
+  directorRequest: { select: { directorName: true } },
   assignee: { select: { id: true, displayName: true } },
   assignees: {
     orderBy: { assignedAt: "asc" },

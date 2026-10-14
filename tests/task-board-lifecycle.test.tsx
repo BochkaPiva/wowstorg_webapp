@@ -54,6 +54,18 @@ function dragEvent(target: HTMLElement, type: string, values: Record<string, str
 }
 
 describe("task board lifecycle", () => {
+  it("keeps a director's permanent source badge and readable gold state across an optimistic move", async () => {
+    await bootstrap(); const next = board();
+    const marked = { ...next.columns[0].tasks[0], color: "#f5c542", directorRequest: { directorName: "Director QA" } };
+    next.columns[0].tasks[0] = marked;
+    await respond(latest("/api/tasks/boards/a"), { board: next });
+    const card = element('[data-task-card-id="task"]');
+    expect(card.className).toContain("task-card-director-gold"); expect(card.querySelector(".task-director-badge")?.textContent).toBe("Директор");
+    const transfer = dragEvent(card, "dragstart"); dragEvent(container.querySelectorAll<HTMLElement>(".task-column")[1], "drop", transfer);
+    expect(element('[data-task-card-id="task"]').querySelector(".task-director-badge")?.textContent).toBe("Директор");
+    await flush(); await respond(latest("/api/tasks/tasks/task", "PATCH"), { task: marked });
+    expect(element('[data-task-card-id="task"]').querySelector(".task-director-badge")?.textContent).toBe("Директор");
+  });
   it("clears drag feedback before a moved card unmounts, including a failed save", async () => {
     await load();
     const source = element('[data-task-card-id="task"]');

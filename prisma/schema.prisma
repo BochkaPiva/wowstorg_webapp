@@ -390,6 +390,8 @@ model User {
   taskChecklistItemsAssigned      WorkTaskChecklistItem[]       @relation("task_checklist_assigned_to")
   taskChecklistAssignments        WorkTaskChecklistAssignee[]
   taskActivities                  WorkTaskActivity[]            @relation("task_activity_actor")
+  telegramDirectorSettings        TelegramDirectorSettings[]
+  telegramDirectorInbox           TelegramDirectorInbox[]
   orderServiceFeedbacks           OrderServiceFeedback[]        @relation("order_service_feedback_author")
   customerMerges                  CustomerMerge[]               @relation("customer_merge_actor")
   contractorsCreated              Contractor[]                  @relation("contractor_created_by")
@@ -1377,6 +1379,7 @@ model WorkTaskBoard {
 
   columns WorkTaskColumn[]
   tasks   WorkTask[]
+  telegramDirectorSettings TelegramDirectorSettings[]
 
   @@index([archivedAt])
   @@index([isDefault])
@@ -1399,6 +1402,7 @@ model WorkTaskColumn {
   updatedAt DateTime @updatedAt
 
   tasks WorkTask[]
+  telegramDirectorSettings TelegramDirectorSettings[]
 
   @@index([boardId, sortOrder])
 }
@@ -1447,6 +1451,7 @@ model WorkTask {
   assignees      WorkTaskAssignee[]
   activities     WorkTaskActivity[]
   workspaceItems ProjectWorkspaceItem[]
+  directorRequest TelegramDirectorInbox?
 
   @@index([boardId, columnId, sortOrder])
   @@index([assigneeUserId, dueDate])
@@ -1455,6 +1460,44 @@ model WorkTask {
   @@index([orderId])
   @@index([completedAt])
   @@index([archivedAt])
+}
+
+/// Singleton configuration; task submission state is shared across serverless workers.
+model TelegramDirectorSettings {
+  id String @id @default("primary")
+  revision Int @default(0)
+  directorUserId String?
+  director User? @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
+  telegramChatId String?
+  boardId String?
+  board WorkTaskBoard? @relation(fields: [boardId], references: [id], onDelete: SetNull)
+  columnId String?
+  column WorkTaskColumn? @relation(fields: [columnId], references: [id], onDelete: SetNull)
+  pendingAfterMessageId Int?
+  pendingExpiresAt DateTime?
+  lastMessageId Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([directorUserId])
+  @@index([boardId])
+  @@index([columnId])
+}
+
+/// Permanent receipts prevent duplicate task creation even after a task is deleted.
+model TelegramDirectorInbox {
+  id String @id
+  telegramChatId String
+  messageId Int
+  directorUserId String
+  director User @relation(fields: [directorUserId], references: [id], onDelete: Restrict)
+  directorName String
+  taskId String? @unique
+  task WorkTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@unique([telegramChatId, messageId])
+  @@index([directorUserId, createdAt])
 }
 
 model WorkTaskChecklistItem {

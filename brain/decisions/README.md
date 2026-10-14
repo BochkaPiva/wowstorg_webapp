@@ -24,5 +24,6 @@
 | 018 | [018-server-only-db-and-release-gates.md](./018-server-only-db-and-release-gates.md) | Серверный доступ к БД, RLS/grants и проверки выпуска |
 | 019 | [019-migration-history-adoption-and-recovery.md](./019-migration-history-adoption-and-recovery.md) | Безопасное принятие исторических SQL Editor-изменений и архив восстановления |
 | 020 | [020-api-origin-and-session-lifecycle.md](./020-api-origin-and-session-lifecycle.md) | Общая origin-защита API и атомарный отзыв сессий |
+| 022 | [022-telegram-director-tasks.md](./022-telegram-director-tasks.md) | Поручения директора, приватное меню бота и уведомления о переносах |
 
 **Правило:** менять принятое решение только с новым ADR или явным обновлением старого (с датой внизу файла).

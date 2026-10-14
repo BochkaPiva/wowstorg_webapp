@@ -389,6 +389,23 @@ export async function answerTelegramCallbackQuery(args: {
   });
 }
 
+/** Commands are scoped to one private chat, never to all bot users. */
+export async function configureTelegramDirectorMenu(chatId: string, enabled = true): Promise<TelegramSendMessageResult> {
+  if (!/^[1-9]\d{0,15}$/u.test(chatId) || !Number.isSafeInteger(Number(chatId))) return { ok: false, error: "Нужен личный Telegram ID" };
+  const scope = { type: "chat", chat_id: chatId };
+  const commands = [
+    { command: "task", description: "Поставить задачу команде" },
+    { command: "mytasks", description: "Мои поручения и статусы" },
+    { command: "cancel", description: "Отменить ввод задачи" },
+    { command: "help", description: "Как пользоваться ботом" },
+  ];
+  const results = await Promise.all([
+    ...["", "ru"].map(languageCode => callTelegramJsonMethod(enabled ? "setMyCommands" : "deleteMyCommands", { scope, language_code: languageCode, ...(enabled ? { commands } : {}) })),
+    callTelegramJsonMethod("setChatMenuButton", { chat_id: Number(chatId), menu_button: { type: enabled ? "commands" : "default" } }),
+  ]);
+  return results.find(result => !result.ok) ?? { ok: true };
+}
+
 const TELEGRAM_CAPTION_MAX_LENGTH = 1024;
 
 /**

@@ -29,7 +29,9 @@ import {
   getTelegramWebhookSecret,
   sendTelegramMessage,
   sendTelegramMessageDetailed,
+  configureTelegramDirectorMenu,
 } from "@/server/telegram";
+import { handleDirectorMessage } from "@/server/telegram-director";
 import { TELEGRAM_TEST_CALLBACK_PREFIX } from "@/server/telegram-test-scenarios";
 import {
   parseGreenwichOrderActionCallback,
@@ -39,6 +41,7 @@ import {
 const UpdateSchema = z.object({
   message: z
     .object({
+      message_id: z.number().int().positive().optional(),
       text: z.string().optional(),
       message_thread_id: z.number().optional(),
       chat: z.object({
@@ -47,6 +50,8 @@ const UpdateSchema = z.object({
       }),
       from: z
         .object({
+          id: z.union([z.string(), z.number().int().safe()]).optional(),
+          is_bot: z.boolean().optional(),
           first_name: z.string().optional(),
           last_name: z.string().optional(),
           username: z.string().optional(),
@@ -104,14 +109,14 @@ function startTextForUnknown(chatId: string, name: string): string {
   return [
     `👋 <b>Здравствуйте, ${escapeTelegramHtml(name)}!</b>`,
     "",
-    "Я бот уведомлений Wowstorg.",
+    "Я бот уведомлений и поручений Wowstorg.",
     "",
-    "Пока этот Telegram не привязан к аккаунту Grinvich на сайте.",
+    "Пока этот Telegram не привязан к аккаунту на сайте.",
     "Передайте администратору ваш Telegram ID:",
     "",
     `<code>${escapeTelegramHtml(chatId)}</code>`,
     "",
-    "После привязки в админке вы сможете получать личные уведомления по своим заявкам.",
+    "После привязки в админке вы сможете получать личные уведомления. Постановка задач доступна назначенному директору.",
   ].join("\n");
 }
 
@@ -663,6 +668,17 @@ export async function POST(req: Request) {
   const chatId = update.message?.chat?.id != null ? chatIdToString(update.message.chat.id) : "";
   if (!chatId) {
     return jsonOk({ ok: true, ignored: "no_chat_id" });
+  }
+
+  if (!text.startsWith("/topic") && update.message?.message_id && update.message.from?.id != null) {
+    const result = await handleDirectorMessage({ messageId: update.message.message_id, chatId, fromId: chatIdToString(update.message.from.id), chatType: update.message.chat.type, isBot: update.message.from.is_bot, text: update.message.text });
+    if (result.handled) {
+      scheduleAfterResponse("telegramDirectorReply", async () => {
+        if (result.setupMenu) await configureTelegramDirectorMenu(chatId);
+        if (result.text) await sendTelegramMessage(chatId, result.text);
+      });
+      return jsonOk({ ok: true, director: true, created: Boolean(result.created) });
+    }
   }
 
   if (text.startsWith("/topic")) {

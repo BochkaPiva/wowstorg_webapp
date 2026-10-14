@@ -21,6 +21,7 @@
 | `src/app/api/greenwich/tower-score/route.ts` | нет |
 | `src/app/api/inventory/collections/[id]/route.ts` | нет |
 | `src/app/api/inventory/packages/[id]/route.ts` | нет |
+| `src/app/api/inventory/positions/route.ts` | нет (создание новой позиции, категорий/подборок и начальной истории потерь атомарно; существующий резерв не читается) |
 | `src/app/api/inventory/positions/[id]/route.ts` | **да** (2026-09-05: защита остатков от конкурирующих изменений) |
 | `src/app/api/orders/route.ts` | **да** |
 | `src/app/api/orders/[id]/cancel/route.ts` | **да** (мягкая отмена и возврат месячного бонуса атомарны; поздние складские этапы требуют явного подтверждения освобождения резерва) |

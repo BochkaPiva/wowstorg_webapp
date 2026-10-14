@@ -29,6 +29,7 @@ const budgetKeys = [];
 const budgetKey = (scope, ...parts) => `auth:${scope}:${createHash("sha256").update(JSON.stringify(parts)).digest("hex")}`;
 let standaloneId;
 let directorBoardId;
+let inventoryItemId, inventoryCategoryId, inventoryCollectionId;
 async function request(path, cookie, body, expected = 200) {
   const result = await fetch(base + path, { method: body ? "POST" : "GET", headers: {
     ...(cookie ? { cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: base } : {}),
@@ -71,6 +72,33 @@ try {
   await request("/api/proposals", cookies.GREENWICH, null, 403);
   await request("/api/admin/analytics", cookies.GREENWICH, null, 403);
   const cookie = cookies.WOWSTORG;
+  await request("/api/inventory/positions?options=true", cookies.GREENWICH, null, 403);
+  await request("/api/inventory/positions", cookies.GREENWICH, { name: "Forbidden", type: "ASSET", total: 1, pricePerDay: 0 }, 403);
+  const inventoryCategory = await db.category.create({ data: { name: "Inventory CI", slug: `ci-${randomUUID()}` } });
+  inventoryCategoryId = inventoryCategory.id;
+  inventoryCollectionId = (await db.collection.create({ data: { name: "Inventory CI collection" } })).id;
+  const inventoryInput = { name: "Inventory CI item", type: "ASSET", total: 8, inRepair: 1, broken: 1, missing: 1, pricePerDay: 125.5, categoryIds: [inventoryCategoryId], collectionIds: [inventoryCollectionId] };
+  const inventoryCreated = await (await request("/api/inventory/positions", cookie, inventoryInput)).json();
+  inventoryItemId = inventoryCreated.id;
+  const inventoryPath = `/api/inventory/positions/${inventoryItemId}`;
+  await db.collectionItem.update({ where: { collectionId_itemId: { collectionId: inventoryCollectionId, itemId: inventoryItemId } }, data: { position: 9 } });
+  const inventory = await (await request(inventoryPath, cookie)).json();
+  assert.equal(inventory.item.total, 8); assert.equal(inventory.item.missing, 1);
+  assert.deepEqual(inventory.item.categories, [{ categoryId: inventoryCategoryId }]);
+  assert.equal(inventory.item.collections[0].collectionId, inventoryCollectionId);
+  assert.equal((await db.lossRecord.findFirstOrThrow({ where: { itemId: inventoryItemId } })).qty, 1);
+  async function inventoryWrite(method, body, expected) {
+    const response = await fetch(base + inventoryPath, { method, headers: { cookie, Origin: base, "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    assert.equal(response.status, expected); return response.json();
+  }
+  const inventorySaved = await inventoryWrite("PATCH", { name: "Inventory CI renamed", pricePerDay: 150, expectedUpdatedAt: inventory.item.updatedAt, collectionIds: [inventoryCollectionId] }, 200);
+  assert(inventorySaved.updatedAt);
+  assert.equal((await db.collectionItem.findUniqueOrThrow({ where: { collectionId_itemId: { collectionId: inventoryCollectionId, itemId: inventoryItemId } } })).position, 9, "Saving inventory must not reorder retained collections");
+  await inventoryWrite("PATCH", { name: "Stale overwrite", expectedUpdatedAt: inventory.item.updatedAt }, 409);
+  await inventoryWrite("DELETE", null, 409); // Loss history protects linked inventory from removal.
+  const itemCount = await db.item.count();
+  await request("/api/inventory/positions", cookie, { ...inventoryInput, categoryIds: ["missing-category"] }, 409);
+  assert.equal(await db.item.count(), itemCount, "Invalid membership must roll back the whole creation");
   const before = await db.standaloneProposal.count();
   const deniedMutation = await fetch(base + "/api/proposals", { method: "POST", headers: {
     cookie, Origin: "https://untrusted.example", "Content-Type": "application/json",
@@ -196,9 +224,12 @@ try {
   await db.authRateLimit.update({ where:{ key:ipKey }, data:{ expiresAt:new Date(0) } });
   await request("/api/auth/logout", cookie, {});
   await request("/api/proposals", cookie, null, 401);
-  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, mutations/retry/conflict, PDF/PPTX, analytics, director webhook/task/retry/committed-move/source-privacy/deletion, session revocation, concurrent auth limits/expiry/cleanup and logout.");
+  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, inventory create/membership/loss-history/CAS/delete/rollback, mutations/retry/conflict, PDF/PPTX, analytics, director webhook/task/retry/committed-move/source-privacy/deletion, session revocation, concurrent auth limits/expiry/cleanup and logout.");
 } finally {
   server.kill();
+  if (inventoryItemId) { await db.lossRecord.deleteMany({ where: { itemId: inventoryItemId } }); await db.item.delete({ where: { id: inventoryItemId } }); }
+  if (inventoryCategoryId) await db.category.delete({ where: { id: inventoryCategoryId } });
+  if (inventoryCollectionId) await db.collection.delete({ where: { id: inventoryCollectionId } });
   if (standaloneId) await db.standaloneProposal.delete({ where: { id: standaloneId } });
   if (directorBoardId) {
     await db.telegramDirectorSettings.updateMany({ where: { directorUserId: { in: users } }, data: { directorUserId: null, telegramChatId: null, boardId: null, columnId: null, pendingAfterMessageId: null, pendingExpiresAt: null, lastMessageId: null } });

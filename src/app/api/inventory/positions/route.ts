@@ -12,6 +12,11 @@ const CreateSchema = z.object({
   pricePerDay: z.number().finite().min(0),
   purchasePricePerUnit: z.number().finite().min(0).nullable().optional(),
   total: z.number().int().min(0),
+  inRepair: z.number().int().min(0).default(0),
+  broken: z.number().int().min(0).default(0),
+  missing: z.number().int().min(0).default(0),
+  categoryIds: z.array(z.string().min(1)).max(100).default([]),
+  collectionIds: z.array(z.string().min(1)).max(100).default([]),
   internalOnly: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -20,6 +25,7 @@ const QuerySchema = z.object({
   query: z.string().trim().min(1).max(200).optional(),
   includeInactive: z.enum(["true", "false"]).optional(),
   internalOnly: z.enum(["true", "false"]).optional(),
+  options: z.enum(["true"]).optional(),
 });
 
 export async function GET(req: Request) {
@@ -31,8 +37,16 @@ export async function GET(req: Request) {
     query: url.searchParams.get("query") ?? undefined,
     includeInactive: url.searchParams.get("includeInactive") ?? undefined,
     internalOnly: url.searchParams.get("internalOnly") ?? undefined,
+    options: url.searchParams.get("options") ?? undefined,
   });
   if (!parsed.success) return jsonError(400, "Invalid query", parsed.error.flatten());
+  if (parsed.data.options) {
+    const [categories, collections] = await Promise.all([
+      prisma.category.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+      prisma.collection.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } }),
+    ]);
+    return jsonOk({ categories, collections });
+  }
 
   const { query, includeInactive, internalOnly } = parsed.data;
   const where: Prisma.ItemWhereInput = {
@@ -81,23 +95,31 @@ export async function POST(req: Request) {
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) return jsonError(400, "Invalid payload", parsed.error.flatten());
 
-  const { name, description, type, pricePerDay, purchasePricePerUnit, total, internalOnly, isActive } = parsed.data;
+  const { name, description, type, pricePerDay, purchasePricePerUnit, total, inRepair, broken, missing, categoryIds, collectionIds, internalOnly, isActive } = parsed.data;
+  if (inRepair + broken + missing > total) return jsonError(400, "Ремонт, поломки и потери вместе не могут превышать общее количество.");
 
-  const item = await prisma.item.create({
-    data: {
-      name,
-      description: description ?? null,
-      type,
-      pricePerDay: new Prisma.Decimal(pricePerDay),
-      purchasePricePerUnit:
-        purchasePricePerUnit == null ? null : new Prisma.Decimal(purchasePricePerUnit),
-      total,
-      internalOnly: Boolean(internalOnly),
-      isActive: isActive ?? true,
-    },
-    select: { id: true },
-  });
+  try {
+    const item = await prisma.$transaction(async tx => {
+      const created = await tx.item.create({
+        data: {
+          name, description: description ?? null, type,
+          pricePerDay: new Prisma.Decimal(pricePerDay),
+          purchasePricePerUnit: purchasePricePerUnit == null ? null : new Prisma.Decimal(purchasePricePerUnit),
+          total, inRepair, broken, missing,
+          categories: { create: [...new Set(categoryIds)].map(categoryId => ({ categoryId })) },
+          collections: { create: [...new Set(collectionIds)].map((collectionId, position) => ({ collectionId, position })) },
+          internalOnly: Boolean(internalOnly), isActive: isActive ?? true,
+        },
+        select: { id: true, updatedAt: true },
+      });
+      if (missing > 0) await tx.lossRecord.create({ data: { itemId: created.id, qty: missing, status: "OPEN" } });
+      return created;
+    });
 
-  return jsonOk({ ok: true, id: item.id });
+    return jsonOk({ ok: true, id: item.id, updatedAt: item.updatedAt });
+  } catch (cause) {
+    if (cause instanceof Prisma.PrismaClientKnownRequestError) return jsonError(409, "Категория или подборка изменилась. Обновите форму и повторите.");
+    throw cause;
+  }
 }
 

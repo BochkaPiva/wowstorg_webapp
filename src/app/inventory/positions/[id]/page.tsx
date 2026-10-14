@@ -158,7 +158,7 @@ function PositionEditor({ id }: { id: string }) {
           internalOnly: form.internalOnly,
           isActive: form.isActive,
           categoryIds: form.categoryIds,
-          collectionIds: [],
+          collectionIds: item?.collections.map(c => c.collectionId) ?? [],
         }),
       });
       const txt = await res.text();
@@ -306,7 +306,7 @@ function PositionEditor({ id }: { id: string }) {
               <div className="pos-edit-stack">
                 <section className="pos-edit-card">
                   <h2 className="pos-edit-card-title">Основное</h2>
-                  <p className="pos-edit-card-hint">Название, описание и тариф — то, что видит Greenwich в каталоге.</p>
+                  <p className="pos-edit-card-hint">Название, описание и тариф — то, что видит Grinvich в каталоге.</p>
                   <div className="pos-edit-fields pos-edit-fields--2">
                     <div className="pos-edit-field pos-edit-field--full">
                       <label className="pos-edit-label" htmlFor="pos-name">
@@ -531,7 +531,7 @@ function PositionEditor({ id }: { id: string }) {
                         checked={form.internalOnly}
                         onChange={(next) => setForm((s) => ({ ...s, internalOnly: next }))}
                         label="Только для склада"
-                        description="Не показывать в каталоге Greenwich — только внутренний реквизит Wowstorg."
+                        description="Не показывать в каталоге Grinvich — только внутренний реквизит Wowstorg."
                       />
                     </div>
                   </div>

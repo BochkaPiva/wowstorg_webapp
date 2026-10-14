@@ -86,7 +86,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const data = parsed.data;
 
   try {
-  await prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
   const existing = await tx.item.findUnique({
     where: { id },
     select: { id: true, total: true, inRepair: true, broken: true, missing: true, updatedAt: true },
@@ -128,7 +128,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     ...(data.isActive != null ? { isActive: data.isActive } : {}),
   };
 
-    await tx.item.update({ where: { id }, data: updateData });
+    const updated = await tx.item.update({ where: { id }, data: updateData, select: { updatedAt: true } });
 
     // Only new manually recorded losses create cases. Never reset resolved history.
     if (data.missing !== undefined && nextMissing !== existing.missing) {
@@ -147,18 +147,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (data.collectionIds) {
-      await tx.collectionItem.deleteMany({ where: { itemId: id } });
-      if (data.collectionIds.length) {
+      const wanted = [...new Set(data.collectionIds)];
+      const memberships = await tx.collectionItem.findMany({ where: { itemId: id }, select: { collectionId: true } });
+      const retained = new Set(memberships.map(entry => entry.collectionId));
+      // Keeping a membership also keeps this item's position inside that collection.
+      await tx.collectionItem.deleteMany({ where: { itemId: id, collectionId: { notIn: wanted } } });
+      const added = wanted.filter(collectionId => !retained.has(collectionId));
+      if (added.length) {
         await tx.collectionItem.createMany({
-          data: data.collectionIds.map((collectionId, idx) => ({
+          data: added.map((collectionId) => ({
             itemId: id,
             collectionId,
-            position: idx,
+            position: 0,
           })),
         });
       }
     }
+    return updated;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return jsonOk({ ok: true, updatedAt: saved.updatedAt });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034") return jsonError(409, "Остатки изменились. Обновите карточку и повторите.");
     if (e instanceof Error && e.message === "STALE") return jsonError(409, "Карточка уже изменилась. Обновите её перед сохранением.");
@@ -166,7 +173,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return jsonError(400, e instanceof Error ? e.message : "Не удалось сохранить позицию");
   }
 
-  return jsonOk({ ok: true });
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {

@@ -9,6 +9,7 @@ assert.ok(["127.0.0.1", "localhost"].includes(base.hostname));
 const user = { id: "qa", displayName: "QA", role: "WOWSTORG", login: "qa", isActive: true, mustSetPassword: false };
 const task = { id: "qa-task", title: "Подготовить предложение для Сбера · QA", description: "Два варианта бюджета к пятнице", directorRequest: { directorName: "Директор QA" }, color: "#f5c542", priority: "NORMAL", sortOrder: 0, startDate: null, dueDate: null, dueTime: null, reminderAt: null, reminderText: null, priorityStickerEnabled: false, priorityStickerConfigured: false, deadlineStickerEnabled: false, reminderStickerEnabled: false, assigneeStickerEnabled: false, completedAt: null, archivedAt: null, updatedAt: "2026-10-14", assignee: null, assignees: [], project: null, order: null, checklistItems: [], checklistTotal: 0, checklistDone: 0, commentCount: 0 };
 const board = { id: "qa-board", title: "Рабочая доска · QA", description: null, isDefault: true, updatedAt: "2026-10-14", syncToken: "qa", columns: [{ id: "inbox", title: "Задачи", sortOrder: 0, isDone: false, tasks: [task] }, { id: "target", title: "В работе", sortOrder: 1, isDone: false, tasks: [] }] };
+task.description = "Тестовое задание\n\nПроверить <текст> & переносы. " + "Подробности поручения 🦖: ".repeat(120) + "https://example.test/" + "long-url".repeat(35);
 const policy = { confirmationResponseReward: 1, repeatMissedPenalty: -1, finalMissedPenalty: -2, overduePenaltyPerDay: -1, overduePenaltyCap: -20, perfectReturnReward: 1, dirtyPenaltyPerUnit: -1, repairPenaltyPerUnit: -2, brokenPenaltyPerUnit: -4, lostPenaltyPerUnit: -6, incidentPenaltyCap: -20, recoveryGraceDays: 7, recoveryDurationDays: 30, tiers: [{ id: "base", name: "Старт", minScore: 0, discountPercent: 10, sortOrder: 0 }, { id: "top", name: "Лучший", minScore: 90, discountPercent: 20, sortOrder: 1 }], updatedAt: "2026-10-14" };
 const errors = [], forbidden = [], checks = [];
 let writes = 0;
@@ -41,6 +42,7 @@ try {
       else if (url.pathname === "/api/tasks/boards") json = { boards: [{ ...board, _count: { tasks: 1, columns: 2 } }] };
       else if (url.pathname === "/api/tasks/meta") json = { users: [user], projects: [], orders: [] };
       else if (url.pathname === "/api/tasks/boards/qa-board") json = { board };
+      else if (url.pathname === "/api/tasks/tasks/qa-task") json = { task: { ...task, column: { id: "inbox", title: "Задачи", isDone: false }, activities: [] } };
       else { forbidden.push(`GET ${url.pathname}`); await route.fulfill({ status: 501, json: { error: { message: "No QA fixture" } } }); return; }
       await route.fulfill({ json });
     });
@@ -59,7 +61,20 @@ try {
     const card = page.locator('[data-task-card-id="qa-task"]'); await card.waitFor();
     const badge = card.locator(".task-director-badge"); assert.equal(await badge.isVisible(), true);
     assert.equal(await card.locator(".task-card__title").evaluate(node => getComputedStyle(node).color), "rgb(43, 33, 16)");
+    const preview = card.locator(".task-card__description");
+    assert.equal(await preview.textContent(), task.description);
+    assert.equal(await preview.evaluate(node => getComputedStyle(node).webkitLineClamp), "3");
+    assert.equal(await preview.evaluate(node => getComputedStyle(node).color), "rgb(43, 33, 16)");
+    assert.ok(await card.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     await card.screenshot({ path: `.impeccable/review/director-task-${width}.png` });
+    await preview.click();
+    const drawer = page.getByRole("dialog", { name: "Рабочее пространство задачи" });
+    const fullDescription = drawer.locator(".task-drawer__description > p"); await fullDescription.waitFor();
+    assert.equal(await fullDescription.textContent(), task.description);
+    assert.ok(await fullDescription.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
+    if (width === 390) assert.equal(await fullDescription.evaluate(node => getComputedStyle(node).fontSize), "16px");
+    await drawer.screenshot({ path: `.impeccable/review/director-description-drawer-${width}.png` });
+    await page.keyboard.press("Escape"); await drawer.waitFor({ state: "detached" });
     const move = page.waitForRequest(req => req.method() === "PATCH" && new URL(req.url()).pathname === "/api/tasks/tasks/qa-task", { timeout: 15000 });
     await card.locator(".task-card__title").dragTo(page.locator(".task-column").nth(1)); await move;
     const pending = await seenMove; assert.equal(await badge.isVisible(), true);
@@ -67,7 +82,7 @@ try {
     await pending.fulfill({ json: { task } });
     await card.getByRole("button", { name: `Переименовать задачу «${task.title}»`, exact: true }).click();
     await card.getByRole("textbox", { name: "Название задачи", exact: true }).press("Escape"); assert.equal(await badge.isVisible(), true);
-    checks.push({ width, savedSettings: true, explicitMenuCheck: true, persistentBadgeBeforeAndAfterMove: true, noStuckDrag: true });
+    checks.push({ width, savedSettings: true, explicitMenuCheck: true, persistentBadgeBeforeAndAfterMove: true, noStuckDrag: true, descriptionPreview: true, fullDescriptionOnOpen: true, noDescriptionOverflow: true });
     await context.close();
   }
   assert.deepEqual(errors, []); assert.deepEqual(forbidden, []); assert.equal(writes, 6);

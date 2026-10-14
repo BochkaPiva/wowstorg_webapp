@@ -43,6 +43,46 @@ async function sendTaskTopicMessage(text: string): Promise<void> {
   if (!ok) console.warn("[work-task-notifications] Telegram did not accept task notification");
 }
 
+/** Keep HTML entities whole and stay within Telegram's message budget. */
+function escapedPreview(value: string, budget: number): string {
+  const escaped = escapeTelegramHtml(value);
+  if (escaped.length <= budget) return escaped;
+  let result = "";
+  for (const character of value) {
+    const entity = escapeTelegramHtml(character);
+    if (result.length + entity.length > budget - 1) break;
+    result += entity;
+  }
+  return `${result}…`;
+}
+
+/** Only newly committed director tasks are scheduled by the webhook. */
+export async function notifyDirectorTaskCreated(taskId: string): Promise<void> {
+  try {
+    const request = await prisma.telegramDirectorInbox.findUnique({
+      where: { taskId },
+      select: { directorName: true, task: { select: {
+        title: true, description: true, board: { select: { title: true } }, column: { select: { title: true } },
+      } } },
+    });
+    if (!request?.task) return;
+    const { task } = request;
+    const header = [
+      "<b>Новое поручение директора</b>", "",
+      `Директор: ${escapedPreview(request.directorName, 200)}`,
+      `Задача: <b>${escapedPreview(task.title, 900)}</b>`,
+      `Доска: ${escapedPreview(task.board.title, 250)}`,
+      `Колонка: ${escapedPreview(task.column.title, 250)}`,
+    ].join("\n");
+    const footer = `\n\n${taskLink()}`;
+    const description = task.description?.trim();
+    const body = description ? `\n\n${escapedPreview(description, Math.max(1, 3900 - header.length - footer.length - 2))}` : "";
+    await sendTaskTopicMessage(`${header}${body}${footer}`);
+  } catch (cause) {
+    console.warn("[work-task-notifications] notifyDirectorTaskCreated failed", cause);
+  }
+}
+
 async function taskForNotification(taskId: string) {
   return prisma.workTask.findUnique({
     where: { id: taskId },

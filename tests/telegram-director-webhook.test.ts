@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/telegram/webhook/route";
-const hooks = vi.hoisted(() => ({ handle: vi.fn(), send: vi.fn(), menu: vi.fn(), schedule: vi.fn(), linked: vi.fn() }));
+const hooks = vi.hoisted(() => ({ handle: vi.fn(), send: vi.fn(), menu: vi.fn(), schedule: vi.fn(), linked: vi.fn(), notifyCreated: vi.fn() }));
+vi.mock("@/server/work-task-notifications", () => ({ notifyDirectorTaskCreated: hooks.notifyCreated }));
 vi.mock("@/server/telegram-director", () => ({ handleDirectorMessage: hooks.handle }));
 vi.mock("@/server/db", () => ({ prisma: { user: { findFirst: hooks.linked } } }));
 vi.mock("@/server/notifications/schedule-after-response", () => ({ scheduleAfterResponse: hooks.schedule }));
@@ -9,6 +10,23 @@ beforeEach(() => { vi.clearAllMocks(); hooks.handle.mockResolvedValue({ handled:
 const update = { update_id: 1, message: { message_id: 2, text: "/task Task", chat: { id: 123, type: "private" }, from: { id: 123, is_bot: false, first_name: "QA" } } };
 function request(body: unknown = update, secret = "qa-webhook-secret") { return new Request("https://example.test/api/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "x-telegram-bot-api-secret-token": secret }, body: JSON.stringify(body) }); }
 describe("director webhook boundary", () => {
+  it("notifies the task topic only after a newly committed task, independently of the private reply", async () => {
+    hooks.handle.mockResolvedValueOnce({ handled: true, text: "Saved", created: true, taskId: "created" });
+    expect((await POST(request())).status).toBe(200);
+    expect(hooks.notifyCreated).not.toHaveBeenCalled();
+    const notify = hooks.schedule.mock.calls.find(([label]) => label === "notifyDirectorTaskCreated");
+    expect(notify).toBeDefined(); await notify![1]();
+    expect(hooks.notifyCreated).toHaveBeenCalledExactlyOnceWith("created");
+    expect(hooks.send).not.toHaveBeenCalled();
+    hooks.handle.mockResolvedValueOnce({ handled: true }); await POST(request());
+    expect(hooks.schedule.mock.calls.filter(([label]) => label === "notifyDirectorTaskCreated")).toHaveLength(1);
+  });
+  it("never announces a prompt, invalid input or rejected director message as a task", async () => {
+    for (const result of [{ handled: true, text: "Prompt" }, { handled: true, created: false }, { handled: false }]) {
+      hooks.handle.mockResolvedValueOnce(result); await POST(request());
+    }
+    expect(hooks.schedule.mock.calls.some(([label]) => label === "notifyDirectorTaskCreated")).toBe(false);
+  });
   it("requires the webhook secret before processing a director command", async () => {
     expect((await POST(request(update, "wrong"))).status).toBe(401);
     expect(hooks.handle).not.toHaveBeenCalled(); expect(hooks.schedule).not.toHaveBeenCalled();

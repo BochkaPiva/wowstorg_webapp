@@ -29,6 +29,18 @@ function latest() { return flights.at(-1)!; }
 function titleInput() { return document.querySelector<HTMLTextAreaElement>('.task-drawer__details textarea')!; }
 
 describe("task drawer lifecycle", () => {
+  it("shows the full description immediately in the activity view, preserving newlines and escaping HTML", async () => {
+    render("one", "activity");
+    const description = "Тестовое задание\n\n<Важно> & проверить " + "Очень длинное описание. ".repeat(200);
+    await respond(latest(), { task: { ...task("one", "Тест"), description } });
+    const content = document.querySelector('.task-drawer__description > p');
+    expect(content?.textContent).toBe(description); expect(content?.childElementCount).toBe(0);
+    expect(flights.some(entry => entry.init?.method === "PATCH")).toBe(false);
+  });
+  it("omits the description section when a task has no description", async () => {
+    render("one", "activity"); await respond(latest(), { task: task("one") });
+    expect(document.querySelector(".task-drawer__description")).toBeNull();
+  });
   it("keeps SSR portal empty and hydrates the browser host without mismatches", async () => {
     container.innerHTML = renderToString(drawer("one"));
     expect(container.innerHTML).toBe("");

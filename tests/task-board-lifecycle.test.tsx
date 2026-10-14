@@ -54,6 +54,17 @@ function dragEvent(target: HTMLElement, type: string, values: Record<string, str
 }
 
 describe("task board lifecycle", () => {
+  it("renders multiline task descriptions as plain text and omits an empty preview", async () => {
+    await bootstrap(); const next = board();
+    next.columns[0].tasks[0].description = "Тестовое задание\n\n<Важно> & проверить";
+    await respond(latest("/api/tasks/boards/a"), { board: next });
+    const preview = element('[data-task-card-id="task"] .task-card__description');
+    expect(preview.textContent).toBe("Тестовое задание\n\n<Важно> & проверить"); expect(preview.childElementCount).toBe(0);
+    next.columns[0].tasks[0].description = "   ";
+    next.syncToken = "empty-description";
+    act(() => window.dispatchEvent(new Event("focus"))); await respond(latest("/api/tasks/boards/a"), { board: next });
+    expect(container.querySelector(".task-card__description")).toBeNull();
+  });
   it("keeps a director's permanent source badge and readable gold state across an optimistic move", async () => {
     await bootstrap(); const next = board();
     const marked = { ...next.columns[0].tasks[0], color: "#f5c542", directorRequest: { directorName: "Director QA" } };

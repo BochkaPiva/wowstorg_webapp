@@ -361,6 +361,12 @@ function TaskDrawer({
         {!loading && task && tab === "activity" ? (
           <div className="task-drawer__activity">
             <div className="task-activity-list">
+              {task.description?.trim() ? (
+                <section className="task-drawer__description" aria-label="Описание задачи">
+                  <strong>Описание задачи</strong>
+                  <p>{task.description}</p>
+                </section>
+              ) : null}
               {task.activities.length === 0 ? (
                 <div className="task-activity-empty"><strong>Здесь пока тихо</strong><span>Оставьте первую рабочую заметку — она не потеряется в карточке.</span></div>
               ) : [...task.activities].reverse().map((entry) => entry.kind === "COMMENT" ? (

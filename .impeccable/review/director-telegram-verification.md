@@ -61,6 +61,18 @@ The latest full local gate reported 101 test files and 718 passing tests, zero l
 
 Update these entries only after the coordinating workflow records direct evidence for the relevant commit, CI run, database or deployment. A local **Ship** design verdict leaves those release checks pending.
 
+## Follow-up — description visibility and team notification (14 October 2026)
+
+The reported task “Тест” was checked read-only in the working database: its description was already “Тестовое задание”. No data recovery or migration was required. The active card omitted the description, and the default history tab did not display it.
+
+The fix adds a three-line plain-text card preview and the full description above the history, preserving newlines and wrapping long unbroken URLs. Empty descriptions add no block. The details tab still owns editing. Existing board colors are inherited, gold text remains dark; mobile full-description text is 16px. No motion or global design-system change was added.
+
+Native headless Edge fixture checks passed at 1440px and 390px: card text equals the full fixture data but is visually clamped to three lines; clicking opens the full unchanged description; long text and URL do not overflow horizontally; Escape closes the drawer; source badge and drag reset remain intact. Six allowed fixture API writes, zero page errors and zero unexpected requests. The four changed component captures were opened and inspected: `director-task-1440.png`, `director-task-390.png`, `director-description-drawer-1440.png`, `director-description-drawer-390.png`. These remain component captures, not a full-page audit. The existing CSS detector warnings concern inherited board motifs; the new local text styles reuse its palette and typography.
+
+Only a newly created, committed director task schedules a separate `notifyDirectorTaskCreated` callback to the established warehouse/task topic. It is independent of the director's private acknowledgement, includes author/title/description/board/column/link, and bounds escaped text without splitting entities or emoji. Receipt replay, prompts, rejected senders and deleted tasks do not trigger a team message. Unit tests mock Telegram; no past task is broadcast by the fix.
+
+Local gate passed: 102 files / 729 tests, zero lint errors and 59 warnings, zero production dependency vulnerabilities, successful Next.js/TypeScript build. This includes unrelated uncommitted cleanup; the isolated release candidate must be checked in CI separately. Production delivery of a new team notification requires a real new director task after deployment; no test spam was sent to the working chat.
+
 ## References
 
 - Surface contract: [director-telegram-tasks.md](../surfaces/director-telegram-tasks.md).

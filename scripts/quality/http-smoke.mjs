@@ -128,12 +128,14 @@ try {
   await directorUpdate(3, "/task forged sender", 999999);
   assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 1, "Foreign sender must not create a task");
   const directorTask = await db.workTask.findFirstOrThrow({ where: { boardId: taskBoard.id } });
+  assert.equal(directorTask.description, "Text description", "Telegram task description must be stored in full");
   const moveReplies = await Promise.all([1,2].map(() => fetch(`${base}/api/tasks/tasks/${directorTask.id}`, { method: "PATCH", headers: { cookie, Origin: base, "Content-Type": "application/json" },
     body: JSON.stringify({ columnId: taskBoard.columns[1].id, completed: false, sortOrder: 1000 }) })));
   assert(moveReplies.every(response => response.status === 200));
   assert.equal(await db.workTaskActivity.count({ where: { taskId: directorTask.id, kind: "MOVED" } }), 1, "A repeated move must not emit a second transition");
   const movedDirectorTask = (await (await request(`/api/tasks/tasks/${directorTask.id}`, cookie)).json()).task;
   assert.deepEqual(movedDirectorTask.directorRequest, { directorName: "CI Test" }, "Source DTO must not expose private Telegram IDs");
+  assert.equal(movedDirectorTask.description, "Text description", "Description must survive board/API moves");
   await db.workTask.delete({ where: { id: directorTask.id } });
   await directorUpdate(2, "CI director task\nText description");
   assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 0, "A deleted task must not reappear from a repeated webhook");

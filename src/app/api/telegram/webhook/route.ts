@@ -32,6 +32,7 @@ import {
   configureTelegramDirectorMenu,
 } from "@/server/telegram";
 import { handleDirectorMessage } from "@/server/telegram-director";
+import { notifyDirectorTaskCreated } from "@/server/work-task-notifications";
 import { TELEGRAM_TEST_CALLBACK_PREFIX } from "@/server/telegram-test-scenarios";
 import {
   parseGreenwichOrderActionCallback,
@@ -673,6 +674,10 @@ export async function POST(req: Request) {
   if (!text.startsWith("/topic") && update.message?.message_id && update.message.from?.id != null) {
     const result = await handleDirectorMessage({ messageId: update.message.message_id, chatId, fromId: chatIdToString(update.message.from.id), chatType: update.message.chat.type, isBot: update.message.from.is_bot, text: update.message.text });
     if (result.handled) {
+      if (result.created && result.taskId) {
+        const taskId = result.taskId;
+        scheduleAfterResponse("notifyDirectorTaskCreated", () => notifyDirectorTaskCreated(taskId));
+      }
       scheduleAfterResponse("telegramDirectorReply", async () => {
         if (result.setupMenu) await configureTelegramDirectorMenu(chatId);
         if (result.text) await sendTelegramMessage(chatId, result.text);

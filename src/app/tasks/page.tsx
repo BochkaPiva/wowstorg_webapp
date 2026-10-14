@@ -1372,6 +1372,7 @@ function TaskCard({
                 </>
               )}
             </div>
+            {task.description?.trim() ? <p className="task-card__description">{task.description}</p> : null}
             <TaskCardContext task={task} />
           </div>
           <button

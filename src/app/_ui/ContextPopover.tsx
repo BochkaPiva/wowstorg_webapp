@@ -4,10 +4,11 @@ import React from "react";
 import { popoverPosition } from "@/lib/popover-position";
 
 /** Native top layer escapes clipping while retaining the fullscreen editor's DOM/focus scope. */
-export function ContextPopover({ anchor, label, onClose, children, className, dismissOutside = true, surfaceRef, onChangeCapture }: {
+export function ContextPopover({ anchor, label, onClose, children, className, dismissOutside = true, surfaceRef, onChangeCapture, preferredWidth, preferredHeight }: {
   anchor?: HTMLElement | null; label: string; onClose: () => void; children: React.ReactNode;
   className: string; dismissOutside?: boolean; surfaceRef?: React.RefObject<HTMLElement | null>;
   onChangeCapture?: React.FormEventHandler<HTMLDivElement>;
+  preferredWidth?: number; preferredHeight?: number;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const close = React.useRef(onClose);
@@ -21,7 +22,7 @@ export function ContextPopover({ anchor, label, onClose, children, className, di
     const place = () => {
       const topbar = (anchor ?? node).closest(".project-workspace-widget--overlay")?.querySelector(".project-workspace-widget__header") ?? document.querySelector(".app-topbar");
       const headerBottom = Math.max(0, topbar?.getBoundingClientRect().bottom ?? 0);
-      const position = popoverPosition({ width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight, top: headerBottom }, anchor?.getBoundingClientRect());
+      const position = popoverPosition({ width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight, top: headerBottom }, anchor?.getBoundingClientRect(), { width: preferredWidth, height: preferredHeight });
       Object.assign(node.style, { left: `${position.left}px`, top: `${position.top}px`, width: `${position.width}px`, maxHeight: `${position.maxHeight}px` });
     };
     node.showPopover(); place();
@@ -40,6 +41,6 @@ export function ContextPopover({ anchor, label, onClose, children, className, di
       if (surfaceRef?.current === node) surfaceRef.current = null;
       if (previous?.isConnected && (node.contains(document.activeElement) || document.activeElement === document.body)) previous.focus({ preventScroll: true });
     };
-  }, [anchor, dismissOutside, surfaceRef]);
+  }, [anchor, dismissOutside, surfaceRef, preferredWidth, preferredHeight]);
   return <div ref={ref} popover="manual" role="dialog" aria-label={label} tabIndex={-1} className={className} onChangeCapture={onChangeCapture}>{children}</div>;
 }

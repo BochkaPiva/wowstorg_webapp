@@ -397,6 +397,7 @@ model User {
   contractorsCreated              Contractor[]                  @relation("contractor_created_by")
   projectContractorsCreated       ProjectContractor[]           @relation("project_contractor_created_by")
   projectContractorsUpdated       ProjectContractor[]           @relation("project_contractor_updated_by")
+  projectContractorEntries        ProjectContractorEntry[]
   contractorsUpdated              Contractor[]                  @relation("contractor_updated_by")
   contractorOfferPricesConfirmed  ContractorOffer[]             @relation("contractor_offer_price_confirmed_by")
   contractorPriceHistoryCreated   ContractorOfferPriceHistory[] @relation("contractor_price_history_actor")
@@ -1011,6 +1012,7 @@ model ProjectContractor {
   scheduleSlot ProjectScheduleSlot? @relation(fields: [scheduleSlotId], references: [id], onDelete: SetNull)
   createdBy    User                 @relation("project_contractor_created_by", fields: [createdById], references: [id], onDelete: Restrict)
   updatedBy    User                 @relation("project_contractor_updated_by", fields: [updatedById], references: [id], onDelete: Restrict)
+  entries      ProjectContractorEntry[]
 
   @@unique([projectId, contractorId])
   @@index([projectId, status])
@@ -1018,6 +1020,23 @@ model ProjectContractor {
   @@index([scheduleSlotId])
   @@index([createdById])
   @@index([updatedById])
+}
+
+/// Внутренний журнал общения команды с подрядчиком, независимый от КП и бюджета.
+model ProjectContractorEntry {
+  id           String   @id @default(uuid())
+  assignmentId String
+  authorId     String
+  body         String   @db.Text
+  status       String
+  creationHash String
+  createdAt    DateTime @default(now())
+
+  assignment ProjectContractor @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  author     User              @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([assignmentId, createdAt, id])
+  @@index([authorId])
 }
 
 model ContractorAsset {

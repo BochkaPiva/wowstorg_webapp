@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { popoverPosition } from "@/lib/popover-position";
 
 describe("contextual popup bounds", () => {
+  it("anchors a compact action menu by its actual dimensions, not editor dimensions", () => {
+    const box = popoverPosition({ width: 1440, height: 1000, top: 80 }, { left: 1244, right: 1280, top: 850, bottom: 886 }, { width: 230, height: 190 });
+    expect(box.width).toBe(230); expect(box.left).toBe(1050); expect(box.top + box.maxHeight).toBe(842);
+  });
   it("opens below a visible trigger without leaving the viewport", () => {
     expect(popoverPosition({ width: 1440, height: 1000, top: 80 }, { left: 1160, right: 1280, top: 280, bottom: 320 })).toEqual({ left: 700, top: 328, width: 580, maxHeight: 540 });
   });

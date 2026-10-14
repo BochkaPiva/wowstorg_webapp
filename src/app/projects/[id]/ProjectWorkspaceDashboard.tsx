@@ -93,7 +93,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
   const widgetNode = (
     <section
       ref={widgetRef}
-      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${collapsed ? "md:col-span-4" : WIDTH_CLASS[widget.width]}`}`}
+      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${WIDTH_CLASS[widget.width]}`}`}
       style={expanded ? undefined : { order: widget.sortOrder }}
       id={`project-widget-${widget.type.toLowerCase().replaceAll("_", "-")}`}
       data-widget={widget.type}
@@ -107,8 +107,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
         <div className="project-workspace-widget__identity">
           <span className="project-workspace-widget__icon"><WidgetIcon type={widget.type} /></span>
           <div className="project-workspace-widget__titlecopy">
-            <h2>{definition.title}</h2>
-            {!collapsed ? <span>{definition.description}</span> : null}
+            <h2 title={definition.description}>{definition.title}</h2>
           </div>
         </div>
         <div className="project-workspace-widget__controls">

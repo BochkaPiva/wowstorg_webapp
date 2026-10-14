@@ -72,10 +72,10 @@ export function buildRecommendedProjectWorkspaceDraft(): ProjectWorkspaceWidgetI
     width: ProjectWorkspaceWidgetInput["width"];
     heightPreset: ProjectWorkspaceWidgetInput["heightPreset"];
   }> = [
-    { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
-    { type: "CONTRACTORS", width: 12, heightPreset: "MEDIUM" },
     { type: "ESTIMATE", width: 12, heightPreset: "LARGE" },
-    { type: "ORDERS", width: 4, heightPreset: "COMPACT" },
+    { type: "ORDERS", width: 12, heightPreset: "COMPACT" },
+    { type: "CONTRACTORS", width: 12, heightPreset: "MEDIUM" },
+    { type: "EVENT_BUILDER", width: 12, heightPreset: "LARGE" },
     { type: "SCHEDULE", width: 4, heightPreset: "COMPACT" },
     { type: "NOTES", width: 4, heightPreset: "MEDIUM" },
     { type: "TASKS", width: 12, heightPreset: "LARGE" },
@@ -93,7 +93,7 @@ export function buildRecommendedProjectWorkspaceDraft(): ProjectWorkspaceWidgetI
     y: sortOrder,
     width: item.width,
     heightPreset: item.heightPreset,
-    isVisible: true,
+    isVisible: item.type !== "EVENT_BUILDER",
   }));
 }
 

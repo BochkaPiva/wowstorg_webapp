@@ -559,6 +559,11 @@ tbody tr:hover {
 
 .app-content:has(.project-detail-page) {
   padding-bottom: 8px;
+  /* Module focus/menu layers stay below the app header. Fullscreen portals are
+     attached to body and intentionally escape this stacking context. */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
 }
 
 .app-drawer {

@@ -28,6 +28,7 @@ const DiscountTypeSchema = z.enum(["NONE", "PERCENT", "AMOUNT"]);
 const ServicePaymentMethodSchema = z.enum(["NON_CASH", "CASH"]);
 
 const BodySchema = z.object({
+  expectedUpdatedAt: z.iso.datetime().optional(),
   eventName: z.string().trim().max(200).nullable().optional(),
   comment: z.string().trim().max(5000).nullable().optional(),
   deliveryEnabled: z.boolean().optional(),
@@ -163,6 +164,8 @@ export async function PATCH(
         });
 
         if (!order) throw new Error("NOT_FOUND");
+        if (data.expectedUpdatedAt && order.updatedAt.toISOString() !== data.expectedUpdatedAt) throw new Error("STALE_ORDER");
+        if (order.projectId && (await tx.project.findUnique({ where: { id: order.projectId }, select: { archivedAt: true } }))?.archivedAt) throw new Error("ARCHIVED_PROJECT");
         projectIdForNotify = order.projectId;
 
         const quickRow = await tx.$queryRaw<Array<{ parentOrderId: string | null }>>`
@@ -493,7 +496,7 @@ export async function PATCH(
 
         let position = 0;
         for (const row of editLines) {
-          const price = row.pricePerDaySnapshot ?? itemById.get(row.itemId)!.pricePerDay;
+          const price = row.pricePerDaySnapshot ?? (row.id && linePriceById.has(row.id) ? linePriceById.get(row.id)! : itemById.get(row.itemId)!.pricePerDay);
           if (row.id && existingIds.has(row.id)) {
             await tx.orderLine.update({
               where: { id: row.id },
@@ -615,6 +618,8 @@ export async function PATCH(
     }
     if (e instanceof Error) {
       if (e.message === "NOT_FOUND") return jsonError(404, "Not found");
+      if (e.message === "STALE_ORDER") return jsonError(409, "Заявка изменена в другом окне. Ваши поля сохранены в форме. Обновите заявку и сверьте цены перед повторным сохранением.");
+      if (e.message === "ARCHIVED_PROJECT") return jsonError(400, "Архивный проект только для просмотра");
       if (e.message === "BAD_LINES") return jsonError(400, "В заявке должна быть хотя бы одна позиция");
       if (e.message === "BAD_STATUS") return jsonError(400, "Редактировать заявку в текущем статусе нельзя");
       if (e.message === "DISCOUNT_STATUS") return jsonError(400, "Скидку можно менять только до начала сборки");

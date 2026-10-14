@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { useJsonResource } from "@/lib/use-json-resource";
 
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
+import { RequisiteActions } from "./RequisiteActions";
 
 import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { usableStockUnits } from "@/lib/inventory-stock";
@@ -107,6 +108,7 @@ type RequisiteOrderLine = {
 
 type RequisiteOrder = {
   id: string;
+  updatedAt: string;
   status: string;
   source: string;
   readyByDate: string;
@@ -294,7 +296,7 @@ type EstimatePayload = {
 const inputField =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const btnPrimary =
-  "rounded-lg border border-violet-300 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50";
+  "rounded-lg border border-yellow-400 bg-yellow-300 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-yellow-200 disabled:opacity-50";
 const btnSecondary =
   "rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50 disabled:opacity-50";
 const btnSecondaryXs =
@@ -308,10 +310,10 @@ const menuPanel =
 const menuAction =
   "project-estimate-menu__action flex w-full items-start justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-50";
 const sectionTone = {
-  requisite: "border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.9),rgba(255,255,255,0.98))]",
-  draftRequisite: "border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.94),rgba(255,255,255,0.98))]",
-  local: "border-violet-100 bg-[linear-gradient(180deg,rgba(250,245,255,0.9),rgba(255,255,255,1))]",
-  contractor: "border-zinc-300 bg-[linear-gradient(180deg,rgba(24,24,27,0.045),rgba(255,255,255,1))]",
+  requisite: "border-zinc-200 bg-white",
+  draftRequisite: "border-zinc-200 bg-white",
+  local: "border-zinc-200 bg-white",
+  contractor: "border-zinc-200 bg-white",
 };
 const EDITABLE_ORDER_STATUSES = ["SUBMITTED", "ESTIMATE_SENT", "CHANGES_REQUESTED", "APPROVED_BY_GREENWICH"] as const;
 
@@ -1218,12 +1220,15 @@ function EstimatePanelEditor({
   }, [currentVersionNumber, load, projectId, setEstimateConflictDetected, standalone]);
 
   React.useEffect(() => {
-    function onRefresh() {
-      load(selectedVersion);
+    function onRefresh(event: Event) {
+      const detail = (event as CustomEvent<{ projectId?: string; block?: string }>).detail;
+      if (detail?.projectId && detail.projectId !== projectId) return;
+      if (detail?.block === "contractors") return;
+      void readEstimate(selectedVersion);
     }
     window.addEventListener("project-activity-refresh", onRefresh);
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
-  }, [load, selectedVersion]);
+  }, [readEstimate, selectedVersion, projectId]);
 
   React.useEffect(() => {
     if (!versionPickerOpen && !actionsOpen && !downloadOpen) return;
@@ -3184,7 +3189,6 @@ function EstimatePanelEditor({
                       onDragPointerUp={finishSectionDrag}
                       onDragPointerCancel={cancelSectionDrag}
                       onDone={() => {
-                        load(selectedVersion);
                         refreshActivity();
                       }}
                     />
@@ -4162,7 +4166,7 @@ function EstimateSectionBlock({
                       ? "Подрядчики"
                     : "Универсальный"}
               </span>
-              {orderMeta ? (
+              {orderMeta && sec.kind !== "REQUISITE" ? (
                 <span className="rounded-full border border-white/80 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-zinc-700">
                   {orderMeta.label}
                 </span>
@@ -4182,7 +4186,6 @@ function EstimateSectionBlock({
               ) : null}
             </div>
             <div className={`project-estimate-section__title mt-1.5 text-base font-black text-zinc-950 ${summaryTitleAddon ? "flex min-w-0 flex-wrap items-center gap-2" : ""}`}>
-              {summaryTitleAddon}
               {editingTitle && (sec.kind === "LOCAL" || sec.kind === "CONTRACTOR") ? (
                 <input
                   value={titleDraft}
@@ -4225,6 +4228,7 @@ function EstimateSectionBlock({
                   {sec.kind === "REQUISITE" ? orderMeta?.label ?? "Реквизит" : sec.title}
                 </span>
               )}
+              {summaryTitleAddon}
             </div>
             <div className="project-estimate-section__meta mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
               {sec.kind === "REQUISITE" ? (
@@ -4270,7 +4274,7 @@ function EstimateSectionBlock({
                 <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoneyRub(sectionInternalSubtotal)} ₽</div>
               </div>
             </div>
-            {!readOnly && onMove && onDragPointerDown ? (
+            {!readOnly && sec.kind !== "REQUISITE" && onMove && onDragPointerDown ? (
               <button
                 type="button"
                 className="project-estimate-section__drag-handle"
@@ -6227,7 +6231,6 @@ function RequisiteSectionEditor({
   onDragPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onDone: () => void;
 }) {
-  const [statusLegendOpen, setStatusLegendOpen] = React.useState(false);
   const [order, setOrder] = React.useState<RequisiteOrder | null>(null);
   const [catalogItems, setCatalogItems] = React.useState<
     Array<{
@@ -6282,6 +6285,7 @@ function RequisiteSectionEditor({
   const [unitSource, setUnitSource] = React.useState(unitSignature);
   const [requisiteUnitDraft, setRequisiteUnitDraft] = React.useState<Record<string, string>>(readRequisiteUnits);
   const [requisiteQtyDraft, setRequisiteQtyDraft] = React.useState<Record<string, string>>({});
+  const [priceDraft, setPriceDraft] = React.useState<Record<string, string>>({});
   if (unitSource !== unitSignature) {
     setUnitSource(unitSignature);
     setRequisiteUnitDraft(readRequisiteUnits());
@@ -6335,9 +6339,11 @@ function RequisiteSectionEditor({
             if (Number.isFinite(n) && n >= 1) rq = n;
           }
         }
-        return { ...l, requestedQty: rq };
+        const priceText = priceDraft[lk];
+        const price = priceText === undefined ? l.pricePerDaySnapshot : parseMoneyInputOrNull(priceText);
+        return { ...l, requestedQty: rq, pricePerDaySnapshot: price ?? l.pricePerDaySnapshot };
       }),
-    [lines, requisiteQtyDraft],
+    [lines, requisiteQtyDraft, priceDraft],
   );
 
   const orderReadSequence = React.useRef(0);
@@ -6359,6 +6365,7 @@ function RequisiteSectionEditor({
       const nextOrder = orderJson.order;
       setOrder(nextOrder);
       setRequisiteQtyDraft({});
+      setPriceDraft({});
       setLines(
         nextOrder.lines.map((line) => ({
           id: line.id,
@@ -6504,6 +6511,9 @@ function RequisiteSectionEditor({
 
   async function saveOrder() {
     if (!order) return;
+    if (Object.values(priceDraft).some((value) => parseMoneyInputOrNull(value) === null)) {
+      setError("Укажите тариф не меньше нуля для каждой позиции. Можно использовать запятую для копеек."); return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -6511,6 +6521,7 @@ function RequisiteSectionEditor({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedUpdatedAt: order.updatedAt,
           deliveryEnabled: services.deliveryEnabled,
           deliveryComment: services.deliveryComment.trim() || null,
           deliveryPrice:
@@ -6547,11 +6558,12 @@ function RequisiteSectionEditor({
           demontageInternalPaymentMethod: services.demontageEnabled
             ? services.demontageInternalPaymentMethod
             : "NON_CASH",
-          lines: lines.map((line) => ({
+          lines: linesForCap.map((line) => ({
             ...(line.id ? { id: line.id } : {}),
             itemId: line.itemId,
             requestedQty: Math.max(1, Number(line.requestedQty) || 1),
             warehouseComment: line.warehouseComment.trim() || null,
+            ...(line.pricePerDaySnapshot !== null ? { pricePerDaySnapshot: Number(line.pricePerDaySnapshot) } : {}),
           })),
         }),
       });
@@ -6562,6 +6574,8 @@ function RequisiteSectionEditor({
       }
       await load();
       onDone();
+    } catch {
+      setError("Не удалось сохранить заявку. Изменения остались в форме — проверьте соединение и повторите попытку.");
     } finally {
       setSaving(false);
     }
@@ -6627,13 +6641,15 @@ function RequisiteSectionEditor({
   );
   const hasOrderDraftChanges = React.useMemo(() => {
     if (!order) return false;
-    if (lines.length !== order.lines.length) return true;
-    for (let index = 0; index < lines.length; index += 1) {
-      const draft = lines[index];
+    if (Object.keys(priceDraft).length || Object.keys(requisiteQtyDraft).length) return true;
+    if (linesForCap.length !== order.lines.length) return true;
+    for (let index = 0; index < linesForCap.length; index += 1) {
+      const draft = linesForCap[index];
       const original = order.lines[index];
       if (!original) return true;
       if (draft.id !== original.id) return true;
       if (draft.requestedQty !== original.requestedQty) return true;
+      if (Number(draft.pricePerDaySnapshot) !== Number(original.pricePerDaySnapshot)) return true;
       if ((draft.warehouseComment ?? "") !== (original.warehouseComment ?? "")) return true;
     }
     const servicePairs: Array<[boolean, string, string, string, OrderServicePaymentMethod | undefined]> = [
@@ -6692,7 +6708,7 @@ function RequisiteSectionEditor({
         (original[4] ?? "NON_CASH") !== draft[4]
       );
     });
-  }, [lines, order, services]);
+  }, [linesForCap, order, services, priceDraft, requisiteQtyDraft]);
   const useSavedEstimateTotals = !hasOrderDraftChanges;
   const rentalTotal = useSavedEstimateTotals ? savedRentalTotal : (orderPricing?.rentalSubtotalAfterDiscount ?? 0);
   const rentalDiscountAmount = useSavedEstimateTotals ? 0 : (orderPricing?.discountAmount ?? 0);
@@ -6700,78 +6716,10 @@ function RequisiteSectionEditor({
 
   const summaryTitleAddon =
     order && !loading ? (
-      <div className="relative shrink-0">
-        <button
-          type="button"
-          onMouseEnter={() => setStatusLegendOpen(true)}
-          onMouseLeave={() => setStatusLegendOpen(false)}
-          onFocus={() => setStatusLegendOpen(true)}
-          onBlur={() => setStatusLegendOpen(false)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white/90"
-          aria-label="Статус редактирования заявки"
-        >
-          <span
-            className={`inline-flex h-3.5 w-3.5 animate-pulse rounded-full ${
-              editable
-                ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(34,197,94,0.14)]"
-                : "bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.12)]"
-            }`}
-          />
-        </button>
-        {statusLegendOpen ? (
-          <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-zinc-200 bg-white p-3 text-xs shadow-xl sm:left-auto sm:right-0">
-            <div className="font-semibold text-zinc-900">Легенда</div>
-            <div className="mt-2 flex items-center gap-2 text-zinc-700">
-              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-              Зелёный: заявку можно редактировать из сметы
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-zinc-700">
-              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-              Красный: заявка заблокирована текущим этапом
-            </div>
-            <div className="mt-2 text-zinc-500">Статус заявки не дублируется здесь, он уже виден в степпере сверху.</div>
-          </div>
-        ) : null}
-      </div>
+      <span className="shrink-0 text-xs text-zinc-600" title={editable ? "Цены меняются только в этой заявке. Для Grinvich потребуется повторное согласование." : "На текущем этапе состав и тарифы заявки заблокированы."}>{editable ? "Можно редактировать" : "Только просмотр"}</span>
     ) : null;
 
-  const summaryTrailing = (
-    <>
-      <Link
-        href={`/orders/${orderId}`}
-        className="rounded-lg border border-violet-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:text-violet-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        Открыть заявку
-      </Link>
-      {!readOnly ? (
-        <button
-          type="button"
-          disabled={busy || saving}
-          onClick={(e) => {
-            e.stopPropagation();
-            void onDeleteSection(sec.id);
-          }}
-          className="rounded-lg border border-red-200 bg-white/90 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
-        >
-          Убрать из сметы
-        </button>
-      ) : null}
-      {order && editable ? (
-        <button
-          type="button"
-          disabled={saving || lines.length === 0}
-          onClick={(e) => {
-            e.stopPropagation();
-            void saveOrder();
-          }}
-          className={btnPrimary}
-        >
-          {saving ? "Сохранение…" : "Сохранить заявку"}
-        </button>
-      ) : null}
-    </>
-  );
+  const summaryTrailing = <RequisiteActions orderId={orderId} readOnly={readOnly} saving={saving} busy={busy} dirty={hasOrderDraftChanges} canSave={editable && lines.length > 0} onSave={() => void saveOrder()} onRemove={() => void onDeleteSection(sec.id)} onMove={onMove} canMoveUp={canMoveUp} canMoveDown={canMoveDown} />;
 
   return (
     <EstimateSectionBlock
@@ -6800,7 +6748,8 @@ function RequisiteSectionEditor({
         </div>
       ) : (
         <div className="space-y-4">
-          {error ? <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}</div> : null}
+          {error ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{error}<button type="button" className="ml-2 underline" disabled={saving} onClick={() => { if (window.confirm("Обновить заявку? Несохранённые изменения её строк и услуг будут сброшены.")) void load(); }}>Обновить заявку</button></div> : null}
+          {editable ? <p className="text-xs text-zinc-600">Тариф меняется только в этой заявке, не в каталоге. Суммы пересчитываются до сохранения.{order.source !== "WOWSTORG_EXTERNAL" ? " Изменённые условия потребуется согласовать заново." : ""}</p> : null}
 
           <div className="space-y-3">
             <div className="space-y-2">
@@ -6835,16 +6784,16 @@ function RequisiteSectionEditor({
                   }) ?? 0;
                 return (
               <div key={line.id ?? `${line.itemId}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm">
-                <div className="grid gap-2 text-xs xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_4.5rem_4.5rem_4.5rem_4.5rem_5rem_auto]">
+                <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_3.5rem_4rem_3rem_6.5rem_7rem_auto]">
                   <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Позиция
                     <input value={line.name} readOnly className={`mt-0.5 w-full ${cellXs} bg-zinc-50`} />
                   </label>
                   <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                    Описание
+                    Примечание склада
                     <input
-                      value={line.description}
-                      onChange={(e) => updateLine(index, { description: e.target.value })}
+                      value={line.warehouseComment}
+                      onChange={(e) => updateLine(index, { warehouseComment: e.target.value })}
                       className={`mt-0.5 w-full ${cellXs}`}
                       disabled={!editable}
                       placeholder="Примечание"
@@ -6894,10 +6843,10 @@ function RequisiteSectionEditor({
                     <div className="text-[9px] font-semibold uppercase text-zinc-500">Дней</div>
                     <div className="mt-0.5 text-xs font-bold tabular-nums text-zinc-900">{dayC}</div>
                   </div>
-                  <div className="rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5">
-                    <div className="text-[9px] font-semibold uppercase text-zinc-500">Цена/ед</div>
-                    <div className="mt-0.5 text-xs font-bold tabular-nums text-zinc-900">{formatOrderMoney(ppu)} ₽</div>
-                  </div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500" title={`Итоговый тариф с условиями и скидкой: ${formatOrderMoney(ppu)} ₽ / сутки. Изменение касается только этой заявки.`}>
+                    Тариф / сутки
+                    <input aria-label={`Тариф за сутки: ${line.name}`} inputMode="decimal" value={priceDraft[lk] ?? String(line.pricePerDaySnapshot ?? 0)} disabled={!editable || saving} onChange={(event) => setPriceDraft((previous) => ({ ...previous, [lk]: event.target.value }))} className={`mt-0.5 w-full ${cellXs} tabular-nums`} />
+                  </label>
                   <div className="rounded border border-violet-100 bg-violet-50 px-2 py-1.5">
                     <div className="text-[9px] font-semibold uppercase text-violet-700">Сумма</div>
                     <div className="mt-0.5 text-xs font-bold tabular-nums text-violet-950">

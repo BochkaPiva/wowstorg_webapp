@@ -31,6 +31,11 @@ export type ProjectWidgetDefinition = {
 
 export const PROJECT_WIDGET_REGISTRY: readonly ProjectWidgetDefinition[] = [
   {
+    type: "ESTIMATE", title: "Смета", description: "Строки, версии и финансовый результат проекта.",
+    eyebrow: "Финансы", icon: "calculator", mandatory: true,
+    allowedWidths: [12], allowedHeights: ["LARGE", "AUTO"], defaultWidth: 12, defaultHeight: "LARGE",
+  },
+  {
     type: "CONTRACTORS", title: "Подрядчики проекта", description: "Состав команды, обязанности, контакты и договорённости.",
     eyebrow: "Команда", icon: "contacts", mandatory: false, defaultVisible: true,
     allowedWidths: [6, 8, 12], allowedHeights: ["MEDIUM", "LARGE", "AUTO"], defaultWidth: 12, defaultHeight: "MEDIUM",
@@ -41,19 +46,7 @@ export const PROJECT_WIDGET_REGISTRY: readonly ProjectWidgetDefinition[] = [
     description: "Варианты концепции, подрядчики и быстрый перенос в смету.",
     eyebrow: "Концепция",
     icon: "proposal",
-    mandatory: true,
-    allowedWidths: [12],
-    allowedHeights: ["LARGE", "AUTO"],
-    defaultWidth: 12,
-    defaultHeight: "LARGE",
-  },
-  {
-    type: "ESTIMATE",
-    title: "Смета",
-    description: "Строки, версии и финансовый результат проекта.",
-    eyebrow: "Финансы",
-    icon: "calculator",
-    mandatory: true,
+    mandatory: false,
     allowedWidths: [12],
     allowedHeights: ["LARGE", "AUTO"],
     defaultWidth: 12,
@@ -68,7 +61,7 @@ export const PROJECT_WIDGET_REGISTRY: readonly ProjectWidgetDefinition[] = [
     mandatory: true,
     allowedWidths: [4, 6, 8, 12],
     allowedHeights: ["COMPACT", "MEDIUM", "LARGE", "AUTO"],
-    defaultWidth: 4,
+    defaultWidth: 12,
     defaultHeight: "COMPACT",
   },
   {

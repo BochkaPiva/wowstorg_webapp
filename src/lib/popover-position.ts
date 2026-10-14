@@ -1,11 +1,11 @@
 type Rect = { left: number; right: number; top: number; bottom: number };
 /** Fixed coordinates; keep the complete surface inside the visual viewport. */
-export function popoverPosition(viewport: { width: number; height: number; top: number }, anchor?: Rect | null) {
+export function popoverPosition(viewport: { width: number; height: number; top: number }, anchor?: Rect | null, size?: { width?: number; height?: number }) {
   const edge = 12;
-  const width = Math.min(anchor ? 580 : 390, Math.max(0, viewport.width - edge * 2));
+  const width = Math.min(size?.width ?? (anchor ? 580 : 390), Math.max(0, viewport.width - edge * 2));
   const minimumTop = Math.min(viewport.top + edge, Math.max(edge, viewport.height - 160));
   const available = Math.max(0, viewport.height - minimumTop - edge);
-  const height = Math.min(anchor ? 540 : available, available);
+  const height = Math.min(size?.height ?? (anchor ? 540 : available), available);
   if (!anchor) return { left: Math.max(edge, viewport.width - width - edge), top: minimumTop, width, maxHeight: available };
   const below = viewport.height - anchor.bottom - edge - 8;
   const above = anchor.top - minimumTop - 8;

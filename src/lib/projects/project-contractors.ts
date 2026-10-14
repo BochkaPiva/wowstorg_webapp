@@ -5,6 +5,19 @@ export type ProjectContractorStatus = typeof PROJECT_CONTRACTOR_STATUSES[number]
 export const PROJECT_CONTRACTOR_STATUS_LABEL: Record<ProjectContractorStatus, string> = {
   PENDING: "На согласовании", CONFIRMED: "Подтверждён", DONE: "Работа выполнена", CANCELLED: "Не участвует",
 };
+export const CONTRACTOR_COMMUNICATION_STATUSES = ["NOT_CONTACTED", "DISCUSSING", "WAITING", "AGREED"] as const;
+export const CONTRACTOR_COMMUNICATION_LABEL = {
+  NOT_CONTACTED: "Не связывались", DISCUSSING: "Обсуждаем", WAITING: "Ждём ответа", AGREED: "Договорились",
+} satisfies Record<typeof CONTRACTOR_COMMUNICATION_STATUSES[number], string>;
+export const ContractorEntrySchema = z.object({
+  id: z.uuid(), expectedRevision: z.number().int().nonnegative(),
+  body: z.string().trim().min(1).max(5000), status: z.enum(CONTRACTOR_COMMUNICATION_STATUSES),
+}).strict();
+export type ContractorCommunicationEntry = {
+  id: string; body: string; status: typeof CONTRACTOR_COMMUNICATION_STATUSES[number];
+  createdAt: string; author: { id: string; displayName: string };
+};
+export type ContractorEntriesPayload = { entries: ContractorCommunicationEntry[]; nextCursor: string | null };
 const optionalText = (max: number) => z.string().trim().max(max).nullable().transform((value) => value || null);
 export const ProjectContractorFieldsSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -28,6 +41,7 @@ export type ProjectContractorFields = z.infer<typeof ProjectContractorFieldsSche
 export type ProjectContractorRow = ProjectContractorFields & {
   id: string; contractorId: string | null; revision: number; photoUrl: string | null;
   updatedAt: string; scheduleLabel: string | null;
+  latestEntry?: ContractorCommunicationEntry | null;
 };
 
 export function groupProjectContractors(rows: readonly ProjectContractorRow[]) {

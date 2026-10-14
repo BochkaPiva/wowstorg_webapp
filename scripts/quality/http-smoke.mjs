@@ -11,7 +11,7 @@ import JSZip from "jszip";
 nextEnv.loadEnvConfig(process.cwd());
 const database = new URL(process.env.DATABASE_URL);
 assert(["localhost", "127.0.0.1"].includes(database.hostname), "Only loopback test databases are allowed");
-assert(["/wowstorg_ci", "/security_fresh_utf8"].includes(database.pathname), "Only named disposable databases are allowed");
+assert(["/wowstorg_ci", "/security_fresh_utf8", "/wowstorg_project_card_ci"].includes(database.pathname), "Only named disposable databases are allowed");
 const db = new PrismaClient();
 const base = "http://127.0.0.1:3217";
 const cleanEnv = { ...process.env, DATABASE_URL: database.toString(), DIRECT_URL: database.toString(),
@@ -30,6 +30,7 @@ const budgetKey = (scope, ...parts) => `auth:${scope}:${createHash("sha256").upd
 let standaloneId;
 let directorBoardId;
 let inventoryItemId, inventoryCategoryId, inventoryCollectionId;
+let projectId, projectCustomerId, linkedOrderId;
 async function request(path, cookie, body, expected = 200) {
   const result = await fetch(base + path, { method: body ? "POST" : "GET", headers: {
     ...(cookie ? { cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: base } : {}),
@@ -99,6 +100,46 @@ try {
   const itemCount = await db.item.count();
   await request("/api/inventory/positions", cookie, { ...inventoryInput, categoryIds: ["missing-category"] }, 409);
   assert.equal(await db.item.count(), itemCount, "Invalid membership must roll back the whole creation");
+  // Project modules, communication and real order-specific tariffs.
+  const projectCreated = await (await request("/api/projects", cookie, { title: "Project operations CI", customerName: `CI-${randomUUID()}`, widgetTypes: ["ESTIMATE", "ORDERS", "CONTRACTORS"] })).json();
+  projectId = projectCreated.project.id;
+  const projectRow = await db.project.findUniqueOrThrow({ where: { id: projectId }, include: { widgets: true } });
+  projectCustomerId = projectRow.customerId;
+  assert(!projectRow.widgets.some(widget => widget.type === "EVENT_BUILDER"), "Builder must not be forced into new projects");
+  assert.equal(projectRow.widgets.find(widget => widget.type === "ORDERS").width, 12);
+  const rosterPath = `/api/projects/${projectId}/contractors`;
+  const assignmentId = randomUUID();
+  await request(rosterPath, cookie, { action: "ADD", id: assignmentId, contractorId: null, name: "CI tech", responsibility: "Звук", categoryNames: ["Оборудование"], contactName: null, phone: null, email: null, status: "PENDING", scheduleSlotId: null, arrivalNote: null, internalNotes: null });
+  const journalPath = `${rosterPath}/${assignmentId}/entries`;
+  await request(journalPath, cookies.GREENWICH, null, 403);
+  const entry = { id: randomUUID(), expectedRevision: 0, body: "Согласовали оборудование", status: "AGREED" };
+  await request(journalPath, cookie, entry); await request(journalPath, cookie, entry);
+  assert.equal(await db.projectContractorEntry.count({ where: { assignmentId } }), 1);
+  await request(journalPath, cookie, { ...entry, id: randomUUID(), body: "Stale note" }, 409);
+  const roster = await (await request(rosterPath, cookie)).json();
+  assert.equal(roster.assignments[0].latestEntry.body, entry.body);
+  assert.equal(roster.assignments[0].revision, 1);
+  const journal = await (await request(journalPath, cookie)).json();
+  assert.equal(journal.entries[0].author.displayName, identities.WOWSTORG.displayName);
+  await request(`/api/projects/foreign/contractors/${assignmentId}/entries`, cookie, null, 404);
+  const linkedOrder = await db.order.create({ data: { source: "GREENWICH_INTERNAL", customerId: projectCustomerId, createdById: identities.WOWSTORG.id, greenwichUserId: identities.GREENWICH.id, readyByDate: new Date("2026-10-20"), startDate: new Date("2026-10-21"), endDate: new Date("2026-10-21"), rentalStartPartOfDay: "MORNING", rentalEndPartOfDay: "EVENING", status: "ESTIMATE_SENT", payMultiplier: 1, lines: { create: { itemId: inventoryItemId, requestedQty: 1, pricePerDaySnapshot: 500, position: 0 } } }, include: { lines: true } });
+  linkedOrderId = linkedOrder.id;
+  await request(`/api/projects/${projectId}/orders/link`, cookie, { orderIds: [linkedOrderId] });
+  const orderBefore = await db.order.findUniqueOrThrow({ where: { id: linkedOrderId } });
+  const tariffInput = { expectedUpdatedAt: orderBefore.updatedAt.toISOString(), lines: [{ id: linkedOrder.lines[0].id, itemId: inventoryItemId, requestedQty: 2, pricePerDaySnapshot: 700 }] };
+  const editTariff = async (body, expected) => {
+    const response = await fetch(`${base}/api/orders/${linkedOrderId}/warehouse-edit`, { method: "PATCH", headers: { cookie, Origin: base, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal(response.status, expected); return response;
+  };
+  await editTariff(tariffInput, 200); await editTariff(tariffInput, 409);
+  assert.equal(Number((await db.item.findUniqueOrThrow({ where: { id: inventoryItemId } })).pricePerDay), 150, "Order edit must not update catalogue");
+  assert.equal((await db.order.findUniqueOrThrow({ where: { id: linkedOrderId } })).status, "SUBMITTED", "Changed tariffs require a new customer agreement");
+  const projectEstimate = await (await request(`/api/projects/${projectId}/estimate`, cookie)).json();
+  const requisite = projectEstimate.current.sections.find(section => section.linkedOrderId === linkedOrderId);
+  assert.equal(Number(requisite.lines.find(line => line.orderLineId === linkedOrder.lines[0].id).costClient), 1400, "Estimate read model must reflect the tariff change immediately");
+  await db.project.update({ where: { id: projectId }, data: { archivedAt: new Date() } });
+  await request(journalPath, cookie, { ...entry, id: randomUUID(), expectedRevision: 1 }, 400);
+  await editTariff({ ...tariffInput, expectedUpdatedAt: (await db.order.findUniqueOrThrow({ where: { id: linkedOrderId } })).updatedAt.toISOString() }, 400);
   const before = await db.standaloneProposal.count();
   const deniedMutation = await fetch(base + "/api/proposals", { method: "POST", headers: {
     cookie, Origin: "https://untrusted.example", "Content-Type": "application/json",
@@ -224,9 +265,12 @@ try {
   await db.authRateLimit.update({ where:{ key:ipKey }, data:{ expiresAt:new Date(0) } });
   await request("/api/auth/logout", cookie, {});
   await request("/api/proposals", cookie, null, 401);
-  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, inventory create/membership/loss-history/CAS/delete/rollback, mutations/retry/conflict, PDF/PPTX, analytics, director webhook/task/retry/committed-move/source-privacy/deletion, session revocation, concurrent auth limits/expiry/cleanup and logout.");
+  console.log("HTTP smoke passed: origin/header boundaries, real login/roles, inventory CRUD/CAS/rollback, project optional modules/full-width orders, contractor communication/UUID retry/CAS/project scoping/archive guards, individual order tariff/catalogue isolation/approval reset/estimate read-model refresh, proposal mutations/PDF/PPTX, analytics, director tasks, session revocation, concurrent auth limits and logout.");
 } finally {
   server.kill();
+  if (linkedOrderId) await db.order.delete({ where: { id: linkedOrderId } });
+  if (projectId) await db.project.delete({ where: { id: projectId } });
+  if (projectCustomerId) await db.customer.delete({ where: { id: projectCustomerId } });
   if (inventoryItemId) { await db.lossRecord.deleteMany({ where: { itemId: inventoryItemId } }); await db.item.delete({ where: { id: inventoryItemId } }); }
   if (inventoryCategoryId) await db.category.delete({ where: { id: inventoryCategoryId } });
   if (inventoryCollectionId) await db.collection.delete({ where: { id: inventoryCollectionId } });

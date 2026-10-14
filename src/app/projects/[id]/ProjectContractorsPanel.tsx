@@ -3,7 +3,8 @@ import React from "react";
 import Link from "next/link";
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
 import { catalogRequest, ContractorPhoto, type ContractorCard, type ContractorDetail } from "@/app/contractors/catalog-ui";
-import { groupProjectContractors, PROJECT_CONTRACTOR_STATUSES, PROJECT_CONTRACTOR_STATUS_LABEL, type ProjectContractorFields, type ProjectContractorRow, type ProjectContractorsPayload } from "@/lib/projects/project-contractors";
+import { groupProjectContractors, PROJECT_CONTRACTOR_STATUSES, PROJECT_CONTRACTOR_STATUS_LABEL, CONTRACTOR_COMMUNICATION_LABEL, type ProjectContractorFields, type ProjectContractorRow, type ProjectContractorsPayload } from "@/lib/projects/project-contractors";
+import { ContractorCommunication, communicationDate } from "./ContractorCommunication";
 import { ContextPopover } from "@/app/_ui/ContextPopover";
 import styles from "./project-contractors.module.css";
 
@@ -54,12 +55,15 @@ export function RosterForm({ initial, slots, submit, cancel, label, reload }: {
     <div className={styles.formActions}><button type="button" className={styles.secondary} disabled={busy} onClick={() => { if (!dirty || window.confirm("Закрыть без сохранения изменений?")) cancel(); }}>Отмена</button><button className={styles.primary} disabled={busy}>{busy ? "Сохраняем…" : "Сохранить"}</button></div>
   </form>;
 }
-function Assignment({ row, slots, readOnly, refresh, projectId }: { row: ProjectContractorRow; slots: ProjectContractorsPayload["scheduleSlots"]; readOnly: boolean; refresh: () => Promise<void>; projectId: string }) {
+function Assignment({ row, slots, readOnly, refresh, projectId, boardEnabled, scheduleEnabled }: { row: ProjectContractorRow; slots: ProjectContractorsPayload["scheduleSlots"]; readOnly: boolean; refresh: () => Promise<void>; projectId: string; boardEnabled: boolean; scheduleEnabled: boolean }) {
   const [editing, setEditing] = React.useState(false);
   const [editSnapshot, setEditSnapshot] = React.useState(row);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [removing, setRemoving] = React.useState(false);
+  const [journalOpen, setJournalOpen] = React.useState(false);
+  const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [actionsAnchor, setActionsAnchor] = React.useState<HTMLButtonElement | null>(null);
   const editorRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const opened = (event: Event) => { if ((event as CustomEvent<string>).detail !== row.id) setEditing(false); };
@@ -69,6 +73,7 @@ function Assignment({ row, slots, readOnly, refresh, projectId }: { row: Project
   const closeEditor = () => { if (window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) setEditing(false); };
   const changeStatus = async (status: ProjectContractorFields["status"]) => {
     if (busy) return;
+    if (status === "CANCELLED" && !window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return;
     setBusy(true); setError(null);
     try {
       await catalogRequest(`/api/projects/${projectId}/contractors/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fieldsOf(row), status, expectedRevision: row.revision }) });
@@ -83,14 +88,22 @@ function Assignment({ row, slots, readOnly, refresh, projectId }: { row: Project
         <p className={styles.responsibility}>{row.responsibility}</p>
         <div className={styles.contacts}>{row.contactName ? <span>{row.contactName}</span> : null}{row.phone ? <a href={`tel:${row.phone.replace(/[^+\d]/g, "")}`}>{row.phone}</a> : null}{row.email ? <a href={`mailto:${row.email}`}>{row.email}</a> : null}{!row.phone && !row.email ? <span className={styles.missing}>Контакт ещё не указан</span> : null}</div>
         {row.scheduleLabel || row.arrivalNote ? <div className={styles.arrival}>{row.scheduleLabel ? <span>Тайминг: {row.scheduleLabel}</span> : null}{row.arrivalNote ? <span>{row.arrivalNote}</span> : null}</div> : null}
-        {row.internalNotes ? <details className={styles.notes}><summary>Договорённости</summary><p>{row.internalNotes}</p></details> : null}
+        {row.internalNotes ? <details className={styles.notes}><summary>Условия и заметки команды</summary><p>{row.internalNotes}</p></details> : null}
+        <button type="button" className={styles.lastConversation} aria-expanded={journalOpen} aria-label={`Общение и договорённости: ${row.name}`} onClick={() => setJournalOpen(true)}>
+          <span className={styles.communicationStatus} data-status={row.latestEntry?.status ?? "NOT_CONTACTED"}>{CONTRACTOR_COMMUNICATION_LABEL[row.latestEntry?.status ?? "NOT_CONTACTED"]}</span>
+          {row.latestEntry ? <><span className={styles.lastBody}>{row.latestEntry.body}</span><small>{communicationDate(row.latestEntry.createdAt)}</small></> : <span className={styles.lastBody}>Записать итог разговора</span>}
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden><path d="m7 5 5 5-5 5" /></svg>
+        </button>
       </div>
-      {!readOnly && row.status !== "CANCELLED" ? <button type="button" className={styles.quiet} title="Добавить связанную карточку подрядчика на доску" onClick={() => {
-        const accepted = window.dispatchEvent(new CustomEvent("project-workspace:open", { cancelable: true, detail: { projectId, type: "FREE_BOARD", insert: { type: "CONTRACTOR", id: row.id } } }));
-        if (!accepted) setError("Добавьте блок «Свободная доска» через настройки карточки проекта.");
-      }}>На доску</button> : null}
-      {!readOnly ? <div className={styles.rowActions}><button className={styles.iconButton} type="button" disabled={busy} aria-label={`Изменить: ${row.name}`} title="Изменить данные и договорённости" onClick={() => { if (!window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return; window.dispatchEvent(new CustomEvent("project-contractors:editor-open", { detail: row.id })); setEditSnapshot(row); setEditing(true); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden><path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-3 3 5 5" /></svg></button><button className={styles.iconButton} type="button" disabled={busy || editing} aria-label={row.status === "CANCELLED" ? `Вернуть в состав: ${row.name}` : `Убрать из состава: ${row.name}`} title={row.status === "CANCELLED" ? "Вернуть на согласование" : "Убрать из состава"} onClick={() => row.status === "CANCELLED" ? void changeStatus("PENDING") : setRemoving(true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>{row.status === "CANCELLED" ? <path d="M7 7H3V3m0 4a9 9 0 1 1-1 9" /> : <path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7" />}</svg></button></div> : null}
+      {!readOnly ? <div className={styles.rowActions}><button className={styles.iconButton} type="button" disabled={busy || editing} aria-label={`Действия: ${row.name}`} aria-expanded={actionsOpen} title="Действия с подрядчиком" onClick={(event) => { setActionsAnchor(event.currentTarget); setActionsOpen((value) => !value); }}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></svg></button></div> : null}
     </div>
+    {actionsOpen && !readOnly ? <ContextPopover anchor={actionsAnchor} preferredWidth={240} preferredHeight={190} label={`Действия: ${row.name}`} className={styles.actionMenu} onClose={() => setActionsOpen(false)}>
+      <button type="button" onClick={() => { if (!window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return; setActionsOpen(false); window.dispatchEvent(new CustomEvent("project-contractors:editor-open", { detail: row.id })); setEditSnapshot(row); setEditing(true); }}>Изменить данные</button>
+      {boardEnabled && row.status !== "CANCELLED" ? <button type="button" onClick={() => { setActionsOpen(false); const accepted = window.dispatchEvent(new CustomEvent("project-workspace:open", { cancelable: true, detail: { projectId, type: "FREE_BOARD", insert: { type: "CONTRACTOR", id: row.id } } })); if (!accepted) setError("Добавьте блок «Свободная доска» через настройки карточки проекта."); }}>На доску</button> : null}
+      {scheduleEnabled && row.scheduleSlotId ? <button type="button" onClick={() => { setActionsOpen(false); window.dispatchEvent(new CustomEvent("project-workspace:open", { cancelable: true, detail: { projectId, type: "SCHEDULE" } })); }}>Открыть тайминг</button> : null}
+      <button type="button" className={row.status === "CANCELLED" ? undefined : styles.dangerAction} onClick={() => { setActionsOpen(false); if (row.status === "CANCELLED") void changeStatus("PENDING"); else setRemoving(true); }}>{row.status === "CANCELLED" ? "Вернуть в состав" : "Убрать из состава"}</button>
+    </ContextPopover> : null}
+    {journalOpen ? <ContractorCommunication projectId={projectId} row={row} readOnly={readOnly} refresh={refresh} close={() => setJournalOpen(false)} /> : null}
     {removing ? <div className={styles.removeLine} role="group" aria-label={`Удаление из состава: ${row.name}`}><span>Убрать из активной команды? Контакт и договорённости сохранятся.</span><button type="button" className={styles.secondary} disabled={busy} onClick={() => setRemoving(false)}>Оставить</button><button type="button" className={styles.quiet} disabled={busy} onClick={() => void changeStatus("CANCELLED")}>{busy ? "Убираем…" : "Убрать"}</button></div> : null}
     {error ? <div role="alert" className={styles.error}>{error}<button type="button" className={styles.quiet} onClick={() => void refresh()}>Обновить</button></div> : null}
     {editing && !readOnly ? <ContextPopover anchor={null} label={`Редактирование: ${row.name}`} onClose={closeEditor} dismissOutside={false} surfaceRef={editorRef} className={styles.editPopover}><div className={styles.editHeader}><h3>{row.name}</h3><button type="button" className={styles.quiet} onClick={closeEditor} aria-label="Закрыть редактирование">Закрыть</button></div>
@@ -138,7 +151,7 @@ function AddContractor({ projectId, slots, done, cancel }: { projectId: string; 
     <small className={styles.help}>Показываем до 12 совпадений. Уточните имя или услугу.</small>
   </div>;
 }
-export function ProjectContractorsPanel({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
+export function ProjectContractorsPanel({ projectId, readOnly, boardEnabled = false, scheduleEnabled = false, proposalEnabled = false }: { projectId: string; readOnly: boolean; boardEnabled?: boolean; scheduleEnabled?: boolean; proposalEnabled?: boolean }) {
   const instanceId = React.useId();
   const [data, setData] = React.useState<ProjectContractorsPayload | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -166,9 +179,10 @@ export function ProjectContractorsPanel({ projectId, readOnly }: { projectId: st
       if ((!detail?.projectId || detail.projectId === projectId) && detail?.source !== instanceId) void refresh();
     };
     window.addEventListener("project-contractors-changed", listener);
-    return () => { invalidateRefresh(); window.removeEventListener("project-contractors-changed", listener); };
+    window.addEventListener("project-activity-refresh", listener);
+    return () => { invalidateRefresh(); window.removeEventListener("project-contractors-changed", listener); window.removeEventListener("project-activity-refresh", listener); };
   }, [refresh, projectId, instanceId, invalidateRefresh]);
-  const publishChange = async () => { await refresh(); window.dispatchEvent(new CustomEvent("project-contractors-changed", { detail: { projectId, source: instanceId } })); };
+  const publishChange = async () => { await refresh(); window.dispatchEvent(new CustomEvent("project-contractors-changed", { detail: { projectId, source: instanceId } })); window.dispatchEvent(new CustomEvent("project-activity-refresh", { detail: { projectId, source: instanceId, block: "contractors" } })); };
   const afterChange = async () => { setMode(null); await publishChange(); };
   if (!data && !error) return <ProjectModuleContentSkeleton />;
   const active = data?.assignments.filter((row) => row.status !== "CANCELLED") ?? [];
@@ -177,11 +191,11 @@ export function ProjectContractorsPanel({ projectId, readOnly }: { projectId: st
   const selected = variants.find((variant) => variant.id === variantId);
   const groups = groupProjectContractors(data?.assignments ?? []);
   const effectiveCategory = groups.some(([name]) => name === category) ? category : "";
-  const matches = (row: ProjectContractorRow) => `${row.name} ${row.responsibility} ${row.phone ?? ""} ${row.contactName ?? ""}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"));
+  const matches = (row: ProjectContractorRow) => `${row.name} ${row.responsibility} ${row.phone ?? ""} ${row.contactName ?? ""} ${row.latestEntry?.body ?? ""}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"));
   const cancelled = data?.assignments.filter((row) => row.status === "CANCELLED" && matches(row)) ?? [];
   return <section className={styles.panel} aria-label="Состав подрядчиков проекта">
-    <div className={styles.toolbar}><div><h2>Команда мероприятия</h2><p>{active.length ? `${active.length} в составе · ${confirmed} подтверждено · ${active.length - confirmed} на согласовании` : "Кто делает мероприятие и о чём договорились"}</p></div>
-      {!readOnly && data && !mode ? <div className={styles.actions}><button className={styles.secondary} type="button" onClick={async () => { setVariantId(variants.find((variant) => variant.isRecommended)?.id || variants[0]?.id || ""); setMode("import"); await refresh(); }}>Из КП</button><button className={styles.primary} type="button" onClick={() => { setNotice(null); setMode("add"); }}>+ Подрядчик</button></div> : null}
+    <div className={styles.toolbar}><p className={styles.summary}><strong>{active.length}</strong> в команде <span>·</span> <strong>{confirmed}</strong> подтверждено {active.some((row) => row.latestEntry?.status === "WAITING") ? <span>· ждём ответ: {active.filter((row) => row.latestEntry?.status === "WAITING").length}</span> : null}</p>
+      {!readOnly && data && !mode ? <div className={styles.actions}>{variants.length ? <button className={styles.secondary} type="button" onClick={async () => { setVariantId(variants.find((variant) => variant.isRecommended)?.id || variants[0]?.id || ""); setMode("import"); await refresh(); }}>Из КП</button> : null}<button className={styles.primary} type="button" onClick={() => { setNotice(null); setMode("add"); }}>+ Подрядчик</button></div> : null}
     </div>
     {error ? <div className={styles.error} role="alert">{error}<button className={styles.quiet} type="button" onClick={() => void refresh()}>Обновить список</button></div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
@@ -191,12 +205,12 @@ export function ProjectContractorsPanel({ projectId, readOnly }: { projectId: st
         if (!data.proposal || !selected || busy) return; setBusy(true); setError(null);
         try { const result = await catalogRequest<{ added: number; skipped: number }>(`/api/projects/${projectId}/contractors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "IMPORT_PROPOSAL", variantId, expectedProposalRevision: data.proposal.revision }) }); setNotice(`Добавлено: ${result.added}. Уже в составе: ${result.skipped}.`); await afterChange(); }
         catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось перенести состав"); } finally { setBusy(false); }
-      }}>{busy ? "Добавляем…" : "Добавить состав"}</button></> : <p>Сначала соберите КП для этого проекта. <Link href={`/projects/${projectId}#project-widget-event-builder`}>К конструктору</Link></p>}
+      }}>{busy ? "Добавляем…" : "Добавить состав"}</button></> : <p>Сначала соберите КП для этого проекта. {proposalEnabled ? <Link href={`/projects/${projectId}#project-widget-event-builder`}>К конструктору</Link> : "Конструктор можно подключить в настройках блоков."}</p>}
     </div> : null}
     {data?.assignments.length ? <><div className={styles.filters}><input type="search" aria-label="Поиск в команде" placeholder="Имя, обязанности или телефон" value={query} onChange={(event) => setQuery(event.target.value)} /><div className={styles.categoryFilters} aria-label="Категории команды"><button type="button" aria-pressed={!effectiveCategory} onClick={() => setCategory("")}>Все <span>{active.length}</span></button>{groups.map(([name, rows]) => <button type="button" key={name} aria-pressed={effectiveCategory === name} onClick={() => setCategory(effectiveCategory === name ? "" : name)}>{name} <span>{rows.length}</span></button>)}</div></div><div className={styles.groups}>{groups.filter(([name]) => !effectiveCategory || effectiveCategory === name).map(([name, rows]) => {
       const visible = rows.filter(matches);
-      return visible.length ? <section key={name} className={styles.categoryGroup} aria-label={`Категория: ${name}`}><header><h3>{name}</h3><span>{visible.length} в составе</span></header><div className={styles.list}>{visible.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} />)}</div></section> : null;
-    })}</div>{!groups.some(([name, rows]) => (!effectiveCategory || effectiveCategory === name) && rows.some(matches)) ? <p className={styles.help}>Нет активных подрядчиков по этим условиям.</p> : null}{cancelled.length ? <details className={styles.cancelled}><summary>Не участвуют · {cancelled.length}</summary><div className={styles.list}>{cancelled.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} />)}</div></details> : null}</> : null}
+      return visible.length ? <section key={name} className={styles.categoryGroup} aria-label={`Категория: ${name}`}><header><h3>{name}</h3><span>{visible.length} в составе</span></header><div className={styles.list}>{visible.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} boardEnabled={boardEnabled} scheduleEnabled={scheduleEnabled} />)}</div></section> : null;
+    })}</div>{!groups.some(([name, rows]) => (!effectiveCategory || effectiveCategory === name) && rows.some(matches)) ? <p className={styles.help}>Нет активных подрядчиков по этим условиям.</p> : null}{cancelled.length ? <details className={styles.cancelled}><summary>Не участвуют · {cancelled.length}</summary><div className={styles.list}>{cancelled.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} boardEnabled={boardEnabled} scheduleEnabled={scheduleEnabled} />)}</div></details> : null}</> : null}
     {data && !data.assignments.length && !mode ? <div className={styles.empty}><strong>Состав ещё не собран</strong><p>Перенесите основных подрядчиков из КП или добавьте нужных людей. Здесь коллега увидит обязанности, контакты и время прибытия.</p></div> : null}
   </section>;
 }

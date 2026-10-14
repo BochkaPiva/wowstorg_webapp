@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-10-14T06:40:16.878Z
-> **Файлов route.ts:** 167
+> **Сгенерировано:** 2026-10-14T10:30:11.076Z  
+> **Файлов route.ts:** 168  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -96,6 +96,7 @@
 | POST | `/api/projects/[id]/contacts/[contactId]/entries` | `src/app/api/projects/[id]/contacts/[contactId]/entries/route.ts` |
 | PATCH, DELETE | `/api/projects/[id]/contacts/[contactId]` | `src/app/api/projects/[id]/contacts/[contactId]/route.ts` |
 | GET, POST, PATCH | `/api/projects/[id]/contacts` | `src/app/api/projects/[id]/contacts/route.ts` |
+| GET, POST | `/api/projects/[id]/contractors/[assignmentId]/entries` | `src/app/api/projects/[id]/contractors/[assignmentId]/entries/route.ts` |
 | PATCH | `/api/projects/[id]/contractors/[assignmentId]` | `src/app/api/projects/[id]/contractors/[assignmentId]/route.ts` |
 | GET, POST | `/api/projects/[id]/contractors` | `src/app/api/projects/[id]/contractors/route.ts` |
 | POST | `/api/projects/[id]/convert` | `src/app/api/projects/[id]/convert/route.ts` |

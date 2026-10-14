@@ -1067,9 +1067,11 @@ export default function ProjectDetailPage() {
 
   /** true после первой успешной загрузки проекта — чтобы обновления не размонтировали страницу */
   const hasProjectRef = React.useRef(false);
+  const projectSnapshotRef = React.useRef<ProjectDetail | null>(null);
   const loadRequestRef = React.useRef(0);
   React.useEffect(() => {
     hasProjectRef.current = project != null;
+    projectSnapshotRef.current = project;
   }, [project]);
 
   const load = React.useCallback(async () => {
@@ -1097,7 +1099,7 @@ export default function ProjectDetailPage() {
       if (requestId !== loadRequestRef.current) return;
 
       if (!response.ok || !data?.project) {
-        setProject(null);
+        if (response.status === 404) setProject(null);
         setLoadError(
           response.status === 404
             ? "Проект не найден или был удалён."
@@ -1106,22 +1108,24 @@ export default function ProjectDetailPage() {
         return;
       }
 
-      setProject(data.project);
+      const previous = projectSnapshotRef.current?.id === id ? projectSnapshotRef.current : null;
+      const next = data.project;
+      setProject(next);
       setWorkspaceFeatures({
         projectWorkspaceV2: data.features?.projectWorkspaceV2 ?? true,
         projectEstimateGridV2: data.features?.projectEstimateGridV2 ?? true,
       });
-      setTitle(data.project.title);
-      setStatus(data.project.status);
-      setBall(data.project.ball);
-      setEventStartDate(data.project.eventStartDate ?? "");
-      setEventEndDate(data.project.eventEndDate ?? "");
-      setEventDateConfirmed(data.project.eventDateConfirmed);
-      setOpenBlockers(data.project.openBlockers ?? "");
-      setInternalSummary(data.project.internalSummary ?? "");
+      // Background module updates must not overwrite another field's draft.
+      setTitle((value) => !previous || value === previous.title ? next.title : value);
+      setStatus((value) => !previous || value === previous.status ? next.status : value);
+      setBall((value) => !previous || value === previous.ball ? next.ball : value);
+      setEventStartDate((value) => !previous || value === (previous.eventStartDate ?? "") ? next.eventStartDate ?? "" : value);
+      setEventEndDate((value) => !previous || value === (previous.eventEndDate ?? "") ? next.eventEndDate ?? "" : value);
+      setEventDateConfirmed((value) => !previous || value === previous.eventDateConfirmed ? next.eventDateConfirmed : value);
+      setOpenBlockers((value) => !previous || value === (previous.openBlockers ?? "") ? next.openBlockers ?? "" : value);
+      setInternalSummary((value) => !previous || value === (previous.internalSummary ?? "") ? next.internalSummary ?? "" : value);
     } catch {
       if (requestId !== loadRequestRef.current) return;
-      setProject(null);
       setLoadError("Не удалось загрузить проект. Проверьте соединение и повторите попытку.");
     } finally {
       if (requestId === loadRequestRef.current) {
@@ -1136,12 +1140,14 @@ export default function ProjectDetailPage() {
   }, [load]);
 
   React.useEffect(() => {
-    function onRefresh() {
+    function onRefresh(event: Event) {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      if (detail?.projectId && detail.projectId !== id) return;
       load();
     }
     window.addEventListener("project-activity-refresh", onRefresh);
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
-  }, [load]);
+  }, [load, id]);
 
   React.useEffect(() => {
     if (!catalogModeOpen) return;
@@ -1349,7 +1355,7 @@ export default function ProjectDetailPage() {
 
   function renderWorkspaceWidget(type: ProjectWidgetType, expanded = false, onExpand?: () => void): React.ReactNode {
     if (!project) return null;
-    if (type === "CONTRACTORS") return <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors:inline`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>;
+    if (type === "CONTRACTORS") return <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors:inline`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} boardEnabled={visibleWorkspaceTypes.has("FREE_BOARD")} scheduleEnabled={visibleWorkspaceTypes.has("SCHEDULE")} proposalEnabled={visibleWorkspaceTypes.has("EVENT_BUILDER")} /></ProjectModuleBoundary>;
     if (type === "EVENT_BUILDER") {
       return (
         <ProjectModuleBoundary title="Конструктор мероприятия" resetKey={`${id}:event-builder:inline`}>
@@ -1466,6 +1472,7 @@ export default function ProjectDetailPage() {
         </section>
       ) : (
         <div className="project-detail-page space-y-4">
+          {loadError ? <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{loadError}<button type="button" className="ml-2 underline" disabled={refreshing} onClick={() => void load()}>Повторить обновление</button></div> : null}
           {refreshing ? (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
               Обновляю данные…
@@ -2046,7 +2053,7 @@ export default function ProjectDetailPage() {
           ) : null}
           {visibleWorkspaceTypes.has("CONTRACTORS") ? (
             <div id="project-module-contractors" className={workspaceModuleClass("CONTRACTORS")} style={workspaceModuleStyle("CONTRACTORS")}>
-              <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} /></ProjectModuleBoundary>
+              <ProjectModuleBoundary title="Подрядчики проекта" resetKey={`${id}:contractors`}><ProjectContractorsPanel projectId={id} readOnly={readOnly} boardEnabled={visibleWorkspaceTypes.has("FREE_BOARD")} scheduleEnabled={visibleWorkspaceTypes.has("SCHEDULE")} proposalEnabled={visibleWorkspaceTypes.has("EVENT_BUILDER")} /></ProjectModuleBoundary>
             </div>
           ) : null}
 

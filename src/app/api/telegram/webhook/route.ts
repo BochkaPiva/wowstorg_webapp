@@ -30,8 +30,11 @@ import {
   sendTelegramMessage,
   sendTelegramMessageDetailed,
   configureTelegramDirectorMenu,
+  editTelegramMessageText,
 } from "@/server/telegram";
 import { handleDirectorMessage } from "@/server/telegram-director";
+import { handleDirectorView } from "@/server/telegram-director-views";
+import { DIRECTOR_CALLBACK_PREFIX } from "@/server/telegram-director-ui";
 import { notifyDirectorTaskCreated } from "@/server/work-task-notifications";
 import { TELEGRAM_TEST_CALLBACK_PREFIX } from "@/server/telegram-test-scenarios";
 import {
@@ -72,6 +75,7 @@ const UpdateSchema = z.object({
           message_id: z.number(),
           chat: z.object({
             id: z.union([z.string(), z.number()]),
+            type: z.string().optional(),
           }),
         })
         .optional(),
@@ -643,6 +647,17 @@ export async function POST(req: Request) {
 
   const update = parsed.data;
   if (update.callback_query) {
+    const callback = update.callback_query;
+    if (callback.data?.startsWith(DIRECTOR_CALLBACK_PREFIX)) {
+      const message = callback.message;
+      if (!message) { await answerTelegramCallbackQuery({ callbackQueryId: callback.id, text: "Откройте личный чат с ботом.", showAlert: true }); return jsonOk({ ok: true, director: true }); }
+      const chatId = chatIdToString(message.chat.id);
+      const result = await handleDirectorView({ data: callback.data, chatId, fromId: chatIdToString(callback.from.id), chatType: message.chat.type });
+      await answerTelegramCallbackQuery({ callbackQueryId: callback.id, ...(result.alert ? { text: result.alert, showAlert: true } : {}) });
+      const view = result.view;
+      if (view) scheduleAfterResponse("telegramDirectorView", async () => { await editTelegramMessageText({ chatId, messageId: message.message_id, ...view }); });
+      return jsonOk({ ok: true, director: true });
+    }
     const testCallback = update.callback_query.data;
     if (testCallback?.startsWith(TELEGRAM_TEST_CALLBACK_PREFIX)) {
       const action = testCallback.slice(TELEGRAM_TEST_CALLBACK_PREFIX.length).split(":")[0];
@@ -680,7 +695,7 @@ export async function POST(req: Request) {
       }
       scheduleAfterResponse("telegramDirectorReply", async () => {
         if (result.setupMenu) await configureTelegramDirectorMenu(chatId);
-        if (result.text) await sendTelegramMessage(chatId, result.text);
+        if (result.text) await sendTelegramMessage(chatId, result.text, result.replyMarkup ? { replyMarkup: result.replyMarkup } : undefined);
       });
       return jsonOk({ ok: true, director: true, created: Boolean(result.created) });
     }

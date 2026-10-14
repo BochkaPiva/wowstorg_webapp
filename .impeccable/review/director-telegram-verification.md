@@ -73,6 +73,16 @@ Only a newly created, committed director task schedules a separate `notifyDirect
 
 Local gate passed: 102 files / 729 tests, zero lint errors and 59 warnings, zero production dependency vulnerabilities, successful Next.js/TypeScript build. This includes unrelated uncommitted cleanup; the isolated release candidate must be checked in CI separately. Production delivery of a new team notification requires a real new director task after deployment; no test spam was sent to the working chat.
 
+## Follow-up — native bot controls and explicit appointment notice (14 October 2026)
+
+Director copy now uses short, actionable messages without sticker implementation details. A persistent Telegram keyboard offers “Новая задача” and “Мои поручения”; task input has “Отменить ввод”. Read-only inline views paginate six requests at a time, separate open/completed requests, and show description, assignees and deadline. Private status notices open the relevant details. Commands remain compatible.
+
+The admin panel adds “Оповестить о назначении”. It sends a plain-language guide and the native keyboard only when explicitly clicked, after saving the assignment. The API checks the current saved revision/director, active Wowstorg role and private chat mapping; it does not accept an arbitrary recipient. Actual Telegram acceptance is awaited and failures do not produce a success message. Saving or deployment alone sends no appointment announcement.
+
+Native headless Edge fixture verification passed at 1440px and 390px, including saved selection, explicit menu check, appointment notice, card description and drag-reset regression checks: eight fixture writes, zero page errors and zero unexpected requests. The new component captures `director-appointment-1440.png` and `director-appointment-390.png` were opened and inspected. Buttons fit at both widths. These captures do not establish Telegram-client rendering or actual delivery; no real messages were sent.
+
+Local `build:verified` passed: 104 test files / 745 tests, zero lint errors / 59 warnings, zero production dependency vulnerabilities and successful Next.js/TypeScript compilation. The working tree still includes unrelated uncommitted cleanup; shipped-candidate CI must be verified independently. Added tests cover native keyboard actions, callback ownership/private-chat checks, bounded lists/details, unchanged-message edits, notice stale-selection rejection, send failure and retry. The disposable PostgreSQL HTTP smoke also exercises callback routing without creating a second task. No schema migration or environment-variable change is required.
+
 ## References
 
 - Surface contract: [director-telegram-tasks.md](../surfaces/director-telegram-tasks.md).

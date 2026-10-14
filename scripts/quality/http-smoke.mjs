@@ -109,6 +109,7 @@ try {
   await request("/api/admin/analytics?from=2026-01-01&to=2026-12-31", cookie);
   // Full director path on the disposable PostgreSQL DB, with no external bot.
   await request("/api/admin/telegram/director", cookies.GREENWICH, null, 403);
+  await request("/api/admin/telegram/director/notify", cookies.GREENWICH, { expectedRevision: 0, directorUserId: "not-allowed" }, 403);
   const taskBoard = await db.workTaskBoard.create({ data: { title: "CI director board", createdById: identities.WOWSTORG.id,
     columns: { create: [{ title: "Inbox", sortOrder: 0, createdById: identities.WOWSTORG.id }, { title: "Doing", sortOrder: 1000, createdById: identities.WOWSTORG.id }] } }, include: { columns: { orderBy: { sortOrder: "asc" } } } });
   directorBoardId = taskBoard.id;
@@ -129,6 +130,10 @@ try {
   assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 1, "Foreign sender must not create a task");
   const directorTask = await db.workTask.findFirstOrThrow({ where: { boardId: taskBoard.id } });
   assert.equal(directorTask.description, "Text description", "Telegram task description must be stored in full");
+  const privateView = await fetch(base + "/api/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "x-telegram-bot-api-secret-token": cleanEnv.TELEGRAM_WEBHOOK_SECRET },
+    body: JSON.stringify({ callback_query: { id: "ci-detail", data: `director:task:${directorTask.id}`, from: { id: 606060 }, message: { message_id: 10, chat: { id: 606060, type: "private" } } } }) });
+  assert.equal(privateView.status, 200); assert.equal((await privateView.json()).director, true);
+  assert.equal(await db.workTask.count({ where: { boardId: taskBoard.id } }), 1, "Viewing a task must not create another task");
   const moveReplies = await Promise.all([1,2].map(() => fetch(`${base}/api/tasks/tasks/${directorTask.id}`, { method: "PATCH", headers: { cookie, Origin: base, "Content-Type": "application/json" },
     body: JSON.stringify({ columnId: taskBoard.columns[1].id, completed: false, sortOrder: 1000 }) })));
   assert(moveReplies.every(response => response.status === 200));

@@ -48,3 +48,5 @@
 С 2026-10-14: `/api/admin/telegram/director` планирует `syncTelegramDirectorMenu` после сохранения назначения; webhook — `telegramDirectorReply` после атомарного приёма команды. `notifyWorkTaskStatusChanged` также отправляет независимый ЛС исходному директору (`notifyDirectorTaskMoved`). Всё best-effort, после коммита, не откатывает основную запись. См. ADR 022.
 
 Также webhook планирует отдельный `notifyDirectorTaskCreated` только при `created: true` и ID новой задачи: уведомление команды в существующий task-топик. ЛС-подтверждение и групповое сообщение независимы; prompt/replay/rejected update не вызывают групповую рассылку.
+
+Read-only director callback планирует `telegramDirectorView` для обновления того же личного сообщения после проверки доступа. `/admin/telegram/director/notify` — явная команда отправки инструкции: ответ сообщает реальный результат Bot API, не откладывается и не выдаёт недоставленное сообщение за успех.

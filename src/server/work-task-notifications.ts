@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db";
+import { directorHtmlPreview, directorTaskActions } from "@/server/telegram-director-ui";
 import {
   escapeTelegramHtml,
   getWarehouseChatId,
@@ -204,11 +205,11 @@ export async function notifyDirectorTaskMoved(args: { taskId: string; actorUserI
     if (!settings?.directorUserId || settings.directorUserId !== receipt.director.id) return;
     const actor = await actorName(args.actorUserId);
     const ok = await sendTelegramMessage(receipt.telegramChatId, [
-      "<b>Ваше поручение перемещено</b>", "",
-      `<b>${escapeTelegramHtml(receipt.task.title.slice(0,500))}</b>`,
-      `${escapeTelegramHtml(args.fromColumnTitle.slice(0,100))} → <b>${escapeTelegramHtml(args.toColumnTitle.slice(0,100))}</b>`,
-      `Изменил: ${escapeTelegramHtml(actor.slice(0,100))}`, "", "Мои поручения: /mytasks",
-    ].join("\n"));
+      "<b>Новый статус задачи</b>", "",
+      `<b>${directorHtmlPreview(receipt.task.title, 900)}</b>`,
+      `${directorHtmlPreview(args.fromColumnTitle, 250)} → <b>${directorHtmlPreview(args.toColumnTitle, 250)}</b>`,
+      `${directorHtmlPreview(actor, 200)} обновил статус.`,
+    ].join("\n"), { replyMarkup: directorTaskActions(args.taskId) });
     if (!ok) console.warn("[telegram-director] task status DM was not accepted");
   } catch (cause) { console.warn("[telegram-director] task status DM failed", cause); }
 }

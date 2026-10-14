@@ -5,16 +5,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DirectorSettingsPanel } from "@/app/admin/telegram/DirectorSettingsPanel";
 const auth = vi.hoisted(() => ({ status: "authenticated", role: "WOWSTORG", id: "one" }));
 vi.mock("@/app/providers", () => ({ useAuth: () => ({ state: { status: auth.status, user: { id: auth.id, role: auth.role } } }) }));
-type Flight = { init?: RequestInit; resolve: (response: Response) => void };
+type Flight = { url: string; init?: RequestInit; resolve: (response: Response) => void };
 let root: Root, container: HTMLDivElement, flights: Flight[];
 const fixture = { settings: { revision: 0, directorUserId: null as string | null, telegramChatId: null as string | null, boardId: null as string | null, columnId: null as string | null }, users: [{ id: "director", displayName: "Director QA", telegramChatId: "123" }], boards: [{ id: "a", title: "Board A", columns: [{ id: "a-open", title: "Inbox A" }] }, { id: "b", title: "Board B", columns: [{ id: "b-open", title: "Inbox B" }] }] };
-beforeEach(() => { auth.status = "authenticated"; auth.role = "WOWSTORG"; auth.id = "one"; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); flights = []; vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => { expect(url).toBe("/api/admin/telegram/director"); return new Promise<Response>(resolve => flights.push({ init, resolve })); })); container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
+beforeEach(() => { auth.status = "authenticated"; auth.role = "WOWSTORG"; auth.id = "one"; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); flights = []; vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => { expect(url).toMatch(/^\/api\/admin\/telegram\/director(?:\/notify)?$/u); return new Promise<Response>(resolve => flights.push({ url, init, resolve })); })); container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
 afterEach(() => { act(() => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals(); });
 function render() { act(() => root.render(<React.StrictMode><DirectorSettingsPanel botReady /></React.StrictMode>)); }
 async function respond(payload: unknown, status = 200, flight = flights.at(-1)!) { await act(async () => flight.resolve(new Response(JSON.stringify(payload), { status }))); }
 function select(index: number, value: string) { act(() => { const node = container.querySelectorAll("select")[index]; node.value = value; node.dispatchEvent(new Event("change", { bubbles: true })); }); }
 function click(label: string) { const node = [...container.querySelectorAll("button")].find(button => button.textContent === label)!; expect(node).toBeDefined(); act(() => node.click()); }
 describe("director settings form", () => {
+  it("notifies only the saved selection, reports the correct busy state and preserves retry on failure", async () => {
+    render(); await respond({ ...fixture, settings: { revision: 2, directorUserId: "director", telegramChatId: "123", boardId: "a", columnId: "a-open" } });
+    click("Оповестить о назначении"); expect(flights.at(-1)?.url).toBe("/api/admin/telegram/director/notify");
+    expect(JSON.parse(flights.at(-1)!.init!.body as string)).toEqual({ expectedRevision: 2, directorUserId: "director" });
+    expect(container.textContent).toContain("Отправляем…"); expect(container.textContent).not.toContain("Сохраняем…");
+    await respond({ error: { message: "Delivery failed" } }, 502); expect(container.textContent).toContain("Delivery failed");
+    click("Оповестить о назначении"); await respond({ ok: true }); expect(container.textContent).toContain("Инструкция и кнопки отправлены");
+    select(0, ""); expect([...container.querySelectorAll("button")].find(button => button.textContent === "Оповестить о назначении")!.disabled).toBe(true);
+  });
   it("waits for warehouse authorization and ignores an old account's result", async () => {
     auth.status = "loading"; render(); expect(flights).toHaveLength(0); auth.status = "authenticated"; auth.role = "GREENWICH"; render(); expect(flights).toHaveLength(0);
     auth.role = "WOWSTORG"; render(); const old = flights.at(-1)!;

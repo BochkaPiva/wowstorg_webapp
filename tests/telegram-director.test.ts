@@ -39,8 +39,16 @@ beforeEach(() => {
 const message = (messageId: number, text?: string) => ({ messageId, text, chatId: "123", fromId: "123", chatType: "private", isBot: false });
 
 describe("director Telegram tasks", () => {
+  it("accepts the native keyboard actions without leaking commands or creating duplicate tasks", async () => {
+    const prompt = await handleDirectorMessage(message(1, "Новая задача")); expect(prompt.replyMarkup).toHaveProperty("keyboard");
+    const created = await handleDirectorMessage(message(2, "Title\nDetails")); expect(created.created).toBe(true); expect(created.text).toContain("Details"); expect(created.text).not.toContain("Метка");
+    expect(created.replyMarkup).toMatchObject({ keyboard: [[{ text: "Новая задача" }, { text: "Мои поручения" }]] });
+    await handleDirectorMessage(message(2, "Title\nDetails")); expect(mocks.task.create).toHaveBeenCalledOnce();
+    await handleDirectorMessage(message(3, "Новая задача")); const cancel = await handleDirectorMessage(message(4, "Отменить ввод")); expect(cancel.text).toContain("отменён"); expect(state.pendingAfterMessageId).toBeNull();
+    const list = await handleDirectorMessage(message(5, "Мои поручения")); expect(list.replyMarkup).toHaveProperty("inline_keyboard");
+  });
   it("creates exactly one marked task from a prompt and multi-line reply", async () => {
-    const prompt = await handleDirectorMessage(message(1, "/task")); expect(prompt.text).toContain("Какую задачу");
+    const prompt = await handleDirectorMessage(message(1, "/task")); expect(prompt.text).toContain("Что нужно сделать");
     expect(mocks.task.create).not.toHaveBeenCalled(); expect(state.pendingExpiresAt).toBeInstanceOf(Date);
     const created = await handleDirectorMessage(message(2, "Proposal <Sber>\nTwo budgets\nBy Friday"));
     expect(created.created).toBe(true); expect(created.text).toContain("Proposal &lt;Sber&gt;");
@@ -82,7 +90,7 @@ describe("director Telegram tasks", () => {
   });
   it("preserves pending input after media/invalid text and refuses an archived or finished destination", async () => {
     await handleDirectorMessage(message(1, "/task"));
-    expect((await handleDirectorMessage(message(2))).text).toContain("голосовые");
+    expect((await handleDirectorMessage(message(2))).text).toContain("только текст");
     expect(state.pendingAfterMessageId).toBe(1); expect(mocks.task.create).not.toHaveBeenCalled();
     state.column.isDone = true;
     expect((await handleDirectorMessage(message(3, "Valid title"))).text).toContain("недоступна");
@@ -90,13 +98,13 @@ describe("director Telegram tasks", () => {
     await handleDirectorMessage(message(4, "Valid title")); expect(mocks.task.create).not.toHaveBeenCalled();
   });
   it("lists only the director's receipts and escapes status/title text", async () => {
-    mocks.inbox.findMany.mockResolvedValue([{ task: { title: "A < B", completedAt: null, column: { title: "Doing & QA" } } }]);
+    mocks.inbox.findMany.mockResolvedValue([{ task: { id: "task", title: "A < B", completedAt: null, column: { title: "Doing & QA" } } }]);
     const result = await handleDirectorMessage(message(1, "/mytasks"));
     expect(result.text).toContain("A &lt; B"); expect(result.text).toContain("Doing &amp; QA");
     expect(mocks.inbox.findMany.mock.calls[0][0].where).toMatchObject({ directorUserId: "director", telegramChatId: "123", task: { is: { archivedAt: null } } });
   });
   it("uses /start to initialize the private menu without creating a task", async () => {
-    const result = await handleDirectorMessage(message(1, "/start")); expect(result.setupMenu).toBe(true); expect(result.text).toContain("/task");
+    const result = await handleDirectorMessage(message(1, "/start")); expect(result.setupMenu).toBe(true); expect(result.text).toContain("Новая задача");
     expect(mocks.task.create).not.toHaveBeenCalled();
   });
   it("validates title limits and private Telegram IDs", () => {
@@ -134,7 +142,7 @@ describe("director task status notifications", () => {
   it("sends the author's private chat the committed transition, even for equally named columns", async () => {
     mocks.inbox.findUnique.mockResolvedValue({ telegramChatId: "123", director: state.director, task: { title: "A < B" } });
     await notifyDirectorTaskMoved(move);
-    expect(mocks.send).toHaveBeenCalledWith("123", expect.stringContaining("A &lt; old → <b>B &amp; new</b>"));
+    expect(mocks.send).toHaveBeenCalledWith("123", expect.stringContaining("A &lt; old → <b>B &amp; new</b>"), expect.objectContaining({ replyMarkup: expect.any(Object) }));
     expect(mocks.send.mock.calls[0][1]).toContain("Actor &lt;QA&gt;");
     await notifyDirectorTaskMoved({ ...move, fromColumnTitle: "Same", toColumnTitle: "Same" }); expect(mocks.send).toHaveBeenCalledTimes(2);
   });

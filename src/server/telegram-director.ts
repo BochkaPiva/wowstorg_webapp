@@ -3,8 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { appendWorkTaskActivity } from "@/server/work-task-activity";
 import { nextTaskSortOrder } from "@/server/work-tasks";
-import { escapeTelegramHtml } from "@/server/telegram";
 import { DIRECTOR_TASK_COLOR } from "@/lib/director-task";
+import { DIRECTOR_CANCEL, DIRECTOR_HOME_TEXT, DIRECTOR_INPUT_KEYBOARD, DIRECTOR_KEYBOARD, DIRECTOR_MY_TASKS, DIRECTOR_NEW_TASK, directorHtmlPreview } from "@/server/telegram-director-ui";
+import { directorTaskList } from "@/server/telegram-director-views";
+import type { TelegramInlineKeyboardMarkup, TelegramReplyKeyboardMarkup } from "@/server/telegram";
 
 export { DIRECTOR_TASK_COLOR } from "@/lib/director-task";
 export const DIRECTOR_SETTINGS_ID = "primary";
@@ -74,7 +76,7 @@ export async function saveDirectorSettings(input: z.infer<typeof DirectorSetting
 }
 
 export type DirectorTelegramMessage = { messageId: number; chatId: string; fromId: string; chatType?: string; isBot?: boolean; text?: string };
-export type DirectorReply = { handled: boolean; text?: string; setupMenu?: boolean; taskId?: string; created?: boolean };
+export type DirectorReply = { handled: boolean; text?: string; setupMenu?: boolean; taskId?: string; created?: boolean; replyMarkup?: TelegramInlineKeyboardMarkup | TelegramReplyKeyboardMarkup };
 
 export function parseDirectorTask(text: string): { title: string; description: string | null } | null {
   const [first, ...remaining] = text.trim().split(/\r?\n/u);
@@ -83,7 +85,7 @@ export function parseDirectorTask(text: string): { title: string; description: s
   return { title, description: remaining.join("\n").trim() || null };
 }
 
-const HELP = "<b>Поручения директора</b>\n\n/task — поставить задачу\n/mytasks — мои поручения и их статусы\n/cancel — отменить ввод\n\nНажмите «Меню» рядом с полем сообщения. Для новой задачи первая строка — название, остальные — описание.";
+const HELP = DIRECTOR_HOME_TEXT;
 
 export async function handleDirectorMessage(message: DirectorTelegramMessage, now = new Date()): Promise<DirectorReply> {
   if (message.chatType !== "private" || message.isBot || message.fromId !== message.chatId || !/^[1-9]\d{0,15}$/u.test(message.chatId) || !Number.isSafeInteger(message.messageId) || message.messageId <= 0 || message.messageId > 2147483647) return { handled: false };
@@ -99,43 +101,36 @@ export async function handleDirectorMessage(message: DirectorTelegramMessage, no
     if (previous || settings.lastMessageId !== null && message.messageId <= settings.lastMessageId) return { handled: true };
     await tx.telegramDirectorInbox.create({ data: { id: receiptId, telegramChatId: message.chatId, messageId: message.messageId, directorUserId: director.id, directorName: director.displayName } });
     await tx.telegramDirectorSettings.update({ where: { id: DIRECTOR_SETTINGS_ID }, data: { lastMessageId: message.messageId } });
-    const text = message.text?.trim() ?? "";
+    const rawText = message.text?.trim() ?? "";
+    const text = rawText === DIRECTOR_NEW_TASK ? "/task" : rawText === DIRECTOR_MY_TASKS ? "/mytasks" : rawText === DIRECTOR_CANCEL ? "/cancel" : rawText;
     const command = /^\/([a-z_]+)(?:@[a-z0-9_]+)?(?:\s+([\s\S]*))?$/iu.exec(text);
     const name = command?.[1].toLowerCase();
     if (name === "start" || name === "help") {
       await tx.telegramDirectorSettings.update({ where: { id: DIRECTOR_SETTINGS_ID }, data: { pendingAfterMessageId: null, pendingExpiresAt: null } });
-      return { handled: true, text: HELP, setupMenu: true };
+      return { handled: true, text: HELP, setupMenu: true, replyMarkup: DIRECTOR_KEYBOARD };
     }
     if (name === "cancel") {
       await tx.telegramDirectorSettings.update({ where: { id: DIRECTOR_SETTINGS_ID }, data: { pendingAfterMessageId: null, pendingExpiresAt: null } });
-      return { handled: true, text: "Ввод отменён. Задача не создана. Новое поручение: /task" };
+      return { handled: true, text: "Ввод отменён. Задачу не добавлял.", replyMarkup: DIRECTOR_KEYBOARD };
     }
     if (name === "mytasks") {
-      const requests = await tx.telegramDirectorInbox.findMany({ where: { directorUserId: director.id, telegramChatId: message.chatId, task: { is: { archivedAt: null } } }, orderBy: { createdAt: "desc" }, take: 20, select: { task: { select: { title: true, completedAt: true, column: { select: { title: true } } } } } });
-      let result = "<b>Ваши последние поручения</b>\n";
-      for (const entry of requests) {
-        if (!entry.task) continue;
-        const line = `\n${entry.task.completedAt ? "✓" : "•"} <b>${escapeTelegramHtml(entry.task.title.slice(0,120))}</b> — ${escapeTelegramHtml(entry.task.column.title.slice(0,80))}`;
-        if (result.length + line.length > 3500) break;
-        result += line;
-      }
-      return { handled: true, text: requests.length ? `${result}\n\nНовая задача: /task` : "Поручений пока нет. Поставить первую задачу: /task" };
+      return { handled: true, ...await directorTaskList(tx, director.id, message.chatId) };
     }
-    if (command && name !== "task") return { handled: true, text: HELP };
+    if (command && name !== "task") return { handled: true, text: HELP, replyMarkup: DIRECTOR_KEYBOARD };
     if (name === "task" && !command?.[2]?.trim()) {
       await tx.telegramDirectorSettings.update({ where: { id: DIRECTOR_SETTINGS_ID }, data: { pendingAfterMessageId: message.messageId, pendingExpiresAt: new Date(now.getTime() + 30 * 60_000) } });
-      return { handled: true, text: "<b>Какую задачу поставить?</b>\n\nОтправьте текст одним сообщением. Первая строка — название, остальные — подробности.\n\nНапример:\nПодготовить предложение для Сбера\nДва варианта бюджета к пятнице.\n\nОтмена: /cancel. Ввод действует 30 минут." };
+      return { handled: true, text: "<b>Что нужно сделать?</b>\n\nНапишите задачу одним сообщением.\nПервая строка — короткое название, ниже — подробности, если они есть.", replyMarkup: DIRECTOR_INPUT_KEYBOARD };
     }
     const inline = name === "task" ? command?.[2]?.trim() : null;
     const pending = settings.pendingAfterMessageId !== null && settings.pendingExpiresAt && settings.pendingExpiresAt > now && message.messageId > settings.pendingAfterMessageId;
-    if (!inline && !pending) return { handled: true, text: "Для нового поручения выберите /task в меню. Затем отправьте текст задачи." };
+    if (!inline && !pending) return { handled: true, text: "Чтобы поставить задачу, нажмите «Новая задача» и отправьте её текст.", replyMarkup: DIRECTOR_KEYBOARD };
     const content = parseDirectorTask(inline ?? text);
-    if (!content) return { handled: true, text: "Нужен текст: название в первой строке (до 500 символов) и описание ниже. Фото и голосовые пока не поддерживаются. Попробуйте ещё раз или /cancel." };
-    if (!settings.board || settings.board.archivedAt || !settings.column || settings.column.isDone || settings.column.boardId !== settings.board.id) return { handled: true, text: "Входящая доска или колонка недоступна. Попросите администратора обновить настройки директора. Задача не создана." };
+    if (!content) return { handled: true, text: "Пока принимаю только текст. Напишите короткое название в первой строке (до 500 символов), подробности — ниже.", replyMarkup: DIRECTOR_INPUT_KEYBOARD };
+    if (!settings.board || settings.board.archivedAt || !settings.column || settings.column.isDone || settings.column.boardId !== settings.board.id) return { handled: true, text: "Рабочая доска сейчас недоступна. Задачу не добавлял — попросите администратора проверить настройки бота.", replyMarkup: DIRECTOR_KEYBOARD };
     const task = await tx.workTask.create({ data: { ...content, boardId: settings.board.id, columnId: settings.column.id, createdById: director.id, color: DIRECTOR_TASK_COLOR, sortOrder: await nextTaskSortOrder(tx, settings.column.id) }, select: { id: true } });
     await tx.telegramDirectorInbox.update({ where: { id: receiptId }, data: { taskId: task.id } });
     await appendWorkTaskActivity(tx, { taskId: task.id, actorUserId: director.id, kind: "CREATED", message: "Поручение директора из Telegram" });
     await tx.telegramDirectorSettings.update({ where: { id: DIRECTOR_SETTINGS_ID }, data: { pendingAfterMessageId: null, pendingExpiresAt: null } });
-    return { handled: true, taskId: task.id, created: true, text: `<b>Поручение создано</b>\n\n${escapeTelegramHtml(content.title)}\nДоска: ${escapeTelegramHtml(settings.board.title.slice(0,100))}\nКолонка: ${escapeTelegramHtml(settings.column.title.slice(0,100))}\n\nМетка «Директор» закреплена на карточке. При переносе задачи пришлю её новый статус сюда.\n\nЕщё задача: /task\nМои поручения: /mytasks` };
+    return { handled: true, taskId: task.id, created: true, text: `<b>Задача добавлена</b>\n\n<b>${directorHtmlPreview(content.title, 900)}</b>${content.description ? `\n${directorHtmlPreview(content.description, 600)}` : ""}\n\n${directorHtmlPreview(settings.board.title, 250)} · ${directorHtmlPreview(settings.column.title, 250)}`, replyMarkup: DIRECTOR_KEYBOARD };
   });
 }

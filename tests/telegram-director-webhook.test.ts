@@ -1,15 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/telegram/webhook/route";
-const hooks = vi.hoisted(() => ({ handle: vi.fn(), send: vi.fn(), menu: vi.fn(), schedule: vi.fn(), linked: vi.fn(), notifyCreated: vi.fn() }));
+const hooks = vi.hoisted(() => ({ handle: vi.fn(), send: vi.fn(), menu: vi.fn(), schedule: vi.fn(), linked: vi.fn(), notifyCreated: vi.fn(), view: vi.fn(), edit: vi.fn(), answer: vi.fn() }));
+vi.mock("@/server/telegram-director-views", () => ({ handleDirectorView: hooks.view }));
 vi.mock("@/server/work-task-notifications", () => ({ notifyDirectorTaskCreated: hooks.notifyCreated }));
 vi.mock("@/server/telegram-director", () => ({ handleDirectorMessage: hooks.handle }));
 vi.mock("@/server/db", () => ({ prisma: { user: { findFirst: hooks.linked } } }));
 vi.mock("@/server/notifications/schedule-after-response", () => ({ scheduleAfterResponse: hooks.schedule }));
-vi.mock("@/server/telegram", () => ({ getTelegramWebhookSecret: () => "qa-webhook-secret", escapeTelegramHtml: (value: string) => value, sendTelegramMessage: hooks.send, sendTelegramMessageDetailed: hooks.send, configureTelegramDirectorMenu: hooks.menu }));
+vi.mock("@/server/telegram", () => ({ getTelegramWebhookSecret: () => "qa-webhook-secret", escapeTelegramHtml: (value: string) => value, sendTelegramMessage: hooks.send, sendTelegramMessageDetailed: hooks.send, configureTelegramDirectorMenu: hooks.menu, editTelegramMessageText: hooks.edit, answerTelegramCallbackQuery: hooks.answer }));
 beforeEach(() => { vi.clearAllMocks(); hooks.handle.mockResolvedValue({ handled: true, text: "Saved", created: true }); hooks.send.mockResolvedValue({ ok: true }); hooks.menu.mockResolvedValue({ ok: true }); hooks.linked.mockResolvedValue(null); });
 const update = { update_id: 1, message: { message_id: 2, text: "/task Task", chat: { id: 123, type: "private" }, from: { id: 123, is_bot: false, first_name: "QA" } } };
 function request(body: unknown = update, secret = "qa-webhook-secret") { return new Request("https://example.test/api/telegram/webhook", { method: "POST", headers: { "Content-Type": "application/json", "x-telegram-bot-api-secret-token": secret }, body: JSON.stringify(body) }); }
 describe("director webhook boundary", () => {
+  it("edits authorized private views without creating new messages or tasks", async () => {
+    hooks.view.mockResolvedValue({ view: { text: "Details", replyMarkup: { inline_keyboard: [] } } });
+    const callback = { callback_query: { id: "cb", data: "director:task:task", from: { id: 123 }, message: { message_id: 15, chat: { id: 123, type: "private" } } } };
+    expect((await POST(request(callback))).status).toBe(200); expect(hooks.handle).not.toHaveBeenCalled(); expect(hooks.send).not.toHaveBeenCalled(); expect(hooks.edit).not.toHaveBeenCalled();
+    expect(hooks.view).toHaveBeenCalledWith({ data: "director:task:task", chatId: "123", fromId: "123", chatType: "private" });
+    await hooks.schedule.mock.calls[0][1](); expect(hooks.edit).toHaveBeenCalledWith({ chatId: "123", messageId: 15, text: "Details", replyMarkup: { inline_keyboard: [] } });
+    hooks.view.mockResolvedValueOnce({ alert: "Access denied" }); await POST(request(callback)); expect(hooks.answer).toHaveBeenLastCalledWith({ callbackQueryId: "cb", text: "Access denied", showAlert: true }); expect(hooks.schedule).toHaveBeenCalledOnce();
+  });
   it("notifies the task topic only after a newly committed task, independently of the private reply", async () => {
     hooks.handle.mockResolvedValueOnce({ handled: true, text: "Saved", created: true, taskId: "created" });
     expect((await POST(request())).status).toBe(200);
@@ -36,7 +45,7 @@ describe("director webhook boundary", () => {
     expect(await response.json()).toEqual({ ok: true, director: true, created: true });
     expect(hooks.handle).toHaveBeenCalledWith({ messageId: 2, chatId: "123", fromId: "123", chatType: "private", isBot: false, text: "/task Task" });
     expect(hooks.send).not.toHaveBeenCalled();
-    await hooks.schedule.mock.calls[0][1](); expect(hooks.send).toHaveBeenCalledWith("123", "Saved");
+    await hooks.schedule.mock.calls[0][1](); expect(hooks.send).toHaveBeenCalledWith("123", "Saved", undefined);
   });
   it("provisions the menu for /start only and never sends duplicate-task replies", async () => {
     hooks.handle.mockResolvedValueOnce({ handled: true, setupMenu: true, text: "Help" });

@@ -204,9 +204,17 @@ export type TelegramInlineKeyboardMarkup = {
   inline_keyboard: TelegramInlineKeyboardButton[][];
 };
 
+export type TelegramReplyKeyboardMarkup = {
+  keyboard: Array<Array<{ text: string }>>;
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+  one_time_keyboard?: boolean;
+  input_field_placeholder?: string;
+};
+
 type TelegramSendMessageOptions = {
   messageThreadId?: number | string;
-  replyMarkup?: TelegramInlineKeyboardMarkup;
+  replyMarkup?: TelegramInlineKeyboardMarkup | TelegramReplyKeyboardMarkup;
 };
 
 /**
@@ -230,7 +238,7 @@ export async function sendTelegramMessageDetailed(
     text: string;
     parse_mode?: string;
     message_thread_id?: number;
-    reply_markup?: TelegramInlineKeyboardMarkup;
+    reply_markup?: TelegramInlineKeyboardMarkup | TelegramReplyKeyboardMarkup;
   } = {
     chat_id: chatId,
     text: truncated,
@@ -348,6 +356,7 @@ async function callTelegramJsonMethod(
     clearTimeout(timeoutId);
     const parsed = parseTelegramApiBody(bodyText);
     if (!res.ok || !parsed.ok) {
+      if (method === "editMessageText" && res.status === 400 && parsed.description?.includes("message is not modified")) return { ok: true };
       const error = parsed.description ?? telegramErrorDescription(bodyText);
       console.error(`[Telegram] ${method} failed`, res.status, error);
       return { ok: false, error };
@@ -361,6 +370,16 @@ async function callTelegramJsonMethod(
     console.error(`[Telegram] ${method} error:`, message);
     return { ok: false, error: message };
   }
+}
+
+/** Обновляет текст и inline-кнопки уже отправленного сообщения. */
+export async function editTelegramMessageText(args: {
+  chatId: string; messageId: number; text: string; replyMarkup?: TelegramInlineKeyboardMarkup;
+}): Promise<TelegramSendMessageResult> {
+  return callTelegramJsonMethod("editMessageText", {
+    chat_id: args.chatId, message_id: args.messageId, text: args.text, parse_mode: "HTML",
+    disable_web_page_preview: true, reply_markup: args.replyMarkup ?? { inline_keyboard: [] },
+  });
 }
 
 /** Убирает или заменяет inline-кнопки у уже отправленного сообщения. */

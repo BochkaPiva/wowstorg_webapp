@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configureTelegramDirectorMenu } from "@/server/telegram";
+import { configureTelegramDirectorMenu, editTelegramMessageText, sendTelegramMessageDetailed } from "@/server/telegram";
 const transport = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock("undici", () => ({ Agent: class {}, ProxyAgent: class {}, FormData: class {}, fetch: transport.fetch }));
 beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("TELEGRAM_BOT_TOKEN", "qa-token-not-a-secret"); transport.fetch.mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) }); vi.spyOn(console, "error").mockImplementation(() => {}); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 describe("private director menu provisioning", () => {
+  it("sends a native persistent keyboard and edits inline views idempotently", async () => {
+    const keyboard = { keyboard: [[{ text: "Новая задача" }]], is_persistent: true, resize_keyboard: true };
+    await sendTelegramMessageDetailed("123", "Guide", { replyMarkup: keyboard });
+    expect(JSON.parse(transport.fetch.mock.calls[0][1].body).reply_markup).toEqual(keyboard);
+    await editTelegramMessageText({ chatId: "123", messageId: 20, text: "Details", replyMarkup: { inline_keyboard: [] } });
+    expect(JSON.parse(transport.fetch.mock.calls[1][1].body)).toMatchObject({ chat_id: "123", message_id: 20, text: "Details", parse_mode: "HTML" });
+    transport.fetch.mockResolvedValueOnce({ ok: false, status: 400, text: async () => JSON.stringify({ ok: false, description: "Bad Request: message is not modified" }) });
+    expect(await editTelegramMessageText({ chatId: "123", messageId: 20, text: "Details" })).toEqual({ ok: true });
+  });
   it("sets chat-scoped commands in default/Russian languages and the private menu button", async () => {
     expect(await configureTelegramDirectorMenu("123")).toEqual({ ok: true });
     const calls = transport.fetch.mock.calls.map(([url, init]) => ({ method: String(url).split("/").at(-1), body: JSON.parse(init.body) }));

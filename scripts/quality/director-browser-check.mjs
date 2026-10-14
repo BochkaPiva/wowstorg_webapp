@@ -29,6 +29,9 @@ try {
         writes += 1; await route.fulfill({ json: { revision: 1 } }); return;
       }
       if (req.method() === "POST" && url.pathname === "/api/admin/telegram/director") { writes += 1; await route.fulfill({ json: { ok: true } }); return; }
+      if (req.method() === "POST" && url.pathname === "/api/admin/telegram/director/notify") {
+        assert.deepEqual(req.postDataJSON(), { expectedRevision: 1, directorUserId: "director" }); writes += 1; await route.fulfill({ json: { ok: true } }); return;
+      }
       if (req.method() === "PATCH" && url.pathname === "/api/tasks/tasks/qa-task") {
         assert.deepEqual(req.postDataJSON(), { columnId: "target", completed: false, sortOrder: 1000 }); writes += 1; releaseMove(route); return;
       }
@@ -56,6 +59,9 @@ try {
     await panel.getByText(/Сохранено\. Директору/).waitFor();
     await panel.getByRole("button", { name: "Проверить меню бота", exact: true }).click();
     await panel.getByText("Меню команд подключено для личного чата директора.", { exact: true }).waitFor();
+    await panel.getByRole("button", { name: "Оповестить о назначении", exact: true }).click();
+    await panel.getByText("Инструкция и кнопки отправлены директору в личный чат.", { exact: true }).waitFor();
+    await panel.screenshot({ path: `.impeccable/review/director-appointment-${width}.png` });
     assert.ok(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     await page.goto(new URL("/tasks", base).href);
     const card = page.locator('[data-task-card-id="qa-task"]'); await card.waitFor();
@@ -85,6 +91,6 @@ try {
     checks.push({ width, savedSettings: true, explicitMenuCheck: true, persistentBadgeBeforeAndAfterMove: true, noStuckDrag: true, descriptionPreview: true, fullDescriptionOnOpen: true, noDescriptionOverflow: true });
     await context.close();
   }
-  assert.deepEqual(errors, []); assert.deepEqual(forbidden, []); assert.equal(writes, 6);
+  assert.deepEqual(errors, []); assert.deepEqual(forbidden, []); assert.equal(writes, 8);
   console.log(JSON.stringify({ checks, fixtureWrites: writes, pageErrors: errors.length, forbiddenRequests: forbidden.length, target: base.origin }));
 } finally { await browser.close(); }

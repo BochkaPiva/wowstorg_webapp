@@ -9,8 +9,8 @@ import styles from "./director-settings.module.css";
 type Settings = { revision: number; directorUserId: string | null; telegramChatId: string | null; boardId: string | null; columnId: string | null };
 type DirectorData = { settings: Settings; users: Array<{ id: string; displayName: string; telegramChatId: string | null }>; boards: Array<{ id: string; title: string; columns: Array<{ id: string; title: string }> }> };
 
-async function writeSettings(method: "PATCH" | "POST", body?: unknown) {
-  const response = await fetch("/api/admin/telegram/director", { method, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+async function writeSettings(method: "PATCH" | "POST", body?: unknown, path = "/api/admin/telegram/director") {
+  const response = await fetch(path, { method, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
   const result = await readJsonSafe<{ error?: { message?: string } }>(response);
   if (!response.ok || !result) throw new Error(result?.error?.message ?? "Не удалось выполнить запрос");
 }
@@ -39,7 +39,8 @@ function DirectorSettingsForm({ data, botReady, onSaved }: { data: DirectorData;
   const [boardId, setBoardId] = React.useState(data.settings.boardId ?? data.boards[0]?.id ?? "");
   const currentBoard = data.boards.find(board => board.id === boardId);
   const [columnId, setColumnId] = React.useState(data.settings.columnId ?? currentBoard?.columns[0]?.id ?? "");
-  const [busy, setBusy] = React.useState(false);
+  const [action, setAction] = React.useState<"save" | "menu" | "notify" | null>(null);
+  const busy = action !== null;
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const changed = userId !== (data.settings.directorUserId ?? "") || chatId !== (data.settings.telegramChatId ?? "") || Boolean(userId) && (boardId !== data.settings.boardId || columnId !== data.settings.columnId);
@@ -49,21 +50,29 @@ function DirectorSettingsForm({ data, botReady, onSaved }: { data: DirectorData;
 
   async function save(event: React.FormEvent) {
     event.preventDefault(); if (busy || !ready) return;
-    setBusy(true); setError(null); setMessage(null);
+    setAction("save"); setError(null); setMessage(null);
     try {
       await writeSettings("PATCH", { expectedRevision: data.settings.revision, directorUserId: userId || null, telegramChatId: userId ? chatId.trim() : null, boardId: userId ? boardId : null, columnId: userId ? columnId : null });
       if (!stillMounted.current) return;
       await onSaved(Boolean(userId));
     } catch (cause) { if (stillMounted.current) setError(cause instanceof Error ? cause.message : "Не удалось сохранить настройки"); }
-    finally { if (stillMounted.current) setBusy(false); }
+    finally { if (stillMounted.current) setAction(null); }
   }
   async function syncMenu() {
-    if (busy) return; setBusy(true); setError(null); setMessage(null);
+    if (busy) return; setAction("menu"); setError(null); setMessage(null);
     try {
       await writeSettings("POST");
       if (stillMounted.current) setMessage("Меню команд подключено для личного чата директора.");
     } catch (cause) { if (stillMounted.current) setError(cause instanceof Error ? cause.message : "Не удалось подключить меню"); }
-    finally { if (stillMounted.current) setBusy(false); }
+    finally { if (stillMounted.current) setAction(null); }
+  }
+  async function notifyAppointment() {
+    if (busy || changed || !userId) return; setAction("notify"); setError(null); setMessage(null);
+    try {
+      await writeSettings("POST", { expectedRevision: data.settings.revision, directorUserId: data.settings.directorUserId }, "/api/admin/telegram/director/notify");
+      if (stillMounted.current) setMessage("Инструкция и кнопки отправлены директору в личный чат.");
+    } catch (cause) { if (stillMounted.current) setError(cause instanceof Error ? cause.message : "Не удалось отправить инструкцию."); }
+    finally { if (stillMounted.current) setAction(null); }
   }
   return <div className={styles.content}>
     <form onSubmit={save}>
@@ -79,8 +88,9 @@ function DirectorSettingsForm({ data, botReady, onSaved }: { data: DirectorData;
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       {message ? <p role="status" className={styles.success}>{message}</p> : null}
       <div className={styles.actions}>
-        <button type="submit" className={styles.primary} disabled={busy || !changed || !ready}>{busy ? "Сохраняем…" : userId ? "Сохранить назначение" : "Отключить поручения"}</button>
-        <button type="button" disabled={busy || !botReady || !data.settings.directorUserId || changed} onClick={() => void syncMenu()}>Проверить меню бота</button>
+        <button type="submit" className={styles.primary} disabled={busy || !changed || !ready}>{action === "save" ? "Сохраняем…" : userId ? "Сохранить назначение" : "Отключить поручения"}</button>
+        <button type="button" disabled={busy || !botReady || !data.settings.directorUserId || changed} onClick={() => void syncMenu()}>{action === "menu" ? "Проверяем меню…" : "Проверить меню бота"}</button>
+        <button type="button" disabled={busy || !botReady || !data.settings.directorUserId || changed} onClick={() => void notifyAppointment()}>{action === "notify" ? "Отправляем…" : "Оповестить о назначении"}</button>
       </div>
     </form>
     <aside className={styles.guide}><h3>В личном чате директора</h3><dl><div><dt>/task</dt><dd>Поставить задачу</dd></div><div><dt>/mytasks</dt><dd>Посмотреть свои поручения</dd></div><div><dt>/cancel</dt><dd>Отменить ввод</dd></div></dl><p>Поручение получает золотой цвет и постоянную метку «Директор». При переносе между колонками бот сообщает новый статус в ЛС.</p></aside>

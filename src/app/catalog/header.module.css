@@ -1,0 +1,73 @@
+.header { display: flex; flex-direction: column; padding: 0; gap: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; overflow: visible; }
+.hero { position: relative; padding: 0; background: transparent; border: 0; border-radius: 0; }
+.header :global(.mk-headIntro) { position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; min-height: 80px; gap: 22px; padding: 0; margin: 0 0 16px; background: none; color: #21102d; overflow: visible; }
+.header :global(.mk-headIntro)::after, .header :global(.mk-headDino)::before { content: none; }
+.header :global(.mk-headCopy) { position: relative; min-width: 0; width: auto; max-width: none; }
+.header :global(.mk-headIntro .mk-title) { margin: 0; max-width: none; color: #0a0a0a; font-family: "Madefor Display", Onest, sans-serif; font-size: 46px; font-weight: 760; line-height: 1.1; letter-spacing: -.025em; text-wrap: balance; }
+.header :global(.mk-headIntro .mk-subtitle) { max-width: 80ch; margin-top: 8px; color: #68636d; font-size: 13px; line-height: 1.5; }
+.header :global(.mk-headDino) { position: absolute; z-index: 3; display: block; width: 300px; height: 280px; right: 0; top: 66px; left: auto; bottom: auto; min-height: 0; pointer-events: none; }
+.header :global(.mk-headDinoImage) { object-fit: contain; object-position: center; transform: none; }
+.header :global(.mk-headIntro .mk-headCart) { display: inline-flex; position: relative; width: auto; max-width: 240px; min-width: 0; min-height: 48px; align-items: center; gap: 12px; padding: 10px 16px; border: 0; border-radius: 10px; background: var(--mk-yellow); color: #21102d; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; box-shadow: none; transform: none; transition: background-color 150ms ease-out; }
+.header :global(.mk-headIntro .mk-headCart:hover) { background: #ffe36b; color: #21102d; transform: none; }
+.header :global(.mk-headIntro .mk-headCartIcon) { display: flex; width: 20px; height: 20px; min-width: 20px; padding: 0; border: 0; border-radius: 0; background: none; }
+.header :global(.mk-headCartIcon svg) { width: 20px; height: 20px; }
+.header :global(.mk-headCartCopy) { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.header :global(.mk-headCartCopy > span) { font-size: 14px; }
+.header :global(.mk-headIntro .mk-headCart .mk-headCartCopy small) { margin: 0; color: inherit; font-size: 11px; font-weight: 550; }
+.header :global(.mk-headIntro .mk-headCart strong) { display: inline; width: auto; height: auto; min-width: 0; padding: 0; border-radius: 0; background: none; color: inherit; font-size: 14px; font-weight: 750; }
+.header :global(.mk-headCartArrow), .header :global(.mk-headCart:hover .mk-headCartArrow) { display: flex; transform: none; transition: none; }
+.header :global(.mk-headCartArrow svg) { width: 18px; height: 18px; }
+.header :global(.mk-headIntro a:focus-visible) { outline: 2px solid #5e20bb; outline-offset: 4px; }
+.operations { width: 100%; min-width: 0; background: transparent; border: 0; }
+.operations > :global(.mk-subtitle), .modeNote { margin: 0; padding: 14px 0; color: #30205f; font-size: 13px; line-height: 1.5; }
+.hero:has(.modeNote), .hero:has(.operations > :global(.mk-subtitle)) { min-height: 240px; }
+.hero:has(.modeNote) :global(.mk-headDino), .hero:has(.operations > :global(.mk-subtitle)) :global(.mk-headDino) { width: 170px; height: 180px; top: 50px; }
+.header :global(.mk-catalogNav) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr); grid-template-areas: "tabs search"; align-items: center; gap: 24px; padding: 24px 0 0; }
+.header :global(.mk-toolbar) { grid-area: search; width: 100%; min-width: 0; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.header :global(.mk-searchWrap) { position: relative; width: 100%; min-height: 44px; border: 1px solid #d5ced9; border-radius: 12px; background: #fff; box-shadow: none; backdrop-filter: none; }
+.header :global(.mk-search) { min-width: 0; height: 44px; min-height: 44px; padding: 10px 44px; border: 0; border-radius: 12px; background: transparent; color: var(--mk-text); font-size: 14px; font-weight: 450; box-shadow: none; caret-color: var(--mk-violet); }
+.header :global(.mk-search)::placeholder { color: #686863; opacity: 1; }
+.header :global(.mk-search:focus) { box-shadow: none; }
+.header :global(.mk-searchWrap:focus-within) { outline: 2px solid var(--mk-violet); outline-offset: 1px; box-shadow: none; }
+.searchIcon { position: absolute; top: 13px; left: 15px; width: 18px; height: 18px; color: #686863; pointer-events: none; }
+.header :global(.mk-searchClear) { width: 40px; height: 40px; right: 2px; top: 2px; transform: none; }
+.header :global(.mk-tabs) { grid-area: tabs; display: flex; width: 100%; min-width: 0; margin: 0; padding: 0; gap: 20px; border: 0; border-bottom: 1px solid #d8d3dd; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.header :global(.mk-tab) { position: relative; min-height: 44px; padding: 8px 2px; border: 0; border-radius: 0; color: #68636d; font-size: 14px; font-weight: 600; line-height: 24px; background: transparent; }
+.header :global(.mk-tabActive)::after { content: ""; position: absolute; inset: auto 0 -1px; height: 3px; background: var(--mk-violet); }
+.header :global(.mk-tab:hover), .header :global(.mk-tabActive), .header :global(.mk-tabActive:hover) { color: #5e20bb; background: transparent; }
+.header :global(.mk-categoryBar) { display: flex; align-items: center; gap: 16px; padding: 12px 0 0; background: none; }
+.header :global(.mk-chipRow) { min-width: 0; margin: 0; gap: 8px; }
+.header :global(.mk-chip) { min-height: 40px; padding: 8px 14px; color: #665574; font-size: 12px; font-weight: 550; border-color: #d8d3dd; background: transparent; }
+.header :global(.mk-chipActive), .header :global(.mk-chipActive:hover) { border-color: transparent; background: #eee7ff; color: var(--mk-violet); }
+.header :global(.mk-catalogCount) { padding: 0; font-size: 12px; }
+.header :global(.mk-tab:focus-visible), .header :global(.mk-chip:focus-visible) { outline: 2px solid var(--mk-violet); outline-offset: 3px; box-shadow: none; }
+.header ::selection { background: #eee7ff; color: #30205f; }
+@media (max-width: 1200px) {
+  .header :global(.mk-headIntro .mk-title) { font-size: 38px; }
+  .header :global(.mk-headDino) { width: 210px; height: 210px; top: 95px; }
+}
+@media (max-width: 1000px) {
+  .header :global(.mk-headDino) { width: 96px; height: 110px; top: 60px; }
+  .header :global(.mk-headIntro) { padding-right: 112px; grid-template-columns: 1fr; min-height: 140px; gap: 12px; margin-bottom: 16px; }
+  .header :global(.mk-headIntro .mk-headCart) { justify-self: start; }
+  .operations { width: 100%; }
+  .hero:has(.modeNote), .hero:has(.operations > :global(.mk-subtitle)) { min-height: 0; }
+  .hero:has(.modeNote) :global(.mk-headDino), .hero:has(.operations > :global(.mk-subtitle)) :global(.mk-headDino) { width: 96px; height: 110px; top: 60px; }
+}
+@media (max-width: 700px) {
+  .header :global(.mk-headIntro .mk-title) { font-size: 26px; }
+  .header :global(.mk-headIntro .mk-subtitle) { margin-top: 8px; font-size: 12px; }
+  .header :global(.mk-headIntro) { padding-right: 84px; min-height: 0; gap: 8px; margin-bottom: 12px; }
+  .header :global(.mk-headDino) { top: 24px; width: 80px; height: 100px; }
+  .header :global(.mk-headIntro .mk-headCart) { min-height: 44px; padding: 8px 12px; gap: 8px; }
+  .header :global(.mk-headCartCopy) { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+  .header :global(.mk-headCartCopy > span) { font-size: 12px; }
+  .header :global(.mk-catalogNav) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "search" "tabs"; gap: 8px; padding-top: 12px; }
+  .header :global(.mk-tabs) { justify-content: space-between; gap: 16px; }
+  .header :global(.mk-categoryBar) { flex-direction: row; flex-wrap: nowrap; gap: 8px; }
+  .header :global(.mk-chipRow) { flex: 1; width: 0; flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 6px; }
+  .header :global(.mk-chip) { flex: none; min-height: 44px; }
+  .header :global(.mk-catalogCount) { flex: none; margin-left: auto; }
+  .hero:has(.modeNote), .hero:has(.operations > :global(.mk-subtitle)) { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .header :global(.mk-headCart) { transition: none; } }

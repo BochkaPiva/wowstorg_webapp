@@ -52,6 +52,7 @@
 | Центр уведомлений | [`notifications-center.md`](./notifications-center.md) (in-app уведомления, колокольчик, задел под browser push) |
 | Утро/вечер на границах аренды | [`rental-part-of-day.md`](./rental-part-of-day.md) (план в [`docs/RENTAL_PART_OF_DAY_PLAN.md`](../../docs/RENTAL_PART_OF_DAY_PLAN.md)) |
 | Связанные позиции / рекомендации в корзине | [`catalog-related-items.md`](./catalog-related-items.md) (план в [`docs/CATALOG_RELATED_ITEMS_PLAN.md`](../../docs/CATALOG_RELATED_ITEMS_PLAN.md)) |
+| Временная шкала аренды в каталоге | [`catalog-rental-timeline.md`](./catalog-rental-timeline.md) |
 | Задачи / рабочая доска | [`work-tasks.md`](./work-tasks.md) |
 | Операционный дашборд | [`dashboard-operations.md`](./dashboard-operations.md) (план в [`docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md`](../../docs/DASHBOARD_OPERATIONS_REDESIGN_PLAN.md)) |
 | Пересборка карточки проекта | [`project-card-rebuild.md`](./project-card-rebuild.md) (план в [`docs/PROJECT_CARD_REBUILD_PLAN.md`](../../docs/PROJECT_CARD_REBUILD_PLAN.md)) |

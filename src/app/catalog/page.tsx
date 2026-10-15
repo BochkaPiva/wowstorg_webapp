@@ -23,10 +23,10 @@ import {
 import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rental-days";
 import "./catalog.css";
 import "../cart/cart.css";
-import { CatalogDateField } from "@/app/catalog/CatalogDateField";
+import headerStyles from "./header.module.css";
+import { CatalogSchedule } from "@/app/catalog/CatalogSchedule";
 import { CatalogItemCard } from "@/app/catalog/CatalogItemCard";
 import { CatalogMiniCart } from "@/app/catalog/CatalogMiniCart";
-import { CatalogRentalPeriodPicker } from "@/app/catalog/CatalogRentalPeriodPicker";
 import { ItemModal } from "@/app/catalog/ItemModal";
 
 type CatalogTab = "positions" | "categories" | "kits";
@@ -120,17 +120,17 @@ function buildPaginationTokens(currentPage: number, totalPages: number): Array<n
 function catalogDateHelpParagraphs(multiDayPeriod: boolean, isGreenwich: boolean): readonly string[] {
   const chunks: string[] = [
     "В календаре выберите первый и последний нужный календарный день включительно. Все даты между ними входят в период аренды и считаются в сумме заказа.",
-    "Если нужен только один календарный день — нажмите в календаре одну нужную дату один раз.",
-    "Если период уже на несколько дней, но нужны снова сутки в одну дату — нажмите крестик у блока «Окончание».",
+    "Для аренды на один день задайте одинаковые даты начала и окончания. В этом случае период всегда с утра до вечера.",
+    "Фон шкалы можно прокручивать, не меняя даты. Переносите отдельные маркеры; изменение применяется после отпускания, Escape отменяет перенос. С клавиатуры: стрелки — день, Page Up / Page Down — неделя.",
   ];
   if (multiDayPeriod) {
     chunks.push(
-      "Переключатели «утро» и «вечер» у краёв поля задают первую и последнюю часть календарного дня аренды. При тех же датах на календаре могут измениться учтённые дни и сумма.",
+      "Выбор «Утром» и «Вечером» рядом с датами задаёт первую и последнюю часть календарного дня аренды. При тех же датах могут измениться учтённые дни и сумма.",
     );
   }
   if (isGreenwich) {
     chunks.push(
-      "Поле «Готовность к дате» — последний срок, когда склад должен успеть всё собрать. Эту дату нельзя поставить позже первого дня аренды.",
+      "«Подготовить к» — последний срок, когда склад должен успеть всё собрать. Эту дату нельзя поставить позже первого дня аренды.",
     );
   }
   return chunks;
@@ -187,7 +187,6 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
   estimateVersionId: string | null; returnTo: string | null;
 }) {
   const { state } = useAuth();
-  const isGreenwich = state.status === "authenticated" && state.user.role === "GREENWICH";
   const isWarehouse = state.status === "authenticated" && state.user.role === "WOWSTORG";
   const [projectBannerTitle, setProjectBannerTitle] = React.useState<string | null>(null);
 
@@ -837,19 +836,17 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
           </div>
         ) : null}
 
-        <div className="mk-head">
+        <div className={`mk-head ${headerStyles.header}`}>
+          <div className={headerStyles.hero}>
           <div className="mk-headIntro">
             <div className="mk-headCopy">
-              <div className="mk-headKicker">
-                {isProjectDemoCatalog ? "Предварительный расчёт" : "Каталог оборудования"}
-              </div>
-              <div className="mk-title">
+              <h2 className="mk-title">
                 {isQuickSupplement
                   ? "Дополнить текущую выдачу"
                   : isProjectDemoCatalog
                     ? "Соберите предварительную смету"
                     : "Подберите реквизит"}
-              </div>
+              </h2>
               <div className="mk-subtitle">
                 {isQuickSupplement
                   ? "Выберите дополнительные позиции — даты и заказчик уже привязаны к основной заявке."
@@ -861,11 +858,12 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
               </div>
             </div>
             <div className="mk-headDino" aria-hidden="true">
-              <Image src="/brand/dino-catalog.webp" alt="" fill sizes="(max-width: 1100px) 220px, 290px" priority className="mk-headDinoImage" />
+              <Image src="/brand/headers/dino-catalog-timeline.png" alt="" fill sizes="(max-width: 700px) 96px, (max-width: 1200px) 210px, 280px" priority className="mk-headDinoImage" />
             </div>
             <Link
               href={cartHref}
               className="mk-cartPill mk-headCart"
+              data-filled={cartTotalQty > 0 ? "true" : undefined}
               aria-label={isProjectDemoCatalog ? "Открыть черновик" : "Перейти к оформлению корзины"}
             >
               <span className="mk-headCartIcon" aria-hidden="true">
@@ -883,59 +881,21 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
                 </small>
               </span>
               <strong>{cartTotalQty}</strong>
-              <span className="mk-headCartArrow" aria-hidden="true">→</span>
+              <span className="mk-headCartArrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 12h14m-6-6 6 6-6 6" /></svg></span>
             </Link>
           </div>
 
-          <div className="mk-headOperations">
+          <div className={headerStyles.operations}>
           {!isQuickSupplement && !isProjectDemoCatalog ? (
             <>
-              <div className="mk-dateSectionIntro">
-                <div className="mk-dateSectionCopy">
-                  <h2>Даты аренды</h2>
-                  <p>{isGreenwich ? "Укажите период и срок подготовки." : "Цена и доступность пересчитаются сразу."}</p>
-                </div>
-                <div className="mk-catalogDateSummary">
-                  <span className="mk-dateBillInline">
-                    Аренда на <span className="mk-dateBillInline-num">{rentalDays > 0 ? rentalDays : "—"}</span>{" "}
-                    {rentalDays === 1 ? "день" : rentalDays >= 2 && rentalDays <= 4 ? "дня" : "дней"}
-                  </span>
-                  <button
-                    type="button"
-                    className="mk-dateHelpBtn"
-                    aria-label="Подробнее — как считаются даты аренды"
-                    onClick={() => setCatalogDateHelpOpen(true)}
-                  >
-                    ?
-                  </button>
-                </div>
-              </div>
-              <div className="mk-dateControls">
-                <div className={["mk-datesRowGrouped", isGreenwich ? "mk-datesRowGrouped--withReady" : ""].filter(Boolean).join(" ")}>
-                  <CatalogRentalPeriodPicker
-                    startDate={startDate}
-                    endDate={endDate}
-                    minDate={dateMin}
-                    rentalStartPartOfDay={rentalStartPartOfDay}
-                    rentalEndPartOfDay={rentalEndPartOfDay}
-                    onRangeChange={(s, e) => patchCatalogDates({ startDate: s, endDate: e })}
-                    onStartPartChange={(v) => patchCatalogDates({ rentalStartPartOfDay: v })}
-                    onEndPartChange={(v) => patchCatalogDates({ rentalEndPartOfDay: v })}
-                  />
-                  {isGreenwich ? (
-                    <div className="mk-dateColumn mk-dateColumn--ready">
-                      <CatalogDateField
-                        label="Готовность к дате"
-                        inputCaption="Дата"
-                        value={readyByDate}
-                        onChange={(v) => patchCatalogDates({ readyByDate: v })}
-                        min={dateMin}
-                        max={startDate}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
+              <CatalogSchedule
+                dates={{ startDate, endDate, readyByDate, rentalStartPartOfDay, rentalEndPartOfDay }}
+                minDate={dateMin}
+                showPreparation
+                rentalDays={rentalDays}
+                onChange={patchCatalogDates}
+                onHelp={() => setCatalogDateHelpOpen(true)}
+              />
               {catalogDateHelpOpen && typeof document !== "undefined"
                 ? createPortal(
                     <div
@@ -957,11 +917,11 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
                               aria-label="Закрыть"
                               onClick={() => setCatalogDateHelpOpen(false)}
                             >
-                              ✕
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
                             </button>
                           </div>
                           <div className="mk-dateHelpModal-prose">
-                            {catalogDateHelpParagraphs(startDate !== endDate, isGreenwich).map((text, idx) => (
+                            {catalogDateHelpParagraphs(startDate !== endDate, true).map((text, idx) => (
                               <p key={idx}>{text}</p>
                             ))}
                           </div>
@@ -980,27 +940,26 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
               ) : null}
             </div>
           ) : (
-            <div className="rounded-2xl border border-violet-200 bg-[linear-gradient(135deg,rgba(250,245,255,0.95),rgba(255,251,235,0.82))] px-4 py-3 text-sm text-zinc-700">
-              <div className="font-semibold">Демо-режим без дат</div>
-              <div className="mt-1 text-zinc-600">
-                Доступность считается по остатку на сейчас, а итог ниже показывает предварительную сумму за 1 день для
-                ориентира.
-              </div>
+            <div className={headerStyles.modeNote}>
+              <strong>Без резервирования.</strong> Доступность на сейчас · предварительная сумма за 1 день.
             </div>
           )}
+          </div>
           </div>
 
           <div className="mk-catalogNav">
           <div className="mk-toolbar">
             <div className="mk-searchWrap">
+              <svg className={headerStyles.searchIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
               <input
+                aria-label="Поиск по каталогу"
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setCurrentPage(1);
                 }}
                 className="mk-search"
-                placeholder="Поиск по каталогу…"
+                placeholder="Найти реквизит"
               />
               {query ? (
                 <button
@@ -1012,7 +971,7 @@ function CatalogContent({ quickParentId, projectId, projectMode, estimateVersion
                     setCurrentPage(1);
                   }}
                 >
-                  ✕
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
                 </button>
               ) : null}
             </div>

@@ -18,6 +18,14 @@ function measurePopoverLeft(wrapRect: DOMRect) {
   return left;
 }
 
+function measurePopoverTop(wrapRect: DOMRect, height: number) {
+  const available = window.innerHeight - 16;
+  const boundedHeight = Math.min(height, available);
+  return wrapRect.bottom + 8 + boundedHeight <= window.innerHeight - 8
+    ? wrapRect.bottom + 8
+    : Math.max(8, wrapRect.top - boundedHeight - 8);
+}
+
 export function CatalogDateField({
   label,
   value,
@@ -27,6 +35,8 @@ export function CatalogDateField({
   max,
   endAccessory,
   inputCaption,
+  presentation = "default",
+  displayFormat = "short",
 }: {
   label: string;
   value: string;
@@ -38,6 +48,8 @@ export function CatalogDateField({
   endAccessory?: React.ReactNode;
   /** Short in-control caption used by dense catalog date controls. */
   inputCaption?: string;
+  presentation?: "default" | "inline";
+  displayFormat?: "short" | "long" | "full";
 }) {
   const safeMin = min;
   const safeMax =
@@ -52,6 +64,7 @@ export function CatalogDateField({
   const [textSource, setTextSource] = React.useState(value);
   const [showHint, setShowHint] = React.useState(false);
   const [open, setOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
   const [coords, setCoords] = React.useState<{ top: number; left: number } | null>(null);
 
   const selectedDate = React.useMemo(() => {
@@ -79,7 +92,7 @@ export function CatalogDateField({
     if (!el) return;
     const r = el.getBoundingClientRect();
     setCoords({
-      top: r.bottom + 8,
+      top: measurePopoverTop(r, popoverRef.current?.getBoundingClientRect().height || 360),
       left: measurePopoverLeft(r),
     });
   }, []);
@@ -94,13 +107,21 @@ export function CatalogDateField({
 
   React.useEffect(() => {
     if (!open) return;
-    const onScroll = () => {
+    const onScroll = (event: Event) => {
+      if (event.target instanceof Node && popoverRef.current?.contains(event.target)) return;
+      // Timeline inertia and unrelated inner scrollers do not move this anchor.
+      if (event.target instanceof Element && !event.target.contains(wrapRef.current)) return;
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (rect && rect.bottom > 0 && rect.top < window.innerHeight) {
+        updatePosition();
+        return;
+      }
       setOpen(false);
       setCoords(null);
     };
     window.addEventListener("scroll", onScroll, true);
     return () => window.removeEventListener("scroll", onScroll, true);
-  }, [open]);
+  }, [open, updatePosition]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -108,6 +129,7 @@ export function CatalogDateField({
       if (e.key === "Escape") {
         setOpen(false);
         setCoords(null);
+        calBtnRef.current?.focus();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -149,7 +171,7 @@ export function CatalogDateField({
     if (wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
       setCoords({
-        top: r.bottom + 8,
+        top: measurePopoverTop(r, 360),
         left: measurePopoverLeft(r),
       });
     }
@@ -169,6 +191,8 @@ export function CatalogDateField({
               top: coords.top,
               left: coords.left,
               zIndex: 10001,
+              maxHeight: "calc(100dvh - 16px)",
+              overflowY: "auto",
             }}
           >
             <DayPicker
@@ -183,6 +207,7 @@ export function CatalogDateField({
                 setText(formatDateRu(ymd));
                 setOpen(false);
                 setCoords(null);
+                calBtnRef.current?.focus();
               }}
               locale={ru}
               defaultMonth={defaultMonth}
@@ -211,11 +236,16 @@ export function CatalogDateField({
     <span className="mk-dateWrap" ref={wrapRef}>
       <span className="mk-dateTextCell">
         {inputCaption ? <span className="mk-dateTextCaption">{inputCaption}</span> : null}
+        {presentation === "inline" && selectedDate ? <span className="mk-dateDisplay" aria-hidden="true">
+          {format(selectedDate, displayFormat === "full" ? "d MMMM yyyy" : displayFormat === "long" ? "d MMMM" : "d MMM, EEEEEE", { locale: ru })}
+        </span> : null}
         <input
           className="mk-dateText"
           value={text}
+          onFocus={() => setEditing(true)}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => {
+            setEditing(false);
             const parsed = parseRuToDateOnly(text);
             if (parsed) {
               let d = parsed;
@@ -237,7 +267,7 @@ export function CatalogDateField({
         type="button"
         className="mk-datePickBtn"
         ref={calBtnRef}
-        aria-label="Открыть календарь"
+        aria-label={`Открыть календарь: ${label}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={toggleCalendar}
@@ -253,10 +283,12 @@ export function CatalogDateField({
           strokeLinejoin="round"
           aria-hidden
         >
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
+          {presentation === "inline" ? <path d="m6 9 6 6 6-6" /> : <>
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </>}
         </svg>
       </button>
     </span>
@@ -265,7 +297,8 @@ export function CatalogDateField({
   const hasAccessory = Boolean(endAccessory);
 
   return (
-    <div className={["mk-dateField", hasAccessory ? "mk-dateField--hasAccessory" : ""].filter(Boolean).join(" ")}>
+    <div className={["mk-dateField", hasAccessory ? "mk-dateField--hasAccessory" : ""].filter(Boolean).join(" ")}
+      data-inline={presentation === "inline" && Boolean(selectedDate)} data-editing={editing}>
       <span className="mk-dateFieldLabel">
         {label}
         {hint ? (

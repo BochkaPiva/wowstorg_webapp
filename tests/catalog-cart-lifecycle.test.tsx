@@ -16,7 +16,7 @@ vi.mock("@/app/cart/CartRelatedSuggestions", () => ({ CartRelatedSuggestions: ()
 vi.mock("@/app/catalog/CatalogMiniCart", () => ({ CatalogMiniCart: () => null }));
 vi.mock("@/app/catalog/ItemModal", () => ({ ItemModal: () => null }));
 vi.mock("@/app/catalog/CatalogDateField", () => ({ CatalogDateField: () => null }));
-vi.mock("@/app/catalog/CatalogRentalPeriodPicker", () => ({ CatalogRentalPeriodPicker: ({ onRangeChange }: { onRangeChange: (start: string, end: string) => void }) => <button onClick={() => onRangeChange("2026-12-10", "2026-12-12")}>Change period</button> }));
+vi.mock("@/app/catalog/CatalogSchedule", () => ({ CatalogSchedule: ({ onChange }: { onChange: (patch: { startDate: string; endDate: string }) => void }) => <button onClick={() => onChange({ startDate: "2026-12-10", endDate: "2026-12-12" })}>Change period</button> }));
 vi.mock("@/app/catalog/CatalogItemCard", () => ({ CatalogItemCard: ({ item, qtyInCart, onAdd }: { item: { id: string; name: string; pricePerDay: string }; qtyInCart: number; onAdd: (id: string, price: number) => void }) => <article><output>{item.name}:{qtyInCart}</output><button onClick={() => onAdd(item.id, Number(item.pricePerDay))}>Add {item.id}</button></article> }));
 
 type Flight = { url: string; init?: RequestInit; resolve: (r: Response) => void };
@@ -67,6 +67,13 @@ describe("catalog and cart scope ownership", () => {
     render();
     expect(params()).toMatchObject({ startDate: savedDates.startDate, endDate: savedDates.endDate, rentalStartPartOfDay: "EVENING", rentalEndPartOfDay: "MORNING" });
     for (const [field, key] of Object.entries(storageKeys)) expect(localStorage.getItem(key)).toBe(savedDates[field as keyof typeof savedDates]);
+  });
+  it("keeps the explicitly selected warehouse preparation date at checkout", async () => {
+    localStorage.setItem("catalog_readyByDate", "2026-11-16");
+    localStorage.setItem("cart", JSON.stringify([{ itemId: "item", qty: 1 }]));
+    render(CartPage); await respond(latest(), { items: [item()] });
+    expect(container.querySelector('.cart-dateCell strong')?.textContent).toBe("16.11.2026");
+    expect(localStorage.getItem("catalog_readyByDate")).toBe("2026-11-16");
   });
 
   it("adds once per event in StrictMode, accumulates rapid clicks and respects caps", async () => {

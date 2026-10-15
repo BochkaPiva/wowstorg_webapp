@@ -721,13 +721,13 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
   const taxAmount = Math.round(totalWithServices * clientTaxRate);
   const totalWithTax = Math.round(totalWithServices + taxAmount);
   const checkoutReadyByDate =
-    readyByDate ?? (isWarehouse && startDate
+    isWarehouse && startDate
       ? (() => {
           const warehouseReadyByDate = addDays(startDate, -1);
           const min = todayDateOnly();
           return warehouseReadyByDate >= min ? warehouseReadyByDate : min;
         })()
-      : null);
+      : readyByDate;
 
   const canCheckoutGreenwich =
     isGreenwich && cart.length > 0 && canSubmitCustomer;

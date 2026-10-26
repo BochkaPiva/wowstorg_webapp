@@ -641,6 +641,7 @@ function ProductIdentity({
   name,
   subtitle,
   size = "sm",
+  wrap = false,
   nameClassName = "font-medium text-zinc-900",
 }: {
   itemId: string;
@@ -648,13 +649,14 @@ function ProductIdentity({
   name: string;
   subtitle?: React.ReactNode;
   size?: "sm" | "md";
+  wrap?: boolean;
   nameClassName?: string;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
       <ProductThumb itemId={itemId} photo1Key={photo1Key} size={size} />
       <div className="min-w-0">
-        <div className={`truncate ${nameClassName}`} title={name}>
+        <div className={`${wrap ? "whitespace-normal break-words" : "truncate"} ${nameClassName}`} title={name}>
           {name}
         </div>
         {subtitle ? <div className="mt-0.5 text-xs text-zinc-500">{subtitle}</div> : null}
@@ -2594,6 +2596,7 @@ export default function OrderDetailsPage() {
                             photo1Key={line.item.photo1Key}
                             name={line.item.name}
                             size="md"
+                            wrap
                           />
                         </div>
                         {([

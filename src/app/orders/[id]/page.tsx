@@ -611,8 +611,10 @@ function ProductThumb({
       ? "h-14 w-14 rounded-2xl"
       : "h-11 w-11 rounded-xl";
   const previewWidth = size === "md" ? 160 : 120;
+  const [failedPhoto, setFailedPhoto] = React.useState<string | null>(null);
+  const photoIdentity = `${itemId}:${photo1Key ?? ""}`;
 
-  if (photo1Key) {
+  if (photo1Key && failedPhoto !== photoIdentity) {
     return (
       <img
         src={`/api/inventory/positions/${itemId}/photo?w=${previewWidth}`}
@@ -621,6 +623,7 @@ function ProductThumb({
         className={`${boxClass} shrink-0 border border-zinc-200 bg-zinc-100 object-cover shadow-sm`}
         loading="lazy"
         decoding="async"
+        onError={() => setFailedPhoto(photoIdentity)}
       />
     );
   }
@@ -632,6 +635,17 @@ function ProductThumb({
     >
       WOW
     </div>
+  );
+}
+
+function CustomerIdentityLogo({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  const [failedLogo, setFailedLogo] = React.useState<string | null>(null);
+  return (
+    <span className={orderLayout.customerLogo} aria-hidden="true">
+      {logoUrl && failedLogo !== logoUrl ? (
+        <Image src={logoUrl} alt="" width={48} height={48} unoptimized onError={() => setFailedLogo(logoUrl)} />
+      ) : name.slice(0, 2).toUpperCase()}
+    </span>
   );
 }
 
@@ -1995,9 +2009,7 @@ export default function OrderDetailsPage() {
                 {isEditing ? <span className={orderLayout.heroBadge}>Редактирование</span> : null}
               </div>
               <div className={orderLayout.heroIdentity}>
-                <span className={orderLayout.customerLogo} aria-hidden="true">
-                  {order.customer.logoUrl ? <Image src={order.customer.logoUrl} alt="" width={48} height={48} unoptimized /> : order.customer.name.slice(0, 2).toUpperCase()}
-                </span>
+                <CustomerIdentityLogo name={order.customer.name} logoUrl={order.customer.logoUrl} />
                 <h1 className={orderLayout.heroTitle}>{isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}</h1>
               </div>
               {order.parentOrderId ? <p className="mt-2 text-xs font-semibold">Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}</p> : null}

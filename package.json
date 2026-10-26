@@ -32,7 +32,7 @@
     "exceljs": "^4.4.0",
     "gsap": "^3.14.2",
     "jszip": "^3.10.1",
-    "next": "16.4.0",
+    "next": "16.4.3",
     "pdf-lib": "^1.17.1",
     "react": "19.2.3",
     "react-day-picker": "^9.14.0",
@@ -41,10 +41,10 @@
     "recharts": "^3.10.0",
     "sharp": "0.35.5",
     "three": "^0.183.2",
-    "undici": "7.29.1",
+    "undici": "7.30.1",
     "web-push": "^3.6.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "overrides": {
     "@prisma/config": {
@@ -64,7 +64,7 @@
     "@types/three": "^0.183.1",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.3",
     "jsdom": "29.1.1",
     "prisma": "^6.19.2",
     "tailwindcss": "^4",

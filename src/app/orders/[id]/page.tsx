@@ -13,6 +13,7 @@ import { OrderDiscountDaysCalculator } from "@/app/orders/OrderDiscountDaysCalcu
 import { OrderFinancialSummary } from "@/app/orders/OrderFinancialSummary";
 import { orderReturnFallback, safeDetailReturnTo } from "@/lib/detail-return";
 import { OrderDateChangeDialog } from "./OrderDateChangeDialog";
+import orderLayout from "./order-detail-layout.module.css";
 import { OrderStatusStepper, type OrderStatus } from "@/app/_ui/OrderStatusStepper";
 import { useAuth } from "@/app/providers";
 import { ORDER_TAX_RATE } from "@/lib/constants";
@@ -178,7 +179,7 @@ const CONDITION_LEGEND: Array<{
   },
 ];
 const orderShellClass =
-  "overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.055)]";
+  "rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.055)]";
 const orderGlassCardClass =
   "rounded-[18px] border border-zinc-200 bg-white shadow-[0_12px_34px_rgba(24,24,27,0.045)]";
 const orderSoftCardClass =
@@ -1973,7 +1974,7 @@ export default function OrderDetailsPage() {
   const statusLabel = STATUS_LABEL[order.status] ?? order.status;
 
   const inner = (
-      <div className="order-detail w-full min-w-0 space-y-5 overflow-x-clip">
+      <div className="order-detail w-full min-w-0 space-y-5">
         <div
           className={[
             orderShellClass,
@@ -1983,265 +1984,43 @@ export default function OrderDetailsPage() {
               : "border-zinc-200",
           ].join(" ")}
         >
-          <div className="border-b border-zinc-200 bg-white">
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-              <div className="min-w-0 px-5 py-6 sm:px-7 sm:py-7">
-                <div className="flex min-w-0 items-start gap-3.5 sm:gap-4">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 text-xs font-black text-violet-700 sm:h-14 sm:w-14 sm:text-sm">
-                    {order.customer.logoUrl ? (
-                      <Image src={order.customer.logoUrl} alt="" width={56} height={56} unoptimized className="h-full w-full object-cover" />
-                    ) : order.customer.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-bold text-violet-700">Заявка №{order.id.slice(0, 8)}</span>
-                      <span className={[
-                        "rounded-full px-2.5 py-1 text-xs font-bold",
-                        order.status === "CANCELLED"
-                          ? "bg-rose-50 text-rose-800"
-                          : order.status === "CLOSED"
-                            ? "bg-violet-50 text-violet-800"
-                            : "bg-yellow-100 text-amber-950",
-                      ].join(" ")}>
-                        {statusLabel}
-                      </span>
-                      {isEditing ? (
-                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">Редактирование</span>
-                      ) : null}
-                    </div>
-                    <h1 className="mt-2 max-w-[24ch] break-words text-2xl font-black tracking-[-0.035em] text-zinc-950 sm:text-3xl">
-                      {isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}
-                    </h1>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-wrap gap-x-6 gap-y-3 border-t border-zinc-200 pt-4 text-sm">
-                  <div className="min-w-[130px]">
-                    <div className="text-xs font-semibold text-zinc-500">Заказчик</div>
-                    <div className="mt-0.5 font-bold text-zinc-950">{order.customer.name}</div>
-                  </div>
-                  <div className="min-w-[150px]">
-                    <div className="text-xs font-semibold text-zinc-500">Оформил</div>
-                    <div className="mt-0.5 font-bold text-zinc-950">
-                      {order.greenwichUser?.displayName || order.createdBy.displayName}
-                    </div>
-                  </div>
-                  <div className="min-w-[130px]">
-                    <div className="text-xs font-semibold text-zinc-500">Создана</div>
-                    <div className="mt-0.5 font-bold text-zinc-950">{fmtDate(order.createdAt)}</div>
-                  </div>
-                </div>
-
-                {isWarehouse && order.greenwichUser?.ratingScore != null ? (
-                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-700">
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1">Рейтинг {order.greenwichUser.ratingScore}</span>
-                    {order.greenwichMonthlyBonus ? (
-                      <span className="rounded-full bg-violet-100 px-2.5 py-1 font-bold text-violet-800">
-                        Бонус лидера +{order.greenwichMonthlyBonus.discountPercent}%
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-                {order.parentOrderId ? (
-                  <p className="mt-4 text-sm font-semibold text-violet-700">
-                    Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}
-                  </p>
-                ) : null}
-                {isWarehouse && order.project ? (
-                  <p className="mt-3 text-sm text-zinc-700">
-                    <span className="text-zinc-500">В проекте: </span>
-                    <Link href={`/projects/${order.project.id}`} className="font-semibold text-violet-700 hover:text-violet-900">
-                      {order.project.title}
-                    </Link>
-                  </p>
-                ) : null}
+          <div className={orderLayout.hero}>
+            <Image src="/brand/dino-order-detail.webp" alt="" aria-hidden="true" width={180} height={270} className={orderLayout.mascot} />
+            <div className={orderLayout.heroMain}>
+              <div className={orderLayout.heroMeta}>
+                <span>Заявка №{order.id.slice(0, 8)}</span>
+                <span className={orderLayout.heroBadge}>{statusLabel}</span>
+                {isEditing ? <span className={orderLayout.heroBadge}>Редактирование</span> : null}
               </div>
-
-              <div className="relative min-h-[168px] overflow-hidden bg-violet-950 px-5 py-6 text-white sm:min-h-[188px] sm:px-7 lg:min-h-full">
-                <div className="absolute -left-12 -top-16 h-44 w-44 rounded-full border border-white/10" aria-hidden="true" />
-                <div className="absolute bottom-[-56px] left-[42%] h-44 w-44 rounded-full bg-yellow-400/90" aria-hidden="true" />
-                <div className="relative z-10 max-w-[58%] sm:max-w-[62%]">
-                  <div className="text-xs font-bold text-violet-200">
-                    {isEditing ? "Итого после изменений" : "Итого по заявке"}
-                  </div>
-                  {(isEditing ? editPricing : orderPricing) ? (
-                    <div className="mt-1 whitespace-nowrap text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
-                      {formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal)}
-                    </div>
-                  ) : null}
-                  <p className="mt-3 max-w-[20ch] text-xs leading-5 text-violet-200">
-                    {isEditing ? "Пересчёт происходит сразу по мере изменений." : "Сумма с учётом аренды, услуг и скидок."}
-                  </p>
-                </div>
-                <Image
-                  src="/brand/dino-order-detail.webp"
-                  alt="Динозавр ВАУСТОРГ с планшетом"
-                  width={1024}
-                  height={1536}
-                  className="pointer-events-none absolute -bottom-16 -right-7 h-[245px] w-[164px] object-contain object-bottom sm:-bottom-20 sm:-right-5 sm:h-[285px] sm:w-[190px]"
-                />
+              <div className={orderLayout.heroIdentity}>
+                <span className={orderLayout.customerLogo} aria-hidden="true">
+                  {order.customer.logoUrl ? <Image src={order.customer.logoUrl} alt="" width={48} height={48} unoptimized /> : order.customer.name.slice(0, 2).toUpperCase()}
+                </span>
+                <h1 className={orderLayout.heroTitle}>{isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}</h1>
               </div>
+              {order.parentOrderId ? <p className="mt-2 text-xs font-semibold">Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}</p> : null}
+              {isWarehouse && order.project ? <p className="mt-2 text-xs">В проекте: <Link href={`/projects/${order.project.id}`} className="font-semibold text-violet-800 underline">{order.project.title}</Link></p> : null}
+              {isWarehouse && order.greenwichUser?.ratingScore != null ? <p className="mt-2 text-xs font-semibold">Рейтинг {order.greenwichUser.ratingScore}{order.greenwichMonthlyBonus ? ` · Бонус лидера +${order.greenwichMonthlyBonus.discountPercent}%` : ""}</p> : null}
             </div>
-
-            <div className="grid border-t border-zinc-200 bg-zinc-50 sm:grid-cols-[0.72fr_1.55fr_auto] sm:items-stretch">
-              <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
-                <div className="text-xs font-semibold text-zinc-500">Готовность</div>
-                <div className="mt-1 font-black text-zinc-950">{fmtDate(order.readyByDate)}</div>
-              </div>
-              <div className="border-b border-zinc-200 px-5 py-4 sm:border-b-0 sm:border-r sm:px-7">
-                <div className="text-xs font-semibold text-zinc-500">Период аренды</div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-black text-zinc-950">
-                  <span>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")}</span>
-                  <span aria-hidden="true">—</span>
-                  <span>{fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</span>
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">
-                    {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 px-5 py-3 sm:max-w-[340px] sm:justify-end sm:px-6">
-                {isEditing && canChangeOrderDates ? (
-                  <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>
-                    Изменить даты
-                  </button>
-                ) : null}
-                {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? (
-                  <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>
-                    {canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}
-                  </button>
-                ) : null}
-                <OrderDocumentMenu
-                  orderId={order.id}
-                  estimateAvailable={Boolean(order.estimateFileKey)}
-                  isGreenwich={Boolean(isGreenwich)}
-                  showInternalEstimate={Boolean(isWarehouse)}
-                />
-              </div>
+            <div className={orderLayout.progress}>
+              <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
+            </div>
+          </div>
+          <div className={orderLayout.facts}>
+            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Заказчик</span><span className={orderLayout.factValue}>{order.customer.name}</span></div>
+            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Оформил · создана</span><span className={orderLayout.factValue}>{order.greenwichUser?.displayName || order.createdBy.displayName} · {fmtDate(order.createdAt)}</span></div>
+            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Готовность</span><span className={orderLayout.factValue}>{fmtDate(order.readyByDate)}</span></div>
+            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Период аренды</span><span className={orderLayout.factValue}>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")} · {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}</span></div>
+          </div>
+          <div className={orderLayout.actions}>
+            <div><span className={orderLayout.factLabel}>{isEditing ? "Итого после изменений" : "Итого по заявке"}</span><strong>{(isEditing ? editPricing : orderPricing) ? formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal) : "—"}</strong></div>
+            <div className={orderLayout.actionsRight}>
+              {isEditing && canChangeOrderDates ? <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>Изменить даты</button> : null}
+              {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>{canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}</button> : null}
+              <OrderDocumentMenu orderId={order.id} estimateAvailable={Boolean(order.estimateFileKey)} isGreenwich={Boolean(isGreenwich)} showInternalEstimate={Boolean(isWarehouse)} />
             </div>
           </div>
 
-          <div className="border-b border-zinc-200 bg-white px-3 py-4 sm:px-6">
-            <OrderStatusStepper
-              status={order.status}
-              source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"}
-              density={isGreenwich ? "compact" : "regular"}
-              compactWindow={isGreenwich ? 5 : 7}
-            />
-          </div>
-
-          {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
-              {orderPricing ? (
-                isGreenwich ? (
-                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-3">
-                      <div>
-                        <div className="text-sm font-black text-zinc-950">Расчёт заявки</div>
-                        <div className="mt-0.5 text-xs text-zinc-500">Стоимость, налог и применённая скидка</div>
-                      </div>
-                      <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotal)}</div>
-                    </div>
-                    <div className="grid gap-px bg-zinc-200 sm:grid-cols-3">
-                      <div className="bg-white px-4 py-3.5">
-                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-violet-600" />До налога</div>
-                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
-                      </div>
-                      <div className="bg-white px-4 py-3.5">
-                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-yellow-400" />Налог {Math.round(orderPricing.taxRate * 100)}%</div>
-                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
-                      </div>
-                      <div className="bg-white px-4 py-3.5">
-                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Подтверждённая скидка</div>
-                        <div className="mt-2 text-lg font-black tabular-nums text-emerald-700">
-                          {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
-                        </div>
-                      </div>
-                    </div>
-                    {(canEditOrder || order.greenwichRequestedDiscountType !== "NONE") ? (
-                      <div className="flex flex-col gap-3 border-t border-zinc-200 bg-violet-50/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-xs font-black text-violet-950">
-                            {order.greenwichRequestedDiscountType === "NONE"
-                              ? "Нужна дополнительная скидка?"
-                              : `Запрошено: ${formatDiscountLabel(
-                                  order.greenwichRequestedDiscountType,
-                                  order.greenwichRequestedDiscountPercent,
-                                  order.greenwichRequestedDiscountAmount,
-                                )}`}
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-violet-800">
-                            {order.greenwichDiscountRequestComment || "Запрос увидит менеджер ВАУСТОРГ и примет решение."}
-                          </p>
-                        </div>
-                        {canEditOrder ? (
-                          <button
-                            type="button"
-                            onClick={openDiscountRequestEditor}
-                            className={orderSecondaryButtonClass + " shrink-0 px-3 py-2 text-xs"}
-                          >
-                            {order.greenwichRequestedDiscountType === "NONE" ? "Запросить скидку" : "Изменить запрос"}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <OrderFinancialSummary
-                    pricing={{
-                      grandTotalBeforeTax: orderPricing.grandTotalBeforeTax,
-                      taxRate: orderPricing.taxRate,
-                      taxAmount: orderPricing.taxAmount,
-                      grandTotal: orderPricing.grandTotal,
-                    }}
-                    warehouse={warehouseProfitEstimate}
-                    discountLabel={
-                      orderPricing.discountAmount > 0
-                        ? formatDiscountLabel(
-                            order.rentalDiscountType,
-                            order.rentalDiscountPercent,
-                            order.rentalDiscountAmount,
-                          )
-                        : null
-                    }
-                  />
-                )
-              ) : null}
-            {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
-              <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-inset ring-amber-200">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <strong>Grinvich запросил скидку</strong>
-                  <span className="font-black tabular-nums">
-                    {formatDiscountLabel(
-                      order.greenwichRequestedDiscountType,
-                      order.greenwichRequestedDiscountPercent,
-                      order.greenwichRequestedDiscountAmount,
-                    )}
-                  </span>
-                </div>
-                {order.greenwichDiscountRequestComment ? (
-                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">{order.greenwichDiscountRequestComment}</p>
-                ) : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {canApplyRequestedDiscount ? (
-                    <button
-                      type="button"
-                      onClick={applyRequestedDiscount}
-                      className={orderPrimaryButtonClass + " px-3 py-2 text-xs"}
-                    >
-                      Установить скидку
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void rejectRequestedDiscount()}
-                    className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}
-                  >
-                    Отклонить запрос
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div> : null}
         </div>
 
         <OrderDateChangeDialog
@@ -2791,6 +2570,8 @@ export default function OrderDetailsPage() {
           </div>
         ) : (
           <>
+          <div className={orderLayout.summaryLayout}>
+            <div className={orderLayout.summaryContent}>
             <div className={orderGlassCardClass + " overflow-hidden"}>
               <div className={orderSectionHeaderClass + " flex flex-wrap items-center justify-between gap-2"}>
                 <div>
@@ -2805,7 +2586,7 @@ export default function OrderDetailsPage() {
               </div>
               <div className="divide-y divide-zinc-200">
                     {order.lines.map((line, index) => (
-                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(260px,1.35fr)_repeat(3,minmax(72px,0.35fr))_minmax(100px,0.55fr)] lg:items-center lg:gap-4 lg:py-4">
+                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(95px,0.4fr))_minmax(95px,0.5fr)] lg:items-center lg:gap-3 lg:py-4">
                         <div className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
                           <span className="hidden w-6 shrink-0 text-xs font-black tabular-nums text-zinc-300 sm:block">{String(index + 1).padStart(2, "0")}</span>
                           <ProductIdentity
@@ -2817,8 +2598,8 @@ export default function OrderDetailsPage() {
                         </div>
                         {([
                           ["Запрошено", line.requestedQty, "block"],
-                          ["Согласовано", line.approvedQty ?? "—", "hidden lg:block"],
-                          ["Выдано", line.issuedQty ?? "—", "hidden lg:block"],
+                          ["Согласовано", line.approvedQty ?? "—", "block"],
+                          ["Выдано", line.issuedQty ?? "—", "block"],
                         ] as const).map(([label, value, visibility]) => (
                           <div key={label} className={`${visibility} rounded-lg bg-zinc-50 px-3 py-2 lg:rounded-none lg:bg-transparent lg:p-0`}>
                             <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</div>
@@ -2860,6 +2641,7 @@ export default function OrderDetailsPage() {
                     ))}
               </div>
             </div>
+
 
             {(order.deliveryEnabled || order.montageEnabled || order.demontageEnabled) ? (
               <div className={orderGlassCardClass + " overflow-hidden"}>
@@ -2935,6 +2717,132 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             ) : null}
+            </div>
+            <aside className={orderLayout.summary} aria-label="Сведения о заявке">
+              <h2>О заявке</h2>
+              <dl>
+                <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Период аренды</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
+              </dl>
+              <span className={orderLayout.factLabel + " mt-4"}>Итого по заявке</span>
+              <strong className={orderLayout.summaryTotal}>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong>
+            </aside>
+          </div>
+          {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
+              {orderPricing ? (
+                isGreenwich ? (
+                  <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-3">
+                      <div>
+                        <div className="text-sm font-black text-zinc-950">Расчёт заявки</div>
+                        <div className="mt-0.5 text-xs text-zinc-500">Стоимость, налог и применённая скидка</div>
+                      </div>
+                      <div className="text-sm font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotal)}</div>
+                    </div>
+                    <div className="grid gap-px bg-zinc-200 sm:grid-cols-3">
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-violet-600" />До налога</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.grandTotalBeforeTax)}</div>
+                      </div>
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-yellow-400" />Налог {Math.round(orderPricing.taxRate * 100)}%</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-zinc-950">{formatMoney(orderPricing.taxAmount)}</div>
+                      </div>
+                      <div className="bg-white px-4 py-3.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-600"><span className="h-2 w-2 rounded-full bg-emerald-500" />Подтверждённая скидка</div>
+                        <div className="mt-2 text-lg font-black tabular-nums text-emerald-700">
+                          {orderPricing.discountAmount > 0 ? `− ${formatMoney(orderPricing.discountAmount)}` : "Нет"}
+                        </div>
+                      </div>
+                    </div>
+                    {(canEditOrder || order.greenwichRequestedDiscountType !== "NONE") ? (
+                      <div className="flex flex-col gap-3 border-t border-zinc-200 bg-violet-50/55 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-violet-950">
+                            {order.greenwichRequestedDiscountType === "NONE"
+                              ? "Нужна дополнительная скидка?"
+                              : `Запрошено: ${formatDiscountLabel(
+                                  order.greenwichRequestedDiscountType,
+                                  order.greenwichRequestedDiscountPercent,
+                                  order.greenwichRequestedDiscountAmount,
+                                )}`}
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-violet-800">
+                            {order.greenwichDiscountRequestComment || "Запрос увидит менеджер ВАУСТОРГ и примет решение."}
+                          </p>
+                        </div>
+                        {canEditOrder ? (
+                          <button
+                            type="button"
+                            onClick={openDiscountRequestEditor}
+                            className={orderSecondaryButtonClass + " shrink-0 px-3 py-2 text-xs"}
+                          >
+                            {order.greenwichRequestedDiscountType === "NONE" ? "Запросить скидку" : "Изменить запрос"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <OrderFinancialSummary
+                    pricing={{
+                      grandTotalBeforeTax: orderPricing.grandTotalBeforeTax,
+                      taxRate: orderPricing.taxRate,
+                      taxAmount: orderPricing.taxAmount,
+                      grandTotal: orderPricing.grandTotal,
+                    }}
+                    warehouse={warehouseProfitEstimate}
+                    discountLabel={
+                      orderPricing.discountAmount > 0
+                        ? formatDiscountLabel(
+                            order.rentalDiscountType,
+                            order.rentalDiscountPercent,
+                            order.rentalDiscountAmount,
+                          )
+                        : null
+                    }
+                  />
+                )
+              ) : null}
+            {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
+              <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-inset ring-amber-200">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <strong>Grinvich запросил скидку</strong>
+                  <span className="font-black tabular-nums">
+                    {formatDiscountLabel(
+                      order.greenwichRequestedDiscountType,
+                      order.greenwichRequestedDiscountPercent,
+                      order.greenwichRequestedDiscountAmount,
+                    )}
+                  </span>
+                </div>
+                {order.greenwichDiscountRequestComment ? (
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-amber-900">{order.greenwichDiscountRequestComment}</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canApplyRequestedDiscount ? (
+                    <button
+                      type="button"
+                      onClick={applyRequestedDiscount}
+                      className={orderPrimaryButtonClass + " px-3 py-2 text-xs"}
+                    >
+                      Установить скидку
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void rejectRequestedDiscount()}
+                    className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}
+                  >
+                    Отклонить запрос
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div> : null}
           </>
         )}
 

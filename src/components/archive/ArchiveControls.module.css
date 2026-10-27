@@ -1,0 +1,25 @@
+.root { padding: 11px 16px; border-top: 1px solid #ebe8ee; background: #fcfbfc; color: #29232e; }
+.root[data-dragging] { background: #f2eafd; outline: 2px dashed #7c3aed; outline-offset: -4px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; color: #77707c; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #c7c1ca; }
+.root[data-documents] .label { color: #552c91; }
+.root[data-documents] .dot { background: #7836c2; }
+.attach { color: #6226ac; font-size: 13px; font-weight: 700; border: 0; background: none; padding: 7px 2px; cursor: pointer; }
+.attach:hover { color: #391363; }
+.attach:disabled { color: #999; cursor: default; }
+.check { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding: 7px 10px; border-radius: 7px; background: #f0eef1; font-size: 13px; font-weight: 600; color: #625b66; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: #08795d; margin: 0; }
+.root[data-recorded] .check { background: #e2f3ea; color: #11684f; }
+.hidden { display: none; }
+.files { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.files li { display: flex; align-items: center; min-width: 0; max-width: 100%; background: #f0ebf7; border-radius: 6px; }
+.files a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #54229b; font-size: 12px; padding: 6px 4px 6px 9px; }
+.files button { border: 0; background: transparent; padding: 3px 9px; cursor: pointer; color: #6c6472; font-size: 18px; }
+.root :is(button, a, input):focus-visible { outline: 2px solid #702cc5; outline-offset: 2px; }
+.error { color: #a32237; font-size: 12px; margin-top: 6px; }
+/* The edge is a compact status signal shared by all three archive lists. */
+:global(.queue-order):has(> .root[data-documents]), :global(.work-card):has(> .root[data-documents]), :global(li.group):has(> .root[data-documents]) { box-shadow: inset 3px 0 #8242c8; }
+:global(.queue-order):has(> .root[data-recorded]), :global(.work-card):has(> .root[data-recorded]), :global(li.group):has(> .root[data-recorded]) { box-shadow: inset 3px 0 #168467; }
+:global(.queue-order):has(> .root[data-documents][data-recorded]), :global(.work-card):has(> .root[data-documents][data-recorded]), :global(li.group):has(> .root[data-documents][data-recorded]) { box-shadow: inset 3px 0 #8242c8, inset 6px 0 #168467; }
+@media (max-width: 600px) { .check { margin-left: 0; } }

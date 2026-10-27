@@ -769,6 +769,8 @@ model Project {
   notificationCooldowns     ProjectNotificationCooldown[]
   folders                   ProjectFolder[]
   projectFiles              ProjectFile[]
+  archiveDocuments          ArchiveDocument[]
+  archiveRegisterMark       ArchiveRegisterMark?
   estimateVersions          ProjectEstimateVersion[]
   scheduleDays              ProjectScheduleDay[]
   contractorAssignments     ProjectContractor[]
@@ -2130,6 +2132,8 @@ model KitLine {
 
 model Order {
   id     String      @id @default(cuid())
+  archiveDocuments ArchiveDocument[]
+  archiveRegisterMark ArchiveRegisterMark?
   source OrderSource
   status OrderStatus @default(SUBMITTED)
 
@@ -2521,4 +2525,34 @@ model InventoryAuditItemResult {
 
   @@index([runId, severity])
   @@index([itemId])
+}
+
+/// Закрывающие документы хранятся отдельно от рабочих файлов проекта.
+model ArchiveDocument {
+  id           String   @id @default(cuid())
+  projectId    String?
+  orderId      String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  order        Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storageKey   String   @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+  @@index([orderId])
+}
+
+/// Отметка о ручном внесении в общую таблицу директора.
+model ArchiveRegisterMark {
+  id          String   @id
+  projectId   String?  @unique
+  orderId     String?  @unique
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  order       Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recorded    Boolean  @default(false)
+  updatedById String
+  updatedAt   DateTime @updatedAt
 }

@@ -1,7 +1,7 @@
 # Реестр HTTP API (сгенерировано из кода)
 
-> **Сгенерировано:** 2026-10-14T10:30:11.076Z  
-> **Файлов route.ts:** 168  
+> **Сгенерировано:** 2026-10-27T13:09:40.279Z  
+> **Файлов route.ts:** 171  
 > Команда: `npm run brain:inventory`  
 > См. также: `brain/reference/README.md` (ручные реестры: prisma-transactions, schedule-after-response).  
 > Расхождение других доков с этой таблицей — **ошибка документации**.
@@ -28,6 +28,9 @@
 | GET | `/api/admin/users/[id]/achievements` | `src/app/api/admin/users/[id]/achievements/route.ts` |
 | PATCH | `/api/admin/users/[id]` | `src/app/api/admin/users/[id]/route.ts` |
 | GET, POST | `/api/admin/users` | `src/app/api/admin/users/route.ts` |
+| GET, DELETE | `/api/archive-records/[kind]/[id]/files/[fileId]` | `src/app/api/archive-records/[kind]/[id]/files/[fileId]/route.ts` |
+| GET, PATCH, POST | `/api/archive-records/[kind]/[id]` | `src/app/api/archive-records/[kind]/[id]/route.ts` |
+| POST | `/api/archive-records` | `src/app/api/archive-records/route.ts` |
 | POST | `/api/auth/first-login` | `src/app/api/auth/first-login/route.ts` |
 | POST | `/api/auth/login` | `src/app/api/auth/login/route.ts` |
 | POST | `/api/auth/logout` | `src/app/api/auth/logout/route.ts` |

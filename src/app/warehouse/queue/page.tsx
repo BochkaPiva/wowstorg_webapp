@@ -1,5 +1,7 @@
 "use client";
 
+import { ArchiveControls } from "@/components/archive/ArchiveControls";
+
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
@@ -452,6 +454,7 @@ function WarehouseQueueContent() {
             ) : null}
           </div>
         </div>
+        {tab === "archive" ? <ArchiveControls kind="order" id={order.id} /> : null}
       </article>
     );
   }

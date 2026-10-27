@@ -1,5 +1,7 @@
 "use client";
 
+import { ArchiveControls } from "@/components/archive/ArchiveControls";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
@@ -1124,6 +1126,7 @@ export default function WorkQueuePage() {
                               density={item.kind === "PROJECT" ? "compact" : "regular"}
                               className="work-progressRow__stepper"
                             />
+                            {view === "archive" && item.kind === "PROJECT" && (order.status === "CLOSED" || order.status === "CANCELLED") ? <ArchiveControls kind="order" id={order.id} /> : null}
                           </section>
                         ))}
                       </div>
@@ -1289,6 +1292,7 @@ export default function WorkQueuePage() {
                         </div>
                       </div>
                     </div>
+                    {view === "archive" && (item.kind === "PROJECT" || item.kind === "STANDALONE_ORDER") ? <ArchiveControls kind={item.kind === "PROJECT" ? "project" : "order"} id={item.id} /> : null}
                   </article>
                 );
                 })}

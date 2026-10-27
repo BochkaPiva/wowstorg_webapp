@@ -1,5 +1,7 @@
 "use client";
 
+import { ArchiveControls } from "@/components/archive/ArchiveControls";
+
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
@@ -656,6 +658,7 @@ function ProjectsContent() {
                         </div>
                       </div>
                     </Link>
+                    {tab === "archive" ? <ArchiveControls kind="project" id={p.id} /> : null}
                     {tab === "active" ? (
                       <div className="flex min-h-11 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 py-2">
                         <Link href={withDetailReturn(`/projects/${p.id}`, detailSource, returnTo)} className="text-xs font-bold text-violet-800 transition-colors hover:text-violet-950">Открыть карточку →</Link>

@@ -114,6 +114,7 @@ export function OrderStatusStepper({
         <Stepper
           steps={STEPS}
           activeStep={activeStep}
+          completeCurrent={status === "CLOSED"}
           tone={tone}
           windowSize={compactWindow}
           density={density}

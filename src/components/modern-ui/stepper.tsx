@@ -40,6 +40,7 @@ export function Stepper({
   className,
   windowSize = 7,
   density = "regular",
+  completeCurrent = false,
 }: {
   steps: Step[];
   activeStep: number;
@@ -47,6 +48,7 @@ export function Stepper({
   className?: string;
   windowSize?: number;
   density?: "regular" | "compact";
+  completeCurrent?: boolean;
 }) {
   const { active, line } = toneClasses(tone);
   const total = Math.max(1, steps.length);
@@ -103,7 +105,7 @@ export function Stepper({
           }
 
           const step = steps[item.idx]!;
-          const completed = item.idx < currentIdx;
+          const completed = item.idx < currentIdx || (completeCurrent && item.idx === currentIdx);
           const isActive = item.idx === currentIdx;
           const next = display[position + 1];
           const showConnector = next?.type === "step";

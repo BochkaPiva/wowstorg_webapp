@@ -59,8 +59,9 @@ export function OrderFinancialSummary({
     <div className={styles.summary}>
       <div className={styles.header}>
         <div>
-          <div className="text-sm font-black text-zinc-950">Финансовый итог</div>
-
+          <h2 className={styles.title}>Финансовый итог</h2>
+          <span className={styles.headlineLabel}>Итого по заявке</span>
+          <strong className={styles.headlineAmount}>{formatMoneyRub(pricing.grandTotal)} ₽</strong>
         </div>
         {discountLabel ? (
           <div className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
@@ -77,11 +78,6 @@ export function OrderFinancialSummary({
           <div className={styles.rows}>
             <SummaryRow label="Сумма до налога" value={`${formatMoneyRub(pricing.grandTotalBeforeTax)} ₽`} />
             <SummaryRow label={`Налог ${taxPercent}%`} value={`${formatMoneyRub(pricing.taxAmount)} ₽`} />
-            <SummaryRow
-              label="Итого по заявке"
-              value={`${formatMoneyRub(pricing.grandTotal)} ₽`}
-              total
-            />
           </div>
         </section>
 

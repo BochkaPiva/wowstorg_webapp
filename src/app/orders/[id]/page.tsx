@@ -2714,20 +2714,6 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             ) : null}
-            </div>
-            <aside className={orderLayout.summary} aria-label="Сведения о заявке">
-              <h2>О заявке</h2>
-              <dl>
-                <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Период аренды</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
-              </dl>
-              <span className={orderLayout.factLabel + " mt-4"}>Итого по заявке</span>
-              <strong className={orderLayout.summaryTotal}>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong>
-            </aside>
-          </div>
-          {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
               {orderPricing ? (
                 isGreenwich ? (
                   <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
@@ -2803,6 +2789,21 @@ export default function OrderDetailsPage() {
                   />
                 )
               ) : null}
+            </div>
+            <aside className={orderLayout.summary} aria-label="Сведения о заявке">
+              <h2>О заявке</h2>
+              <dl>
+                <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
+                <div className={orderLayout.summaryRow}><dt>Период аренды</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
+              </dl>
+              <span className={orderLayout.factLabel + " mt-4"}>Итого по заявке</span>
+              <strong className={orderLayout.summaryTotal}>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong>
+            </aside>
+          </div>
+          {!isEditing ? <div className="space-y-4 p-4 sm:p-6">
+
             {isWarehouse && order.greenwichRequestedDiscountType !== "NONE" ? (
               <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-inset ring-amber-200">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">

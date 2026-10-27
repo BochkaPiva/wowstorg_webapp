@@ -1,3 +1,4 @@
+import styles from "./OrderFinancialSummary.module.css";
 import { formatMoneyRub, formatPercent } from "@/lib/money";
 
 type OrderPricingSummary = {
@@ -30,26 +31,9 @@ function SummaryRow({
   valueClassName?: string;
 }) {
   return (
-    <div
-      className={[
-        "flex items-center justify-between gap-3",
-        total ? "border-t pt-2 text-base" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <span className={total ? "font-extrabold text-inherit" : strong ? "font-semibold" : "text-zinc-600"}>
-        {label}
-      </span>
-      <span
-        className={[
-          "tabular-nums",
-          total ? "font-black" : strong ? "font-extrabold" : "font-bold",
-          valueClassName,
-        ].join(" ")}
-      >
-        {value}
-      </span>
+    <div className={[styles.row, total ? styles.total : "", strong ? styles.strong : ""].filter(Boolean).join(" ")}>
+      <span className={styles.label}>{label}</span>
+      <span className={[styles.value, valueClassName].filter(Boolean).join(" ")}>{value}</span>
     </div>
   );
 }
@@ -72,11 +56,11 @@ export function OrderFinancialSummary({
     : 0;
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-3">
+    <div className={styles.summary}>
+      <div className={styles.header}>
         <div>
           <div className="text-sm font-black text-zinc-950">Финансовый итог</div>
-          <div className="mt-0.5 text-xs text-zinc-500">Клиентский расчёт, внутренние расходы и результат</div>
+
         </div>
         {discountLabel ? (
           <div className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
@@ -85,18 +69,12 @@ export function OrderFinancialSummary({
         ) : null}
       </div>
 
-      <div
-        className={[
-          "grid gap-px bg-zinc-200",
-          showWarehouse ? "xl:grid-cols-[1.05fr_0.95fr_1fr]" : "md:grid-cols-1",
-        ].join(" ")}
-      >
-        <section className="bg-white p-4 sm:p-5">
-          <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
-            <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+      <div className={[styles.grid, showWarehouse ? styles.withWarehouse : ""].filter(Boolean).join(" ")}>
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>
             Клиент
           </div>
-          <div className="mt-3 space-y-2 text-sm">
+          <div className={styles.rows}>
             <SummaryRow label="Сумма до налога" value={`${formatMoneyRub(pricing.grandTotalBeforeTax)} ₽`} />
             <SummaryRow label={`Налог ${taxPercent}%`} value={`${formatMoneyRub(pricing.taxAmount)} ₽`} />
             <SummaryRow
@@ -109,12 +87,11 @@ export function OrderFinancialSummary({
 
         {warehouse ? (
           <>
-            <section className="bg-white p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
-                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
+            <section className={styles.section}>
+              <div className={styles.sectionTitle}>
                 Внутреннее
               </div>
-              <div className="mt-3 space-y-2 text-sm">
+              <div className={styles.rows}>
                 <SummaryRow
                   label="Себестоимость доп. услуг и скрытых трат"
                   value={`${formatMoneyRub(warehouse.internalCostTotal)} ₽`}
@@ -142,12 +119,11 @@ export function OrderFinancialSummary({
               </p>
             </section>
 
-            <section className="bg-white p-4 sm:p-5">
-              <div className="flex items-center gap-2 text-sm font-black text-zinc-950">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            <section className={styles.section}>
+              <div className={styles.sectionTitle}>
                 Маржа
               </div>
-              <div className="mt-3 space-y-2 text-sm">
+              <div className={styles.rows}>
                 <SummaryRow label="Оценка прибыли" value={`${formatMoneyRub(profit)} ₽`} strong valueClassName={profitTone} />
                 <SummaryRow label="Рентабельность" value={formatPercent(warehouse.profitabilityPct, 2)} strong valueClassName="text-emerald-950" />
               </div>

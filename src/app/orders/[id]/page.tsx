@@ -2659,47 +2659,29 @@ export default function OrderDetailsPage() {
 
 
             {(order.deliveryEnabled || order.montageEnabled || order.demontageEnabled) ? (
-              <div className={orderGlassCardClass + " overflow-hidden"}>
-                <div className={orderSectionHeaderClass}>
-                  <div className="text-base font-black text-zinc-950">Дополнительные услуги</div>
-                  <div className="mt-0.5 text-xs text-zinc-500">Логистика и работы, включённые в заявку</div>
+              <section className={orderLayout.services} aria-labelledby="order-services-title">
+                <div className={orderLayout.servicesHeader}>
+                  <h2 id="order-services-title">Дополнительные услуги</h2>
                 </div>
-                <ul className="grid gap-2 p-3 sm:grid-cols-3 sm:p-4">
-                  {order.deliveryEnabled ? (
-                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>→</span><div className="font-black text-zinc-950">Доставка</div></div>
-                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.deliveryPrice != null ? `${order.deliveryPrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
+                <ul className={orderLayout.servicesList}>
+                  {[
+                    { name: "Доставка", enabled: order.deliveryEnabled, price: order.deliveryPrice, comment: order.deliveryComment, cost: order.deliveryInternalCost },
+                    { name: "Монтаж", enabled: order.montageEnabled, price: order.montagePrice, comment: order.montageComment, cost: order.montageInternalCost },
+                    { name: "Демонтаж", enabled: order.demontageEnabled, price: order.demontagePrice, comment: order.demontageComment, cost: order.demontageInternalCost },
+                  ].filter((service) => service.enabled).map((service) => (
+                    <li key={service.name} className={orderLayout.serviceRow}>
+                      <div className={orderLayout.serviceBody}>
+                        <h3>{service.name}</h3>
+                        {service.comment ? <p>{service.comment}</p> : null}
+                        {isWarehouse && service.cost != null ? <span className={orderLayout.serviceCost}>Внутренние расходы: {Number(service.cost).toLocaleString("ru-RU")} ₽</span> : null}
                       </div>
-                      {order.deliveryComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.deliveryComment}</div> : null}
-                      {order.deliveryPrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
-                      {isWarehouse && order.deliveryInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.deliveryInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
-                    </li>
-                  ) : null}
-                  {order.montageEnabled ? (
-                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>+</span><div className="font-black text-zinc-950">Монтаж</div></div>
-                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.montagePrice != null ? `${order.montagePrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
+                      <div className={orderLayout.servicePrice}>
+                        {service.price != null ? `${service.price.toLocaleString("ru-RU")} ₽` : <span className={orderLayout.serviceMissing}>Цена не указана</span>}
                       </div>
-                      {order.montageComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.montageComment}</div> : null}
-                      {order.montagePrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
-                      {isWarehouse && order.montageInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.montageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
                     </li>
-                  ) : null}
-                  {order.demontageEnabled ? (
-                    <li className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-violet-100 text-sm text-violet-700" aria-hidden>←</span><div className="font-black text-zinc-950">Демонтаж</div></div>
-                        <div className="shrink-0 font-black tabular-nums text-zinc-950">{order.demontagePrice != null ? `${order.demontagePrice.toLocaleString("ru-RU")} ₽` : "—"}</div>
-                      </div>
-                      {order.demontageComment ? <div className="mt-2 pl-10 text-xs leading-5 text-zinc-500">{order.demontageComment}</div> : null}
-                      {order.demontagePrice == null ? <div className="mt-2 pl-10 text-xs font-bold text-amber-700">Цена не указана</div> : null}
-                      {isWarehouse && order.demontageInternalCost != null ? <div className="mt-2 border-t border-zinc-200 pt-2 text-[11px] font-semibold text-zinc-500">Внутренние расходы · {Number(order.demontageInternalCost).toLocaleString("ru-RU")} ₽</div> : null}
-                    </li>
-                  ) : null}
+                  ))}
                 </ul>
-              </div>
+              </section>
             ) : null}
 
             {isWarehouse && (order.hiddenExpenses?.length ?? 0) > 0 ? (

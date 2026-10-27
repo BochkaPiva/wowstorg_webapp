@@ -62,3 +62,18 @@
   .fact:nth-child(2n) { border-right: 0; }
   .actions { padding: 12px 16px; }
 }
+
+.progress :global(.order-progress__stepper) { border-top: 0; }
+.services { overflow: hidden; border: 1px solid #e7e3e8; border-radius: 12px; background: #fff; }
+.servicesHeader { padding: 18px 20px; border-bottom: 1px solid #eeecee; }
+.servicesHeader h2 { margin: 0; font-size: 16px; font-weight: 800; }
+.servicesList { margin: 0; padding: 0 20px; list-style: none; }
+.serviceRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 17px 0; border-bottom: 1px solid #eeecee; }
+.serviceRow:last-child { border-bottom: 0; }
+.serviceBody { min-width: 0; }
+.serviceBody h3 { margin: 0; font-size: 14px; font-weight: 750; }
+.serviceBody p { max-width: 70ch; margin: 6px 0 0; color: #68636d; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.serviceCost { display: block; margin-top: 8px; color: #77717b; font-size: 12px; }
+.servicePrice { white-space: nowrap; text-align: right; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.serviceMissing { color: #986000; font-size: 12px; }
+@media (max-width: 450px) { .serviceRow { grid-template-columns: minmax(0, 1fr); gap: 8px; } .servicePrice { text-align: left; } }

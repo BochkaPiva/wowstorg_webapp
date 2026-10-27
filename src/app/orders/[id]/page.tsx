@@ -917,32 +917,16 @@ function ServiceEditRow({
   lockEnabled?: boolean;
   hideComment?: boolean;
 }) {
+  const fieldId = React.useId();
   const priceMissing = enabled && !isEnabledServicePriceSpecified(price);
-  const gridCols =
-    hideComment && showInternalPrice
-      ? "sm:grid-cols-[minmax(8rem,12rem)_minmax(10rem,14rem)]"
-      : showPrice && showInternalPrice
-      ? "lg:grid-cols-[minmax(16rem,1fr)_minmax(8rem,0.42fr)_minmax(8rem,0.42fr)_minmax(9rem,0.46fr)]"
-      : showPrice
-        ? "sm:grid-cols-[1fr_9rem]"
-        : "";
   return (
     <div
-      className={[
-        "rounded-xl border px-4 py-3 transition-[background-color,border-color,box-shadow] duration-150 sm:px-4",
-        enabled
-          ? "border-violet-200 bg-white shadow-[0_8px_24px_rgba(76,29,149,0.06)]"
-          : "border-zinc-200 bg-zinc-50/70",
-      ].join(" ")}
+      className={orderLayout.editService}
     >
       <div className="flex min-h-10 items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={["h-2 w-2 rounded-full", enabled ? "bg-violet-600" : "bg-zinc-300"].join(" ")} />
             <div className="text-sm font-black text-zinc-950">{label}</div>
-          </div>
-          <div className="mt-0.5 pl-4 text-[11px] font-medium text-zinc-500">
-            {enabled ? "Включено в заявку" : "Не включено"}
           </div>
         </div>
         <button
@@ -970,25 +954,27 @@ function ServiceEditRow({
         </button>
       </div>
       {enabled && (
-        <div className={`mt-3 grid gap-3 border-t border-zinc-200/80 pt-3 ${gridCols}`}>
+        <div className={orderLayout.editServiceFields}>
           {!hideComment ? (
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
-            <input
-              type="text"
+          <div className={orderLayout.editServiceComment}>
+            <label htmlFor={`${fieldId}-comment`} className="block text-xs font-medium text-zinc-500 mb-1">Комментарий</label>
+            <textarea
+              id={`${fieldId}-comment`}
+              rows={2}
               value={comment}
               onChange={(e) => onCommentChange(e.target.value)}
               placeholder="Описание или примечание"
-              className={orderInputClass + " w-full"}
+              className={orderInputClass + " w-full resize-y"}
             />
           </div>
           ) : null}
           {showPrice ? (
             <div className="min-w-[120px]">
-              <label className="block text-xs font-medium text-zinc-500 mb-1">
+              <label htmlFor={`${fieldId}-price`} className="block text-xs font-medium text-zinc-500 mb-1">
                 Цена (₽) <span className="text-red-500">*</span>
               </label>
               <input
+                id={`${fieldId}-price`}
                 type="number"
                 min={0}
                 step={1}
@@ -1008,8 +994,9 @@ function ServiceEditRow({
           ) : null}
           {showInternalPrice && internalPrice !== undefined && onInternalPriceChange ? (
             <div className="min-w-[120px]">
-              <label className="block text-xs font-medium text-zinc-500 mb-1">Внутр. (₽)</label>
+              <label htmlFor={`${fieldId}-internal`} className="block text-xs font-medium text-zinc-500 mb-1">Внутренние расходы (₽)</label>
               <input
+                id={`${fieldId}-internal`}
                 type="number"
                 min={0}
                 step={1}
@@ -1024,10 +1011,11 @@ function ServiceEditRow({
           ) : null}
           {showInternalPrice && internalPaymentMethod && onInternalPaymentMethodChange ? (
             <div className="min-w-[130px]">
-              <label className="block text-xs font-medium text-zinc-500 mb-1">
+              <label htmlFor={`${fieldId}-payment`} className="block text-xs font-medium text-zinc-500 mb-1">
                 {ORDER_SERVICE_INTERNAL_PAYMENT_FIELD_LABEL}
               </label>
               <select
+                id={`${fieldId}-payment`}
                 value={internalPaymentMethod}
                 onChange={(e) => onInternalPaymentMethodChange(e.target.value as OrderServicePaymentMethod)}
                 className={orderInputClass + " w-full font-semibold text-zinc-800"}
@@ -1992,51 +1980,41 @@ export default function OrderDetailsPage() {
 
   const inner = (
       <div className="order-detail w-full min-w-0 space-y-5">
-        <div
-          className={[
-            orderShellClass,
-            isGreenwich ? "border-zinc-200" : "border-t-[5px] border-t-yellow-400",
-            order.status === "CANCELLED"
-              ? "border-[#5b0b17]/20"
-              : "border-zinc-200",
-          ].join(" ")}
-        >
-          <div className={[orderLayout.hero, isEditing ? orderLayout.editingHero : ""].filter(Boolean).join(" ")}>
-            <Image src="/brand/dino-order-detail.webp" alt="" aria-hidden="true" width={180} height={270} className={orderLayout.mascot} />
-            <div className={orderLayout.heroMain}>
-              <div className={orderLayout.heroMeta}>
+        <header className={[orderLayout.workspaceHeader, isEditing ? orderLayout.compactHeader : ""].filter(Boolean).join(" ")}>
+          <div className={orderLayout.headerIdentity}>
+            <div className={orderLayout.headerMain}>
+              <div className={orderLayout.headerMeta}>
                 <span>Заявка №{order.id.slice(0, 8)}</span>
-                <span className={orderLayout.heroBadge}>{statusLabel}</span>
-                {isEditing ? <span className={orderLayout.heroBadge}>Редактирование</span> : null}
+                <span className={orderLayout.headerStatus}>{statusLabel}</span>
+                {isEditing ? <span className={orderLayout.headerStatus}>Редактирование</span> : null}
               </div>
-              <div className={orderLayout.heroIdentity}>
+              <div className={orderLayout.headerTitle}>
                 <CustomerIdentityLogo name={order.customer.name} logoUrl={order.customer.logoUrl} />
-                <h1 className={orderLayout.heroTitle}>{isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}</h1>
+                <h1>{isEditing ? editEventName || order.customer.name : order.eventName || order.customer.name}</h1>
               </div>
-              {order.parentOrderId ? <p className="mt-2 text-xs font-semibold">Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}</p> : null}
-              {isWarehouse && order.project ? <p className="mt-2 text-xs">В проекте: <Link href={`/projects/${order.project.id}`} className="font-semibold text-violet-800 underline">{order.project.title}</Link></p> : null}
-              {isWarehouse && order.greenwichUser?.ratingScore != null ? <p className="mt-2 text-xs font-semibold">Рейтинг {order.greenwichUser.ratingScore}{order.greenwichMonthlyBonus ? ` · Бонус лидера +${order.greenwichMonthlyBonus.discountPercent}%` : ""}</p> : null}
+              {order.parentOrderId ? <p>Доп. заявка к заявке №{order.parentOrderId.slice(0, 8)}</p> : null}
+              {isWarehouse && order.project ? <p>Проект: <Link href={`/projects/${order.project.id}`} className="underline">{order.project.title}</Link></p> : null}
+              {isWarehouse && order.greenwichUser?.ratingScore != null ? <p>Рейтинг {order.greenwichUser.ratingScore}{order.greenwichMonthlyBonus ? ` · Бонус лидера +${order.greenwichMonthlyBonus.discountPercent}%` : ""}</p> : null}
             </div>
+            <Image src="/brand/dino-order-detail.webp" alt="" aria-hidden="true" width={145} height={185} className={orderLayout.headerMascot} />
           </div>
-          {!isEditing ? <div className={orderLayout.progress}>
+          {!isEditing ? <div className={orderLayout.headerProgress}>
             <OrderStatusStepper hideHelp hideCurrentLabel showSummary={order.status !== "CLOSED" && order.status !== "CANCELLED"} status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
           </div> : null}
-          <div className={[orderLayout.facts, isEditing ? orderLayout.editingFacts : orderLayout.viewFacts].filter(Boolean).join(" ")}>
-            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Заказчик</span><span className={orderLayout.factValue}>{order.customer.name}</span></div>
-            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Оформил · создана</span><span className={orderLayout.factValue}>{order.greenwichUser?.displayName || order.createdBy.displayName} · {fmtDate(order.createdAt)}</span></div>
-            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Готовность</span><span className={orderLayout.factValue}>{fmtDate(order.readyByDate)}</span></div>
-            <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Период аренды</span><span className={orderLayout.factValue}>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")} · {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}</span></div>
-          </div>
-          <div className={orderLayout.actions}>
-            {!isEditing ? <div className={orderLayout.topTotal}><span className={orderLayout.factLabel}>Итого по заявке</span><strong>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong></div> : null}
-            <div className={orderLayout.actionsRight}>
-              {isEditing && canChangeOrderDates ? <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>Изменить даты</button> : null}
-              {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>{canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}</button> : null}
+          <div className={orderLayout.headerInformation}>
+            <dl className={orderLayout.headerFacts}>
+              <div><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
+              <div><dt>Оформил · создана</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName} · {fmtDate(order.createdAt)}</dd></div>
+              <div><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
+              <div><dt>Период аренды</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")} · {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}</dd></div>
+            </dl>
+            <div className={orderLayout.headerActions}>
+              {isEditing && canChangeOrderDates ? <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass}>Изменить даты</button> : null}
+              {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? <button type="button" onClick={startEditing} className={orderPrimaryButtonClass}>{canEditOrderServicesOnly ? "Изменить услуги" : "Редактировать заявку"}</button> : null}
               <OrderDocumentMenu orderId={order.id} estimateAvailable={Boolean(order.estimateFileKey)} isGreenwich={Boolean(isGreenwich)} showInternalEstimate={Boolean(isWarehouse)} />
             </div>
           </div>
-
-        </div>
+        </header>
 
         <OrderDateChangeDialog
           open={dateDialogOpen}
@@ -2401,7 +2379,7 @@ export default function OrderDetailsPage() {
                 <div className={orderLayout.editSectionHeader}>
                   <h2>Услуги и расходы</h2>
                 </div>
-                <div className="space-y-2 bg-zinc-50/60 p-3 sm:p-4">
+                <div className={orderLayout.editServices}>
                 <ServiceEditRow
                   label="Доставка"
                   enabled={editDeliveryEnabled}
@@ -2713,64 +2691,33 @@ export default function OrderDetailsPage() {
                   </button>
                 ) : null}
               </div>
-              <div className={orderLayout.itemTableHeading} aria-hidden="true">
-                <span>Позиция</span><span>Запрошено</span><span>Согласовано</span><span>Выдано</span><span>Цена / сутки</span>
-              </div>
-              <div className="divide-y divide-zinc-200">
-                    {order.lines.map((line) => (
-                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(200px,2fr)_repeat(3,minmax(72px,0.55fr))_minmax(85px,0.7fr)] lg:items-center lg:gap-3 lg:py-4">
-                        <div className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
-                          <ProductIdentity
-                            itemId={line.item.id}
-                            photo1Key={line.item.photo1Key}
-                            name={line.item.name}
-                            size="md"
-                            wrap
-                          />
-                        </div>
-                        {([
-                          ["Запрошено", line.requestedQty, "block"],
-                          ["Согласовано", line.approvedQty ?? "—", "block"],
-                          ["Выдано", line.issuedQty ?? "—", "block"],
-                        ] as const).map(([label, value, visibility]) => (
-                          <div key={label} className={`${visibility} rounded-lg bg-zinc-50 px-3 py-2 lg:rounded-none lg:bg-transparent lg:p-0`}>
-                            <div className="text-xs font-medium text-zinc-500 lg:sr-only">{label}</div>
-                            <div className="mt-1 font-black tabular-nums text-zinc-950">{value}</div>
-                          </div>
-                        ))}
-                        <div className="rounded-lg bg-zinc-50 px-3 py-2 text-right lg:rounded-none lg:bg-transparent lg:p-0">
-                          <div className="text-xs font-medium text-zinc-500 lg:sr-only">Цена / сутки</div>
-                          <div className="mt-1 text-sm text-zinc-700">
-                          {(() => {
-                            if (line.pricePerDaySnapshot == null) return "—";
-                            const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
-                            const before = line.pricePerDaySnapshot * (line.payMultiplierSnapshot ?? multiplier);
-                            const pricing = calcOrderPricingClient(order);
-                            const ratio =
-                              pricing.rentalBeforeDiscount > 0
-                                ? pricing.rentalAfterDiscount / pricing.rentalBeforeDiscount
-                                : 1;
-                            const after = before * ratio;
-                            return pricing.discountAmount > 0 ? (
-                              <span className="inline-flex flex-col items-end">
-                                <span className="text-xs text-zinc-400 line-through">{before.toFixed(0)} ₽</span>
-                                <span className="font-semibold text-emerald-700">{after.toFixed(0)} ₽</span>
-                              </span>
-                            ) : (
-                              `${before.toFixed(0)} ₽`
-                            );
-                          })()}
-                          </div>
-                        </div>
-                        {(line.greenwichComment || line.warehouseComment) ? (
-                          <div className="col-span-2 rounded-md bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600 lg:col-span-5">
-                            {line.greenwichComment ? <span><strong className="text-zinc-800">Клиент:</strong> {line.greenwichComment}</span> : null}
-                            {line.greenwichComment && line.warehouseComment ? <span className="mx-2 text-zinc-300">/</span> : null}
-                            {line.warehouseComment ? <span><strong className="text-zinc-800">Склад:</strong> {line.warehouseComment}</span> : null}
-                          </div>
-                        ) : null}
+              <div className={orderLayout.itemList}>
+                {order.lines.map((line) => {
+                  const multiplier = order.payMultiplier != null ? Number(order.payMultiplier) : 1;
+                  const before = line.pricePerDaySnapshot == null ? null : line.pricePerDaySnapshot * (line.payMultiplierSnapshot ?? multiplier);
+                  const ratio = orderPricing && orderPricing.rentalBeforeDiscount > 0 ? orderPricing.rentalAfterDiscount / orderPricing.rentalBeforeDiscount : 1;
+                  const after = before == null ? null : before * ratio;
+                  return (
+                    <article key={line.id} className={orderLayout.itemRow}>
+                      <div className={orderLayout.itemIdentity}>
+                        <ProductIdentity itemId={line.item.id} photo1Key={line.item.photo1Key} name={line.item.name} size="md" wrap />
                       </div>
-                    ))}
+                      <dl className={orderLayout.itemQuantities}>
+                        <div><dt>Запрошено</dt><dd>{line.requestedQty}</dd></div>
+                        <div><dt>Согласовано</dt><dd>{line.approvedQty ?? "—"}</dd></div>
+                        <div><dt>Выдано</dt><dd>{line.issuedQty ?? "—"}</dd></div>
+                      </dl>
+                      <div className={orderLayout.itemRate}>
+                        <span>Цена за сутки</span>
+                        {before == null ? <strong>—</strong> : orderPricing && orderPricing.discountAmount > 0 ? <><del>{formatMoney(before)}</del><strong>{formatMoney(after ?? 0)}</strong></> : <strong>{formatMoney(before)}</strong>}
+                      </div>
+                      {(line.greenwichComment || line.warehouseComment) ? <div className={orderLayout.itemComments}>
+                        {line.greenwichComment ? <p><strong>Клиент:</strong> {line.greenwichComment}</p> : null}
+                        {line.warehouseComment ? <p><strong>Склад:</strong> {line.warehouseComment}</p> : null}
+                      </div> : null}
+                    </article>
+                  );
+                })}
               </div>
             </section>
 
@@ -2965,16 +2912,6 @@ export default function OrderDetailsPage() {
                   />
                 )
               ) : null}
-              <div className={orderLayout.sidebarDetails}>
-                <h2>Детали заявки</h2>
-                <dl>
-                  <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
-                  <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
-                  <div className={orderLayout.summaryRow}><dt>Создана</dt><dd>{fmtDate(order.createdAt)}</dd></div>
-                  <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
-                  <div className={orderLayout.summaryRow}><dt>Аренда</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
-                </dl>
-              </div>
 
             </aside>
           </div>
@@ -3142,7 +3079,7 @@ export default function OrderDetailsPage() {
         ) : null}
 
         {/* Приёмка: итог (в архиве/после закрытия) */}
-        {order.status === "CLOSED" && (order.returnSplits ?? []).some((s) => s.phase === "CHECKED_IN") ? (
+        {!isEditing && order.status === "CLOSED" && (order.returnSplits ?? []).some((s) => s.phase === "CHECKED_IN") ? (
           <div className={orderGlassCardClass + " overflow-hidden"}>
             <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
               Приёмка (итог)

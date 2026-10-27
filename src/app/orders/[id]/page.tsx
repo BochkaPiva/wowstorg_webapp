@@ -2017,18 +2017,18 @@ export default function OrderDetailsPage() {
               {isWarehouse && order.project ? <p className="mt-2 text-xs">В проекте: <Link href={`/projects/${order.project.id}`} className="font-semibold text-violet-800 underline">{order.project.title}</Link></p> : null}
               {isWarehouse && order.greenwichUser?.ratingScore != null ? <p className="mt-2 text-xs font-semibold">Рейтинг {order.greenwichUser.ratingScore}{order.greenwichMonthlyBonus ? ` · Бонус лидера +${order.greenwichMonthlyBonus.discountPercent}%` : ""}</p> : null}
             </div>
-            <div className={orderLayout.progress}>
-              <OrderStatusStepper hideHelp hideCurrentLabel showSummary={order.status !== "CLOSED" && order.status !== "CANCELLED"} status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
-            </div>
           </div>
-          <div className={[orderLayout.facts, isEditing ? orderLayout.editingFacts : ""].filter(Boolean).join(" ")}>
+          {!isEditing ? <div className={orderLayout.progress}>
+            <OrderStatusStepper hideHelp hideCurrentLabel showSummary={order.status !== "CLOSED" && order.status !== "CANCELLED"} status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
+          </div> : null}
+          <div className={[orderLayout.facts, isEditing ? orderLayout.editingFacts : orderLayout.viewFacts].filter(Boolean).join(" ")}>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Заказчик</span><span className={orderLayout.factValue}>{order.customer.name}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Оформил · создана</span><span className={orderLayout.factValue}>{order.greenwichUser?.displayName || order.createdBy.displayName} · {fmtDate(order.createdAt)}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Готовность</span><span className={orderLayout.factValue}>{fmtDate(order.readyByDate)}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Период аренды</span><span className={orderLayout.factValue}>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")} · {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}</span></div>
           </div>
           <div className={orderLayout.actions}>
-            {!isEditing ? <div><span className={orderLayout.factLabel}>Итого по заявке</span><strong>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong></div> : null}
+            {!isEditing ? <div className={orderLayout.topTotal}><span className={orderLayout.factLabel}>Итого по заявке</span><strong>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong></div> : null}
             <div className={orderLayout.actionsRight}>
               {isEditing && canChangeOrderDates ? <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>Изменить даты</button> : null}
               {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>{canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}</button> : null}
@@ -2717,10 +2717,9 @@ export default function OrderDetailsPage() {
                 <span>Позиция</span><span>Запрошено</span><span>Согласовано</span><span>Выдано</span><span>Цена / сутки</span>
               </div>
               <div className="divide-y divide-zinc-200">
-                    {order.lines.map((line, index) => (
-                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(95px,0.4fr))_minmax(95px,0.5fr)] lg:items-center lg:gap-3 lg:py-4">
+                    {order.lines.map((line) => (
+                      <div key={line.id} className="grid grid-cols-2 gap-x-3 gap-y-3 px-3 py-3 transition-colors hover:bg-zinc-50 sm:px-5 lg:grid-cols-[minmax(200px,2fr)_repeat(3,minmax(72px,0.55fr))_minmax(85px,0.7fr)] lg:items-center lg:gap-3 lg:py-4">
                         <div className="col-span-2 flex min-w-0 items-center gap-3 lg:col-span-1">
-                          <span className="hidden w-6 shrink-0 text-xs font-black tabular-nums text-zinc-300 sm:block">{String(index + 1).padStart(2, "0")}</span>
                           <ProductIdentity
                             itemId={line.item.id}
                             photo1Key={line.item.photo1Key}
@@ -2888,6 +2887,9 @@ export default function OrderDetailsPage() {
             ) : null}
           </div>
         ) : null}
+
+            </div>
+            <aside className={orderLayout.summary} aria-label="Расчёт и сведения о заявке">
               {orderPricing ? (
                 isGreenwich ? (
                   <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">
@@ -2963,17 +2965,17 @@ export default function OrderDetailsPage() {
                   />
                 )
               ) : null}
-            </div>
-            <aside className={orderLayout.summary} aria-label="Сведения о заявке">
-              <h2>О заявке</h2>
-              <dl>
-                <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
-                <div className={orderLayout.summaryRow}><dt>Период аренды</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
-              </dl>
-              <span className={orderLayout.factLabel + " mt-4"}>Итого по заявке</span>
-              <strong className={orderLayout.summaryTotal}>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong>
+              <div className={orderLayout.sidebarDetails}>
+                <h2>Детали заявки</h2>
+                <dl>
+                  <div className={orderLayout.summaryRow}><dt>Заказчик</dt><dd>{order.customer.name}</dd></div>
+                  <div className={orderLayout.summaryRow}><dt>Оформил</dt><dd>{order.greenwichUser?.displayName || order.createdBy.displayName}</dd></div>
+                  <div className={orderLayout.summaryRow}><dt>Создана</dt><dd>{fmtDate(order.createdAt)}</dd></div>
+                  <div className={orderLayout.summaryRow}><dt>Готовность</dt><dd>{fmtDate(order.readyByDate)}</dd></div>
+                  <div className={orderLayout.summaryRow}><dt>Аренда</dt><dd>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")}</dd></div>
+                </dl>
+              </div>
+
             </aside>
           </div>
           {!isEditing ? <div className="space-y-4 p-4 sm:p-6">

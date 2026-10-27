@@ -65,10 +65,10 @@ export function OrderFinancialSummary({
         <div className={styles.metric}><span>Итого клиенту</span><strong>{formatMoneyRub(pricing.grandTotal)} ₽</strong></div>
         {warehouse ? <>
           <div className={styles.metric}><span>Расходы</span><strong>{formatMoneyRub(warehouseExpenseTotal)} ₽</strong></div>
-          <div className={styles.metric}><span>Оценка прибыли</span><strong className={profitTone}>{formatMoneyRub(profit)} ₽</strong><small>Рентабельность {formatPercent(warehouse.profitabilityPct, 2)}</small></div>
+          <div className={styles.metric}><span>Оценка прибыли</span><strong className={profitTone}>{formatMoneyRub(profit)} ₽</strong><small>Рентабельность {formatPercent(warehouse.profitabilityPct, 2)} · после налогов и внутренних расходов</small></div>
         </> : null}
       </div>
-      <details className={styles.breakdown}>
+      <details className={styles.breakdown} open>
         <summary>Расшифровка расчёта</summary>
         <div className={[styles.grid, showWarehouse ? styles.withWarehouse : ""].filter(Boolean).join(" ")}>
         <section className={styles.section}>
@@ -104,29 +104,13 @@ export function OrderFinancialSummary({
                     value={`${formatMoneyRub(warehouse.clientTaxAmount)} ₽`}
                   />
                 ) : null}
-                <SummaryRow
-                  label="Расходы всего"
-                  value={`${formatMoneyRub(warehouseExpenseTotal)} ₽`}
-                  strong
-                />
               </div>
               <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
                 Без себестоимости аренды реквизита.
               </p>
             </section>
 
-            <section className={styles.section}>
-              <div className={styles.sectionTitle}>
-                Маржа
-              </div>
-              <div className={styles.rows}>
-                <SummaryRow label="Оценка прибыли" value={`${formatMoneyRub(profit)} ₽`} strong valueClassName={profitTone} />
-                <SummaryRow label="Рентабельность" value={formatPercent(warehouse.profitabilityPct, 2)} strong valueClassName="text-emerald-950" />
-              </div>
-              <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-                После налогов и внутренних расходов.
-              </p>
-            </section>
+
           </>
         ) : null}
         </div>

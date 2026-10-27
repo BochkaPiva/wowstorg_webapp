@@ -1,40 +1,23 @@
-.summary { container-type: inline-size; overflow: hidden; border: 1px solid #e4e1e5; border-radius: 12px; background: #fff; }
-.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 20px; border-bottom: 1px solid #eeecee; }
-.grid { display: grid; grid-template-columns: minmax(0, 1fr); }
-.section { min-width: 0; padding: 18px 20px; border-bottom: 1px solid #eeecee; }
-.section:last-child { border-bottom: 0; }
-.sectionTitle { color: #24202a; font-size: 14px; font-weight: 750; }
-.rows { display: grid; gap: 10px; margin-top: 16px; font-size: 14px; }
-.row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.label { min-width: 0; color: #68636d; line-height: 1.4; }
-.value { flex-shrink: 0; white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
-.strong .label { color: #29232d; font-weight: 650; }
-.total { margin-top: 3px; padding-top: 12px; border-top: 1px solid #e6e2e6; font-size: 15px; }
-.total .label, .total .value { color: #211b27; font-weight: 800; }
-@container (min-width: 850px) { .withWarehouse { grid-template-columns: repeat(3, minmax(0, 1fr)); } .withWarehouse .section { border-right: 1px solid #eeecee; border-bottom: 0; } .withWarehouse .section:last-child { border-right: 0; } }
-@container (max-width: 360px) { .row { flex-wrap: wrap; gap: 2px 12px; } }
-
-.header { align-items: flex-start; padding: 20px 22px; background: #f6f2fc; }
-.title { margin: 0 0 18px; color: #342144; font-size: 14px; font-weight: 750; }
-.headlineLabel { display: block; color: #6e6078; font-size: 12px; font-weight: 600; }
-.headlineAmount { display: block; margin-top: 4px; color: #211529; font-size: clamp(22px, 2vw, 30px); line-height: 1.15; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
-
-.header { align-items: center; padding: 18px 20px; background: white; }
-.title { margin: 0; color: #24202a; font-size: 16px; }
-.discount { padding: 5px 9px; border-radius: 6px; background: #f0eafa; color: #5c2e93; font-size: 12px; font-weight: 700; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr)); background: #f8f6fa; }
-.metric { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 18px 20px; }
-.metric span, .metric small { color: #6e6872; font-size: 12px; }
-.metric strong { color: #241b2b; font-size: clamp(18px, 2vw, 23px); line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.breakdown { border-top: 1px solid #eae7eb; }
-.breakdown summary { padding: 14px 20px; color: #6028a1; cursor: pointer; font-size: 13px; font-weight: 700; }
-.breakdown summary:focus-visible { outline: 2px solid #702dd1; outline-offset: -2px; }
-.breakdown[open] summary { border-bottom: 1px solid #eae7eb; }
-
-@container (max-width: 420px) {
-  .metric { gap: 4px; padding: 11px 18px; }
-  .metric strong { font-size: 20px; }
-  .section { padding: 12px 18px; }
-  .rows { margin-top: 10px; gap: 7px; }
-  .breakdown summary { padding: 11px 18px; }
-}
+.summary { container-type: inline-size; padding: 20px; border: 1px solid #e4e0e6; border-radius: 14px; background: #fff; color: #241d29; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.header h2 { margin: 0; font-size: 16px; line-height: 1.3; font-weight: 750; }
+.discount { flex: none; padding: 5px 8px; border-radius: 6px; background: #f1eaf9; color: #6025a0; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.clientTotal { display: flex; flex-direction: column; gap: 4px; margin: 22px 0 14px; }
+.clientTotal span, .profit span { color: #706a75; font-size: 12px; line-height: 1.3; }
+.clientTotal strong { font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: -.025em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows { display: grid; gap: 9px; margin: 0; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: baseline; gap: 12px; font-size: 13px; line-height: 1.4; }
+.row dt { min-width: 0; color: #706a75; }
+.row dd { margin: 0; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.divider { height: 1px; margin: 17px 0; background: #eae7eb; }
+.groupHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.groupHeading h3 { margin: 0; font-size: 14px; font-weight: 750; }
+.groupHeading strong { font-size: 15px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { margin: 12px 0 0; color: #817a84; font-size: 11px; line-height: 1.4; }
+.profit { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 15px 0 0; border-top: 1px solid #eae7eb; }
+.profit > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.profit strong { color: #087a58; font-size: 19px; line-height: 1.2; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.profit .negative { color: #b4233a; }
+.margin { align-items: flex-end; text-align: right; }
+.margin strong { color: #241d29; font-size: 14px; }
+@container (max-width: 215px) { .profit { align-items: flex-start; flex-direction: column; } .margin { align-items: flex-start; text-align: left; } }

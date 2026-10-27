@@ -17,104 +17,65 @@ type WarehouseProfitSummary = {
   profitabilityPct: number;
 };
 
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-  total = false,
-  valueClassName = "",
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  total?: boolean;
-  valueClassName?: string;
-}) {
+function AmountRow({ label, amount }: { label: string; amount: number }) {
   return (
-    <div className={[styles.row, total ? styles.total : "", strong ? styles.strong : ""].filter(Boolean).join(" ")}>
-      <span className={styles.label}>{label}</span>
-      <span className={[styles.value, valueClassName].filter(Boolean).join(" ")}>{value}</span>
+    <div className={styles.row}>
+      <dt>{label}</dt>
+      <dd>{formatMoneyRub(amount)} ₽</dd>
     </div>
   );
 }
 
-export function OrderFinancialSummary({
-  pricing,
-  warehouse,
-  discountLabel,
-}: {
+export function OrderFinancialSummary({ pricing, warehouse, discountLabel }: {
   pricing: OrderPricingSummary;
   warehouse?: WarehouseProfitSummary | null;
   discountLabel?: string | null;
 }) {
   const taxPercent = Math.round(pricing.taxRate * 100);
-  const showWarehouse = Boolean(warehouse);
-  const profit = warehouse?.profitEstimate ?? 0;
-  const profitTone = profit >= 0 ? "text-emerald-950" : "text-rose-700";
-  const warehouseExpenseTotal = warehouse
-    ? warehouse.internalCostWithCashTax + warehouse.clientTaxAmount
-    : 0;
+  const expenses = warehouse ? warehouse.internalCostWithCashTax + warehouse.clientTaxAmount : 0;
 
   return (
-    <div className={styles.summary}>
-      <div className={styles.header}>
-        <h2 className={styles.title}>Финансовый итог</h2>
+    <section className={styles.summary} aria-labelledby="order-financial-title">
+      <header className={styles.header}>
+        <h2 id="order-financial-title">Расчёт заявки</h2>
         {discountLabel ? <span className={styles.discount}>Скидка {discountLabel}</span> : null}
+      </header>
+
+      <div className={styles.clientTotal}>
+        <span>Итого клиенту</span>
+        <strong>{formatMoneyRub(pricing.grandTotal)} ₽</strong>
       </div>
-      <div className={styles.metrics}>
-        <div className={styles.metric}><span>Итого клиенту</span><strong>{formatMoneyRub(pricing.grandTotal)} ₽</strong></div>
-        {warehouse ? <>
-          <div className={styles.metric}><span>Расходы</span><strong>{formatMoneyRub(warehouseExpenseTotal)} ₽</strong></div>
-          <div className={styles.metric}><span>Оценка прибыли</span><strong className={profitTone}>{formatMoneyRub(profit)} ₽</strong><small>Рентабельность {formatPercent(warehouse.profitabilityPct, 2)} · после налогов и внутренних расходов</small></div>
-        </> : null}
-      </div>
-      <details className={styles.breakdown} open>
-        <summary>Расшифровка расчёта</summary>
-        <div className={[styles.grid, showWarehouse ? styles.withWarehouse : ""].filter(Boolean).join(" ")}>
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>
-            Клиент
+      <dl className={styles.rows}>
+        <AmountRow label="До налога" amount={pricing.grandTotalBeforeTax} />
+        <AmountRow label={`Налог ${taxPercent}%`} amount={pricing.taxAmount} />
+      </dl>
+
+      {warehouse ? (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.groupHeading}>
+            <h3>Расходы</h3>
+            <strong>{formatMoneyRub(expenses)} ₽</strong>
           </div>
-          <div className={styles.rows}>
-            <SummaryRow label="Сумма до налога" value={`${formatMoneyRub(pricing.grandTotalBeforeTax)} ₽`} />
-            <SummaryRow label={`Налог ${taxPercent}%`} value={`${formatMoneyRub(pricing.taxAmount)} ₽`} />
+          <dl className={styles.rows}>
+            <AmountRow label="Доп. услуги и скрытые траты" amount={warehouse.internalCostTotal} />
+            {warehouse.cashInternalCostTax > 0 ? <AmountRow label="Налог на наличные 3,5%" amount={warehouse.cashInternalCostTax} /> : null}
+            {warehouse.clientTaxAmount > 0 ? <AmountRow label={`Расходный налог ${taxPercent}%`} amount={warehouse.clientTaxAmount} /> : null}
+          </dl>
+          <p className={styles.note}>Без себестоимости аренды реквизита.</p>
+
+          <div className={styles.profit}>
+            <div>
+              <span>Оценка прибыли</span>
+              <strong className={warehouse.profitEstimate < 0 ? styles.negative : undefined}>{formatMoneyRub(warehouse.profitEstimate)} ₽</strong>
+            </div>
+            <div className={styles.margin}>
+              <span>Рентабельность</span>
+              <strong>{formatPercent(warehouse.profitabilityPct, 2)}</strong>
+            </div>
           </div>
-        </section>
-
-        {warehouse ? (
-          <>
-            <section className={styles.section}>
-              <div className={styles.sectionTitle}>
-                Внутреннее
-              </div>
-              <div className={styles.rows}>
-                <SummaryRow
-                  label="Себестоимость доп. услуг и скрытых трат"
-                  value={`${formatMoneyRub(warehouse.internalCostTotal)} ₽`}
-                />
-                {warehouse.cashInternalCostTax > 0 ? (
-                  <SummaryRow
-                    label="Налог на наличку 3,5%"
-                    value={`${formatMoneyRub(warehouse.cashInternalCostTax)} ₽`}
-                  />
-                ) : null}
-                {warehouse.clientTaxAmount > 0 ? (
-                  <SummaryRow
-                    label={`Расходный налог ${taxPercent}%`}
-                    value={`${formatMoneyRub(warehouse.clientTaxAmount)} ₽`}
-                  />
-                ) : null}
-              </div>
-              <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
-                Без себестоимости аренды реквизита.
-              </p>
-            </section>
-
-
-          </>
-        ) : null}
-        </div>
-      </details>
-    </div>
+        </>
+      ) : null}
+    </section>
   );
 }

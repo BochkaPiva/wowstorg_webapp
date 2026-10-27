@@ -30,3 +30,11 @@
 .breakdown summary { padding: 14px 20px; color: #6028a1; cursor: pointer; font-size: 13px; font-weight: 700; }
 .breakdown summary:focus-visible { outline: 2px solid #702dd1; outline-offset: -2px; }
 .breakdown[open] summary { border-bottom: 1px solid #eae7eb; }
+
+@container (max-width: 420px) {
+  .metric { gap: 4px; padding: 11px 18px; }
+  .metric strong { font-size: 20px; }
+  .section { padding: 12px 18px; }
+  .rows { margin-top: 10px; gap: 7px; }
+  .breakdown summary { padding: 11px 18px; }
+}

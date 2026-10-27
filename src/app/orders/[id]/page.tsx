@@ -2014,28 +2014,6 @@ export default function OrderDetailsPage() {
               <OrderDocumentMenu orderId={order.id} estimateAvailable={Boolean(order.estimateFileKey)} isGreenwich={Boolean(isGreenwich)} showInternalEstimate={Boolean(isWarehouse)} />
             </div>
           </div>
-        </header>
-
-        <OrderDateChangeDialog
-          open={dateDialogOpen}
-          allowPastDates={isWarehouse}
-          orderId={order.id}
-          initialValue={{
-            readyByDate: order.readyByDate.slice(0, 10),
-            startDate: order.startDate.slice(0, 10),
-            endDate: order.endDate.slice(0, 10),
-            rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
-            rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
-          }}
-          onClose={() => setDateDialogOpen(false)}
-          onApplied={async () => {
-            await loadOrder();
-            notifyProjectParent();
-          }}
-        />
-
-
-
         {!isEditing && (
           sendEstimateBlocked ||
           (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED")) ||
@@ -2206,6 +2184,29 @@ export default function OrderDetailsPage() {
           )}
         </div>
         ) : null}
+        </header>
+
+        <OrderDateChangeDialog
+          open={dateDialogOpen}
+          allowPastDates={isWarehouse}
+          orderId={order.id}
+          initialValue={{
+            readyByDate: order.readyByDate.slice(0, 10),
+            startDate: order.startDate.slice(0, 10),
+            endDate: order.endDate.slice(0, 10),
+            rentalStartPartOfDay: order.rentalStartPartOfDay ?? "MORNING",
+            rentalEndPartOfDay: order.rentalEndPartOfDay ?? "MORNING",
+          }}
+          onClose={() => setDateDialogOpen(false)}
+          onApplied={async () => {
+            await loadOrder();
+            notifyProjectParent();
+          }}
+        />
+
+
+
+
 
         {actionError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800" role="alert">
@@ -2711,6 +2712,17 @@ export default function OrderDetailsPage() {
                         <span>Цена за сутки</span>
                         {before == null ? <strong>—</strong> : orderPricing && orderPricing.discountAmount > 0 ? <><del>{formatMoney(before)}</del><strong>{formatMoney(after ?? 0)}</strong></> : <strong>{formatMoney(before)}</strong>}
                       </div>
+                      {order.status === "CLOSED" && (order.returnSplits ?? []).some((split) => split.phase === "CHECKED_IN") && lineIssuedQty(line) > 0 ? (
+                        <div className={orderLayout.itemReturn}>
+                          <span className={orderLayout.returnLabel}>Приёмка · получено {lineIssuedQty(line)}</span>
+                          {(checkedInByLine.get(line.id) ?? []).length ? (checkedInByLine.get(line.id) ?? []).map((split) => (
+                            <span key={split.id} className={orderLayout.returnCondition}>{CONDITION_LABEL[split.condition]}: {split.qty}</span>
+                          )) : <span className={orderLayout.returnCondition}>Нет данных приёмки</span>}
+                          {(checkedInByLine.get(line.id) ?? []).find((split) => (split.comment ?? "").trim())?.comment ? (
+                            <p>{(checkedInByLine.get(line.id) ?? []).find((split) => (split.comment ?? "").trim())?.comment}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {(line.greenwichComment || line.warehouseComment) ? <div className={orderLayout.itemComments}>
                         {line.greenwichComment ? <p><strong>Клиент:</strong> {line.greenwichComment}</p> : null}
                         {line.warehouseComment ? <p><strong>Склад:</strong> {line.warehouseComment}</p> : null}
@@ -3074,56 +3086,6 @@ export default function OrderDetailsPage() {
                   Сбросить к декларации
                 </button>
               </div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Приёмка: итог (в архиве/после закрытия) */}
-        {!isEditing && order.status === "CLOSED" && (order.returnSplits ?? []).some((s) => s.phase === "CHECKED_IN") ? (
-          <div className={orderGlassCardClass + " overflow-hidden"}>
-            <div className={orderSectionHeaderClass + " text-sm font-semibold text-zinc-700"}>
-              Приёмка (итог)
-            </div>
-            <div className="p-4 space-y-3">
-              {order.lines.filter((l) => lineIssuedQty(l) > 0).map((l) => {
-                const total = lineIssuedQty(l);
-                const splits = checkedInByLine.get(l.id) ?? [];
-                const comment = splits.find((s) => (s.comment ?? "").trim() !== "")?.comment ?? "";
-                return (
-                  <div key={l.id} className={orderSoftCardClass + " p-3"}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <ProductIdentity
-                        itemId={l.item.id}
-                        photo1Key={l.item.photo1Key}
-                        name={l.item.name}
-                        size="md"
-                        nameClassName="text-sm font-semibold text-zinc-900"
-                      />
-                      <div className="text-xs text-zinc-600">
-                        Получено: <span className="font-semibold">{total}</span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-sm text-zinc-700">
-                      {splits.length ? (
-                        <div className="flex flex-wrap gap-2">
-                          {splits.map((s) => (
-                            <span key={s.id} className="rounded-full border border-zinc-200/80 bg-white/85 px-3 py-1 text-xs font-bold text-zinc-800 shadow-sm">
-                              {CONDITION_LABEL[s.condition]}: {s.qty}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-zinc-500">Нет данных приёмки</span>
-                      )}
-                    </div>
-                    {comment ? (
-                      <div className="mt-2 text-sm text-zinc-600 whitespace-pre-wrap">
-                        <span className="font-semibold text-zinc-700">Комментарий:</span> {comment}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
             </div>
           </div>
         ) : null}

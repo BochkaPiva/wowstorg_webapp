@@ -73,6 +73,8 @@ export function OrderStatusStepper({
   showSummary = true,
   className,
   density = "regular",
+  hideHelp = false,
+  hideCurrentLabel = false,
 }: {
   status: OrderStatus;
   source?: OrderSource;
@@ -80,6 +82,8 @@ export function OrderStatusStepper({
   showSummary?: boolean;
   className?: string;
   density?: "regular" | "compact";
+  hideHelp?: boolean;
+  hideCurrentLabel?: boolean;
 }) {
   const owner = turnOwner(status, source);
   const activeStep = status === "CANCELLED" ? 1 : FLOW.indexOf(status) + 1;
@@ -91,17 +95,19 @@ export function OrderStatusStepper({
         <div className="order-progress__current">
           <span className="order-progress__dot" aria-hidden="true" />
           <div>
-            <strong>{STATUS_LABEL[status]}</strong>
+            {!hideCurrentLabel ? <strong>{STATUS_LABEL[status]}</strong> : null}
             {owner !== "NONE" ? (
               <span>Сейчас действует: {owner === "WAREHOUSE" ? "Wowstorg" : "Grinvich"}</span>
             ) : null}
           </div>
         </div>
 
-        <details className="order-progress__help">
-          <summary aria-label="Что означает статус">?</summary>
-          <div>{STATUS_DETAIL[status]}</div>
-        </details>
+        {!hideHelp ? (
+          <details className="order-progress__help">
+            <summary aria-label="Что означает статус">?</summary>
+            <div>{STATUS_DETAIL[status]}</div>
+          </details>
+        ) : null}
       </div> : null}
 
       {status !== "CANCELLED" ? (

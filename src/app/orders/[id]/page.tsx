@@ -189,9 +189,9 @@ const orderSectionHeaderClass =
 const orderInputClass =
   "rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-zinc-500 focus:border-violet-700 focus:ring-2 focus:ring-violet-100";
 const orderPrimaryButtonClass =
-  "rounded-md border border-yellow-400 bg-yellow-400 px-4 py-2.5 text-sm font-bold text-zinc-950 transition-colors duration-150 hover:bg-yellow-300 disabled:opacity-50";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-yellow-400 bg-yellow-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-yellow-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 disabled:opacity-50";
 const orderSecondaryButtonClass =
-  "rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white disabled:opacity-50";
+  "inline-flex min-h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 transition-colors hover:border-violet-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 disabled:opacity-50";
 const orderDangerButtonClass =
   "rounded-lg border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-800 transition-colors duration-150 hover:bg-rose-50 disabled:opacity-50";
 const orderWarningButtonClass =
@@ -2017,7 +2017,7 @@ export default function OrderDetailsPage() {
               {isWarehouse && order.greenwichUser?.ratingScore != null ? <p className="mt-2 text-xs font-semibold">Рейтинг {order.greenwichUser.ratingScore}{order.greenwichMonthlyBonus ? ` · Бонус лидера +${order.greenwichMonthlyBonus.discountPercent}%` : ""}</p> : null}
             </div>
             <div className={orderLayout.progress}>
-              <OrderStatusStepper status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
+              <OrderStatusStepper hideHelp hideCurrentLabel showSummary={order.status !== "CLOSED" && order.status !== "CANCELLED"} status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
             </div>
           </div>
           <div className={orderLayout.facts}>
@@ -2055,62 +2055,7 @@ export default function OrderDetailsPage() {
           }}
         />
 
-        {isWarehouse && !isEditing ? (
-          <div className={orderGlassCardClass + " p-4"}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-zinc-800">Внутренний комментарий (только склад)</div>
-              <button
-                type="button"
-                onClick={() => {
-                  setInternalNoteOpen((v) => !v);
-                  setInternalNoteDraft(order.warehouseInternalNote ?? "");
-                }}
-                aria-label={internalNoteOpen ? "Закрыть внутренний комментарий" : "Редактировать внутренний комментарий"}
-                title={internalNoteOpen ? "Закрыть" : "Редактировать внутренний комментарий"}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-zinc-200/80 bg-white/85 text-zinc-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-violet-700 disabled:translate-y-0 disabled:opacity-50"
-              >
-                {internalNoteOpen ? <CloseIcon /> : <PencilIcon />}
-              </button>
-            </div>
-            {order.warehouseInternalNote && !internalNoteOpen ? (
-              <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950 shadow-sm whitespace-pre-wrap">
-                <span className="font-semibold text-amber-800">Заметка:</span> {order.warehouseInternalNote}
-              </div>
-            ) : null}
-            {internalNoteOpen ? (
-              <div className="mt-3 space-y-2 border-t border-white/70 pt-3">
-                <textarea
-                  value={internalNoteDraft}
-                  onChange={(e) => setInternalNoteDraft(e.target.value)}
-                  rows={3}
-                  className={orderInputClass + " w-full"}
-                  placeholder="Заметка для сотрудников склада…"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={internalNoteBusy}
-                    onClick={() => void saveInternalNote()}
-                    className={orderPrimaryButtonClass + " px-3 py-1.5"}
-                  >
-                    {internalNoteBusy ? "…" : "Сохранить"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={internalNoteBusy}
-                    onClick={() => {
-                      setInternalNoteDraft(order.warehouseInternalNote ?? "");
-                      setInternalNoteOpen(false);
-                    }}
-                    className={orderSecondaryButtonClass + " px-3 py-1.5"}
-                  >
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+
 
         {actionError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800" role="alert">
@@ -2590,13 +2535,16 @@ export default function OrderDetailsPage() {
               <div className={orderSectionHeaderClass + " flex flex-wrap items-center justify-between gap-2"}>
                 <div>
                   <div className="text-base font-black text-zinc-950">Состав заявки</div>
-                  <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз. · количество и стоимость</div>
+                  <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз.</div>
                 </div>
-                {(canEditOrder || canEditOrderServicesOnly) ? (
+                {canEditOrder ? (
                   <button type="button" onClick={startEditing} className={orderSecondaryButtonClass + " px-3 py-2 text-xs"}>
                     Изменить состав
                   </button>
                 ) : null}
+              </div>
+              <div className={orderLayout.itemTableHeading} aria-hidden="true">
+                <span>Позиция</span><span>Запрошено</span><span>Согласовано</span><span>Выдано</span><span>Цена / сутки</span>
               </div>
               <div className="divide-y divide-zinc-200">
                     {order.lines.map((line, index) => (
@@ -2617,12 +2565,12 @@ export default function OrderDetailsPage() {
                           ["Выдано", line.issuedQty ?? "—", "block"],
                         ] as const).map(([label, value, visibility]) => (
                           <div key={label} className={`${visibility} rounded-lg bg-zinc-50 px-3 py-2 lg:rounded-none lg:bg-transparent lg:p-0`}>
-                            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">{label}</div>
+                            <div className="text-xs font-medium text-zinc-500 lg:sr-only">{label}</div>
                             <div className="mt-1 font-black tabular-nums text-zinc-950">{value}</div>
                           </div>
                         ))}
                         <div className="rounded-lg bg-zinc-50 px-3 py-2 text-right lg:rounded-none lg:bg-transparent lg:p-0">
-                          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Цена / сутки</div>
+                          <div className="text-xs font-medium text-zinc-500 lg:sr-only">Цена / сутки</div>
                           <div className="mt-1 text-sm text-zinc-700">
                           {(() => {
                             if (line.pricePerDaySnapshot == null) return "—";
@@ -2714,6 +2662,62 @@ export default function OrderDetailsPage() {
                 </div>
               </div>
             ) : null}
+        {isWarehouse && !isEditing ? (
+          <div className={orderGlassCardClass + " p-4"}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-zinc-800">Внутренний комментарий (только склад)</div>
+              <button
+                type="button"
+                onClick={() => {
+                  setInternalNoteOpen((v) => !v);
+                  setInternalNoteDraft(order.warehouseInternalNote ?? "");
+                }}
+                aria-label={internalNoteOpen ? "Закрыть внутренний комментарий" : "Редактировать внутренний комментарий"}
+                title={internalNoteOpen ? "Закрыть" : "Редактировать внутренний комментарий"}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-zinc-200/80 bg-white/85 text-zinc-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:text-violet-700 disabled:translate-y-0 disabled:opacity-50"
+              >
+                {internalNoteOpen ? <CloseIcon /> : <PencilIcon />}
+              </button>
+            </div>
+            {order.warehouseInternalNote && !internalNoteOpen ? (
+              <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950 shadow-sm whitespace-pre-wrap">
+                <span className="font-semibold text-amber-800">Заметка:</span> {order.warehouseInternalNote}
+              </div>
+            ) : null}
+            {internalNoteOpen ? (
+              <div className="mt-3 space-y-2 border-t border-white/70 pt-3">
+                <textarea
+                  value={internalNoteDraft}
+                  onChange={(e) => setInternalNoteDraft(e.target.value)}
+                  rows={3}
+                  className={orderInputClass + " w-full"}
+                  placeholder="Заметка для сотрудников склада…"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={internalNoteBusy}
+                    onClick={() => void saveInternalNote()}
+                    className={orderPrimaryButtonClass + " px-3 py-1.5"}
+                  >
+                    {internalNoteBusy ? "…" : "Сохранить"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={internalNoteBusy}
+                    onClick={() => {
+                      setInternalNoteDraft(order.warehouseInternalNote ?? "");
+                      setInternalNoteOpen(false);
+                    }}
+                    className={orderSecondaryButtonClass + " px-3 py-1.5"}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
               {orderPricing ? (
                 isGreenwich ? (
                   <div className="overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100">

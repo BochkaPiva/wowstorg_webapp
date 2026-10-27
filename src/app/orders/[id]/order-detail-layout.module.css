@@ -77,3 +77,11 @@
 .servicePrice { white-space: nowrap; text-align: right; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .serviceMissing { color: #986000; font-size: 12px; }
 @media (max-width: 450px) { .serviceRow { grid-template-columns: minmax(0, 1fr); gap: 8px; } .servicePrice { text-align: left; } }
+
+.itemTableHeading { display: none; }
+@media (min-width: 1024px) {
+  .itemTableHeading { display: grid; grid-template-columns: minmax(160px,1fr) repeat(3,minmax(95px,.4fr)) minmax(95px,.5fr); gap: 12px; padding: 10px 20px; background: #f8f7f6; color: #716d73; font-size: 12px; font-weight: 600; }
+  .itemTableHeading span:first-child { padding-left: 36px; }
+  .itemTableHeading span:last-child { text-align: right; }
+}
+@media (max-width: 700px) { .progress :global(.order-progress__summary) { flex-direction: column; gap: 6px; } }

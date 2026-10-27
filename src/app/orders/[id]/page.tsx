@@ -367,7 +367,8 @@ function fmtDateRentPart(dateIso: string, part: RentalPartOfDay) {
 }
 
 function formatMoney(value: number) {
-  return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
+  const amount = roundMoney(value);
+  return `${amount.toLocaleString("ru-RU", { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 })} ₽`;
 }
 
 function formatRentalDays(days: number) {
@@ -2000,7 +2001,7 @@ export default function OrderDetailsPage() {
               : "border-zinc-200",
           ].join(" ")}
         >
-          <div className={orderLayout.hero}>
+          <div className={[orderLayout.hero, isEditing ? orderLayout.editingHero : ""].filter(Boolean).join(" ")}>
             <Image src="/brand/dino-order-detail.webp" alt="" aria-hidden="true" width={180} height={270} className={orderLayout.mascot} />
             <div className={orderLayout.heroMain}>
               <div className={orderLayout.heroMeta}>
@@ -2020,14 +2021,14 @@ export default function OrderDetailsPage() {
               <OrderStatusStepper hideHelp hideCurrentLabel showSummary={order.status !== "CLOSED" && order.status !== "CANCELLED"} status={order.status} source={order.source as "GREENWICH_INTERNAL" | "WOWSTORG_EXTERNAL"} density={isGreenwich ? "compact" : "regular"} compactWindow={isGreenwich ? 5 : 7} />
             </div>
           </div>
-          <div className={orderLayout.facts}>
+          <div className={[orderLayout.facts, isEditing ? orderLayout.editingFacts : ""].filter(Boolean).join(" ")}>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Заказчик</span><span className={orderLayout.factValue}>{order.customer.name}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Оформил · создана</span><span className={orderLayout.factValue}>{order.greenwichUser?.displayName || order.createdBy.displayName} · {fmtDate(order.createdAt)}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Готовность</span><span className={orderLayout.factValue}>{fmtDate(order.readyByDate)}</span></div>
             <div className={orderLayout.fact}><span className={orderLayout.factLabel}>Период аренды</span><span className={orderLayout.factValue}>{fmtDateRentPart(order.startDate, order.rentalStartPartOfDay ?? "MORNING")} — {fmtDateRentPart(order.endDate, order.rentalEndPartOfDay ?? "MORNING")} · {formatRentalDays((isEditing ? editPricing : orderPricing)?.days ?? 0)}</span></div>
           </div>
           <div className={orderLayout.actions}>
-            <div><span className={orderLayout.factLabel}>{isEditing ? "Итого после изменений" : "Итого по заявке"}</span><strong>{(isEditing ? editPricing : orderPricing) ? formatMoney((isEditing ? editPricing : orderPricing)!.grandTotal) : "—"}</strong></div>
+            {!isEditing ? <div><span className={orderLayout.factLabel}>Итого по заявке</span><strong>{orderPricing ? formatMoney(orderPricing.grandTotal) : "—"}</strong></div> : null}
             <div className={orderLayout.actionsRight}>
               {isEditing && canChangeOrderDates ? <button type="button" onClick={() => setDateDialogOpen(true)} className={orderSecondaryButtonClass + " h-10 px-3 py-0"}>Изменить даты</button> : null}
               {(canEditOrder || canEditOrderServicesOnly) && !isEditing ? <button type="button" onClick={startEditing} className={orderPrimaryButtonClass + " h-10 px-3 py-0"}>{canEditOrderServicesOnly ? "Доп. услуги" : "Редактировать"}</button> : null}
@@ -2057,6 +2058,177 @@ export default function OrderDetailsPage() {
 
 
 
+        {!isEditing && (
+          sendEstimateBlocked ||
+          (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED")) ||
+          (isWarehouse && order.status === "APPROVED_BY_GREENWICH") ||
+          (isWarehouse && order.status === "PICKING") ||
+          (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser) ||
+          (isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id) ||
+          (isWarehouse && order.status === "ISSUED") ||
+          canForceReturn ||
+          canCancel
+        ) ? (
+        <div className={[
+          "order-actionbar",
+          orderLayout.stageActions,
+          isGreenwich && canCancel && !["ESTIMATE_SENT", "CHANGES_REQUESTED", "ISSUED"].includes(order.status)
+            ? "!static !shadow-none"
+            : "",
+        ].join(" ")} data-mobile-open={mobileActionsOpen ? "true" : "false"}>
+          <button
+            type="button"
+            className="order-actionbar__toggle"
+            aria-expanded={mobileActionsOpen}
+            onClick={() => setMobileActionsOpen((value) => !value)}
+          >
+            <span className="min-w-0 text-left">
+              <span className="block text-sm font-black text-zinc-950">Действия с заявкой</span>
+              <span className={`block truncate text-[11px] font-semibold ${sendEstimateBlocked ? "text-amber-700" : "text-zinc-500"}`}>
+                {sendEstimateBlocked ? "Нужно указать цены доп. услуг" : "Отправка, приёмка и отмена"}
+              </span>
+            </span>
+            <span className={`text-lg text-zinc-500 ${mobileActionsOpen ? "rotate-180" : ""}`} aria-hidden>⌃</span>
+          </button>
+          {sendEstimateBlocked ? (
+            <div className="order-actionbar__notice rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
+              <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
+            </div>
+          ) : null}
+          {isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") && !isEditing && (
+            <button
+              type="button"
+              disabled={busy || !canSendEstimate}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/send-estimate`)}
+              className={orderPrimaryButtonClass}
+            >
+              {busy ? "…" : "Отправить смету"}
+            </button>
+          )}
+          {isWarehouse && order.status === "APPROVED_BY_GREENWICH" && (
+            <button
+              type="button"
+              disabled={busy || !canStartPicking}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/start-picking`)}
+              className={orderPrimaryButtonClass}
+              title={startPickingBlocked ? "Сначала укажите цены для включённых доп. услуг" : undefined}
+            >
+              {busy ? "…" : "Начать сборку"}
+            </button>
+          )}
+          {isWarehouse && order.status === "PICKING" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/issue`)}
+              className="rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-colors duration-150 hover:bg-emerald-800 disabled:opacity-50"
+            >
+              {busy ? "…" : "Выдать"}
+            </button>
+          )}
+          {isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && !isEditing && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/approve`, {})}
+              className={orderPrimaryButtonClass}
+            >
+              {busy ? "…" : "Согласовать смету"}
+            </button>
+          )}
+          {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
+          {/* Доп.-заявка: тоже нужна отправка на приёмку; «Быстрая доп.-выдача» только с основной выданной заявки */}
+          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && !order.parentOrderId && (
+            <button
+              type="button"
+              disabled={busy || !order.greenwichUserId}
+              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
+              className={orderPrimaryButtonClass}
+            >
+              {busy ? "…" : "Быстрая доп.-выдача"}
+            </button>
+          )}
+          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  const okDraft = buildDraftFromPhase("DECLARED");
+                  void submitReturnDeclared(okDraft);
+                }}
+                className={orderWarningButtonClass}
+              >
+                {busy ? "…" : "Все в норме → на приёмку"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setDeclareDraft(buildDraftFromPhase("DECLARED"));
+                  setDeclareOpen(true);
+                }}
+                className={orderSecondaryButtonClass}
+              >
+                По позициям…
+              </button>
+            </>
+          )}
+          {isWarehouse && order.status === "ISSUED" && Boolean(order.greenwichUserId) && !order.parentOrderId && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
+              className={orderPrimaryButtonClass}
+            >
+              {busy ? "…" : "Быстрая доп.-выдача"}
+            </button>
+          )}
+          {isWarehouse && order.status === "ISSUED" && !order.greenwichUserId && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => doAction("POST", `/api/orders/${orderId}/return-declared`)}
+              className={orderWarningButtonClass}
+            >
+              {busy ? "…" : "На приёмку"}
+            </button>
+          )}
+          {canForceReturn && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void forceReturnDeclared()}
+              className={orderSecondaryButtonClass + " text-xs text-zinc-600"}
+              title="Техническое действие Wowstorg: пропустить этапы и открыть складскую приёмку"
+            >
+              {busy ? "…" : "Сразу на приёмку"}
+            </button>
+          )}
+          {canCancel && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                const highRisk = ["PICKING", "ISSUED", "RETURN_DECLARED"].includes(order.status);
+                const message = highRisk
+                  ? "Отменить заявку после передачи в складской контур? Резерв будет освобождён, но заявка и вся история сохранятся в архиве."
+                  : "Отменить заявку? Она попадёт в архив без удаления данных.";
+                if (!confirm(message)) return;
+                doAction(
+                  "POST",
+                  `/api/orders/${orderId}/cancel`,
+                  highRisk ? { confirmInventoryRelease: true } : {},
+                );
+              }}
+              className={orderDangerButtonClass}
+            >
+              {busy ? "…" : "Отменить заявку"}
+            </button>
+          )}
+        </div>
+        ) : null}
+
         {actionError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800" role="alert">
             {actionError}
@@ -2071,18 +2243,18 @@ export default function OrderDetailsPage() {
         ) : null}
 
         {isEditing ? (
-          <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_370px]">
-            <div className="min-w-0 space-y-5">
-              {isServiceOnlyEdit ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
-                  Даты, статус и реквизит останутся без изменений. Здесь меняются только услуги, расходы и итог заявки.
-                </div>
-              ) : (
+          <div className={orderLayout.editWorkspace}>
+            <div className={orderLayout.editContent}>
+              <nav className={orderLayout.editNavigation} aria-label="Разделы редактирования">
+                {!isServiceOnlyEdit ? <><a href="#order-edit-details">Основное</a><a href="#order-edit-items">Реквизит</a></> : null}
+                <a href="#order-edit-services">Услуги и расходы</a>
+                <a href="#order-edit-total">Расчёт и сохранение</a>
+              </nav>
+              {!isServiceOnlyEdit ? (
                 <>
-                  <section className={orderGlassCardClass + " overflow-hidden"}>
-                    <div className={orderSectionHeaderClass}>
-                      <h2 className="text-base font-black text-zinc-950">Основное</h2>
-                      <p className="mt-1 text-xs text-zinc-500">Название мероприятия и полная задача для склада.</p>
+                  <section id="order-edit-details" className={orderLayout.editSection}>
+                    <div className={orderLayout.editSectionHeader}>
+                      <h2>Основное</h2>
                     </div>
                     <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
                       <label className="block">
@@ -2108,8 +2280,8 @@ export default function OrderDetailsPage() {
                     </div>
                   </section>
 
-                  <section className={orderGlassCardClass + " overflow-hidden"}>
-                    <div className={orderSectionHeaderClass + " flex flex-wrap items-end justify-between gap-3"}>
+                  <section id="order-edit-items" className={orderLayout.editSection}>
+                    <div className={orderLayout.editSectionHeader + " flex flex-wrap items-end justify-between gap-3"}>
                       <div>
                         <h2 className="text-base font-black text-zinc-950">Реквизит</h2>
                         <p className="mt-1 text-xs text-zinc-500">
@@ -2223,12 +2395,11 @@ export default function OrderDetailsPage() {
                     </div>
                   </section>
                 </>
-              )}
+              ) : null}
 
-              <section className={orderGlassCardClass + " overflow-hidden"}>
-                <div className={orderSectionHeaderClass}>
-                  <h2 className="text-base font-black text-zinc-950">Услуги и расходы</h2>
-                  <p className="mt-1 text-xs text-zinc-500">Клиентские цены, внутренняя себестоимость и скрытые траты — в одном блоке.</p>
+              <section id="order-edit-services" className={orderLayout.editSection}>
+                <div className={orderLayout.editSectionHeader}>
+                  <h2>Услуги и расходы</h2>
                 </div>
                 <div className="space-y-2 bg-zinc-50/60 p-3 sm:p-4">
                 <ServiceEditRow
@@ -2339,14 +2510,13 @@ export default function OrderDetailsPage() {
               </section>
             </div>
 
-            <aside className="space-y-4 xl:sticky xl:top-24">
-              <section className="overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.08)]">
+            <aside id="order-edit-total" className={orderLayout.editAside}>
+              <section className={orderLayout.editSummary}>
                 <div className="bg-zinc-950 px-5 py-5 text-white">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Итого после изменений</div>
                   <div className="mt-2 whitespace-nowrap text-3xl font-black tracking-[-0.04em] tabular-nums">
                     {formatMoney(editPricing?.grandTotal ?? 0)}
                   </div>
-                  <div className="mt-1 text-xs text-zinc-400">Пересчитывается сразу, сохраняется одной кнопкой.</div>
                 </div>
 
                 <div className="space-y-3 px-5 py-4 text-sm">
@@ -2531,8 +2701,8 @@ export default function OrderDetailsPage() {
           <>
           <div className={orderLayout.summaryLayout}>
             <div className={orderLayout.summaryContent}>
-            <div className={orderGlassCardClass + " overflow-hidden"}>
-              <div className={orderSectionHeaderClass + " flex flex-wrap items-center justify-between gap-2"}>
+            <section className={orderLayout.contentSection}>
+              <div className={orderLayout.contentHeader + " flex flex-wrap items-center justify-between gap-2"}>
                 <div>
                   <div className="text-base font-black text-zinc-950">Состав заявки</div>
                   <div className="mt-0.5 text-xs text-zinc-500">{order.lines.length} поз.</div>
@@ -2603,7 +2773,7 @@ export default function OrderDetailsPage() {
                       </div>
                     ))}
               </div>
-            </div>
+            </section>
 
 
             {(order.deliveryEnabled || order.montageEnabled || order.demontageEnabled) ? (
@@ -3175,175 +3345,7 @@ export default function OrderDetailsPage() {
             document.body,
           )}
 
-        {!isEditing && (
-          sendEstimateBlocked ||
-          (isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED")) ||
-          (isWarehouse && order.status === "APPROVED_BY_GREENWICH") ||
-          (isWarehouse && order.status === "PICKING") ||
-          (isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser) ||
-          (isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id) ||
-          (isWarehouse && order.status === "ISSUED") ||
-          canForceReturn ||
-          canCancel
-        ) ? (
-        <div className={[
-          "order-actionbar",
-          isGreenwich && canCancel && !["ESTIMATE_SENT", "CHANGES_REQUESTED", "ISSUED"].includes(order.status)
-            ? "!static !shadow-none"
-            : "",
-        ].join(" ")} data-mobile-open={mobileActionsOpen ? "true" : "false"}>
-          <button
-            type="button"
-            className="order-actionbar__toggle"
-            aria-expanded={mobileActionsOpen}
-            onClick={() => setMobileActionsOpen((value) => !value)}
-          >
-            <span className="min-w-0 text-left">
-              <span className="block text-sm font-black text-zinc-950">Действия с заявкой</span>
-              <span className={`block truncate text-[11px] font-semibold ${sendEstimateBlocked ? "text-amber-700" : "text-zinc-500"}`}>
-                {sendEstimateBlocked ? "Нужно указать цены доп. услуг" : "Отправка, приёмка и отмена"}
-              </span>
-            </span>
-            <span className={`text-lg text-zinc-500 ${mobileActionsOpen ? "rotate-180" : ""}`} aria-hidden>⌃</span>
-          </button>
-          {sendEstimateBlocked ? (
-            <div className="order-actionbar__notice rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-800">
-              <span className="font-medium">Чтобы отправить смету</span>, укажите цены для всех включённых доп. услуг в блоке «Доп. услуги» выше.
-            </div>
-          ) : null}
-          {isWarehouse && (order.status === "SUBMITTED" || order.status === "CHANGES_REQUESTED") && !isEditing && (
-            <button
-              type="button"
-              disabled={busy || !canSendEstimate}
-              onClick={() => doAction("POST", `/api/orders/${orderId}/send-estimate`)}
-              className={orderPrimaryButtonClass}
-            >
-              {busy ? "…" : "Отправить смету"}
-            </button>
-          )}
-          {isWarehouse && order.status === "APPROVED_BY_GREENWICH" && (
-            <button
-              type="button"
-              disabled={busy || !canStartPicking}
-              onClick={() => doAction("POST", `/api/orders/${orderId}/start-picking`)}
-              className={orderPrimaryButtonClass}
-              title={startPickingBlocked ? "Сначала укажите цены для включённых доп. услуг" : undefined}
-            >
-              {busy ? "…" : "Начать сборку"}
-            </button>
-          )}
-          {isWarehouse && order.status === "PICKING" && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => doAction("POST", `/api/orders/${orderId}/issue`)}
-              className="rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition-colors duration-150 hover:bg-emerald-800 disabled:opacity-50"
-            >
-              {busy ? "…" : "Выдать"}
-            </button>
-          )}
-          {isGreenwich && (order.status === "ESTIMATE_SENT" || order.status === "CHANGES_REQUESTED") && isOrderGreenwichUser && !isEditing && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => doAction("POST", `/api/orders/${orderId}/approve`, {})}
-              className={orderPrimaryButtonClass}
-            >
-              {busy ? "…" : "Согласовать смету"}
-            </button>
-          )}
-          {isWarehouse && order.status === "RETURN_DECLARED" ? null : null}
-          {/* Доп.-заявка: тоже нужна отправка на приёмку; «Быстрая доп.-выдача» только с основной выданной заявки */}
-          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && !order.parentOrderId && (
-            <button
-              type="button"
-              disabled={busy || !order.greenwichUserId}
-              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
-              className={orderPrimaryButtonClass}
-            >
-              {busy ? "…" : "Быстрая доп.-выдача"}
-            </button>
-          )}
-          {isGreenwich && order.status === "ISSUED" && order.greenwichUserId === user?.id && (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  const okDraft = buildDraftFromPhase("DECLARED");
-                  void submitReturnDeclared(okDraft);
-                }}
-                className={orderWarningButtonClass}
-              >
-                {busy ? "…" : "Все в норме → на приёмку"}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setDeclareDraft(buildDraftFromPhase("DECLARED"));
-                  setDeclareOpen(true);
-                }}
-                className={orderSecondaryButtonClass}
-              >
-                По позициям…
-              </button>
-            </>
-          )}
-          {isWarehouse && order.status === "ISSUED" && Boolean(order.greenwichUserId) && !order.parentOrderId && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => router.push(`/catalog?quickParentId=${orderId}`)}
-              className={orderPrimaryButtonClass}
-            >
-              {busy ? "…" : "Быстрая доп.-выдача"}
-            </button>
-          )}
-          {isWarehouse && order.status === "ISSUED" && !order.greenwichUserId && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => doAction("POST", `/api/orders/${orderId}/return-declared`)}
-              className={orderWarningButtonClass}
-            >
-              {busy ? "…" : "На приёмку"}
-            </button>
-          )}
-          {canForceReturn && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void forceReturnDeclared()}
-              className={orderSecondaryButtonClass + " text-xs text-zinc-600"}
-              title="Техническое действие Wowstorg: пропустить этапы и открыть складскую приёмку"
-            >
-              {busy ? "…" : "Сразу на приёмку"}
-            </button>
-          )}
-          {canCancel && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                const highRisk = ["PICKING", "ISSUED", "RETURN_DECLARED"].includes(order.status);
-                const message = highRisk
-                  ? "Отменить заявку после передачи в складской контур? Резерв будет освобождён, но заявка и вся история сохранятся в архиве."
-                  : "Отменить заявку? Она попадёт в архив без удаления данных.";
-                if (!confirm(message)) return;
-                doAction(
-                  "POST",
-                  `/api/orders/${orderId}/cancel`,
-                  highRisk ? { confirmInventoryRelease: true } : {},
-                );
-              }}
-              className={orderDangerButtonClass}
-            >
-              {busy ? "…" : "Отменить заявку"}
-            </button>
-          )}
-        </div>
-        ) : null}
+
 
         {showFloatingOrderSave && typeof document !== "undefined"
           ? createPortal(

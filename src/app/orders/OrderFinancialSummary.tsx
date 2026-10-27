@@ -58,19 +58,19 @@ export function OrderFinancialSummary({
   return (
     <div className={styles.summary}>
       <div className={styles.header}>
-        <div>
-          <h2 className={styles.title}>Финансовый итог</h2>
-          <span className={styles.headlineLabel}>Итого по заявке</span>
-          <strong className={styles.headlineAmount}>{formatMoneyRub(pricing.grandTotal)} ₽</strong>
-        </div>
-        {discountLabel ? (
-          <div className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
-            Скидка {discountLabel}
-          </div>
-        ) : null}
+        <h2 className={styles.title}>Финансовый итог</h2>
+        {discountLabel ? <span className={styles.discount}>Скидка {discountLabel}</span> : null}
       </div>
-
-      <div className={[styles.grid, showWarehouse ? styles.withWarehouse : ""].filter(Boolean).join(" ")}>
+      <div className={styles.metrics}>
+        <div className={styles.metric}><span>Итого клиенту</span><strong>{formatMoneyRub(pricing.grandTotal)} ₽</strong></div>
+        {warehouse ? <>
+          <div className={styles.metric}><span>Расходы</span><strong>{formatMoneyRub(warehouseExpenseTotal)} ₽</strong></div>
+          <div className={styles.metric}><span>Оценка прибыли</span><strong className={profitTone}>{formatMoneyRub(profit)} ₽</strong><small>Рентабельность {formatPercent(warehouse.profitabilityPct, 2)}</small></div>
+        </> : null}
+      </div>
+      <details className={styles.breakdown}>
+        <summary>Расшифровка расчёта</summary>
+        <div className={[styles.grid, showWarehouse ? styles.withWarehouse : ""].filter(Boolean).join(" ")}>
         <section className={styles.section}>
           <div className={styles.sectionTitle}>
             Клиент
@@ -129,7 +129,8 @@ export function OrderFinancialSummary({
             </section>
           </>
         ) : null}
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

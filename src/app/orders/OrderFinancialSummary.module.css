@@ -18,3 +18,15 @@
 .title { margin: 0 0 18px; color: #342144; font-size: 14px; font-weight: 750; }
 .headlineLabel { display: block; color: #6e6078; font-size: 12px; font-weight: 600; }
 .headlineAmount { display: block; margin-top: 4px; color: #211529; font-size: clamp(22px, 2vw, 30px); line-height: 1.15; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.header { align-items: center; padding: 18px 20px; background: white; }
+.title { margin: 0; color: #24202a; font-size: 16px; }
+.discount { padding: 5px 9px; border-radius: 6px; background: #f0eafa; color: #5c2e93; font-size: 12px; font-weight: 700; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr)); background: #f8f6fa; }
+.metric { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 18px 20px; }
+.metric span, .metric small { color: #6e6872; font-size: 12px; }
+.metric strong { color: #241b2b; font-size: clamp(18px, 2vw, 23px); line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.breakdown { border-top: 1px solid #eae7eb; }
+.breakdown summary { padding: 14px 20px; color: #6028a1; cursor: pointer; font-size: 13px; font-weight: 700; }
+.breakdown summary:focus-visible { outline: 2px solid #702dd1; outline-offset: -2px; }
+.breakdown[open] summary { border-bottom: 1px solid #eae7eb; }

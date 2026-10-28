@@ -105,10 +105,13 @@ export function ArchiveControls({ kind, id }: { kind: Kind; id: string }) {
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(false); void upload(e.dataTransfer.files); }}>
       <div className={styles.bar}>
-        <div className={styles.label}><span className={styles.dot} aria-hidden="true" />{data?.files.length ? `Документы · ${data.files.length}` : "Документов нет"}</div>
-        <button type="button" className={styles.attach} disabled={!data || busy} onClick={() => input.current?.click()} title="Выбрать файлы или перетащить их сюда, до 4 МБ каждый">{busy ? "Сохраняем…" : "+ Добавить"}</button>
+        <div className={styles.documentGroup}>
+          <span className={styles.documentIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3.75h7.5L18 8.25v11.5H6zM13.5 3.75v4.5H18M9 12h6M9 15.5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+          <span className={styles.documentText}><span className={styles.title}>Закрывающие</span><span className={styles.status}>{!data ? error ? "Нет данных" : "Загрузка…" : data.files.length ? `Документов: ${data.files.length}` : "Нет документов"}</span></span>
+          <button type="button" className={styles.attach} disabled={!data || busy} onClick={() => input.current?.click()} title="Выбрать файлы или перетащить их сюда, до 4 МБ каждый" aria-label="Добавить закрывающий документ">{busy ? "…" : "+"}</button>
+        </div>
         <input ref={input} className={styles.hidden} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" onChange={(e) => { if (e.target.files) void upload(e.target.files); }} />
-        <label className={styles.check}><input type="checkbox" disabled={!data || busy} checked={data?.recorded ?? false} onChange={(e) => void mark(e.target.checked)} /> <span>{data?.recorded ? "В таблице" : "Не внесено в таблицу"}</span></label>
+        <label className={styles.check}><input type="checkbox" disabled={!data || busy} checked={data?.recorded ?? false} onChange={(e) => void mark(e.target.checked)} aria-label="Внесено в общую таблицу" /><span className={styles.checkIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4.2 4.2L19 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></span><span className={styles.checkText}><span className={styles.title}>Общая таблица</span><span className={styles.status}>{!data ? error ? "Нет данных" : "Загрузка…" : data.recorded ? "Внесено" : "Не внесено"}</span></span></label>
       </div>
       {data?.files.length ? <ul className={styles.files}>{data.files.map((file) => <li key={file.id}><a href={`${base}/files/${encodeURIComponent(file.id)}`} title={`Скачать ${file.originalName}`}>{file.originalName}</a><button type="button" disabled={busy} onClick={() => void remove(file)} aria-label={`Удалить ${file.originalName}`}>×</button></li>)}</ul> : null}
       {error ? <div className={styles.error} role="alert">{error}</div> : null}

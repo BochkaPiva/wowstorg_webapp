@@ -1,25 +1,36 @@
-.root { padding: 11px 16px; border-top: 1px solid #ebe8ee; background: #fcfbfc; color: #29232e; }
-.root[data-dragging] { background: #f2eafd; outline: 2px dashed #7c3aed; outline-offset: -4px; }
-.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; color: #77707c; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: #c7c1ca; }
-.root[data-documents] .label { color: #552c91; }
-.root[data-documents] .dot { background: #7836c2; }
-.attach { color: #6226ac; font-size: 13px; font-weight: 700; border: 0; background: none; padding: 7px 2px; cursor: pointer; }
-.attach:hover { color: #391363; }
-.attach:disabled { color: #999; cursor: default; }
-.check { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding: 7px 10px; border-radius: 7px; background: #f0eef1; font-size: 13px; font-weight: 600; color: #625b66; cursor: pointer; }
-.check input { width: 16px; height: 16px; accent-color: #08795d; margin: 0; }
-.root[data-recorded] .check { background: #e2f3ea; color: #11684f; }
-.hidden { display: none; }
-.files { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
-.files li { display: flex; align-items: center; min-width: 0; max-width: 100%; background: #f0ebf7; border-radius: 6px; }
-.files a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #54229b; font-size: 12px; padding: 6px 4px 6px 9px; }
-.files button { border: 0; background: transparent; padding: 3px 9px; cursor: pointer; color: #6c6472; font-size: 18px; }
-.root :is(button, a, input):focus-visible { outline: 2px solid #702cc5; outline-offset: 2px; }
-.error { color: #a32237; font-size: 12px; margin-top: 6px; }
-/* The edge is a compact status signal shared by all three archive lists. */
-:global(.queue-order):has(> .root[data-documents]), :global(.work-card):has(> .root[data-documents]), :global(li.group):has(> .root[data-documents]) { box-shadow: inset 3px 0 #8242c8; }
-:global(.queue-order):has(> .root[data-recorded]), :global(.work-card):has(> .root[data-recorded]), :global(li.group):has(> .root[data-recorded]) { box-shadow: inset 3px 0 #168467; }
-:global(.queue-order):has(> .root[data-documents][data-recorded]), :global(.work-card):has(> .root[data-documents][data-recorded]), :global(li.group):has(> .root[data-documents][data-recorded]) { box-shadow: inset 3px 0 #8242c8, inset 6px 0 #168467; }
-@media (max-width: 600px) { .check { margin-left: 0; } }
+.root { --ink:#282332; --muted:#807985; --purple:#6b35ac; --green:#17765a; padding: 0 18px; border-top: 1px solid #e9e6eb; background: #faf9fb; color: var(--ink); }
+.root[data-dragging] { background: #eee7f8; outline: 2px dashed #8151bb; outline-offset: -4px; }
+.bar { display:flex; align-items:stretch; min-height:68px; gap:24px; }
+.documentGroup { display:flex; align-items:center; gap:11px; min-width:0; flex:1; }
+.documentIcon { display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:10px; color:#85808a; background:#eeecf0; }
+.documentIcon svg, .checkIcon svg { width:20px; height:20px; }
+.documentText,.checkText { display:grid; min-width:0; gap:3px; }
+.title { color:#302a35; font-size:13px; line-height:1.2; font-weight:700; }
+.status { color:var(--muted); font-size:12px; line-height:1.2; }
+.root[data-documents] .documentIcon { background:#eee5f8; color:var(--purple); }
+.root[data-documents] .documentText .status { color:#6734a1; font-weight:650; }
+.attach { display:grid; place-items:center; width:32px; height:32px; flex:none; margin-left:4px; border:1px solid #d8d0e0; border-radius:9px; background:#fff; color:var(--purple); font-size:21px; line-height:1; cursor:pointer; }
+.attach:hover { border-color:var(--purple); background:#f3ecfa; }
+.attach:disabled { opacity:.5; cursor:default; }
+.check { display:flex; align-items:center; gap:11px; min-width:190px; padding:11px 0 11px 20px; border-left:1px solid #e7e3e9; cursor:pointer; }
+.check input { position:absolute; width:1px; height:1px; overflow:hidden; opacity:0; }
+.checkIcon { display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:10px; background:#eeecf0; color:#b3acb6; }
+.checkIcon svg { width:17px; height:17px; opacity:0; }
+.root[data-recorded] .checkIcon { background:#ddf1e8; color:var(--green); }
+.root[data-recorded] .checkIcon svg { opacity:1; }
+.root[data-recorded] .checkText .status { color:var(--green); font-weight:700; }
+.check:hover .checkIcon { box-shadow:inset 0 0 0 1px #bfb6c8; }
+.check:has(input:disabled) { cursor:default; opacity:.6; }
+.check:has(input:focus-visible), .attach:focus-visible, .files :is(a,button):focus-visible { outline:2px solid #7135b2; outline-offset:3px; }
+.hidden { display:none; }
+.files { display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:0 0 12px 49px; list-style:none; }
+.files li { display:flex; align-items:center; min-width:0; max-width:100%; border:1px solid #e1d9e9; background:#fff; border-radius:7px; }
+.files a { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#542c83; font-size:12px; font-weight:600; padding:7px 4px 7px 10px; }
+.files button { border:0; background:transparent; padding:3px 9px; cursor:pointer; color:#77707b; font-size:18px; }
+.files button:hover { color:#9e3148; }
+.error { color:#a32237; font-size:12px; padding:0 0 10px; }
+:global(.queue-order):has(> .root[data-documents]), :global(.work-card):has(> .root[data-documents]), :global(li.group):has(> .root[data-documents]) { border-left:4px solid #8657bb; }
+:global(.queue-order):has(> .root[data-recorded]), :global(.work-card):has(> .root[data-recorded]), :global(li.group):has(> .root[data-recorded]) { border-left:4px solid #329579; }
+:global(.queue-order):has(> .root[data-documents][data-recorded]), :global(.work-card):has(> .root[data-documents][data-recorded]), :global(li.group):has(> .root[data-documents][data-recorded]) { border-left:4px solid #7240aa; box-shadow:inset 4px 0 #329579; }
+@media (max-width:600px) { .root { padding:0 14px; } .bar { gap:8px; } .check { min-width:0; padding-left:12px; } .documentGroup { gap:8px; } .documentIcon,.checkIcon { width:34px; height:34px; } .attach { width:30px; height:30px; margin-left:0; } .files { padding-left:0; } }
+@media (max-width:390px) { .bar { flex-wrap:wrap; padding:10px 0; } .documentGroup,.check { flex:1 1 100%; } .check { border-left:0; border-top:1px solid #e7e3e9; padding:10px 0 0; } }

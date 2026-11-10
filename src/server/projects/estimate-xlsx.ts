@@ -752,6 +752,13 @@ export async function buildProjectEstimateXlsx(args: {
     let sectionLineCount = 0;
 
     for (const line of section.lines) {
+      if (line.lineType === "SUBSECTION") {
+        const row = ws.addRow(["", line.name]).number;
+        ws.mergeCells(row, 2, row, colCount);
+        ws.getRow(row).height = 23;
+        for (let col = 1; col <= colCount; col++) styleCell(ws.getCell(row, col), { fill: "FFF3F0F8", fontColor: COLORS.violetDark, bold: true, size: 10, borderColor: COLORS.borderStrong });
+        continue;
+      }
       if (isClient && line.lineType === "HIDDEN_EXPENSE") continue;
       const client = lineClient(line);
       const internal = lineInternal(line);

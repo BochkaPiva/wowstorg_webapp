@@ -6,6 +6,9 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { useJsonResource } from "@/lib/use-json-resource";
 import { useEstimateSectionDrag } from "@/lib/use-estimate-section-drag";
+import { startEstimateEdgeScroll } from "@/lib/estimate-edge-scroll";
+import { useEstimateCellSelection } from "@/lib/use-estimate-cell-selection";
+import { EstimateImportDialog } from "./EstimateImportDialog";
 
 import { ProjectModuleContentSkeleton } from "./ProjectModuleBoundary";
 import { RequisiteActions } from "./RequisiteActions";
@@ -1756,15 +1759,30 @@ function EstimatePanelEditor({
   ) {
     const operations = buildProjectEstimateTablePasteOperations({ text, startColumn });
     if (operations.length === 0) return;
+    if (operations.some(({patch}) => Object.entries(patch).some(([key, value]) =>
+      value && (["qty", "unitPriceClient", "costInternal"].includes(key)
+        ? !String(value).startsWith("=") && !Number.isFinite(Number(value))
+        : String(value).length > ({name:500, description:5000, unit:40, paymentMethod:40, paymentStatus:120, contractorNote:5000, contractorRequisites:500}[key] ?? 5000))))) {
+      window.alert("В диапазоне есть неверное число или слишком длинный текст. Используйте «Из Excel», чтобы проверить столбцы перед вставкой.");
+      return;
+    }
+    const section = localSectionsDraftRef.current.find((candidate) => candidate.id === sectionId);
+    if (!section) return;
+    const start = section.lines.findIndex((line) => line.id === startLineId);
+    const available = section.lines.slice(Math.max(0, start)).filter((line) => line.lineType !== "SUBSECTION").length;
+    if (section.lines.length + Math.max(0, operations.length - available) > 1000) {
+      window.alert("В разделе может быть не больше 1000 строк. Разделите таблицу на несколько разделов.");
+      return;
+    }
     mutateLocalSections((prev) =>
       prev.map((section) => {
         if (section.id !== sectionId) return section;
         const startIndex = Math.max(0, section.lines.findIndex((line) => line.id === startLineId));
         const lines = [...section.lines];
-        const neededLength = startIndex + operations.length;
-        while (lines.length < neededLength) lines.push(createEmptyLocalDraftLine(lines.length));
+        const targetIndexes = lines.map((line, index) => ({line, index})).filter(({line, index}) => index >= startIndex && line.lineType !== "SUBSECTION").map(({index}) => index);
+        while (targetIndexes.length < operations.length) { targetIndexes.push(lines.length); lines.push(createEmptyLocalDraftLine(lines.length)); }
         operations.forEach((operation) => {
-          const index = startIndex + operation.rowOffset;
+          const index = targetIndexes[operation.rowOffset]!;
           const current = lines[index];
           if (!current) return;
           lines[index] = patchLocalDraftLine(current, operation.patch);
@@ -1793,6 +1811,7 @@ function EstimatePanelEditor({
   }
 
   function addEmptyLine(sectionId: string) {
+    if ((localSectionsDraftRef.current.find((section) => section.id === sectionId)?.lines.length ?? 0) >= 1000) return;
     addLine(sectionId, {
       name: "",
       description: null,
@@ -2058,6 +2077,10 @@ function EstimatePanelEditor({
   function duplicateLines(sectionId: string, lineIds: string[]) {
     const selectedIds = new Set(lineIds);
     if (selectedIds.size === 0) return;
+    const section = localSectionsDraftRef.current.find((candidate) => candidate.id === sectionId);
+    if (section && section.lines.length + section.lines.filter((line) => selectedIds.has(line.id)).length > 1000) {
+      window.alert("В разделе может быть не больше 1000 строк."); return;
+    }
     mutateLocalSections((prev) =>
       prev.map((section) => {
         if (section.id !== sectionId) return section;
@@ -2090,6 +2113,7 @@ function EstimatePanelEditor({
     anchorLineId: string,
     direction: "ABOVE" | "BELOW",
   ): string {
+    if ((localSectionsDraftRef.current.find((section) => section.id === sectionId)?.lines.length ?? 0) >= 1000) return "";
     const newLineId = makeTempId("line");
     mutateLocalSections((prev) =>
       prev.map((section) => {
@@ -2773,12 +2797,6 @@ function EstimatePanelEditor({
                         ) : null}
                       </div>
                     ) : null}
-                    {!readOnly && !standalone ? (
-                      <div className="project-estimate__column-actions">
-                        <button type="button" onClick={() => setCustomColumnsOpen((value) => !value)} aria-expanded={customColumnsOpen}>Колонки</button>
-                        <button type="button" disabled={busy || estimateSaving || customColumns.length >= PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT} onClick={() => { setCustomColumnsOpen(true); addCustomColumn(); }} aria-label="Добавить колонку">+</button>
-                      </div>
-                    ) : null}
                     {!readOnly && standalone ? (
                       <button
                         type="button"
@@ -2843,6 +2861,7 @@ function EstimatePanelEditor({
                 </button>
                 {actionsOpen ? (
                   <div className={menuPanel}>
+                    <button type="button" className={menuAction} aria-expanded={customColumnsOpen} onClick={() => { setCustomColumnsOpen((value) => !value); setActionsOpen(false); }}>Настроить колонки</button>
                     <button
                       type="button"
                       disabled={busy}
@@ -3181,13 +3200,29 @@ function EstimatePanelEditor({
                             onDuplicateMany={duplicateLines}
                             onInsert={insertEmptyLine}
                             onAdd={() => addEmptyLine(sec.id)}
+                            onAddSubsection={(beforeId) => mutateLocalSections((prev) => prev.map((section) => {
+                              if (section.id !== sec.id || section.lines.length >= 1000) return section;
+                              const lines = [...section.lines];
+                              const index = beforeId ? lines.findIndex((line) => line.id === beforeId) : lines.length;
+                              lines.splice(index < 0 ? lines.length : index, 0, { ...createEmptyLocalDraftLine(lines.length), name: "Новый подраздел", lineType: "SUBSECTION", unit: null });
+                              return { ...section, lines: lines.map((line, i) => ({ ...line, position: i, lineNumber: i + 1 })) };
+                            }))}
+                            onImport={(text) => {
+                              const operations = buildProjectEstimateTablePasteOperations({text, startColumn: "name"});
+                              mutateLocalSections((prev) => prev.map((section) => section.id !== sec.id || section.lines.length + operations.length > 1000 ? section : { ...section, lines: [...section.lines, ...operations.map((operation, index) => patchLocalDraftLine(createEmptyLocalDraftLine(section.lines.length + index), operation.patch))] }));
+                            }}
                             onPaste={pasteLocalTable}
                             onFillCells={fillLocalCells}
                             workspaceMode={workspaceMode}
                           />
                         ) : (
                           <>
-                            {sec.lines.map((ln) => (
+                            {sec.lines.map((ln) => ln.lineType === "SUBSECTION" ? (
+                              <div key={ln.id} className="estimate-subsection-card">
+                                <input aria-label="Название подраздела" value={ln.name} maxLength={500} readOnly={readOnly} disabled={busy} onChange={(event) => saveLine(sec.id, ln.id, {name: event.target.value})} />
+                                {!readOnly ? <button type="button" aria-label="Удалить заголовок подраздела" disabled={busy} onClick={() => deleteLine(sec.id, ln.id)}>×</button> : null}
+                              </div>
+                            ) : (
                               <LineEditor
                                 key={ln.id}
                                 sectionId={sec.id}
@@ -4193,11 +4228,11 @@ function EstimateSectionBlock({
                 </span>
               ) : sec.kind === "CONTRACTOR" ? (
                 <span>
-                  {sec.lines.length} строк · подрядчики и услуги
+                  {sec.lines.filter((line) => line.lineType !== "SUBSECTION").length} поз.
                 </span>
               ) : (
                 <span>
-                  {sec.lines.length} строк · ручной раздел
+                  {sec.lines.filter((line) => line.lineType !== "SUBSECTION").length} поз.
                 </span>
               )}
             </div>
@@ -4366,11 +4401,11 @@ const COMPACT_TABLE_COLUMNS: Array<{
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   internal?: boolean;
 }> = [
-  { key: "name", label: "Позиция", className: "", defaultWidth: 240 },
-  { key: "description", label: "Описание", className: "", defaultWidth: 256 },
-  { key: "unit", label: "Ед.", className: "", defaultWidth: 80 },
-  { key: "qty", label: "Кол-во", className: "", defaultWidth: 96, inputMode: "decimal" },
-  { key: "unitPriceClient", label: "Цена / ед.", className: "", defaultWidth: 128, inputMode: "decimal" },
+  { key: "name", label: "Позиция", className: "", defaultWidth: 180 },
+  { key: "description", label: "Описание", className: "", defaultWidth: 240 },
+  { key: "unit", label: "Ед.", className: "", defaultWidth: 72 },
+  { key: "qty", label: "Кол-во", className: "", defaultWidth: 80, inputMode: "decimal" },
+  { key: "unitPriceClient", label: "Цена / ед.", className: "", defaultWidth: 112, inputMode: "decimal" },
   { key: "costInternal", label: "Расход", className: "", defaultWidth: 128, inputMode: "decimal", internal: true },
   { key: "paymentMethod", label: "Тип оплаты", className: "", defaultWidth: 126, internal: true },
   { key: "paymentStatus", label: "Статус оплаты", className: "", defaultWidth: 142, internal: true },
@@ -4649,7 +4684,7 @@ function EstimateCellDropdown({
   );
 }
 
-function CompactEstimateTable({
+export function CompactEstimateTable({
   sectionId,
   lines,
   customColumns,
@@ -4664,6 +4699,8 @@ function CompactEstimateTable({
   onAdd,
   onPaste,
   onFillCells,
+  onAddSubsection,
+  onImport,
   workspaceMode = false,
 }: {
   sectionId: string;
@@ -4685,11 +4722,29 @@ function CompactEstimateTable({
     text: string,
   ) => void;
   onFillCells: (sectionId: string, sourceLineId: string, targetLineIds: string[], columnKeys: string[]) => void;
+  onAddSubsection: (beforeId?: string) => void;
+  onImport: (text: string) => void;
   workspaceMode?: boolean;
 }) {
   const [selectedLineIds, setSelectedLineIds] = React.useState<Set<string>>(() => new Set());
   const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
+  const [showInternal, setShowInternal] = React.useState(false);
+  const [expandedText, setExpandedText] = React.useState(false);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    if (expandedText) return;
+    sheetRef.current?.querySelectorAll<HTMLTextAreaElement>("textarea").forEach((field) => {
+      if (document.activeElement !== field) field.style.height = "32px";
+    });
+  }, [expandedText]);
+  const [importOpen, setImportOpen] = React.useState(false);
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(() => new Set());
+  const visibleColumns = COMPACT_TABLE_COLUMNS.filter((column) => showInternal || !column.internal);
+  const visibleCustomColumns = showInternal ? customColumns : [];
+  const dragCleanupRef = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => () => dragCleanupRef.current?.(), []);
   const [cellSelection, setCellSelection] = React.useState<{ row: number; startColumn: number; endColumn: number } | null>(null);
+  const beginCellSelection = useEstimateCellSelection(busy || readOnly, setCellSelection);
   const [rangeFillDrag, setRangeFillDrag] = React.useState<{ sourceRow: number; targetRow: number } | null>(null);
   const rangeFillDragRef = React.useRef(rangeFillDrag);
   const rowSelectionAnchorRef = React.useRef<number | null>(null);
@@ -4721,8 +4776,8 @@ function CompactEstimateTable({
   const selectedCount = selectedLineIds.size;
   const allSelected = lines.length > 0 && selectedCount === lines.length;
   const fillableColumnKeys = [
-    ...COMPACT_TABLE_COLUMNS.map((column) => column.key),
-    ...customColumns.filter((column) => column.type !== "FORMULA").map((column) => column.id),
+    ...visibleColumns.map((column) => column.key),
+    ...visibleCustomColumns.filter((column) => column.type !== "FORMULA").map((column) => column.id),
   ];
 
   React.useEffect(() => {
@@ -4808,7 +4863,9 @@ function CompactEstimateTable({
     persistRowHeights({ ...rowHeights, [lineId]: Math.min(320, contentHeight) });
   }
 
-  function autoSizeTextarea(field: HTMLTextAreaElement) {
+  function autoSizeTextarea(field: HTMLTextAreaElement | null) {
+    if (!field) return;
+    if (!expandedText && document.activeElement !== field) { field.style.height = "32px"; return; }
     field.style.height = "0px";
     field.style.height = `${Math.max(36, field.scrollHeight)}px`;
   }
@@ -4827,33 +4884,6 @@ function CompactEstimateTable({
     else setSelectedLineIds(new Set([line.id]));
   }
 
-  function beginCellSelection(event: React.PointerEvent<HTMLElement>, row: number, column: number) {
-    if (event.button !== 0 || busy || readOnly) return;
-    const startX = event.clientX;
-    const startY = event.clientY;
-    let moved = false;
-    setCellSelection({ row, startColumn: column, endColumn: column });
-    const move = (moveEvent: PointerEvent) => {
-      if (!moved && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 5) return;
-      moved = true;
-      moveEvent.preventDefault();
-      document.body.classList.add("project-estimate-cell-selecting");
-      document.getSelection()?.removeAllRanges();
-      const cell = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLElement>("[data-estimate-grid-cell]");
-      const nextRow = Number(cell?.dataset.estimateGridCellRow);
-      const nextColumn = Number(cell?.dataset.estimateGridCellColumn);
-      if (nextRow !== row || !Number.isInteger(nextColumn)) return;
-      setCellSelection({ row, startColumn: column, endColumn: nextColumn });
-    };
-    const finish = () => {
-      document.body.classList.remove("project-estimate-cell-selecting");
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", finish);
-    };
-    window.addEventListener("pointermove", move, { passive: false });
-    window.addEventListener("pointerup", finish, { once: true });
-  }
-
   function beginRangeFillDrag(event: React.PointerEvent<HTMLSpanElement>) {
     if (!cellSelection) return;
     event.preventDefault();
@@ -4865,18 +4895,23 @@ function CompactEstimateTable({
     document.body.classList.add("project-estimate-fill-dragging");
     const move = (moveEvent: PointerEvent) => {
       const row = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest<HTMLElement>("[data-estimate-grid-row]");
+      if (!row?.dataset.estimateGridRow?.startsWith(`${sectionId}:`)) return;
       const nextRow = Number(row?.dataset.estimateGridRowIndex);
       if (!Number.isInteger(nextRow) || nextRow < 0 || nextRow >= lines.length) return;
+      if (rangeFillDragRef.current?.targetRow === nextRow) return;
       const next = { sourceRow, targetRow: nextRow };
       rangeFillDragRef.current = next;
       setRangeFillDrag(next);
     };
-    const finish = () => {
+    const stopScroll = startEstimateEdgeScroll(event.currentTarget, event.clientX, event.clientY, (x, y) => move({ clientX: x, clientY: y } as PointerEvent));
+    const finish = (endEvent?: PointerEvent) => {
+      stopScroll(); dragCleanupRef.current = null;
       document.body.classList.remove("project-estimate-fill-dragging");
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
       const current = rangeFillDragRef.current;
-      if (current && current.targetRow !== current.sourceRow) {
+      if (endEvent?.type !== "pointercancel" && current && current.targetRow !== current.sourceRow) {
         const from = Math.min(current.sourceRow, current.targetRow);
         const to = Math.max(current.sourceRow, current.targetRow);
         const firstColumn = Math.min(cellSelection.startColumn, cellSelection.endColumn);
@@ -4884,7 +4919,7 @@ function CompactEstimateTable({
         onFillCells(
           sectionId,
           lines[current.sourceRow]!.id,
-          lines.slice(from, to + 1).filter((_, index) => from + index !== current.sourceRow).map((line) => line.id),
+          lines.slice(from, to + 1).filter((line, index) => from + index !== current.sourceRow && line.lineType !== "SUBSECTION" && !hiddenRows.has(line.id)).map((line) => line.id),
           fillableColumnKeys.slice(firstColumn, lastColumn + 1),
         );
       }
@@ -4893,6 +4928,8 @@ function CompactEstimateTable({
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+    dragCleanupRef.current = () => finish({ type: "pointercancel" } as PointerEvent);
   }
 
   const availableLineIds = new Set(lines.map(line => line.id));
@@ -4911,6 +4948,8 @@ function CompactEstimateTable({
       `[data-estimate-section="${sectionId}"][data-estimate-row="${rowIndex}"][data-estimate-column="${column}"]`,
     );
     cell?.focus();
+    const index = cell?.closest<HTMLElement>("[data-estimate-grid-cell-column]")?.dataset.estimateGridCellColumn;
+    if (index != null) setCellSelection({row: rowIndex, startColumn: Number(index), endColumn: Number(index)});
     if (cell instanceof HTMLInputElement || cell instanceof HTMLTextAreaElement) cell.select();
   }, [sectionId]);
 
@@ -4920,15 +4959,35 @@ function CompactEstimateTable({
     column: string,
   ) {
     const isEnter = event.key === "Enter";
+    const isTab = event.key === "Tab";
     const isVerticalArrow = event.key === "ArrowUp" || event.key === "ArrowDown";
     const isHorizontalArrow = event.key === "ArrowLeft" || event.key === "ArrowRight";
-    if (!isEnter && !isVerticalArrow && !isHorizontalArrow) return;
+    if (!isEnter && !isTab && !isVerticalArrow && !isHorizontalArrow) return;
+    if (event.ctrlKey || event.metaKey) return;
+    if (isHorizontalArrow && (event.currentTarget instanceof HTMLInputElement || event.currentTarget instanceof HTMLTextAreaElement)) {
+      const field = event.currentTarget;
+      if (field.selectionStart !== field.selectionEnd || (event.key === "ArrowLeft" && (field.selectionStart ?? 0) > 0) || (event.key === "ArrowRight" && (field.selectionEnd ?? 0) < field.value.length)) return;
+    }
     if (event.currentTarget instanceof HTMLTextAreaElement && isEnter && event.altKey) return;
+    if (event.currentTarget instanceof HTMLTextAreaElement && isVerticalArrow && event.currentTarget.value.includes("\n")) return;
+    if (isTab) {
+      const columns = [...visibleColumns.map((item) => item.key), ...visibleCustomColumns.filter((item) => item.type !== "FORMULA" && item.type !== "CHECKBOX").map((item) => item.id)];
+      const direction = event.shiftKey ? -1 : 1;
+      let nextColumn = columns.indexOf(column) + direction;
+      let nextRow = rowIndex;
+      if (nextColumn < 0 || nextColumn >= columns.length) {
+        nextColumn = direction > 0 ? 0 : columns.length - 1;
+        nextRow += direction;
+        while (nextRow >= 0 && nextRow < lines.length && (lines[nextRow]?.lineType === "SUBSECTION" || hiddenRows.has(lines[nextRow]!.id))) nextRow += direction;
+      }
+      if (nextRow >= 0 && nextRow < lines.length) { event.preventDefault(); focusCell(nextRow, columns[nextColumn]!); }
+      return;
+    }
     event.preventDefault();
     if (isHorizontalArrow) {
       const navigationColumns = [
-        ...COMPACT_TABLE_COLUMNS.map((item) => item.key),
-        ...customColumns.filter((item) => item.type !== "FORMULA" && item.type !== "CHECKBOX").map((item) => item.id),
+        ...visibleColumns.map((item) => item.key),
+        ...visibleCustomColumns.filter((item) => item.type !== "FORMULA" && item.type !== "CHECKBOX").map((item) => item.id),
       ];
       const columnIndex = navigationColumns.indexOf(column);
       const nextColumnIndex = columnIndex + (event.key === "ArrowLeft" ? -1 : 1);
@@ -4936,13 +4995,15 @@ function CompactEstimateTable({
       if (nextColumn) focusCell(rowIndex, nextColumn);
       return;
     }
-    const nextIndex = isEnter
+    let nextIndex = isEnter
       ? event.shiftKey
         ? rowIndex - 1
         : rowIndex + 1
       : event.key === "ArrowUp"
         ? rowIndex - 1
         : rowIndex + 1;
+    const direction = nextIndex > rowIndex ? 1 : -1;
+    while (nextIndex >= 0 && nextIndex < lines.length && (lines[nextIndex]?.lineType === "SUBSECTION" || hiddenRows.has(lines[nextIndex]!.id))) nextIndex += direction;
     if (nextIndex >= 0 && nextIndex < lines.length) focusCell(nextIndex, column);
   }
 
@@ -5047,9 +5108,10 @@ function CompactEstimateTable({
     if (selectedLines.length === 0) return;
     const text = selectedLines
       .map((line) =>
-        COMPACT_TABLE_COLUMNS.map((column) => {
+        visibleColumns.map((column) => {
           const value = line[column.key];
-          return value == null ? "" : String(value).replace(/[\t\r\n]+/g, " ");
+          const text = value == null ? "" : String(value);
+          return /[\t\r\n"]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
         }).join("\t"),
       )
       .join("\n");
@@ -5072,8 +5134,36 @@ function CompactEstimateTable({
     setSelectedLineIds(new Set());
   }
 
+  const hiddenRows = new Set<string>();
+  const subsectionStats = new Map<string, { count: number; total: number; lastId: string }>();
+  const rowNumbers = new Map<string, number>();
+  let currentSubsection: string | null = null;
+  let rowNumber = 0;
+  let groupHidden = false;
+  for (const line of lines) {
+    if (line.lineType === "SUBSECTION") {
+      currentSubsection = line.id;
+      subsectionStats.set(line.id, {count: 0, total: 0, lastId: line.id});
+      groupHidden = collapsedGroups.has(line.id);
+    } else {
+      rowNumbers.set(line.id, ++rowNumber);
+      if (groupHidden) hiddenRows.add(line.id);
+      const stats = currentSubsection ? subsectionStats.get(currentSubsection) : null;
+      if (stats) { stats.count++; stats.total += normalizedLocalLineCostClientNumber(line) ?? 0; stats.lastId = line.id; }
+    }
+  }
+
   return (
-    <div className={`project-estimate-grid overflow-hidden rounded-lg border border-zinc-300 bg-white ${workspaceMode ? "project-estimate-grid--workspace" : ""}`}>
+    <div ref={sheetRef} data-expanded-text={expandedText || undefined} className={`project-estimate-grid estimate-sheet overflow-hidden rounded-lg border border-zinc-300 bg-white ${workspaceMode ? "project-estimate-grid--workspace" : ""}`}>
+      <div className="estimate-sheet__viewbar">
+        <span>Позиций: {lines.filter((line) => line.lineType !== "SUBSECTION").length}</span>
+        <div role="group" aria-label="Вид таблицы">
+          {!readOnly ? <button type="button" disabled={busy} onClick={() => setImportOpen(true)}>Из Excel</button> : null}
+          <button type="button" aria-pressed={showInternal} onClick={() => { setShowInternal(!showInternal); setCellSelection(null); }}>Расходы и оплата</button>
+          <button type="button" aria-pressed={expandedText} onClick={() => setExpandedText(!expandedText)}>Полный текст</button>
+        </div>
+      </div>
+      {importOpen ? <EstimateImportDialog maxRows={Math.max(0, 1000 - lines.length)} onImport={onImport} onClose={() => setImportOpen(false)} /> : null}
       {(!workspaceMode || selectedCount > 0) ? <div className="project-estimate-grid__toolbar flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-zinc-300 bg-zinc-50 px-3 py-2">
         {selectedCount > 0 && !readOnly ? (
           <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Действия с выбранными строками">
@@ -5116,6 +5206,7 @@ function CompactEstimateTable({
             >
               Копировать
             </button>
+            <button type="button" disabled={busy} className="text-xs font-semibold text-violet-700" onClick={() => onAddSubsection(lines.find((line) => selectedLineIds.has(line.id))?.id)}>Подраздел перед строкой</button>
             <button
               type="button"
               disabled={busy}
@@ -5148,10 +5239,10 @@ function CompactEstimateTable({
         {!workspaceMode ? <div className="text-xs font-semibold tabular-nums text-zinc-500">{lines.length} строк</div> : null}
       </div> : null}
 
-      <div className={workspaceMode ? "overflow-x-auto overflow-y-hidden" : "max-h-[70vh] overflow-auto"}>
+      <div className="estimate-sheet__scroll">
         <table
           className="w-full table-fixed border-collapse text-left text-xs"
-          style={{ minWidth: `${284 + Object.values(columnWidths).reduce((sum, width) => sum + width, 0) + customColumns.reduce((sum, column) => sum + column.width, 0)}px` }}
+          style={{ minWidth: `${200 + visibleColumns.reduce((sum, column) => sum + columnWidths[column.key], 0) + visibleCustomColumns.reduce((sum, column) => sum + column.width, 0)}px` }}
         >
           <thead className={`${workspaceMode ? "" : "sticky top-0 z-10"} bg-zinc-100 text-zinc-700 shadow-[0_1px_0_#d4d4d8]`}>
             <tr>
@@ -5168,7 +5259,7 @@ function CompactEstimateTable({
                 </th>
               ) : null}
               <th className="w-12 border-l border-zinc-200 px-2 py-2 text-center text-[10px] font-bold text-zinc-500">№</th>
-              {COMPACT_TABLE_COLUMNS.map((column) => (
+              {visibleColumns.map((column) => (
                 <React.Fragment key={column.key}>
                   <th
                     style={{ width: columnWidths[column.key] }}
@@ -5194,7 +5285,7 @@ function CompactEstimateTable({
                   ) : null}
                 </React.Fragment>
               ))}
-              {customColumns.map((column) => (
+              {visibleCustomColumns.map((column) => (
                 <th
                   key={column.id}
                   style={{ width: column.width }}
@@ -5208,7 +5299,21 @@ function CompactEstimateTable({
             </tr>
           </thead>
           <tbody>
-            {lines.map((line, rowIndex) => (
+            {lines.map((line, rowIndex) => line.lineType === "SUBSECTION" ? (
+              <tr key={line.id} className="estimate-sheet__subsection"><td colSpan={visibleColumns.length + visibleCustomColumns.length + (readOnly ? 2 : 4)}>
+                <div>
+                  <button type="button" aria-expanded={!collapsedGroups.has(line.id)} aria-label="Свернуть или развернуть подраздел" onClick={() => setCollapsedGroups((prev) => { const next = new Set(prev); if (next.has(line.id)) next.delete(line.id); else next.add(line.id); return next; })}>{collapsedGroups.has(line.id) ? "▸" : "▾"}</button>
+                  <input value={line.name} maxLength={500} readOnly={readOnly} disabled={busy} aria-label="Название подраздела" onChange={(event) => onSave(sectionId, line.id, { name: event.target.value })} />
+                  <span className="estimate-sheet__subsection-total">{subsectionStats.get(line.id)?.count} поз. · {formatMoneyRub(subsectionStats.get(line.id)?.total ?? 0)} ₽</span>
+                  {!readOnly ? <button type="button" disabled={busy || lines.length >= 1000} aria-label={`Добавить строку в подраздел «${line.name}»`} onClick={() => {
+                    const anchor = subsectionStats.get(line.id)?.lastId ?? line.id;
+                    onInsert(sectionId, anchor, "BELOW");
+                    setCollapsedGroups((prev) => { const next = new Set(prev); next.delete(line.id); return next; });
+                  }}>+</button> : null}
+                  {!readOnly ? <button type="button" disabled={busy} aria-label="Удалить заголовок подраздела" onClick={() => onDelete(sectionId, line.id)}>×</button> : null}
+                </div>
+              </td></tr>
+            ) : hiddenRows.has(line.id) ? null : (
               <tr
                 key={line.id}
                 data-estimate-grid-row={`${sectionId}:${rowIndex}`}
@@ -5242,7 +5347,7 @@ function CompactEstimateTable({
                   </td>
                 ) : null}
                 <td className="project-estimate-grid__row-index relative px-1 py-1 text-center font-bold tabular-nums text-zinc-400">
-                  {readOnly ? rowIndex + 1 : (
+                  {readOnly ? rowNumbers.get(line.id) : (
                     <button
                       type="button"
                       onClick={(event) => selectRow(event, rowIndex)}
@@ -5250,7 +5355,7 @@ function CompactEstimateTable({
                       title="Выбрать строку; Shift — выбрать диапазон"
                       aria-label={`Выбрать всю строку ${rowIndex + 1}`}
                     >
-                      {rowIndex + 1}
+                      {rowNumbers.get(line.id)}
                     </button>
                   )}
                   {!readOnly ? (
@@ -5268,7 +5373,7 @@ function CompactEstimateTable({
                     </>
                   ) : null}
                 </td>
-                {COMPACT_TABLE_COLUMNS.map((column) => {
+                {visibleColumns.map((column) => {
                   const rawValue = line[column.key];
                   const value = rawValue == null ? "" : String(rawValue);
                   const columnIndex = fillableColumnKeys.indexOf(column.key);
@@ -5304,11 +5409,15 @@ function CompactEstimateTable({
                             <EstimateCellDropdown value={value} disabled={busy} ariaLabel={`${column.label}, строка ${rowIndex + 1}`} className={paymentStatusTextClass(value)} sectionId={sectionId} lineId={line.id} rowIndex={rowIndex} columnKey={column.key} options={[{ value: "", label: "—" }, { value: PAYMENT_STATUS_PAID, label: PAYMENT_STATUS_PAID }, { value: PAYMENT_STATUS_UNPAID, label: PAYMENT_STATUS_UNPAID }]} onChange={(next) => onSave(sectionId, line.id, { paymentStatus: next || null })} onNavigateKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)} />
                           ) : ["name", "description", "contractorNote", "contractorRequisites"].includes(column.key) ? (
                             <textarea
-                              ref={(field) => { if (field) autoSizeTextarea(field); }}
+                              ref={expandedText ? autoSizeTextarea : undefined}
                               value={value}
                               rows={1}
+                              title={expandedText ? undefined : value}
+                              maxLength={column.key === "name" || column.key === "contractorRequisites" ? 500 : 5000}
                               onChange={(event) => onSave(sectionId, line.id, { [column.key]: event.target.value })}
                               onInput={(event) => autoSizeTextarea(event.currentTarget)}
+                              onFocus={(event) => autoSizeTextarea(event.currentTarget)}
+                              onBlur={(event) => { if (!expandedText) event.currentTarget.style.height = "32px"; }}
                               onKeyDown={(event) => handleCellKeyDown(event, rowIndex, column.key)}
                               onPaste={(event) => {
                                 const text = event.clipboardData.getData("text/plain");
@@ -5362,7 +5471,7 @@ function CompactEstimateTable({
                     </React.Fragment>
                   );
                 })}
-                {(() => {
+                {visibleCustomColumns.length > 0 ? (() => {
                   const clientTotal = normalizedLocalLineCostClientNumber(line) ?? 0;
                   const internalTotal = getProjectEstimateLineInternalTotal(line);
                   const formulaResults = evaluateProjectEstimateCustomColumns({
@@ -5377,7 +5486,7 @@ function CompactEstimateTable({
                       margin: roundMoney(clientTotal - internalTotal),
                     },
                   });
-                  return customColumns.map((column) => {
+                  return visibleCustomColumns.map((column) => {
                     const value = line.customValues[column.id] ?? "";
                     const formulaResult = formulaResults[column.id];
                     const columnIndex = fillableColumnKeys.indexOf(column.id);
@@ -5469,7 +5578,7 @@ function CompactEstimateTable({
                       </td>
                     );
                   });
-                })()}
+                })() : null}
                 {!readOnly ? (
                   <td className="border-l border-zinc-200 px-1 text-center">
                     <button
@@ -5491,6 +5600,7 @@ function CompactEstimateTable({
       </div>
 
       {!readOnly ? (
+        <div className="estimate-sheet__addbar">
         <button
           type="button"
           disabled={busy}
@@ -5499,6 +5609,8 @@ function CompactEstimateTable({
         >
           + Добавить строку
         </button>
+        <button type="button" disabled={busy} onClick={() => onAddSubsection()}>+ Подраздел</button>
+        </div>
       ) : null}
     </div>
   );

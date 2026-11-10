@@ -82,6 +82,15 @@ function projectSection(index: number, lines: ProjectEstimateReadLine[]): Projec
 }
 
 describe("internal estimate xlsx summaries", () => {
+  it("exports subsection titles as merged headers without a price", async () => {
+    const heading = { ...projectLine(0), lineType: "SUBSECTION", name: "Звуковое оборудование", costClient: null, costInternal: null, qty: null, unitPriceClient: null, internalExpenses: [] };
+    for (const variant of ["client", "internal"] as const) {
+      const sheet = await loadFirstSheet(await buildProjectEstimateXlsx({projectTitle:"Проект", versionNumber:1, variant, sections:[projectSection(0,[heading,projectLine(1)])]}));
+      const cell = findCell(sheet, "Звуковое оборудование");
+      expect(cell).not.toBeNull(); expect(cell!.isMerged).toBe(true);
+      expect(cell!.font.bold).toBe(true);
+    }
+  });
   it("groups project totals and exposes the client-facing amount", async () => {
     const buffer = await buildProjectEstimateXlsx({
       projectTitle: "Тестовый проект",

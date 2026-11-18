@@ -2,7 +2,6 @@
 
 import "@/app/catalog/catalog.css";
 import "react-day-picker/style.css";
-import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -388,13 +387,6 @@ function ProjectEventDatePicker({
   const popoverRef = React.useRef<HTMLDivElement>(null);
   const [position, setPosition] = React.useState<React.CSSProperties>({});
 
-  React.useEffect(() => {
-    if (open) return;
-    setDraftStart(startDate);
-    setDraftEnd(endDate);
-    setDraftConfirmed(confirmed);
-  }, [confirmed, endDate, open, startDate]);
-
   const updatePosition = React.useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
@@ -436,7 +428,7 @@ function ProjectEventDatePicker({
   );
   const summary =
     startDate && endDate
-      ? `${fmtDate(startDate)} — ${fmtDate(endDate)}`
+      ? startDate === endDate ? fmtDate(startDate) : `${fmtDate(startDate)} — ${fmtDate(endDate)}`
       : startDate
         ? `c ${fmtDate(startDate)}`
         : endDate
@@ -460,7 +452,16 @@ function ProjectEventDatePicker({
       <button
         ref={anchorRef}
         type="button"
-        onClick={() => !readOnly && setOpen((current) => !current)}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            return;
+          }
+          setDraftStart(startDate);
+          setDraftEnd(endDate);
+          setDraftConfirmed(confirmed);
+          setOpen(true);
+        }}
         disabled={readOnly}
         className="project-detail-hero__meta-item project-detail-date-trigger outline-none"
         aria-expanded={open}
@@ -1498,25 +1499,10 @@ export default function ProjectDetailPage() {
           ) : null}
 
           <section className="project-detail-hero">
-            <div className="project-detail-hero__mascot" aria-hidden="true">
-              <span>Держим курс!</span>
-              <Image
-                src="/project-mascot-v2.png"
-                alt=""
-                width={768}
-                height={512}
-                priority
-              />
-            </div>
             <div className="project-detail-hero__surface">
               <div className="project-detail-hero__primary min-w-0">
-                <div className="project-detail-hero__crumbs">
-                  <span className="truncate">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</span>
-                  <span aria-hidden className="project-detail-hero__crumb-separator">/</span>
-                  <span className="shrink-0">{project.members.length} участн.</span>
-                </div>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
+                <div className="min-w-0">
+                  <h1 className="project-detail-hero__heading">
                     {editingField === "title" && !readOnly ? (
                       <input
                         value={title}
@@ -1547,22 +1533,23 @@ export default function ProjectDetailPage() {
                         autoFocus
                       />
                     ) : (
-                      <button
+                      readOnly ? <span className="project-detail-hero__title">{project.title}</span> : <button
                         type="button"
-                        onClick={() => !readOnly && setEditingField("title")}
-                        disabled={readOnly}
-                        className={`project-detail-hero__title block break-words text-left ${
-                          readOnly ? "cursor-default" : "rounded outline-none transition-colors hover:text-violet-900 focus:ring-2 focus:ring-violet-100"
-                        }`}
+                        onClick={() => setEditingField("title")}
+                        className="project-detail-hero__title project-detail-hero__rename"
+                        title="Переименовать проект"
                       >
                         {project.title}
                       </button>
                     )}
+                  </h1>
+                  <p className="project-detail-hero__customer">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</p>
                     <div className="project-detail-hero__states">
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
+                        aria-expanded={!readOnly && editingField === "status"}
                         className={`project-detail-hero__state ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         {PROJECT_STATUS_LABEL[project.status]}
@@ -1592,11 +1579,11 @@ export default function ProjectDetailPage() {
                         }}
                       />
                     ) : null}
-                  </div>
                 </div>
 
                 <div className="project-detail-hero__meta">
-                  <span className="project-detail-hero__meta-item"><span>Ответственный</span><strong>{project.owner.displayName}</strong></span>
+                  <div className="project-detail-hero__fact">
+                  <span>Дата мероприятия</span>
                   <ProjectEventDatePicker
                     startDate={project.eventStartDate ?? ""}
                     endDate={project.eventEndDate ?? ""}
@@ -1614,8 +1601,9 @@ export default function ProjectDetailPage() {
                       });
                     }}
                   />
-                  <span className="project-detail-hero__meta-item"><strong className="tabular-nums">{project._count.orders}</strong><span>заявок</span></span>
-                  <span className="project-detail-hero__meta-item project-detail-hero__meta-item--muted"><span>Создан</span><strong>{fmtDate(project.createdAt)}</strong></span>
+                  </div>
+                  <div className="project-detail-hero__fact"><span>Ответственный</span><strong>{project.owner.displayName}</strong></div>
+                  <div className="project-detail-hero__fact"><span>Заявки</span><strong className="tabular-nums">{project._count.orders}</strong></div>
                 </div>
               </div>
 
@@ -1628,6 +1616,7 @@ export default function ProjectDetailPage() {
                     members={project.members}
                     widgets={project.widgets}
                     readOnly={readOnly}
+                    showTrigger={false}
                     onSaved={applySavedWorkspace}
                   />
                 ) : null}
@@ -1644,15 +1633,27 @@ export default function ProjectDetailPage() {
                   className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
                   aria-disabled={readOnly}
                 >
-                  Каталог → реквизит
+                  Добавить реквизит
                 </Link>
-              </div>
-
-              {!readOnly ? (
-                <div className="project-detail-hero__complete-slot">
+                {!readOnly ? <details className="project-detail-hero__more">
+                  <summary aria-label="Другие действия проекта" title="Другие действия"><svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden><circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/></svg></summary>
+                  <div>
+                  <p className="project-detail-hero__created">Создан {fmtDate(project.createdAt)}</p>
+                  {isWorkspaceV2 ? <button type="button" className="project-detail-hero__settings" onClick={(event) => {
+                    const menu = event.currentTarget.closest("details");
+                    if (menu) {
+                      menu.open = false;
+                      menu.querySelector("summary")?.focus();
+                    }
+                    window.dispatchEvent(new CustomEvent("project-workspace:configure"));
+                  }}>Настроить карточку</button> : null}
                   <button
                     type="button"
-                    onClick={() => openArchiveModal()}
+                    onClick={(event) => {
+                      const menu = event.currentTarget.closest("details");
+                      if (menu) menu.open = false;
+                      openArchiveModal();
+                    }}
                     disabled={archiveBusy || !canArchiveProject}
                     className="project-detail-hero__complete"
                     title={
@@ -1663,8 +1664,9 @@ export default function ProjectDetailPage() {
                   >
                     Завершить проект
                   </button>
-                </div>
-              ) : null}
+                  </div>
+                </details> : null}
+              </div>
             </div>
           </section>
 
@@ -1692,6 +1694,14 @@ export default function ProjectDetailPage() {
             projectId={id}
             widgets={workspaceWidgets}
             renderWidget={renderWorkspaceWidget}
+            revision={isWorkspaceV2 && !readOnly ? project.revision : undefined}
+            onSaveLayout={isWorkspaceV2 && !readOnly ? async (widgets, revision) => {
+              if (project.revision !== revision) throw new Error("Проект изменился. Отмените настройку и откройте её заново.");
+              const response = await fetch(`/api/projects/${id}/workspace`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: revision, ownerUserId: project.owner.id, memberUserIds: Array.from(new Set([project.owner.id, ...project.members.map((member) => member.user.id)])), widgets }) });
+              const result = await response.json().catch(() => null) as { workspace?: ProjectWorkspaceSavedData; error?: { message?: string } } | null;
+              if (!response.ok || !result?.workspace) throw new Error(response.status === 409 ? "Проект изменился у коллеги. Отмените настройку и обновите страницу." : result?.error?.message || "Не удалось сохранить расположение блоков.");
+              applySavedWorkspace(result.workspace);
+            } : undefined}
           />
 
           {/* Legacy inline workspace retained temporarily for safe rollback while the dashboard is validated.

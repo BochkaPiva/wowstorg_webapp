@@ -115,40 +115,116 @@ function Assignment({ row, slots, readOnly, refresh, projectId, boardEnabled, sc
     </ContextPopover> : null}
   </article>;
 }
-function AddContractor({ projectId, slots, done, cancel }: { projectId: string; slots: ProjectContractorsPayload["scheduleSlots"]; done: () => Promise<void>; cancel: () => void }) {
+function AddContractor({ projectId, slots, existingIds, done, refresh, cancel }: { projectId: string; slots: ProjectContractorsPayload["scheduleSlots"]; existingIds: Set<string>; done: () => Promise<void>; refresh: () => Promise<void>; cancel: () => void }) {
   const [query, setQuery] = React.useState("");
   const [cards, setCards] = React.useState<ContractorCard[]>([]);
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
+  const [searchRetry, setSearchRetry] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
   const [selection, setSelection] = React.useState<{ id: string | null; fields: ProjectContractorFields } | null>(null);
   const [requestId] = React.useState(() => crypto.randomUUID());
-  const [selecting, setSelecting] = React.useState<string | null>(null);
+  const [selected, setSelected] = React.useState<ContractorCard[]>([]);
+  const [saving, setSaving] = React.useState(false);
+  const pending = React.useRef(new Map<string, { id: string; fields: ProjectContractorFields }>());
+  const catalogFlight = React.useRef<AbortController | null>(null);
+  const moreFlight = React.useRef(false);
+  const searchCatalog = React.useCallback((signal: AbortSignal, cursor?: string) => {
+    const params = new URLSearchParams({ paged: "1", limit: "12", search: query.trim() });
+    if (cursor) params.set("cursor", cursor);
+    return catalogRequest<{ contractors: ContractorCard[]; nextCursor?: string | null }>(`/api/contractors?${params}`, { signal });
+  }, [query]);
+  React.useEffect(() => {
+    const guard = (event: Event) => { if (saving || (selected.length > 0 && !window.confirm("Закрыть выбор подрядчиков?"))) event.preventDefault(); };
+    window.addEventListener("project-contractors:close", guard);
+    return () => window.removeEventListener("project-contractors:close", guard);
+  }, [saving, selected.length]);
   React.useEffect(() => {
     if (selection) return;
     const controller = new AbortController();
+    catalogFlight.current = controller;
     const timer = setTimeout(() => {
-      setLoading(true); setError(null);
-      catalogRequest<{ contractors: ContractorCard[] }>(`/api/contractors?paged=1&limit=12&search=${encodeURIComponent(query)}`, { signal: controller.signal })
-        .then((data) => { setCards(data.contractors); setLoading(false); }).catch((cause) => { if (!controller.signal.aborted) { setError(cause.message); setLoading(false); } });
+      void searchCatalog(controller.signal).then((data) => {
+        if (controller.signal.aborted) return;
+        setCards(data.contractors);
+        setNextCursor(data.nextCursor ?? null);
+      }).catch((cause: unknown) => {
+        if (!controller.signal.aborted) setSearchError(cause instanceof Error ? cause.message : "Каталог не загрузился");
+      }).finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     }, 250);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, selection]);
+    return () => { clearTimeout(timer); controller.abort(); moreFlight.current = false; };
+  }, [searchCatalog, searchRetry, selection]);
+  function restartSearch() {
+    setLoading(true);
+    setLoadingMore(false);
+    setSearchError(null);
+    setCards([]);
+    setNextCursor(null);
+  }
+  async function loadMore() {
+    const signal = catalogFlight.current?.signal;
+    if (!signal || !nextCursor || moreFlight.current || saving) return;
+    moreFlight.current = true;
+    setLoadingMore(true);
+    setSearchError(null);
+    try {
+      const data = await searchCatalog(signal, nextCursor);
+      if (signal.aborted) return;
+      setCards((current) => {
+        const ids = new Set(current.map(({ id }) => id));
+        return [...current, ...data.contractors.filter(({ id }) => !ids.has(id))];
+      });
+      setNextCursor(data.nextCursor ?? null);
+    } catch (cause) {
+      if (!signal.aborted) setSearchError(cause instanceof Error ? cause.message : "Следующая страница не загрузилась");
+    } finally {
+      if (!signal.aborted) {
+        moreFlight.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }
   if (selection) return <div className={styles.composer}><h3>{selection.id ? "Добавить в проект" : "Подрядчик вне каталога"}</h3><RosterForm initial={selection.fields} slots={slots} label="Добавление подрядчика" cancel={cancel} submit={async (fields) => {
     await catalogRequest(`/api/projects/${projectId}/contractors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields, id: requestId, contractorId: selection.id, action: "ADD" }) }); await done();
   }} /></div>;
   return <div className={styles.composer}>
-    <div className={styles.toolbar}><h3>Кто участвует в проекте?</h3><button type="button" className={styles.quiet} onClick={cancel}>Закрыть</button></div>
-    <div className={styles.searchLine}><input type="search" autoFocus placeholder="Найти подрядчика" aria-label="Найти подрядчика для проекта" value={query} onChange={(event) => setQuery(event.target.value)} /><button type="button" className={styles.secondary} onClick={() => setSelection({ id: null, fields: blank })}>Вне каталога</button></div>
-    {error ? <p className={styles.error} role="alert">{error}<button type="button" className={styles.quiet} onClick={() => setQuery((value) => value + " ")}>Повторить</button></p> : null}
-    {loading ? <ProjectModuleContentSkeleton /> : <div className={styles.picker}>{cards.map((card) => <button type="button" key={card.id} disabled={selecting !== null} onClick={async () => {
-      setSelecting(card.id); setError(null);
+    <div className={styles.toolbar}><div><h3>Добавить подрядчиков</h3><p>Выберите несколько участников из каталога</p></div><button type="button" className={styles.quiet} disabled={saving} onClick={() => { if (!selected.length || window.confirm("Закрыть выбор подрядчиков?")) cancel(); }}>Закрыть</button></div>
+    <div className={styles.searchLine}><input type="search" autoFocus disabled={saving} placeholder="Имя или услуга" aria-label="Найти подрядчика для проекта" value={query} onChange={(event) => { restartSearch(); setQuery(event.target.value); }} /><button type="button" className={styles.secondary} disabled={saving || selected.length > 0} onClick={() => setSelection({ id: null, fields: blank })}>Вне каталога</button></div>
+    {selected.length ? <div className={styles.selectedPeople} aria-label="Выбранные подрядчики">{selected.map((card) => <button type="button" key={card.id} disabled={saving} onClick={() => setSelected((previous) => previous.filter((item) => item.id !== card.id))} aria-label={`Убрать из выбора: ${card.name}`}><span>{card.name}</span><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden><path d="m4 4 8 8M12 4l-8 8" /></svg></button>)}</div> : null}
+    {error ? <p className={styles.error} role="alert">{error}</p> : null}
+    {searchError ? <div className={styles.error} role="alert">{searchError}{!nextCursor ? <button type="button" className={styles.quiet} onClick={() => { restartSearch(); setSearchRetry((previous) => previous + 1); }}>Повторить поиск</button> : null}</div> : null}
+    {loading ? <ProjectModuleContentSkeleton /> : <div className={styles.picker}>{cards.map((card) => {
+      const checked = selected.some((item) => item.id === card.id);
+      const existing = existingIds.has(card.id) && !checked;
+      return <label key={card.id} className={styles.pickerOption} data-selected={checked || undefined} data-existing={existing || undefined}><input type="checkbox" checked={checked} disabled={saving || existing} onChange={() => setSelected((previous) => checked ? previous.filter((item) => item.id !== card.id) : [...previous, card])} /><span className={styles.photo}><ContractorPhoto src={card.photoUrl} name={card.name} /></span><span className={styles.pickerCopy}><strong>{card.name}</strong><small>{existing ? "Уже в составе проекта" : card.offers.map((offer) => offer.title).slice(0, 2).join(" · ") || card.shortDescription || "Контакт из каталога"}</small></span></label>;
+    })}{!cards.length && !searchError ? <p>Ничего не найдено. Измените поиск или добавьте контакт вне каталога.</p> : null}</div>}
+    {nextCursor && !loading ? <button type="button" className={styles.loadMore} disabled={loadingMore || saving} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : searchError ? "Повторить загрузку" : "Показать ещё подрядчиков"}</button> : null}
+    <div className={styles.pickerFooter}><span aria-live="polite">Выбрано: {selected.length}</span><button type="button" className={styles.primary} disabled={saving || !selected.length} onClick={async () => {
+      setSaving(true); setError(null);
+      let added = 0;
       try {
-        const data = await catalogRequest<{ contractor: ContractorDetail }>(`/api/contractors/${card.id}`);
-        const detail = data.contractor, contact = detail.contacts[0];
-        setSelection({ id: card.id, fields: { ...blank, categoryNames: [...new Set(detail.offers.map((offer) => offer.category.name))], name: card.name, responsibility: card.shortDescription || card.offers.map((offer) => offer.title).slice(0, 3).join(", "), contactName: contact?.personName || null, phone: contact?.phone || null, email: contact?.email || null } });
-      } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось загрузить контакт"); } finally { setSelecting(null); }
-    }}><span className={styles.photo}><ContractorPhoto src={card.photoUrl} name={card.name} /></span><span><strong>{card.name}</strong><small>{selecting === card.id ? "Открываем…" : card.offers.map((offer) => offer.title).slice(0, 2).join(" · ") || card.shortDescription || "Контакт из каталога"}</small></span><span aria-hidden>+</span></button>)}{!cards.length && !error ? <p>Ничего не найдено. Измените поиск или добавьте контакт вне каталога.</p> : null}</div>}
-    <small className={styles.help}>Показываем до 12 совпадений. Уточните имя или услугу.</small>
+        for (const card of selected) {
+          let entry = pending.current.get(card.id);
+          if (!entry) {
+            const { contractor: detail } = await catalogRequest<{ contractor: ContractorDetail }>(`/api/contractors/${card.id}`);
+            const contact = detail.contacts[0];
+            entry = { id: crypto.randomUUID(), fields: { ...blank, categoryNames: [...new Set(detail.offers.map((offer) => offer.category.name))].slice(0, 12), name: card.name, responsibility: card.shortDescription || card.offers.map((offer) => offer.title).slice(0, 3).join(", ") || "Обязанности уточняются", contactName: contact?.personName || null, phone: contact?.phone || null, email: contact?.email || null } };
+            pending.current.set(card.id, entry);
+          }
+          await catalogRequest(`/api/projects/${projectId}/contractors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...entry.fields, id: entry.id, contractorId: card.id, action: "ADD" }) });
+          pending.current.delete(card.id); added++;
+          setSelected((previous) => previous.filter((item) => item.id !== card.id));
+        }
+        await done();
+      } catch (cause) {
+        setError(`${added ? `Добавлено: ${added}. ` : ""}${cause instanceof Error ? cause.message : "Не удалось добавить подрядчиков"}. Остальные остались в выборе — можно повторить.`);
+        await refresh();
+      } finally { setSaving(false); }
+    }}>{saving ? "Добавляем…" : `Добавить${selected.length ? ` · ${selected.length}` : ""}`}</button></div>
   </div>;
 }
 export function ProjectContractorsPanel({ projectId, readOnly, boardEnabled = false, scheduleEnabled = false, proposalEnabled = false }: { projectId: string; readOnly: boolean; boardEnabled?: boolean; scheduleEnabled?: boolean; proposalEnabled?: boolean }) {
@@ -199,7 +275,7 @@ export function ProjectContractorsPanel({ projectId, readOnly, boardEnabled = fa
     </div>
     {error ? <div className={styles.error} role="alert">{error}<button className={styles.quiet} type="button" onClick={() => void refresh()}>Обновить список</button></div> : null}
     {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
-    {mode === "add" && data ? <AddContractor projectId={projectId} slots={data.scheduleSlots} done={afterChange} cancel={() => setMode(null)} /> : null}
+    {mode === "add" && data ? <AddContractor projectId={projectId} slots={data.scheduleSlots} existingIds={new Set(data.assignments.flatMap((row) => row.contractorId ? [row.contractorId] : []))} done={afterChange} refresh={publishChange} cancel={() => setMode(null)} /> : null}
     {mode === "import" && data ? <div className={styles.composer}><div className={styles.toolbar}><h3>Состав из выбранного КП</h3><button type="button" className={styles.quiet} disabled={busy} onClick={() => setMode(null)}>Закрыть</button></div>
       {variants.length ? <><label className={styles.variant}>Вариант<select value={variantId} disabled={busy} onChange={(event) => setVariantId(event.target.value)}><option value="">Выберите вариант</option>{variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.title} · {variant.contractorCount} подрядчиков</option>)}</select></label><p className={styles.help}>Добавим только подрядчиков основных услуг со статусом «На согласовании». Существующие записи и договорённости не изменятся. Цены останутся в КП и смете.</p><button type="button" className={styles.primary} disabled={busy || !selected?.contractorCount} onClick={async () => {
         if (!data.proposal || !selected || busy) return; setBusy(true); setError(null);
@@ -211,6 +287,6 @@ export function ProjectContractorsPanel({ projectId, readOnly, boardEnabled = fa
       const visible = rows.filter(matches);
       return visible.length ? <section key={name} className={styles.categoryGroup} aria-label={`Категория: ${name}`}><header><h3>{name}</h3><span>{visible.length} в составе</span></header><div className={styles.list}>{visible.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} boardEnabled={boardEnabled} scheduleEnabled={scheduleEnabled} />)}</div></section> : null;
     })}</div>{!groups.some(([name, rows]) => (!effectiveCategory || effectiveCategory === name) && rows.some(matches)) ? <p className={styles.help}>Нет активных подрядчиков по этим условиям.</p> : null}{cancelled.length ? <details className={styles.cancelled}><summary>Не участвуют · {cancelled.length}</summary><div className={styles.list}>{cancelled.map((row) => <Assignment key={row.id} row={row} projectId={projectId} slots={data.scheduleSlots} readOnly={readOnly} refresh={publishChange} boardEnabled={boardEnabled} scheduleEnabled={scheduleEnabled} />)}</div></details> : null}</> : null}
-    {data && !data.assignments.length && !mode ? <div className={styles.empty}><strong>Состав ещё не собран</strong><p>Перенесите основных подрядчиков из КП или добавьте нужных людей. Здесь коллега увидит обязанности, контакты и время прибытия.</p></div> : null}
+    {data && !data.assignments.length && !mode ? <div className={styles.empty}><div><strong>Соберите команду проекта</strong><p>Добавьте подрядчиков из каталога или перенесите состав из КП. Контакты и договорённости будут под рукой.</p></div></div> : null}
   </section>;
 }

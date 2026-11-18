@@ -140,14 +140,119 @@ describe("project estimate lifecycle", () => {
   });
 
   it("does not autosave an unnamed newly inserted row", async () => {
-    await load(); click('[aria-label="Выбрать строку 1"]'); clickText("Строка ниже"); await advance(1400);
+    await load(); click('[aria-label="Выбрать всю строку 1"]'); clickText("Строка ниже"); await advance(1400);
     expect(flights.every(f => !f.init?.method)).toBe(true); expect(container.textContent).toContain("Локальный черновик"); expect(container.querySelectorAll('[data-estimate-grid-row]')).toHaveLength(2);
   });
 
   it("prunes deleted row selection without losing selection on unrelated renders", async () => {
-    const data = payload(); data.current.sections[0].lines.push(line("second", "Second")); await load(data); click('[aria-label="Выбрать строку 1"]');
+    const data = payload(); data.current.sections[0].lines.push(line("second", "Second")); await load(data); click('[aria-label="Выбрать всю строку 1"]');
     change("name", "Second edited", "second"); expect(container.textContent).toContain("Выбрано: 1"); click('[aria-label="Удалить строку 1"]');
     expect(container.textContent).not.toContain("Выбрано:"); expect(container.querySelectorAll('[data-estimate-grid-row]')).toHaveLength(1);
+  });
+
+  it("copies a rectangular cell range across rows without changing the estimate", async () => {
+    const data = payload(); data.current.sections[0].lines.push(line("second", "Second"));
+    await load(data);
+    const first = element<HTMLElement>('[data-estimate-grid-cell-row="0"][data-estimate-grid-cell-column="0"]');
+    const last = element<HTMLElement>('[data-estimate-grid-cell-row="1"][data-estimate-grid-cell-column="1"]');
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => last });
+    act(() => {
+      first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 30, clientY: 30 }));
+      window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    });
+    expect(container.querySelectorAll(".project-estimate-grid__cell--selected")).toHaveLength(4);
+    const setData = vi.fn();
+    const copy = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, "clipboardData", { value: { setData } });
+    act(() => field().dispatchEvent(copy));
+    expect(setData).toHaveBeenCalledWith("text/plain", "Line\t\nSecond\t");
+    expect(copy.defaultPrevented).toBe(true);
+    expect(flights.every(f => !f.init?.method)).toBe(true);
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("selects adjacent rows by dragging the row numbers", async () => {
+    const data = payload(); data.current.sections[0].lines.push(line("second", "Second"), line("third", "Third"));
+    await load(data);
+    const first = element<HTMLButtonElement>('[aria-label="Выбрать всю строку 1"]');
+    const third = element<HTMLElement>('[data-estimate-grid-row-index="2"]');
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => third });
+    act(() => {
+      first.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 1, clientY: 80 }));
+      window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("Выбрано: 3");
+    expect(container.querySelectorAll(".project-estimate-grid__row--selected")).toHaveLength(3);
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("includes calculated client totals when copying a range across financial columns", async () => {
+    await load();
+    const price = element<HTMLElement>('[data-estimate-grid-cell-row="0"][data-estimate-grid-cell-column="4"]');
+    const expense = element<HTMLElement>('[data-estimate-grid-cell-row="0"][data-estimate-grid-cell-column="6"]');
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => expense });
+    act(() => {
+      price.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 30, clientY: 1 }));
+      window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    });
+    const setData = vi.fn(); const copy = new Event("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, "clipboardData", { value: { setData } });
+    act(() => field("unitPriceClient").dispatchEvent(copy));
+    expect(setData).toHaveBeenCalledWith("text/plain", "100\t100\t20");
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { getData: (type: string) => type === "text/plain" ? "200\t200\t35" : JSON.stringify(["unitPriceClient", "__clientTotal", "costInternal"]) } });
+    act(() => field("unitPriceClient").dispatchEvent(paste));
+    expect(field("unitPriceClient").value).toBe("200");
+    expect(field("costInternal").value).toBe("35");
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("does not steal horizontal arrows while editing text inside a cell", async () => {
+    await load(); const name = field();
+    act(() => { name.focus(); name.setSelectionRange(2, 2); });
+    const inside = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+    act(() => name.dispatchEvent(inside)); expect(inside.defaultPrevented).toBe(false);
+    act(() => name.setSelectionRange(0, 0));
+    const edge = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+    act(() => name.dispatchEvent(edge)); expect(edge.defaultPrevented).toBe(true);
+  });
+
+  it("lets the browser select text when a drag remains inside one cell", async () => {
+    await load(); const name = field(); const cell = name.closest<HTMLElement>("[data-estimate-grid-cell]")!;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => cell });
+    const move = new MouseEvent("pointermove", { bubbles: true, cancelable: true, clientX: 30, clientY: 1 });
+    act(() => { name.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 1, clientY: 1 })); window.dispatchEvent(move); window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })); });
+    expect(move.defaultPrevented).toBe(false);
+    expect(document.body.classList.contains("project-estimate-cell-selecting")).toBe(false);
+    Reflect.deleteProperty(document, "elementFromPoint");
+  });
+
+  it("creates a subsection and a line with keyboard focus and keeps their types in autosave", async () => {
+    await load(); const name = field();
+    act(() => { name.focus(); name.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM", key: "m", ctrlKey: true, altKey: true, bubbles: true, cancelable: true })); });
+    await advance(0);
+    const subsection = element<HTMLInputElement>('[aria-label="Название подраздела"]');
+    expect(document.activeElement).toBe(subsection);
+    act(() => input(subsection, "Звуковое оборудование"));
+    act(() => subsection.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", key: "Enter", ctrlKey: true, altKey: true, bubbles: true, cancelable: true })));
+    await advance(0);
+    const newName = document.activeElement as HTMLTextAreaElement;
+    expect(newName.dataset.estimateColumn).toBe("name");
+    act(() => input(newName, "Колонка"));
+    await advance(1400);
+    expect(mutation().localSections[0].lines.map((item: { lineType: string; name: string }) => [item.lineType, item.name])).toEqual([["SUBSECTION", "Звуковое оборудование"], ["OTHER", "Колонка"], ["OTHER", "Line"]]);
+  });
+
+  it("opens the new section input using the keyboard without creating a blank section", async () => {
+    await load(); const name = field();
+    act(() => { name.focus(); name.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyN", key: "n", ctrlKey: true, altKey: true, bubbles: true, cancelable: true })); });
+    const sectionName = element<HTMLInputElement>('#project-estimate-new-section-compact');
+    expect(document.activeElement).toBe(sectionName);
+    expect(sectionName.closest("details")?.open).toBe(true);
+    await advance(1400); expect(flights.every(f => !f.init?.method)).toBe(true);
   });
 
   it("keeps read-only estimates free of writes even with recovered draft data", async () => {

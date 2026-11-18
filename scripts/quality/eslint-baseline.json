@@ -5,7 +5,6 @@
     "src/app/estimates/[id]/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/orders/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/orders/[id]/page.tsx|react-hooks/set-state-in-effect": 4,
-    "src/app/projects/[id]/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/warehouse/queue/page.tsx|react-hooks/set-state-in-effect": 1,
     "src/app/_ui/InAppNotifications.tsx|react-hooks/set-state-in-effect": 2
   }

@@ -163,6 +163,7 @@ export function ProjectWorkspaceSettings({
   members,
   widgets,
   readOnly,
+  showTrigger = true,
   onSaved,
 }: {
   projectId: string;
@@ -171,9 +172,17 @@ export function ProjectWorkspaceSettings({
   members: ProjectWorkspaceMember[];
   widgets: ProjectWorkspaceWidgetRecord[];
   readOnly: boolean;
+  showTrigger?: boolean;
   onSaved: (workspace?: ProjectWorkspaceSavedData) => void | Promise<void>;
 }) {
   const [editing, setEditing] = React.useState(false);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!editing) return;
+    const previous = document.activeElement;
+    dialogRef.current?.querySelector<HTMLElement>('[aria-label="Закрыть настройку"]')?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true }); };
+  }, [editing]);
   const [meta, setMeta] = React.useState<WorkspaceMeta | null>(null);
   const [draftOwnerId, setDraftOwnerId] = React.useState(owner.id);
   const [draftMemberIds, setDraftMemberIds] = React.useState<string[]>(members.map((item) => item.user.id));
@@ -361,7 +370,7 @@ export function ProjectWorkspaceSettings({
               </span>
             ) : null}
           </div>
-          {!readOnly ? (
+          {!readOnly && showTrigger ? (
             <button
               type="button"
               onClick={() => (editing ? setEditing(false) : void beginEditing())}
@@ -378,10 +387,16 @@ export function ProjectWorkspaceSettings({
 
       {editing ? createPortal(
         <div
+          ref={dialogRef}
           className="fixed inset-0 z-[220] flex items-center justify-center bg-zinc-950/55 p-3 backdrop-blur-[2px] sm:p-5"
           role="dialog"
           aria-modal="true"
           aria-label="Настройка рабочего пространства"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || event.defaultPrevented || busy) return;
+            event.preventDefault();
+            setEditing(false);
+          }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !busy) setEditing(false);
           }}

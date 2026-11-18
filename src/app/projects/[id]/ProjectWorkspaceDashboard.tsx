@@ -37,6 +37,10 @@ function WidgetIcon({ type }: { type: ProjectWidgetType }) {
   return <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden>{ICON_PATH[type]}</svg>;
 }
 
+function widgetId(type: ProjectWidgetType) {
+  return `project-widget-${type.toLowerCase().replaceAll("_", "-")}`;
+}
+
 function ExpandIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -47,13 +51,14 @@ function ExpandIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onToggleExpanded, onConfigure, children }: {
+function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onToggleExpanded, onConfigure, layout, children }: {
   widget: ProjectWorkspaceWidgetInput;
   collapsed: boolean;
   expanded: boolean;
   onToggleCollapsed: () => void;
   onToggleExpanded: () => void;
   onConfigure: () => void;
+  layout?: { index: number; count: number; dragging: boolean; target: boolean; onDragStart: () => void; onDragEnter: () => void; onDragEnd: () => void; onDrop: () => void; onMove: (direction: -1 | 1) => void; onWidth: (width: ProjectWorkspaceWidgetInput["width"]) => void };
   children: React.ReactNode;
 }) {
   const definition = PROJECT_WIDGET_REGISTRY.find((item) => item.type === widget.type)!;
@@ -93,17 +98,25 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
   const widgetNode = (
     <section
       ref={widgetRef}
-      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${WIDTH_CLASS[widget.width]}`}`}
+      className={`project-workspace-widget min-w-0 bg-white ${expanded ? "project-detail-page project-workspace-widget--overlay fixed inset-0 z-[230] flex h-dvh w-screen flex-col" : `col-span-1 ${WIDTH_CLASS[widget.width]}`}`}
       style={expanded ? undefined : { order: widget.sortOrder }}
-      id={`project-widget-${widget.type.toLowerCase().replaceAll("_", "-")}`}
+      id={widgetId(widget.type)}
+      tabIndex={-1}
       data-widget={widget.type}
       data-expanded={expanded || undefined}
       data-collapsed={collapsed || undefined}
+      data-layout-editing={Boolean(layout) || undefined}
+      data-layout-dragging={layout?.dragging || undefined}
+      data-layout-target={layout?.target || undefined}
+      onDragOver={layout ? (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } : undefined}
+      onDragEnter={layout ? (event) => { event.preventDefault(); layout.onDragEnter(); } : undefined}
+      onDrop={layout ? (event) => { event.preventDefault(); layout.onDrop(); } : undefined}
       role={expanded ? "dialog" : undefined}
       aria-modal={expanded || undefined}
       aria-label={expanded ? definition.title : undefined}
     >
       <header className="project-workspace-widget__header" data-menu-open={menuOpen || undefined}>
+        {layout ? <button type="button" className="project-workspace-drag" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", widget.type); layout.onDragStart(); }} onDragEnd={layout.onDragEnd} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); layout.onMove(event.key === "ArrowUp" ? -1 : 1); } }} aria-label={`Переместить блок ${definition.title}. Для клавиатуры используйте стрелки вверх и вниз`} title="Перетащите блок"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></button> : null}
         <div className="project-workspace-widget__identity">
           <span className="project-workspace-widget__icon"><WidgetIcon type={widget.type} /></span>
           <div className="project-workspace-widget__titlecopy">
@@ -111,12 +124,15 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
           </div>
         </div>
         <div className="project-workspace-widget__controls">
+          {layout ? <div className="project-workspace-layout-controls"><label><span className="sr-only">Ширина блока {definition.title}</span><select value={widget.width} onChange={(event) => layout.onWidth(Number(event.target.value) as ProjectWorkspaceWidgetInput["width"])}>{definition.allowedWidths.map((width) => <option key={width} value={width}>{width === 12 ? "Вся ширина" : width === 8 ? "⅔ ширины" : width === 6 ? "½ ширины" : "⅓ ширины"}</option>)}</select></label><span className="project-workspace-mobile-move"><button type="button" disabled={layout.index === 0} onClick={() => layout.onMove(-1)} aria-label={`Переместить ${definition.title} выше`}>↑</button><button type="button" disabled={layout.index === layout.count - 1} onClick={() => layout.onMove(1)} aria-label={`Переместить ${definition.title} ниже`}>↓</button></span></div> : null}
+          {!layout ? <>
           {!collapsed && canExpand ? (
-            <button type="button" onClick={onToggleExpanded} className="project-workspace-widget__control" aria-label={expanded ? `Вернуть «${definition.title}» в карточку` : `Развернуть «${definition.title}» на весь экран`} title={expanded ? "Вернуть в карточку" : "На весь экран"}>
+            <button type="button" data-widget-expand onClick={onToggleExpanded} className={`project-workspace-widget__control${widget.type === "ESTIMATE" ? " project-workspace-widget__estimate-expand" : ""}`} aria-label={expanded ? `Вернуть «${definition.title}» в карточку` : `Развернуть «${definition.title}» на весь экран`} title={expanded ? "Вернуть в карточку" : "На весь экран"}>
               <ExpandIcon expanded={expanded} />
+              {widget.type === "ESTIMATE" ? <span aria-hidden="true">{expanded ? "К проекту" : "На весь экран"}</span> : null}
             </button>
           ) : null}
-          <div ref={menuRef} className="relative">
+          {!expanded ? <div ref={menuRef} className="relative">
             <button type="button" onClick={() => setMenuOpen((value) => !value)} className="project-workspace-widget__control" aria-label={`Действия: ${definition.title}`} aria-expanded={menuOpen}><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="3" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="9" cy="15" r="1.5" /></svg></button>
             {menuOpen ? (
               <div className="absolute right-0 top-9 z-[90] w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-xs shadow-[0_6px_8px_rgba(0,0,0,0.1)]">
@@ -124,10 +140,11 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
                 <button type="button" onClick={() => { setMenuOpen(false); onConfigure(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">Порядок, размер и видимость…</button>
               </div>
             ) : null}
-          </div>
+          </div> : null}
+          </> : null}
         </div>
       </header>
-      {!collapsed ? <div className={`project-workspace-widget__body ${expanded ? "min-h-0 flex-1 overflow-auto" : ""}`}>{children}</div> : null}
+      {!collapsed ? <div inert={Boolean(layout)} className={`project-workspace-widget__body ${expanded ? "min-h-0 flex-1 overflow-auto" : ""}`}>{children}</div> : null}
     </section>
   );
 
@@ -138,6 +155,8 @@ type DashboardProps = {
   projectId: string;
   widgets: ProjectWorkspaceWidgetInput[];
   renderWidget: (type: ProjectWidgetType, expanded: boolean, onExpand?: () => void) => React.ReactNode;
+  revision?: number;
+  onSaveLayout?: (widgets: ProjectWorkspaceWidgetInput[], revision: number) => Promise<void>;
 };
 
 function readCollapsedTypes(text: string | null) {
@@ -151,17 +170,94 @@ export function ProjectWorkspaceDashboard(props: DashboardProps) {
   return <WorkspaceDashboard key={props.projectId} {...props} />;
 }
 
-function WorkspaceDashboard({ projectId, widgets, renderWidget }: DashboardProps) {
+function WorkspaceDashboard({ projectId, widgets, renderWidget, revision, onSaveLayout }: DashboardProps) {
   const [collapsedText, writeCollapsed] = useLocalStorageText(`project-workspace-collapsed:${projectId}`);
   const [collapsedTypes, setCollapsedTypes] = React.useState(() => readCollapsedTypes(collapsedText));
   const [collapsedSource, setCollapsedSource] = React.useState(collapsedText);
   if (collapsedSource !== collapsedText) { setCollapsedSource(collapsedText); setCollapsedTypes(readCollapsedTypes(collapsedText)); }
   const [expandedType, setExpandedType] = React.useState<ProjectWidgetType | null>(null);
   const [returnToBoard, setReturnToBoard] = React.useState(false);
+  const [layoutDraft, setLayoutDraft] = React.useState<ProjectWorkspaceWidgetInput[] | null>(null);
+  const [layoutRevision, setLayoutRevision] = React.useState(0);
+  const [dragged, setDragged] = React.useState<ProjectWidgetType | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<ProjectWidgetType | null>(null);
+  const [layoutBusy, setLayoutBusy] = React.useState(false);
+  const [layoutError, setLayoutError] = React.useState<string | null>(null);
+  const [activeType, setActiveType] = React.useState<ProjectWidgetType | null>(null);
+  const gridRef = React.useRef<HTMLDivElement>(null);
+  const indexRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    if (expandedType || layoutDraft) return;
+    let frame = 0;
+    function measure() {
+      const grid = gridRef.current;
+      if (!grid) return;
+      const blocks = Array.from(grid.querySelectorAll<HTMLElement>(":scope > [data-widget]"));
+      const edge = Math.max(110, Number.parseFloat(getComputedStyle(blocks[0] ?? grid).scrollMarginTop) || 0) + 12;
+      const positions = blocks.map((block) => {
+        const { top, bottom } = block.getBoundingClientRect();
+        return { type: block.dataset.widget as ProjectWidgetType, top, bottom };
+      });
+      const currentTop = Math.max(-Infinity, ...positions.filter(({ top, bottom }) => top <= edge && bottom > edge).map(({ top }) => top));
+      if (!Number.isFinite(currentTop)) {
+        const inView = positions.filter(({ top, bottom }) => top < window.innerHeight && bottom > edge);
+        setActiveType((previous) => inView.some(({ type }) => type === previous) ? previous : inView[0]?.type ?? null);
+        return;
+      }
+      const row = positions.filter(({ top }) => Math.abs(top - currentTop) < 2);
+      setActiveType((previous) => row.some(({ type }) => type === previous) ? previous : row[0]?.type ?? null);
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    }
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const resize = typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null;
+    if (gridRef.current) resize?.observe(gridRef.current);
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [expandedType, layoutDraft, widgets]);
+
+  React.useEffect(() => {
+    const links = indexRef.current?.querySelector<HTMLElement>(".project-workspace-index__links");
+    const active = links?.querySelector<HTMLElement>('[aria-current="location"]');
+    if (!links || !active || links.scrollWidth <= links.clientWidth) return;
+    const container = links.getBoundingClientRect(), item = active.getBoundingClientRect();
+    if (item.left < container.left) links.scrollLeft -= container.left - item.left;
+    if (item.right > container.right) links.scrollLeft += item.right - container.right;
+  }, [activeType]);
+  React.useEffect(() => {
+    if (!layoutDraft) return;
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", preventLoss);
+    return () => window.removeEventListener("beforeunload", preventLoss);
+  }, [layoutDraft]);
+  function moveLayout(fromType: ProjectWidgetType, toType: ProjectWidgetType) {
+    if (fromType === toType) return;
+    setLayoutDraft((previous) => {
+      if (!previous) return previous;
+      const next = [...previous].sort((a, b) => a.sortOrder - b.sortOrder);
+      const from = next.findIndex((item) => item.type === fromType), to = next.findIndex((item) => item.type === toType);
+      if (from < 0 || to < 0) return previous;
+      const [moved] = next.splice(from, 1); next.splice(to, 0, moved);
+      return next.map((item, index) => ({ ...item, sortOrder: index, y: index }));
+    });
+  }
   function closeExpanded() {
     if (expandedType === "EVENT_BUILDER" && !window.dispatchEvent(new Event("proposal-workspace:close", { cancelable: true }))) return;
     if (expandedType === "CONTRACTORS" && !window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return;
+    const closedType = expandedType;
     setExpandedType(returnToBoard ? "FREE_BOARD" : null);
+    if (!returnToBoard && closedType) {
+      requestAnimationFrame(() => document.getElementById(widgetId(closedType))?.querySelector<HTMLButtonElement>("[data-widget-expand]")?.focus({ preventScroll: true }));
+    }
     setReturnToBoard(false);
   }
   React.useEffect(() => {
@@ -202,22 +298,52 @@ function WorkspaceDashboard({ projectId, widgets, renderWidget }: DashboardProps
     writeCollapsed(JSON.stringify(Array.from(next)));
   }
 
-  const visible = widgets.filter((widget) => widget.isVisible).sort((a, b) => a.sortOrder - b.sortOrder);
+  const shownWidgets = layoutDraft ?? widgets;
+  const visible = shownWidgets.filter((widget) => widget.isVisible).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  function goToWidget(event: React.MouseEvent<HTMLAnchorElement>, type: ProjectWidgetType) {
+    if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const id = widgetId(type);
+    if (collapsedTypes.has(type) && !layoutDraft) toggleCollapsed(type);
+    setActiveType(type);
+    if (window.location.hash !== `#${id}`) window.history.pushState(null, "", `#${id}`);
+    requestAnimationFrame(() => {
+      const block = document.getElementById(id);
+      block?.focus({ preventScroll: true });
+      block?.scrollIntoView({ block: "start" });
+    });
+  }
+
   return (
     <div className="project-workspace-dashboard">
-      <nav className="project-workspace-index" aria-label="Разделы карточки проекта">
+      <nav ref={indexRef} className="project-workspace-index" aria-label="Разделы карточки проекта">
+        <div className="project-workspace-index__links">
         {visible.map((widget) => {
           const definition = PROJECT_WIDGET_REGISTRY.find((item) => item.type === widget.type)!;
           return (
-            <a key={widget.type} href={`#project-widget-${widget.type.toLowerCase().replaceAll("_", "-")}`}>
-              {definition.title}
+            <a key={widget.type} href={`#${widgetId(widget.type)}`} aria-current={activeType === widget.type ? "location" : undefined} onClick={(event) => goToWidget(event, widget.type)}>
+              <span>{definition.title}</span>
             </a>
           );
         })}
-        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("project-workspace:configure"))}>Настроить</button>
+        </div>
+        {onSaveLayout && revision !== undefined && !layoutDraft ? (
+          <button type="button" aria-label="Изменить расположение" title="Изменить расположение" onClick={() => {
+            if (!window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) return;
+            setLayoutRevision(revision);
+            setLayoutDraft(widgets.map((item) => ({ ...item })));
+            setLayoutError(null);
+          }}>
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2" /><path d="M3 8h14M8 8v9" /></svg>
+            <span>Изменить расположение</span>
+          </button>
+        ) : null}
       </nav>
-      <div className="project-workspace-grid grid grid-cols-1 items-start md:grid-cols-12">
-        {widgets.filter((widget) => widget.isVisible || widget.type === expandedType).sort((a, b) => a.sortOrder - b.sortOrder).map((widget) => (
+      <div className="project-workspace-dashboard__main">
+      {layoutDraft ? <div className="project-workspace-layout-bar"><div><strong>Расположение блоков</strong><span>Перетаскивайте блоки за значок. Ширину можно изменить рядом с названием.</span></div><div><button type="button" disabled={layoutBusy} onClick={() => { setLayoutDraft(null); setLayoutError(null); }}>Отменить</button><button type="button" disabled={layoutBusy} onClick={async () => { if (!onSaveLayout) return; setLayoutBusy(true); setLayoutError(null); try { await onSaveLayout(layoutDraft, layoutRevision); setLayoutDraft(null); } catch (cause) { setLayoutError(cause instanceof Error ? cause.message : "Не удалось сохранить расположение"); } finally { setLayoutBusy(false); } }}>{layoutBusy ? "Сохраняем…" : "Сохранить"}</button></div>{layoutError ? <p role="alert">{layoutError}</p> : null}</div> : null}
+      <div ref={gridRef} className="project-workspace-grid grid grid-cols-1 items-start md:grid-cols-12" data-layout-editing={Boolean(layoutDraft) || undefined}>
+        {shownWidgets.filter((widget) => widget.isVisible || widget.type === expandedType).sort((a, b) => a.sortOrder - b.sortOrder).map((widget) => (
           <WorkspaceWidget
             key={widget.type}
             widget={widget}
@@ -229,10 +355,12 @@ function WorkspaceDashboard({ projectId, widgets, renderWidget }: DashboardProps
               else if (widget.type !== "CONTRACTORS" || window.dispatchEvent(new Event("project-contractors:close", { cancelable: true }))) setExpandedType(widget.type);
             }}
             onConfigure={() => window.dispatchEvent(new CustomEvent("project-workspace:configure"))}
+            layout={layoutDraft ? { index: visible.findIndex((item) => item.type === widget.type), count: visible.length, dragging: dragged === widget.type, target: Boolean(dragged && dragged !== widget.type && dropTarget === widget.type), onDragStart: () => setDragged(widget.type), onDragEnter: () => { if (dragged !== widget.type) setDropTarget(widget.type); }, onDragEnd: () => { setDragged(null); setDropTarget(null); }, onDrop: () => { if (dragged) moveLayout(dragged, widget.type); setDragged(null); setDropTarget(null); }, onMove: (direction) => { const index = visible.findIndex((item) => item.type === widget.type); const target = visible[index + direction]; if (target) moveLayout(widget.type, target.type); }, onWidth: (width) => setLayoutDraft((current) => current?.map((item) => item.type === widget.type ? { ...item, width } : item) ?? null) } : undefined}
           >
             {renderWidget(widget.type, expandedType === widget.type, () => setExpandedType(widget.type))}
           </WorkspaceWidget>
         ))}
+      </div>
       </div>
     </div>
   );

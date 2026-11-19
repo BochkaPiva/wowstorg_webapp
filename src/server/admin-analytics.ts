@@ -116,6 +116,7 @@ export type ProjectFinancials = {
   internalExpensesTotal: number;
   commission: number;
   clientChargeTax: number;
+  vat: number;
   revenueTotal: number;
   tax: number;
   grossMargin: number;
@@ -792,6 +793,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
           commissionEnabled: true,
           clientTaxEnabled: true,
           clientChargeTaxEnabled: true,
+          vatEnabled: true,
           sections: {
             select: {
               kind: true,
@@ -952,6 +954,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       commissionEnabled: version?.commissionEnabled,
       clientTaxEnabled: version?.clientTaxEnabled,
       clientChargeTaxEnabled: version?.clientChargeTaxEnabled,
+      vatEnabled: version?.vatEnabled,
     });
   }
 
@@ -967,11 +970,13 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     const internalExpensesTotal = sumAnalyticsMoney(financials.map(item => item.internalExpensesTotal));
     const commission = sumAnalyticsMoney(financials.map(item => item.commission));
     const clientChargeTax = sumAnalyticsMoney(financials.map(item => item.clientChargeTax));
+    const vat = sumAnalyticsMoney(financials.map(item => item.vat));
     const revenueTotal = sumAnalyticsMoney(financials.map(item => item.revenueTotal));
     const tax = sumAnalyticsMoney(financials.map(item => item.tax));
     const grossMargin = sumAnalyticsMoney(financials.map(item => item.grossMargin));
     const marginAfterTax = sumAnalyticsMoney(financials.map(item => item.marginAfterTax));
-    const marginAfterTaxPct = revenueTotal > 0 ? round2((marginAfterTax / revenueTotal) * 100) : 0;
+    const revenueExcludingVat = round2(revenueTotal - vat);
+    const marginAfterTaxPct = revenueExcludingVat > 0 ? round2((marginAfterTax / revenueExcludingVat) * 100) : 0;
     return {
       clientSubtotal,
       internalSubtotal,
@@ -979,6 +984,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
       internalExpensesTotal,
       commission,
       clientChargeTax,
+      vat,
       revenueTotal,
       tax,
       grossMargin,

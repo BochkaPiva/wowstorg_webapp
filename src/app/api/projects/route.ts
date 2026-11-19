@@ -202,6 +202,7 @@ export async function GET(req: Request) {
           commissionEnabled: true,
           clientTaxEnabled: true,
           clientChargeTaxEnabled: true,
+          vatEnabled: true,
           sections: {
             select: {
               kind: true,
@@ -362,6 +363,7 @@ export async function GET(req: Request) {
       commissionEnabled: version?.commissionEnabled,
       clientTaxEnabled: version?.clientTaxEnabled,
       clientChargeTaxEnabled: version?.clientChargeTaxEnabled,
+      vatEnabled: version?.vatEnabled,
     });
   }
 
@@ -377,11 +379,13 @@ export async function GET(req: Request) {
     const internalExpensesTotal = financials.reduce((sum, item) => sum + item.internalExpensesTotal, 0);
     const commission = financials.reduce((sum, item) => sum + item.commission, 0);
     const clientChargeTax = financials.reduce((sum, item) => sum + item.clientChargeTax, 0);
+    const vat = financials.reduce((sum, item) => sum + item.vat, 0);
     const revenueTotal = financials.reduce((sum, item) => sum + item.revenueTotal, 0);
     const tax = financials.reduce((sum, item) => sum + item.tax, 0);
     const grossMargin = financials.reduce((sum, item) => sum + item.grossMargin, 0);
     const marginAfterTax = financials.reduce((sum, item) => sum + item.marginAfterTax, 0);
-    const marginAfterTaxPct = revenueTotal > 0 ? Math.round((marginAfterTax / revenueTotal) * 10000) / 100 : 0;
+    const revenueExcludingVat = revenueTotal - vat;
+    const marginAfterTaxPct = revenueExcludingVat > 0 ? Math.round((marginAfterTax / revenueExcludingVat) * 10000) / 100 : 0;
     return {
       clientSubtotal,
       internalSubtotal,
@@ -389,6 +393,7 @@ export async function GET(req: Request) {
       internalExpensesTotal,
       commission,
       clientChargeTax,
+      vat,
       revenueTotal,
       tax,
       grossMargin,

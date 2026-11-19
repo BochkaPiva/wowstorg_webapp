@@ -544,6 +544,7 @@ function addClientSummary(
   subtotalResult: number,
   commissionRate: number,
   clientChargeTaxRate: number,
+  vatRate: number,
 ) {
   ws.addRow([]);
   const titleRow = ws.lastRow!.number + 1;
@@ -593,6 +594,7 @@ function addClientSummary(
     }
   }
 
+  const taxBaseRef = clientTotalRef;
   if (clientChargeTaxRate > 0) {
     addSummaryRow(
       ws,
@@ -601,6 +603,19 @@ function addClientSummary(
       `Налог ${roundMoney(clientChargeTaxRate * 100)}%`,
       percentOfFormula(clientChargeTaxRate, clientTotalRef),
       totals.clientChargeTax,
+    );
+    clientTotalRef = addFormulaRefFormula(clientTotalRef, xlsxCellRef(nextRow, colCount));
+    nextRow += 1;
+  }
+
+  if (vatRate > 0) {
+    addSummaryRow(
+      ws,
+      colCount,
+      nextRow,
+      `НДС ${roundMoney(vatRate * 100)}%`,
+      percentOfExpression(vatRate, taxBaseRef),
+      totals.vat,
     );
     clientTotalRef = addFormulaRefFormula(clientTotalRef, xlsxCellRef(nextRow, colCount));
     nextRow += 1;
@@ -636,6 +651,7 @@ export async function buildProjectEstimateXlsx(args: {
   commissionEnabled?: boolean;
   clientTaxEnabled?: boolean;
   clientChargeTaxEnabled?: boolean;
+  vatEnabled?: boolean;
 }) {
   const variant = args.variant ?? "internal";
   const isClient = variant === "client";
@@ -643,6 +659,7 @@ export async function buildProjectEstimateXlsx(args: {
     commissionEnabled: args.commissionEnabled,
     clientTaxEnabled: args.clientTaxEnabled,
     clientChargeTaxEnabled: args.clientChargeTaxEnabled,
+    vatEnabled: args.vatEnabled,
   });
   const exportSections = buildExportSections(args.sections);
 
@@ -877,6 +894,7 @@ export async function buildProjectEstimateXlsx(args: {
     commissionRate: financeRates.commissionRate,
     taxRate: financeRates.taxRate,
     clientChargeTaxRate: financeRates.clientChargeTaxRate,
+    vatEnabled: args.vatEnabled,
   });
 
   const projectClientFormula = sumRangesFormula(lineCols.lineTotal, allClientDataRanges);
@@ -891,6 +909,7 @@ export async function buildProjectEstimateXlsx(args: {
       roundMoney(clientSubtotal),
       financeRates.commissionRate,
       financeRates.clientChargeTaxRate,
+      financeRates.vatRate,
     );
   } else {
     const commissionFormula = percentOfExpression(
@@ -905,11 +924,13 @@ export async function buildProjectEstimateXlsx(args: {
       financeRates.clientChargeTaxRate,
       taxableClientFormula,
     );
-    const revenueTotalFormula = addFormulaExpressions([
+    const vatFormula = percentOfExpression(financeRates.vatRate, taxableClientFormula);
+    const revenueExcludingVatFormula = addFormulaExpressions([
       projectClientFormula,
       commissionFormula,
       clientChargeTaxFormula,
     ]);
+    const revenueTotalFormula = addFormulaExpressions([revenueExcludingVatFormula, vatFormula]);
     const nonCashTaxFormula = percentOfExpression(
       financeRates.taxRate,
       taxableClientFormula,
@@ -923,9 +944,10 @@ export async function buildProjectEstimateXlsx(args: {
       projectInternalFormula,
       nonCashTaxFormula,
       cashTaxFormula,
+      vatFormula,
     ]);
     const totalExpenses = roundMoney(
-      projectTotals.internalSubtotal + projectTotals.cashInternalCostTax + projectTotals.tax,
+      projectTotals.internalExpensesTotal + projectTotals.tax + projectTotals.vat,
     );
     const profitFormula = subtractFormulaExpressions(
       revenueTotalFormula,
@@ -956,6 +978,11 @@ export async function buildProjectEstimateXlsx(args: {
             formula: clientChargeTaxFormula,
             result: projectTotals.clientChargeTax,
           },
+          ...(financeRates.vatRate > 0 ? [{
+            label: `НДС ${roundMoney(financeRates.vatRate * 100)}%`,
+            formula: vatFormula,
+            result: projectTotals.vat,
+          }] : []),
           {
             label: "Сумма для клиента",
             formula: revenueTotalFormula,
@@ -987,6 +1014,11 @@ export async function buildProjectEstimateXlsx(args: {
             formula: cashTaxFormula,
             result: projectTotals.cashInternalCostTax,
           },
+          ...(financeRates.vatRate > 0 ? [{
+            label: "НДС к уплате",
+            formula: vatFormula,
+            result: projectTotals.vat,
+          }] : []),
           {
             label: "Итого расходов",
             formula: totalExpensesFormula,
@@ -1011,7 +1043,7 @@ export async function buildProjectEstimateXlsx(args: {
           },
           {
             label: "Рентабельность",
-            formula: `IFERROR(${wrapFormulaExpr(profitFormula)}/${wrapFormulaExpr(revenueTotalFormula)},0)`,
+            formula: `IFERROR(${wrapFormulaExpr(profitFormula)}/${wrapFormulaExpr(revenueExcludingVatFormula)},0)`,
             result: projectTotals.marginAfterTaxPct / 100,
             numFmt: "0.00%",
             emphasis: true,

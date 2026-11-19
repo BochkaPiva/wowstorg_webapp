@@ -202,6 +202,7 @@ export async function buildStandaloneEstimateReadModel(args: {
       commissionEnabled: version.commissionEnabled,
       clientTaxEnabled: version.clientTaxEnabled,
       clientChargeTaxEnabled: version.clientChargeTaxEnabled,
+      vatEnabled: version.vatEnabled,
     });
   }
 
@@ -254,6 +255,7 @@ export async function buildStandaloneEstimateReadModel(args: {
             commissionEnabled: current.commissionEnabled,
             clientTaxEnabled: current.clientTaxEnabled,
             clientChargeTaxEnabled: current.clientChargeTaxEnabled,
+            vatEnabled: current.vatEnabled,
             sections,
           },
   };

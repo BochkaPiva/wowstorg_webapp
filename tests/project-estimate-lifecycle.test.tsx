@@ -76,6 +76,24 @@ async function loadRequisite() {
 }
 
 describe("project estimate lifecycle", () => {
+  it("autosaves VAT as a separate version setting and blocks enabling it over a manual VAT line", async () => {
+    await load(payload(1, "НДС 5%"));
+    const vatSwitch = () => [...container.querySelectorAll<HTMLButtonElement>('.project-estimate__finance-rail button[role="switch"]')]
+      .find(button => button.closest("label")?.textContent?.trim() === "НДС 5%")!;
+    expect(vatSwitch().disabled).toBe(true);
+    expect(container.textContent).toContain("Удалите ручную строку");
+    change("name", "Услуга");
+    expect(vatSwitch().disabled).toBe(false);
+    act(() => vatSwitch().click());
+    expect(vatSwitch().getAttribute("aria-checked")).toBe("true");
+    await advance(1400);
+    expect(mutation()).toMatchObject({ vatEnabled: true, clientChargeTaxEnabled: false, clientTaxEnabled: false });
+    await respond(latest(path(), "PATCH"), { revision: 11 });
+    render("p", 2);
+    await respond(latest(), payload(2));
+    expect(vatSwitch().getAttribute("aria-checked")).toBe("false");
+  });
+
   it("keeps SSR/hydration consistent and ignores the cancelled StrictMode response", async () => {
     act(() => root.unmount()); container.innerHTML = renderToString(<ProjectEstimatePanel projectId="p" readOnly={false} workspaceMode />); expect(flights).toHaveLength(0);
     const errors: unknown[] = []; await act(async () => { root = hydrateRoot(container, <React.StrictMode><ProjectEstimatePanel projectId="p" readOnly={false} workspaceMode /></React.StrictMode>, { onRecoverableError: e => errors.push(e) }); });

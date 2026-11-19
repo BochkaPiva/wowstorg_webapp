@@ -41,6 +41,7 @@ import {
   calcProjectEstimateTotals,
   PROJECT_ESTIMATE_COMMISSION_RATE,
   PROJECT_ESTIMATE_TAX_RATE,
+  PROJECT_ESTIMATE_VAT_RATE,
   getNumericAmount,
 } from "@/lib/project-estimate-totals";
 import { formatMoneyRub, roundMoney } from "@/lib/money";
@@ -224,6 +225,7 @@ type StoredEstimateDraft = {
   commissionEnabled?: boolean;
   clientTaxEnabled?: boolean;
   clientChargeTaxEnabled?: boolean;
+  vatEnabled?: boolean;
 };
 
 type EstimateSaveMode = "AUTO" | "MANUAL";
@@ -241,6 +243,7 @@ type SavedEstimateSnapshot = {
   commissionEnabled: boolean;
   clientTaxEnabled: boolean;
   clientChargeTaxEnabled: boolean;
+  vatEnabled: boolean;
 };
 
 type VersionMeta = {
@@ -260,6 +263,7 @@ type VersionMeta = {
     internalExpensesTotal: number;
     commission: number;
     clientChargeTax: number;
+    vat?: number;
     revenueTotal: number;
     tax: number;
     grossMargin: number;
@@ -291,6 +295,7 @@ type EstimatePayload = {
     commissionEnabled: boolean;
     clientTaxEnabled: boolean;
     clientChargeTaxEnabled: boolean;
+    vatEnabled: boolean;
     customColumns: ProjectEstimateCustomColumn[];
     sections: EstSection[];
   } | null;
@@ -944,10 +949,12 @@ function EstimatePanelEditor({
     commissionEnabled: true,
     clientTaxEnabled: true,
     clientChargeTaxEnabled: false,
+    vatEnabled: false,
   });
   const [commissionEnabled, setCommissionEnabled] = React.useState(true);
   const [clientTaxEnabled, setClientTaxEnabled] = React.useState(true);
   const [clientChargeTaxEnabled, setClientChargeTaxEnabled] = React.useState(false);
+  const [vatEnabled, setVatEnabled] = React.useState(false);
   const [estimateDraftDirty, setEstimateDraftDirtyState] = React.useState(false);
   const [estimateSaving, setEstimateSaving] = React.useState(false);
   const [estimateSaveStatus, setEstimateSaveStatus] = React.useState<EstimateSaveStatus>("IDLE");
@@ -1061,12 +1068,14 @@ function EstimatePanelEditor({
             const baseCommissionEnabled = j.current?.commissionEnabled ?? true;
             const baseClientTaxEnabled = j.current?.clientTaxEnabled ?? true;
             const baseClientChargeTaxEnabled = j.current?.clientChargeTaxEnabled ?? false;
+            const baseVatEnabled = j.current?.vatEnabled ?? false;
             setSavedEstimateSnapshot({
               sections: cloneLocalDraftSections(baseSections),
               customColumns: cloneEstimateCustomColumns(baseCustomColumns),
               commissionEnabled: baseCommissionEnabled,
               clientTaxEnabled: baseClientTaxEnabled,
               clientChargeTaxEnabled: baseClientChargeTaxEnabled,
+              vatEnabled: baseVatEnabled,
             });
             estimateConflictRef.current = false;
             setEstimateConflictDetected(false);
@@ -1093,13 +1102,15 @@ function EstimatePanelEditor({
                     const storedClientTaxEnabled = parsed.clientTaxEnabled ?? baseClientTaxEnabled;
                     const storedClientChargeTaxEnabled =
                       parsed.clientChargeTaxEnabled ?? baseClientChargeTaxEnabled;
+                    const storedVatEnabled = parsed.vatEnabled ?? baseVatEnabled;
                     const hasDestructiveEmptyDraft = storedSections.length === 0 && baseSections.length > 0;
                     const isSameAsServer =
                       JSON.stringify(normalizeLocalSectionsForCompare(storedSections)) ===
                         JSON.stringify(normalizeLocalSectionsForCompare(baseSections)) &&
                       storedCommissionEnabled === baseCommissionEnabled &&
                       storedClientTaxEnabled === baseClientTaxEnabled &&
-                      storedClientChargeTaxEnabled === baseClientChargeTaxEnabled;
+                      storedClientChargeTaxEnabled === baseClientChargeTaxEnabled &&
+                      storedVatEnabled === baseVatEnabled;
                     const columnsAreSameAsServer =
                       JSON.stringify(normalizeEstimateCustomColumnsForCompare(storedCustomColumns)) ===
                       JSON.stringify(normalizeEstimateCustomColumnsForCompare(baseCustomColumns));
@@ -1110,6 +1121,7 @@ function EstimatePanelEditor({
                       setCommissionEnabled(baseCommissionEnabled);
                       setClientTaxEnabled(baseClientTaxEnabled);
                       setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
+                      setVatEnabled(baseVatEnabled);
                       setEstimateDraftDirty(false);
                     } else {
                       setLocalSectionsDraft(storedSections);
@@ -1117,6 +1129,7 @@ function EstimatePanelEditor({
                       setCommissionEnabled(storedCommissionEnabled);
                       setClientTaxEnabled(storedClientTaxEnabled);
                       setClientChargeTaxEnabled(storedClientChargeTaxEnabled);
+                      setVatEnabled(storedVatEnabled);
                       setEstimateDraftDirty(!isSameAsServer || !columnsAreSameAsServer);
                     }
                   } else {
@@ -1126,6 +1139,7 @@ function EstimatePanelEditor({
                     setCommissionEnabled(baseCommissionEnabled);
                     setClientTaxEnabled(baseClientTaxEnabled);
                     setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
+                    setVatEnabled(baseVatEnabled);
                     setEstimateDraftDirty(false);
                   }
                 } catch {
@@ -1135,6 +1149,7 @@ function EstimatePanelEditor({
                   setCommissionEnabled(baseCommissionEnabled);
                   setClientTaxEnabled(baseClientTaxEnabled);
                   setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
+                  setVatEnabled(baseVatEnabled);
                   setEstimateDraftDirty(false);
                 }
               } else {
@@ -1143,6 +1158,7 @@ function EstimatePanelEditor({
                 setCommissionEnabled(baseCommissionEnabled);
                 setClientTaxEnabled(baseClientTaxEnabled);
                 setClientChargeTaxEnabled(baseClientChargeTaxEnabled);
+                setVatEnabled(baseVatEnabled);
                 setEstimateDraftDirty(false);
               }
             } else {
@@ -1155,10 +1171,12 @@ function EstimatePanelEditor({
                 commissionEnabled: true,
                 clientTaxEnabled: true,
                 clientChargeTaxEnabled: false,
+                vatEnabled: false,
               });
               setCommissionEnabled(true);
               setClientTaxEnabled(true);
               setClientChargeTaxEnabled(false);
+              setVatEnabled(false);
               setEstimateDraftDirty(false);
             }
             setError(null);
@@ -1339,12 +1357,14 @@ function EstimatePanelEditor({
       commissionEnabled,
       clientTaxEnabled,
       clientChargeTaxEnabled,
+      vatEnabled,
     };
     window.localStorage.setItem(estimateDraftStorageKey, JSON.stringify(payload));
   }, [
     activeEstimate,
     clientTaxEnabled,
     clientChargeTaxEnabled,
+    vatEnabled,
     commissionEnabled,
     customColumns,
     currentVersionNumber,
@@ -2235,6 +2255,7 @@ function EstimatePanelEditor({
     const snapshotCommissionEnabled = commissionEnabled;
     const snapshotClientTaxEnabled = clientTaxEnabled;
     const snapshotClientChargeTaxEnabled = clientChargeTaxEnabled;
+    const snapshotVatEnabled = vatEnabled;
     const hasIncompleteLine = snapshotSections.some((section) =>
       section.lines.some((line) => !line.name.trim()),
     );
@@ -2286,6 +2307,7 @@ function EstimatePanelEditor({
           commissionEnabled: snapshotCommissionEnabled,
           clientTaxEnabled: snapshotClientTaxEnabled,
           clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+          vatEnabled: snapshotVatEnabled,
           localSections: snapshotSections.map((section) => ({
             id: section.id.startsWith("draft-") ? undefined : section.id,
             title: section.title.trim(),
@@ -2355,6 +2377,7 @@ function EstimatePanelEditor({
             commissionEnabled: snapshotCommissionEnabled,
             clientTaxEnabled: snapshotClientTaxEnabled,
             clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+            vatEnabled: snapshotVatEnabled,
           });
           setLastEstimateSavedAt(new Date());
           if (estimateDraftRevisionRef.current === snapshotRevision) {
@@ -2380,6 +2403,7 @@ function EstimatePanelEditor({
           commissionEnabled: snapshotCommissionEnabled,
           clientTaxEnabled: snapshotClientTaxEnabled,
           clientChargeTaxEnabled: snapshotClientChargeTaxEnabled,
+          vatEnabled: snapshotVatEnabled,
         });
         setLastEstimateSavedAt(new Date());
         if (estimateDraftRevisionRef.current === snapshotRevision) {
@@ -2432,7 +2456,7 @@ function EstimatePanelEditor({
     }
     const timer = window.setTimeout(() => autoSaveLatest(), 1400);
     return () => window.clearTimeout(timer);
-  }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, readOnly]);
+  }, [busy, data, estimateDraftDirty, estimateSaveStatus, estimateSaving, localSectionsDraft, customColumns, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, vatEnabled, readOnly]);
 
   function discardEstimateDraft() {
     if (!window.confirm("Сбросить несохранённые изменения сметы?")) return;
@@ -2443,6 +2467,7 @@ function EstimatePanelEditor({
     setCommissionEnabled(savedEstimateSnapshot.commissionEnabled);
     setClientTaxEnabled(savedEstimateSnapshot.clientTaxEnabled);
     setClientChargeTaxEnabled(savedEstimateSnapshot.clientChargeTaxEnabled);
+    setVatEnabled(savedEstimateSnapshot.vatEnabled);
     setEstimateDraftDirty(false);
     estimateConflictRef.current = false;
     setEstimateConflictDetected(false);
@@ -2573,24 +2598,41 @@ function EstimatePanelEditor({
       commissionEnabled,
       clientTaxEnabled,
       clientChargeTaxEnabled,
+      vatEnabled,
     });
 
     return {
       clientSubtotal: estimateTotals.clientSubtotal,
       commission: estimateTotals.commission,
       clientChargeTax: estimateTotals.clientChargeTax,
+      vat: estimateTotals.vat,
       revenueTotal: estimateTotals.revenueTotal,
       tax6: estimateTotals.tax,
       internalSubtotal: estimateTotals.internalSubtotal,
       cashInternalSubtotal: lineSummary.cashInternalSubtotal,
       cashInternalCostTax: estimateTotals.cashInternalCostTax,
       internalWithCashTax: estimateTotals.internalExpensesTotal,
-      totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax),
+      totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax + estimateTotals.vat),
       grossMargin: estimateTotals.grossMargin,
       marginAfterTax: estimateTotals.marginAfterTax,
       marginAfterTaxPct: estimateTotals.marginAfterTaxPct,
     };
-  }, [renderedSections, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled]);
+  }, [renderedSections, commissionEnabled, clientTaxEnabled, clientChargeTaxEnabled, vatEnabled]);
+
+  const hasManualVat = renderedSections.some((section) => section.lines.some(
+    (line) => line.lineType !== "SUBSECTION" && /^ндс\s*\(?\s*5\s*%\s*\)?$/iu.test(line.name.trim()),
+  ));
+  const vatLabel = `НДС ${Math.round(PROJECT_ESTIMATE_VAT_RATE * 100)}%`;
+  const vatNotice = hasManualVat
+    ? vatEnabled
+      ? "НДС есть и в строках, и в настройках. Удалите ручную строку или выключите переключатель."
+      : "Удалите ручную строку «НДС 5%», чтобы включить автоматический расчёт."
+    : null;
+
+  function changeVat(value: boolean) {
+    setVatEnabled(value);
+    markEstimateDraftDirty();
+  }
 
   const projectTotals = React.useMemo(() => {
     const included = (data?.versions ?? []).filter((version) => version.includeInProjectTotals);
@@ -2600,9 +2642,11 @@ function EstimatePanelEditor({
       included.reduce((sum, version) => sum + version.financials.cashInternalCostTax, 0),
     );
     const tax6 = roundMoney(included.reduce((sum, version) => sum + version.financials.tax, 0));
-    const totalExpensesWithTax = roundMoney(internalSubtotal + cashInternalCostTax + tax6);
+    const vat = roundMoney(included.reduce((sum, version) => sum + (version.financials.vat ?? 0), 0));
+    const totalExpensesWithTax = roundMoney(internalSubtotal + cashInternalCostTax + tax6 + vat);
     const marginAfterTax = roundMoney(included.reduce((sum, version) => sum + version.financials.marginAfterTax, 0));
-    const marginAfterTaxPct = revenueTotal > 0 ? roundMoney((marginAfterTax / revenueTotal) * 100) : 0;
+    const revenueExcludingVat = roundMoney(revenueTotal - vat);
+    const marginAfterTaxPct = revenueExcludingVat > 0 ? roundMoney((marginAfterTax / revenueExcludingVat) * 100) : 0;
 
     return {
       count: included.length,
@@ -3344,6 +3388,8 @@ function EstimatePanelEditor({
 
               {!readOnly && data.current ? <details className="project-estimate-shortcuts"><summary>Горячие клавиши</summary><div><span><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Enter</kbd> — строка под текущей</span><span><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>N</kbd> — новый раздел</span><span><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>M</kbd> — подраздел перед строкой</span><small>На Mac вместо Ctrl используйте ⌘. Сочетания работают внутри сметы.</small></div></details> : null}
 
+              {vatEnabled && vatNotice ? <p role="alert" className="px-2 text-xs text-amber-900">{vatNotice}</p> : null}
+
               {workspaceMode ? (
                 <div className="project-estimate__finance-rail">
                   <div><span>Итого клиенту</span><strong>{money(totals.revenueTotal)} ₽</strong></div>
@@ -3355,6 +3401,11 @@ function EstimatePanelEditor({
                     <div>
                       <EstimateFinanceToggle label={`Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`} checked={commissionEnabled} disabled={readOnly || busy} onChange={(value) => { setCommissionEnabled(value); markEstimateDraftDirty(); }} />
                       <EstimateFinanceToggle label={`Налог клиенту ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientChargeTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientChargeTaxEnabled(value); markEstimateDraftDirty(); }} />
+                      <div className="flex items-center justify-between gap-3">
+                        <EstimateFinanceToggle label={vatLabel} checked={vatEnabled} disabled={readOnly || busy || (hasManualVat && !vatEnabled)} onChange={changeVat} />
+                        {vatEnabled ? <strong className="text-xs tabular-nums">{money(totals.vat)} ₽</strong> : null}
+                      </div>
+                      {!vatEnabled && vatNotice ? <p className="text-xs text-amber-900">{vatNotice}</p> : null}
                       <EstimateFinanceToggle label={`Расходный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientTaxEnabled(value); markEstimateDraftDirty(); }} />
                     </div>
                   </details>
@@ -3409,6 +3460,11 @@ function EstimatePanelEditor({
                       />
                       <span className="font-bold tabular-nums text-violet-950">{money(totals.clientChargeTax)} ₽</span>
                     </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <EstimateFinanceToggle label={vatLabel} checked={vatEnabled} disabled={readOnly || busy || (hasManualVat && !vatEnabled)} onChange={changeVat} />
+                      <span className="font-bold tabular-nums text-violet-950">{money(totals.vat)} ₽</span>
+                    </div>
+                    {!vatEnabled && vatNotice ? <p className="text-xs text-amber-900">{vatNotice}</p> : null}
                     <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
                       <span className="font-extrabold text-violet-950">Итого клиенту</span>
                       <span className="font-black tabular-nums text-violet-950">{money(totals.revenueTotal)} ₽</span>

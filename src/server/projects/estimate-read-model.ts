@@ -188,6 +188,7 @@ export async function buildProjectEstimateReadModel(args: {
       commissionEnabled: true,
       clientTaxEnabled: true,
       clientChargeTaxEnabled: true,
+      vatEnabled: true,
       createdAt: true,
       createdBy: { select: { displayName: true } },
     },
@@ -374,6 +375,7 @@ export async function buildProjectEstimateReadModel(args: {
       commissionEnabled: version.commissionEnabled,
       clientTaxEnabled: version.clientTaxEnabled,
       clientChargeTaxEnabled: version.clientChargeTaxEnabled,
+      vatEnabled: version.vatEnabled,
     });
   }
 
@@ -412,6 +414,7 @@ export async function buildProjectEstimateReadModel(args: {
             commissionEnabled: versionRow.commissionEnabled,
             clientTaxEnabled: versionRow.clientTaxEnabled,
             clientChargeTaxEnabled: versionRow.clientChargeTaxEnabled,
+            vatEnabled: versionRow.vatEnabled,
             customColumns: versionRow.customColumns.map((column) => ({
               id: column.id,
               key: column.key,

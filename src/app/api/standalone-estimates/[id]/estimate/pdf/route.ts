@@ -35,6 +35,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     commissionEnabled: model.current.commissionEnabled,
     clientTaxEnabled: model.current.clientTaxEnabled,
     clientChargeTaxEnabled: model.current.clientChargeTaxEnabled,
+    vatEnabled: model.current.vatEnabled,
   });
   const baseName = buildProjectDocumentBaseName({
     eventTitle: model.projectTitle,

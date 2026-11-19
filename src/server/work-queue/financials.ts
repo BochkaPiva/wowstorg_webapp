@@ -141,6 +141,7 @@ type ProjectEstimateVersionInput = {
   commissionEnabled: boolean;
   clientTaxEnabled: boolean;
   clientChargeTaxEnabled: boolean;
+  vatEnabled?: boolean;
   sections: Array<{
     kind: ProjectEstimateSectionKind;
     linkedOrder: ProjectQueueOrder | null;
@@ -213,6 +214,7 @@ function versionRevenueTotal(
     commissionEnabled: version.commissionEnabled,
     clientTaxEnabled: version.clientTaxEnabled,
     clientChargeTaxEnabled: version.clientChargeTaxEnabled,
+    vatEnabled: version.vatEnabled,
   }).revenueTotal;
 }
 

@@ -321,6 +321,7 @@ export async function GET(req: Request) {
               commissionEnabled: true,
               clientTaxEnabled: true,
               clientChargeTaxEnabled: true,
+              vatEnabled: true,
               sections: {
                 select: {
                   kind: true,

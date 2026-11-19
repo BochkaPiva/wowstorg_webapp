@@ -60,6 +60,7 @@ const PatchDraftSchema = z
     commissionEnabled: z.boolean().optional(),
     clientTaxEnabled: z.boolean().optional(),
     clientChargeTaxEnabled: z.boolean().optional(),
+    vatEnabled: z.boolean().optional(),
     customColumns: ProjectEstimateCustomColumnsSchema,
     localSections: z
       .array(
@@ -131,6 +132,7 @@ export async function PATCH(
     commissionEnabled,
     clientTaxEnabled,
     clientChargeTaxEnabled,
+    vatEnabled,
     customColumns,
   } =
     parsed.data;
@@ -202,6 +204,7 @@ export async function PATCH(
           ...(commissionEnabled !== undefined ? { commissionEnabled } : {}),
           ...(clientTaxEnabled !== undefined ? { clientTaxEnabled } : {}),
           ...(clientChargeTaxEnabled !== undefined ? { clientChargeTaxEnabled } : {}),
+          ...(vatEnabled !== undefined ? { vatEnabled } : {}),
         },
       });
       if (versionUpdate.count !== 1) throw new Error("ESTIMATE_REVISION_CONFLICT");

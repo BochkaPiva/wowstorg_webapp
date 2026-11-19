@@ -56,6 +56,7 @@ export async function GET(
     commissionEnabled: model.current.commissionEnabled,
     clientTaxEnabled: model.current.clientTaxEnabled,
     clientChargeTaxEnabled: model.current.clientChargeTaxEnabled,
+    vatEnabled: model.current.vatEnabled,
   });
 
   const dateOnly = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);

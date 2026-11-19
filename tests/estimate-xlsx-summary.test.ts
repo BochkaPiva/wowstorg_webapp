@@ -82,6 +82,25 @@ function projectSection(index: number, lines: ProjectEstimateReadLine[]): Projec
 }
 
 describe("internal estimate xlsx summaries", () => {
+  it("exports the VAT base, payment and totals for the Topline example", async () => {
+    const line = { ...projectLine(0), costClient: "2500", unitPriceClient: 2500, costInternal: "1000", paymentMethod: null, internalExpenses: [] };
+    const args = { projectTitle: "Топлайн", versionNumber: 1, vatEnabled: true, sections: [projectSection(0, [line])] };
+    const client = await loadFirstSheet(await buildProjectEstimateXlsx({ ...args, variant: "client" }));
+    const amountColumn = 8;
+    const subtotal = client.getCell(findCell(client, "Сумма по услугам")!.row, amountColumn);
+    const commission = client.getCell(findCell(client, "Комиссия агентства 15%")!.row, amountColumn);
+    expect(commission.value).toMatchObject({ result: 375 });
+    expect(client.getCell(findCell(client, "НДС 5%")!.row, amountColumn).value).toMatchObject({
+      formula: `ROUND((${subtotal.address}+${commission.address})*0.05,2)`,
+      result: 143.75,
+    });
+    expect(client.getCell(findCell(client, "Всего по смете")!.row, amountColumn).value).toMatchObject({ result: 3018.75 });
+    const internal = await loadFirstSheet(await buildProjectEstimateXlsx({ ...args, variant: "internal" }));
+    expect(internal.getCell(findCell(internal, "НДС к уплате")!.row, 9).value).toMatchObject({ result: 143.75 });
+    expect(internal.getCell(findCell(internal, "Итого расходов")!.row, 9).value).toMatchObject({ result: 1316.25 });
+    expect(internal.getCell(findCell(internal, "Заработок")!.row, 13).value).toMatchObject({ result: 1702.5 });
+  });
+
   it("exports subsection titles as merged headers without a price", async () => {
     const heading = { ...projectLine(0), lineType: "SUBSECTION", name: "Звуковое оборудование", costClient: null, costInternal: null, qty: null, unitPriceClient: null, internalExpenses: [] };
     for (const variant of ["client", "internal"] as const) {

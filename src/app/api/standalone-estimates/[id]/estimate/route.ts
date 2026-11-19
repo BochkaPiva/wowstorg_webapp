@@ -43,6 +43,7 @@ const PatchSchema = z.object({
   commissionEnabled: z.boolean().optional(),
   clientTaxEnabled: z.boolean().optional(),
   clientChargeTaxEnabled: z.boolean().optional(),
+  vatEnabled: z.boolean().optional(),
   localSections: z.array(z.object({
     id: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).max(200),
@@ -188,6 +189,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         ...(parsed.data.clientChargeTaxEnabled !== undefined
           ? { clientChargeTaxEnabled: parsed.data.clientChargeTaxEnabled }
           : {}),
+        ...(parsed.data.vatEnabled !== undefined ? { vatEnabled: parsed.data.vatEnabled } : {}),
       },
     });
   });

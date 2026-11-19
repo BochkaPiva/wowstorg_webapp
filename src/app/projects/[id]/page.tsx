@@ -1224,6 +1224,13 @@ export default function ProjectDetailPage() {
     setArchiveModalOpen(true);
   }
 
+  function closeMobileProjectActions(control: HTMLElement) {
+    const menu = control.closest("details");
+    if (!menu?.open) return;
+    menu.open = false;
+    menu.querySelector("summary")?.focus();
+  }
+
   async function confirmArchiveToModal() {
     if (!id || readOnly) return;
     setArchiveBusy(true);
@@ -1650,6 +1657,41 @@ export default function ProjectDetailPage() {
                 >
                   Каталог → реквизит
                 </Link>
+                {!readOnly ? (
+                  <details
+                    className="project-detail-hero__mobile-actions"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape" && event.currentTarget.open) {
+                        event.stopPropagation();
+                        closeMobileProjectActions(event.currentTarget);
+                      }
+                    }}
+                  >
+                    <summary aria-label="Действия проекта">
+                      <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <circle cx="4" cy="10" r="1.5" />
+                        <circle cx="10" cy="10" r="1.5" />
+                        <circle cx="16" cy="10" r="1.5" />
+                      </svg>
+                    </summary>
+                    <div>
+                      {isWorkspaceV2 ? (
+                        <button type="button" onClick={(event) => {
+                          closeMobileProjectActions(event.currentTarget);
+                          window.dispatchEvent(new CustomEvent("project-workspace:configure"));
+                        }}>
+                          Настроить карточку
+                        </button>
+                      ) : null}
+                      <button type="button" disabled={archiveBusy || !canArchiveProject} onClick={(event) => {
+                        closeMobileProjectActions(event.currentTarget);
+                        openArchiveModal();
+                      }}>
+                        Завершить проект
+                      </button>
+                    </div>
+                  </details>
+                ) : null}
               </div>
 
               {!readOnly ? (

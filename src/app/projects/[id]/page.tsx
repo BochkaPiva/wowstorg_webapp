@@ -3,6 +3,7 @@
 import "@/app/catalog/catalog.css";
 import "react-day-picker/style.css";
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import React from "react";
@@ -1499,10 +1500,26 @@ export default function ProjectDetailPage() {
           ) : null}
 
           <header className="project-detail-hero" aria-labelledby="project-detail-title">
+            <div className="project-detail-hero__mascot" aria-hidden="true">
+              <span>Держим курс!</span>
+              <Image
+                src="/project-mascot-v2.png"
+                alt=""
+                width={768}
+                height={512}
+                priority
+              />
+            </div>
             <div className="project-detail-hero__surface">
               <div className="project-detail-hero__primary min-w-0">
-                <div className="min-w-0">
-                  <h1 id="project-detail-title" className="project-detail-hero__heading">
+                <div className="project-detail-hero__crumbs">
+                  <span className="truncate">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</span>
+                  <span aria-hidden className="project-detail-hero__crumb-separator">/</span>
+                  <span className="shrink-0">{project.members.length} участн.</span>
+                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <h1 id="project-detail-title">
                     {editingField === "title" && !readOnly ? (
                       <input
                         value={title}
@@ -1533,22 +1550,23 @@ export default function ProjectDetailPage() {
                         autoFocus
                       />
                     ) : (
-                      readOnly ? <span className="project-detail-hero__title">{project.title}</span> : <button
+                      <button
                         type="button"
-                        onClick={() => setEditingField("title")}
-                        className="project-detail-hero__title project-detail-hero__rename"
-                        title="Переименовать проект"
+                        onClick={() => !readOnly && setEditingField("title")}
+                        disabled={readOnly}
+                        className={`project-detail-hero__title block break-words text-left ${
+                          readOnly ? "cursor-default" : "rounded outline-none transition-colors hover:text-violet-900 focus:ring-2 focus:ring-violet-100"
+                        }`}
                       >
                         {project.title}
                       </button>
                     )}
-                  </h1>
+                    </h1>
                     <div className="project-detail-hero__states">
                       <button
                         type="button"
                         onClick={() => !readOnly && setEditingField((v) => (v === "status" ? null : "status"))}
                         disabled={readOnly}
-                        aria-expanded={!readOnly && editingField === "status"}
                         className={`project-detail-hero__state ${projectStatusTone(project.status)} ${readOnly ? "cursor-default" : "hover:brightness-95"}`}
                       >
                         {PROJECT_STATUS_LABEL[project.status]}
@@ -1578,79 +1596,11 @@ export default function ProjectDetailPage() {
                         }}
                       />
                     ) : null}
+                  </div>
                 </div>
 
-              </div>
-
-              <div className="project-detail-hero__actions">
-                {isWorkspaceV2 ? (
-                  <ProjectWorkspaceSettings
-                    projectId={id}
-                    revision={project.revision}
-                    owner={project.owner}
-                    members={project.members}
-                    widgets={project.widgets}
-                    readOnly={readOnly}
-                    showTrigger={false}
-                    onSaved={applySavedWorkspace}
-                  />
-                ) : null}
-                <Link
-                  href={buildProjectCatalogHref({
-                    projectId: id,
-                    mode: projectHasConfirmedDates ? "dated" : "demo",
-                    estimateVersionId: activeEstimateVersionId,
-                  })}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openProjectCatalogEntry();
-                  }}
-                  className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
-                  aria-disabled={readOnly}
-                >
-                  Добавить реквизит
-                </Link>
-                {!readOnly ? <details className="project-detail-hero__more">
-                  <summary aria-label="Другие действия проекта" title="Другие действия"><svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden><circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/></svg></summary>
-                  <div>
-                  <p className="project-detail-hero__created">Создан {fmtDate(project.createdAt)}</p>
-                  {isWorkspaceV2 ? <button type="button" className="project-detail-hero__settings" onClick={(event) => {
-                    const menu = event.currentTarget.closest("details");
-                    if (menu) {
-                      menu.open = false;
-                      menu.querySelector("summary")?.focus();
-                    }
-                    window.dispatchEvent(new CustomEvent("project-workspace:configure"));
-                  }}>Настроить карточку</button> : null}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      const menu = event.currentTarget.closest("details");
-                      if (menu) menu.open = false;
-                      openArchiveModal();
-                    }}
-                    disabled={archiveBusy || !canArchiveProject}
-                    className="project-detail-hero__complete"
-                    title={
-                      canArchiveProject
-                        ? undefined
-                        : "Сначала завершите или отмените все заявки, привязанные к проекту"
-                    }
-                  >
-                    Завершить проект
-                  </button>
-                  </div>
-                </details> : null}
-              </div>
-            </div>
-            <dl className="project-detail-hero__meta">
-              <div className="project-detail-hero__fact">
-                <dt>Заказчик</dt>
-                <dd>{project.customer?.name ?? project.leadCustomerName ?? "Не указан"}</dd>
-              </div>
-              <div className="project-detail-hero__fact">
-                <dt>Дата мероприятия</dt>
-                <dd>
+                <div className="project-detail-hero__meta">
+                  <span className="project-detail-hero__meta-item"><span>Ответственный</span><strong>{project.owner.displayName}</strong></span>
                   <ProjectEventDatePicker
                     startDate={project.eventStartDate ?? ""}
                     endDate={project.eventEndDate ?? ""}
@@ -1668,17 +1618,58 @@ export default function ProjectDetailPage() {
                       });
                     }}
                   />
-                </dd>
+                  <span className="project-detail-hero__meta-item"><strong className="tabular-nums">{project._count.orders}</strong><span>заявок</span></span>
+                  <span className="project-detail-hero__meta-item project-detail-hero__meta-item--muted"><span>Создан</span><strong>{fmtDate(project.createdAt)}</strong></span>
+                </div>
               </div>
-              <div className="project-detail-hero__fact">
-                <dt>Ответственный</dt>
-                <dd>{project.owner.displayName}</dd>
+
+              <div className="project-detail-hero__actions">
+                {isWorkspaceV2 ? (
+                  <ProjectWorkspaceSettings
+                    projectId={id}
+                    revision={project.revision}
+                    owner={project.owner}
+                    members={project.members}
+                    widgets={project.widgets}
+                    readOnly={readOnly}
+                    onSaved={applySavedWorkspace}
+                  />
+                ) : null}
+                <Link
+                  href={buildProjectCatalogHref({
+                    projectId: id,
+                    mode: projectHasConfirmedDates ? "dated" : "demo",
+                    estimateVersionId: activeEstimateVersionId,
+                  })}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openProjectCatalogEntry();
+                  }}
+                  className={`project-detail-hero__catalog ${readOnly ? "pointer-events-none opacity-50" : ""}`}
+                  aria-disabled={readOnly}
+                >
+                  Каталог → реквизит
+                </Link>
               </div>
-              <div className="project-detail-hero__fact">
-                <dt>Заявки</dt>
-                <dd className="tabular-nums">{project._count.orders}</dd>
-              </div>
-            </dl>
+
+              {!readOnly ? (
+                <div className="project-detail-hero__complete-slot">
+                  <button
+                    type="button"
+                    onClick={() => openArchiveModal()}
+                    disabled={archiveBusy || !canArchiveProject}
+                    className="project-detail-hero__complete"
+                    title={
+                      canArchiveProject
+                        ? undefined
+                        : "Сначала завершите или отмените все заявки, привязанные к проекту"
+                    }
+                  >
+                    Завершить проект
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </header>
 
           {!isWorkspaceV2 ? (

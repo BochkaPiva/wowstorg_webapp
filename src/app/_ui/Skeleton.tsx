@@ -95,19 +95,19 @@ export function ProjectDetailSkeleton() {
   return (
     <LoadingRegion className="ui-detailSkeleton" label="Загрузка проекта">
       <section className="ui-detailSkeleton__hero">
-        <div>
-          <Skeleton className="ui-detailSkeleton__eyebrow" />
-          <Skeleton className="ui-detailSkeleton__title" />
-          <div className="ui-detailSkeleton__chips">
-            <Skeleton /><Skeleton /><Skeleton />
+        <div className="ui-detailSkeleton__identity">
+          <div>
+            <Skeleton className="ui-detailSkeleton__title" />
+            <div className="ui-detailSkeleton__chips"><Skeleton /><Skeleton /></div>
           </div>
-          <div className="ui-detailSkeleton__facts">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index}><Skeleton /><Skeleton /></div>
-            ))}
-          </div>
+          <div className="ui-detailSkeleton__actions"><Skeleton /><Skeleton /></div>
         </div>
-        <div className="ui-detailSkeleton__actions"><Skeleton /><Skeleton /></div>
+        <div className="ui-detailSkeleton__facts">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index}><Skeleton /><Skeleton /></div>
+          ))}
+        </div>
+        <div className="ui-detailSkeleton__tabs"><Skeleton /><Skeleton /><Skeleton /></div>
       </section>
       <section className="ui-detailSkeleton__panel">
         <Skeleton className="ui-detailSkeleton__heading" />

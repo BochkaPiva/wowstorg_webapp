@@ -1472,7 +1472,7 @@ export default function ProjectDetailPage() {
           </div>
         </section>
       ) : (
-        <div className="project-detail-page space-y-4">
+        <div className="project-detail-page">
           {loadError ? <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{loadError}<button type="button" className="ml-2 underline" disabled={refreshing} onClick={() => void load()}>Повторить обновление</button></div> : null}
           {refreshing ? (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
@@ -1498,11 +1498,11 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          <section className="project-detail-hero">
+          <header className="project-detail-hero" aria-labelledby="project-detail-title">
             <div className="project-detail-hero__surface">
               <div className="project-detail-hero__primary min-w-0">
                 <div className="min-w-0">
-                  <h1 className="project-detail-hero__heading">
+                  <h1 id="project-detail-title" className="project-detail-hero__heading">
                     {editingField === "title" && !readOnly ? (
                       <input
                         value={title}
@@ -1543,7 +1543,6 @@ export default function ProjectDetailPage() {
                       </button>
                     )}
                   </h1>
-                  <p className="project-detail-hero__customer">{project.customer?.name ?? project.leadCustomerName ?? "Заказчик не указан"}</p>
                     <div className="project-detail-hero__states">
                       <button
                         type="button"
@@ -1581,30 +1580,6 @@ export default function ProjectDetailPage() {
                     ) : null}
                 </div>
 
-                <div className="project-detail-hero__meta">
-                  <div className="project-detail-hero__fact">
-                  <span>Дата мероприятия</span>
-                  <ProjectEventDatePicker
-                    startDate={project.eventStartDate ?? ""}
-                    endDate={project.eventEndDate ?? ""}
-                    confirmed={project.eventDateConfirmed}
-                    readOnly={readOnly}
-                    busy={saveBusy}
-                    onSave={(start, end, confirmed) => {
-                      setEventStartDate(start);
-                      setEventEndDate(end);
-                      setEventDateConfirmed(confirmed);
-                      void patchField({
-                        eventStartDate: start || null,
-                        eventEndDate: end || null,
-                        eventDateConfirmed: confirmed,
-                      });
-                    }}
-                  />
-                  </div>
-                  <div className="project-detail-hero__fact"><span>Ответственный</span><strong>{project.owner.displayName}</strong></div>
-                  <div className="project-detail-hero__fact"><span>Заявки</span><strong className="tabular-nums">{project._count.orders}</strong></div>
-                </div>
               </div>
 
               <div className="project-detail-hero__actions">
@@ -1668,7 +1643,43 @@ export default function ProjectDetailPage() {
                 </details> : null}
               </div>
             </div>
-          </section>
+            <dl className="project-detail-hero__meta">
+              <div className="project-detail-hero__fact">
+                <dt>Заказчик</dt>
+                <dd>{project.customer?.name ?? project.leadCustomerName ?? "Не указан"}</dd>
+              </div>
+              <div className="project-detail-hero__fact">
+                <dt>Дата мероприятия</dt>
+                <dd>
+                  <ProjectEventDatePicker
+                    startDate={project.eventStartDate ?? ""}
+                    endDate={project.eventEndDate ?? ""}
+                    confirmed={project.eventDateConfirmed}
+                    readOnly={readOnly}
+                    busy={saveBusy}
+                    onSave={(start, end, confirmed) => {
+                      setEventStartDate(start);
+                      setEventEndDate(end);
+                      setEventDateConfirmed(confirmed);
+                      void patchField({
+                        eventStartDate: start || null,
+                        eventEndDate: end || null,
+                        eventDateConfirmed: confirmed,
+                      });
+                    }}
+                  />
+                </dd>
+              </div>
+              <div className="project-detail-hero__fact">
+                <dt>Ответственный</dt>
+                <dd>{project.owner.displayName}</dd>
+              </div>
+              <div className="project-detail-hero__fact">
+                <dt>Заявки</dt>
+                <dd className="tabular-nums">{project._count.orders}</dd>
+              </div>
+            </dl>
+          </header>
 
           {!isWorkspaceV2 ? (
             <section className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

@@ -975,8 +975,7 @@ async function getProjectAnalytics(scope: AnalyticsScope): Promise<ProjectAnalyt
     const tax = sumAnalyticsMoney(financials.map(item => item.tax));
     const grossMargin = sumAnalyticsMoney(financials.map(item => item.grossMargin));
     const marginAfterTax = sumAnalyticsMoney(financials.map(item => item.marginAfterTax));
-    const revenueExcludingVat = round2(revenueTotal - vat);
-    const marginAfterTaxPct = revenueExcludingVat > 0 ? round2((marginAfterTax / revenueExcludingVat) * 100) : 0;
+    const marginAfterTaxPct = revenueTotal > 0 ? round2((marginAfterTax / revenueTotal) * 100) : 0;
     return {
       clientSubtotal,
       internalSubtotal,

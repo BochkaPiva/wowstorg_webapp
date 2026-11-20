@@ -4,15 +4,15 @@ import { calcProjectEstimateRequisiteTotal } from "@/lib/project-estimate-requis
 import { calcProjectEstimateTotals } from "@/lib/project-estimate-totals";
 
 describe("project estimate totals", () => {
-  it("matches the Topline workbook and keeps collected VAT out of margin", () => {
-    const inputs = { clientSubtotal: 2500, internalSubtotal: 1000, vatEnabled: true };
+  it("matches Topline and treats the VAT adjustment as a client surcharge", () => {
+    const inputs = { clientSubtotal: 2500, internalSubtotal: 1000, cashInternalCostTax: 35, vatEnabled: true };
     expect(calcProjectEstimateTotals(inputs)).toMatchObject({
       commission: 375,
       vat: 143.75,
       revenueTotal: 3018.75,
       tax: 172.5,
-      marginAfterTax: 1702.5,
-      marginAfterTaxPct: 59.22,
+      marginAfterTax: 1811.25,
+      marginAfterTaxPct: 60,
     });
     expect(calcProjectEstimateTotals({ ...inputs, clientChargeTaxEnabled: true })).toMatchObject({
       clientChargeTax: 172.5,
@@ -23,7 +23,7 @@ describe("project estimate totals", () => {
       commission: 0,
       vat: 125,
       revenueTotal: 2625,
-      marginAfterTax: 1500,
+      marginAfterTax: 1590,
     });
     expect(calcProjectEstimateTotals({ ...inputs, vatEnabled: false })).toMatchObject({ vat: 0, revenueTotal: 2875 });
   });

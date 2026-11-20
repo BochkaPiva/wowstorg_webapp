@@ -46,6 +46,7 @@ import {
 } from "@/lib/project-estimate-totals";
 import { formatMoneyRub, roundMoney } from "@/lib/money";
 import { calcOrderPricing } from "@/lib/order-pricing";
+import { ORDER_CASH_INTERNAL_COST_TAX_RATE } from "@/lib/constants";
 import {
   evaluateProjectEstimateCustomColumns,
   PROJECT_ESTIMATE_CUSTOM_COLUMN_LIMIT,
@@ -230,7 +231,7 @@ type StoredEstimateDraft = {
 
 type EstimateSaveMode = "AUTO" | "MANUAL";
 type EstimateSaveStatus = "IDLE" | "SAVING" | "SAVED" | "ERROR" | "PAUSED";
-type EstimateTitleDialogMode = "CREATE" | "DUPLICATE" | "RENAME";
+type EstimateTitleDialogMode = "DUPLICATE" | "RENAME";
 
 type EstimateTitleDialogState = {
   mode: EstimateTitleDialogMode;
@@ -263,7 +264,6 @@ type VersionMeta = {
     internalExpensesTotal: number;
     commission: number;
     clientChargeTax: number;
-    vat?: number;
     revenueTotal: number;
     tax: number;
     grossMargin: number;
@@ -365,7 +365,6 @@ function formatDateRu(dateOnly: string | null | undefined) {
   return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y}`;
 }
 
-/** Как `HelpLegend` на странице проекта — легенда по наведению на «?». */
 function EstimateFinanceToggle({
   label,
   checked,
@@ -378,22 +377,22 @@ function EstimateFinanceToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="inline-flex min-w-0 items-center gap-2 text-zinc-600">
-      <span className="truncate">{label}</span>
+    <label className="project-estimate__finance-toggle">
+      <span>{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition motion-reduce:transition-none ${
           checked
             ? "border-violet-400 bg-violet-600"
             : "border-zinc-300 bg-zinc-200"
         } disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition motion-reduce:transition-none ${
             checked ? "translate-x-6" : "translate-x-1"
           }`}
         />
@@ -879,10 +878,11 @@ function maxQtyAllowedForRequisiteLine(
   return Math.min(physical, dateRem);
 }
 
-export function ProjectEstimatePanel(props: React.ComponentProps<typeof EstimatePanelEditor>) {
+export function ProjectEstimatePanel(props: Omit<React.ComponentProps<typeof EstimatePanelEditor>, "onCreatedVersion" | "onVersionButtonReady">) {
   const scope = `${props.projectId}:${props.apiBase ?? ""}:${Boolean(props.standalone)}`;
   const [versionScope, setVersionScope] = React.useState(scope);
   const [uncontrolledVersion, setUncontrolledVersion] = React.useState<number | null>(null);
+  const createdVersion = React.useRef<{ scope: string; number: number } | null>(null);
   if (versionScope !== scope) {
     setVersionScope(scope);
     setUncontrolledVersion(null);
@@ -893,7 +893,21 @@ export function ProjectEstimatePanel(props: React.ComponentProps<typeof Estimate
     if (notifyVersion) notifyVersion(value);
     else setUncontrolledVersion(value);
   }, [notifyVersion]);
-  return <EstimatePanelEditor key={`${scope}:${version ?? "primary"}`} {...props} selectedVersionNumber={version} onSelectedVersionNumberChange={selectVersion} />;
+  return <EstimatePanelEditor
+    key={`${scope}:${version ?? "primary"}`}
+    {...props}
+    selectedVersionNumber={version}
+    onSelectedVersionNumberChange={selectVersion}
+    onCreatedVersion={(number) => {
+      createdVersion.current = { scope, number };
+      selectVersion(number);
+    }}
+    onVersionButtonReady={(button, number) => {
+      if (!button || createdVersion.current?.scope !== scope || createdVersion.current.number !== number) return;
+      createdVersion.current = null;
+      button.focus({ preventScroll: true });
+    }}
+  />;
 }
 
 function EstimatePanelEditor({
@@ -906,6 +920,8 @@ function EstimatePanelEditor({
   selectedVersionNumber: selectedVersionNumberProp,
   onSelectedVersionNumberChange,
   onResolvedVersionChange,
+  onCreatedVersion,
+  onVersionButtonReady,
 }: {
   projectId: string;
   readOnly: boolean;
@@ -916,6 +932,8 @@ function EstimatePanelEditor({
   selectedVersionNumber?: number | null;
   onSelectedVersionNumberChange?: (value: number | null) => void;
   onResolvedVersionChange?: (value: { id: string; versionNumber: number } | null) => void;
+  onCreatedVersion: (versionNumber: number) => void;
+  onVersionButtonReady: (button: HTMLButtonElement | null, versionNumber: number | null) => void;
 }) {
   const estimateApiBase = apiBase ?? `/api/projects/${projectId}`;
   const [data, setData] = React.useState<EstimatePayload | null>(null);
@@ -925,6 +943,8 @@ function EstimatePanelEditor({
   const [uncontrolledSelectedVersion, setUncontrolledSelectedVersion] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const createRequestRef = React.useRef<AbortController | null>(null);
   const [newSectionTitle, setNewSectionTitle] = React.useState("");
   const [shortcutNotice, setShortcutNotice] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -1205,6 +1225,8 @@ function EstimatePanelEditor({
     void readEstimate(selectedVersion, undefined, controller.signal);
     return () => controller.abort();
   }, [readEstimate, selectedVersion]);
+
+  React.useEffect(() => () => createRequestRef.current?.abort(), []);
 
   const currentVersionNumber = selectedVersion ?? data?.current?.versionNumber ?? null;
 
@@ -1528,43 +1550,42 @@ function EstimatePanelEditor({
     const currentTitle = data?.current?.title?.trim() || "сметы";
     setTitleDialog({
       mode,
-      title:
-        mode === "DUPLICATE"
-          ? `Копия ${currentTitle}`
-          : mode === "RENAME"
-            ? data?.current?.title ?? ""
-            : "Новая смета",
+      title: mode === "DUPLICATE" ? `Копия ${currentTitle}` : data?.current?.title ?? "",
     });
     setTitleDialogError(null);
   }
 
-  async function createEstimate(duplicate: boolean, title: string) {
-    if (readOnly) return;
-    if (!title.trim()) return;
-    const vNum = data?.current?.versionNumber;
+  async function createEstimate(copyTitle?: string) {
+    if (readOnly || standalone || busy || createRequestRef.current) return;
+    const copyFrom = copyTitle ? data?.current?.versionNumber : null;
+    if (copyTitle && copyFrom == null) return;
+    const controller = new AbortController();
+    createRequestRef.current = controller;
+    const showError = copyTitle ? setTitleDialogError : setCreateError;
+    setCreateError(null);
     setBusy(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/estimate/versions`, {
+      const res = await fetch(`${estimateApiBase}/estimate/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          ...(duplicate && vNum != null ? { duplicateFromVersionNumber: vNum } : {}),
-        }),
+        body: JSON.stringify(copyTitle ? { title: copyTitle, duplicateFromVersionNumber: copyFrom } : {}),
+        signal: controller.signal,
       });
       const j = await res.json().catch(() => null);
-      if (res.ok && j?.version) {
-        setSelectedVersion(j.version.versionNumber);
-        refreshActivity();
+      if (controller.signal.aborted) return;
+      if (res.ok && Number.isInteger(j?.version?.versionNumber)) {
         setTitleDialog(null);
         setTitleDialogError(null);
+        onCreatedVersion(j.version.versionNumber);
+        refreshActivity();
       } else {
-        setTitleDialogError(j?.error?.message ?? "Не удалось создать смету");
+        showError(j?.error?.message ?? "Не удалось создать смету. Попробуйте ещё раз.");
       }
     } catch {
-      setTitleDialogError("Не удалось связаться с сервером. Попробуйте ещё раз.");
+      if (!controller.signal.aborted) showError("Не удалось связаться с сервером. Попробуйте ещё раз.");
     } finally {
-      setBusy(false);
+      createRequestRef.current = null;
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
 
@@ -1617,7 +1638,7 @@ function EstimatePanelEditor({
       await patchCurrentEstimate({ title }, { titleDialog: true });
       return;
     }
-    await createEstimate(titleDialog.mode === "DUPLICATE", title);
+    await createEstimate(title);
   }
 
   async function deleteEstimate(versionNumber: number) {
@@ -2611,9 +2632,7 @@ function EstimatePanelEditor({
       internalSubtotal: estimateTotals.internalSubtotal,
       cashInternalSubtotal: lineSummary.cashInternalSubtotal,
       cashInternalCostTax: estimateTotals.cashInternalCostTax,
-      internalWithCashTax: estimateTotals.internalExpensesTotal,
-      totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax + estimateTotals.vat),
-      grossMargin: estimateTotals.grossMargin,
+      totalExpensesWithTax: roundMoney(estimateTotals.internalExpensesTotal + estimateTotals.tax),
       marginAfterTax: estimateTotals.marginAfterTax,
       marginAfterTaxPct: estimateTotals.marginAfterTaxPct,
     };
@@ -2642,11 +2661,9 @@ function EstimatePanelEditor({
       included.reduce((sum, version) => sum + version.financials.cashInternalCostTax, 0),
     );
     const tax6 = roundMoney(included.reduce((sum, version) => sum + version.financials.tax, 0));
-    const vat = roundMoney(included.reduce((sum, version) => sum + (version.financials.vat ?? 0), 0));
-    const totalExpensesWithTax = roundMoney(internalSubtotal + cashInternalCostTax + tax6 + vat);
+    const totalExpensesWithTax = roundMoney(internalSubtotal + cashInternalCostTax + tax6);
     const marginAfterTax = roundMoney(included.reduce((sum, version) => sum + version.financials.marginAfterTax, 0));
-    const revenueExcludingVat = roundMoney(revenueTotal - vat);
-    const marginAfterTaxPct = revenueExcludingVat > 0 ? roundMoney((marginAfterTax / revenueExcludingVat) * 100) : 0;
+    const marginAfterTaxPct = revenueTotal > 0 ? roundMoney((marginAfterTax / revenueTotal) * 100) : 0;
 
     return {
       count: included.length,
@@ -2663,6 +2680,53 @@ function EstimatePanelEditor({
   function money(n: number) {
     return formatMoneyRub(n);
   }
+
+  const percent = (rate: number) => `${roundMoney(rate * 100).toLocaleString("ru-RU")}%`;
+  const commissionLabel = `Комиссия ${percent(PROJECT_ESTIMATE_COMMISSION_RATE)}`;
+  const clientChargeLabel = `Надбавка клиенту ${percent(PROJECT_ESTIMATE_TAX_RATE)}`;
+  const expenseTaxLabel = `УСН ${percent(PROJECT_ESTIMATE_TAX_RATE)}`;
+  const marginPercent = Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—";
+  const basis = (amount: number, rate: number) => `${money(amount)} ₽ × ${percent(rate)}`;
+  const subtotalWithCommission = roundMoney(totals.clientSubtotal + totals.commission);
+  const taxBasis = basis(subtotalWithCommission, PROJECT_ESTIMATE_TAX_RATE);
+  const calculationGroups: Array<{
+    title: string;
+    rows: [label: string, amount: number | null, basis?: string][];
+    totalLabel: string;
+    total: number;
+  }> = [
+    {
+      title: "Клиент",
+      rows: [
+        ["Сумма позиций", totals.clientSubtotal],
+        [commissionLabel, commissionEnabled ? totals.commission : null, commissionEnabled ? basis(totals.clientSubtotal, PROJECT_ESTIMATE_COMMISSION_RATE) : undefined],
+        [clientChargeLabel, clientChargeTaxEnabled ? totals.clientChargeTax : null, clientChargeTaxEnabled ? taxBasis : undefined],
+        [vatLabel, vatEnabled ? totals.vat : null, vatEnabled ? basis(subtotalWithCommission, PROJECT_ESTIMATE_VAT_RATE) : undefined],
+      ],
+      totalLabel: "Итого клиенту",
+      total: totals.revenueTotal,
+    },
+    {
+      title: "Расходы",
+      rows: [
+        ["Фактические расходы", totals.internalSubtotal],
+        [expenseTaxLabel, clientTaxEnabled ? totals.tax6 : null, clientTaxEnabled ? taxBasis : undefined],
+        ...(totals.cashInternalSubtotal > 0 ? [[
+          `Наличный расчёт ${percent(ORDER_CASH_INTERNAL_COST_TAX_RATE)}`,
+          totals.cashInternalCostTax,
+          basis(totals.cashInternalSubtotal, ORDER_CASH_INTERNAL_COST_TAX_RATE),
+        ] satisfies [string, number, string]] : []),
+      ],
+      totalLabel: "Все расходы",
+      total: totals.totalExpensesWithTax,
+    },
+    {
+      title: "Результат",
+      rows: [["Итого клиенту", totals.revenueTotal], ["Все расходы", totals.totalExpensesWithTax]],
+      totalLabel: "Маржа после налогов",
+      total: totals.marginAfterTax,
+    },
+  ];
 
   const workspaceSaveState = estimateConflictDetected
     ? "conflict"
@@ -2721,6 +2785,7 @@ function EstimatePanelEditor({
     }} className={`project-estimate space-y-3 bg-white ${workspaceMode ? "project-estimate--workspace" : ""} ${standalone ? "project-estimate--standalone" : ""}`}>
       <div className="sr-only" role="status" aria-live="polite">{shortcutNotice}</div>
       <UnitPresetDatalist />
+      {createError ? <p className="project-estimate__create-error" role="alert">{createError}</p> : null}
 
       {loading ? (
         <ProjectModuleContentSkeleton rows={4} />
@@ -2730,17 +2795,25 @@ function EstimatePanelEditor({
         <p className="text-sm text-zinc-600">Нет данных сметы.</p>
       ) : !data.current && data.versions.length === 0 ? (
         <div className="project-estimate__empty">
-          <div><h3>Смета пока не создана</h3><p>Добавьте строки вручную или перенесите выбранные услуги из КП.</p></div>
-          {!readOnly ? (
+          {readOnly || standalone ? (
+            <p className="project-widget-empty">Смета пока не создана.</p>
+          ) : (
             <button
               type="button"
+              className="project-estimate__create"
+              aria-busy={busy}
               disabled={busy}
-              onClick={() => openEstimateTitleDialog("CREATE")}
-              className={btnPrimary}
+              onClick={() => void createEstimate()}
             >
-              Создать первую смету
+              <span className="project-estimate__create-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 21H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h9l4 4v5M14 3v5h5M8.5 12.5h5M8.5 16h3M18 14v7M14.5 17.5h7" />
+                </svg>
+              </span>
+              <span className="project-estimate__create-title" aria-live="polite">{busy ? "Создаём смету…" : "Создать смету"}</span>
+              <span className="project-estimate__create-hint">После создания добавьте позиции вручную или импортируйте их из Excel.</span>
             </button>
-          ) : null}
+          )}
         </div>
       ) : (
         <>
@@ -2762,6 +2835,7 @@ function EstimatePanelEditor({
                 <div className="relative" ref={versionPickerWrapRef}>
                   <button
                     type="button"
+                    ref={(button) => onVersionButtonReady(button, data.current?.versionNumber ?? null)}
                     className="project-estimate__version inline-flex min-h-10 min-w-[15rem] items-center justify-between gap-3 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-left transition-colors hover:border-zinc-950"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
@@ -2955,7 +3029,7 @@ function EstimatePanelEditor({
                       className={menuAction}
                       onClick={() => {
                         setActionsOpen(false);
-                        openEstimateTitleDialog("CREATE");
+                        void createEstimate();
                       }}
                     >
                       <span>
@@ -3341,6 +3415,13 @@ function EstimatePanelEditor({
                 ))}
               </div>
 
+              {workspaceMode && vatEnabled ? (
+                <dl className="project-estimate__client-surcharge">
+                  <dt>{vatLabel}</dt>
+                  <dd>{money(totals.vat)} ₽</dd>
+                </dl>
+              ) : null}
+
               {!readOnly && !workspaceMode ? (
                 <form
                   onSubmit={addSection}
@@ -3390,143 +3471,72 @@ function EstimatePanelEditor({
 
               {vatEnabled && vatNotice ? <p role="alert" className="px-2 text-xs text-amber-900">{vatNotice}</p> : null}
 
-              {workspaceMode ? (
-                <div className="project-estimate__finance-rail">
-                  <div><span>Итого клиенту</span><strong>{money(totals.revenueTotal)} ₽</strong></div>
-                  <div><span>Все расходы</span><strong>{money(totals.totalExpensesWithTax)} ₽</strong></div>
-                  <div className={totals.marginAfterTax < 0 ? "is-negative" : "is-positive"}><span>Маржа после налогов</span><strong>{money(totals.marginAfterTax)} ₽</strong></div>
-                  <div><span>Рентабельность</span><strong>{Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}</strong></div>
-                  <details>
-                    <summary>Налоги и комиссии</summary>
-                    <div>
-                      <EstimateFinanceToggle label={`Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`} checked={commissionEnabled} disabled={readOnly || busy} onChange={(value) => { setCommissionEnabled(value); markEstimateDraftDirty(); }} />
-                      <EstimateFinanceToggle label={`Налог клиенту ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientChargeTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientChargeTaxEnabled(value); markEstimateDraftDirty(); }} />
-                      <div className="flex items-center justify-between gap-3">
-                        <EstimateFinanceToggle label={vatLabel} checked={vatEnabled} disabled={readOnly || busy || (hasManualVat && !vatEnabled)} onChange={changeVat} />
-                        {vatEnabled ? <strong className="text-xs tabular-nums">{money(totals.vat)} ₽</strong> : null}
-                      </div>
-                      {!vatEnabled && vatNotice ? <p className="text-xs text-amber-900">{vatNotice}</p> : null}
-                      <EstimateFinanceToggle label={`Расходный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`} checked={clientTaxEnabled} disabled={readOnly || busy} onChange={(value) => { setClientTaxEnabled(value); markEstimateDraftDirty(); }} />
-                    </div>
-                  </details>
+              <div className="project-estimate__finance-rail">
+                <div><span>Итого клиенту</span><strong>{money(totals.revenueTotal)} ₽</strong></div>
+                <div><span>Все расходы</span><strong>{money(totals.totalExpensesWithTax)} ₽</strong></div>
+                <div className={totals.marginAfterTax < 0 ? "is-negative" : "is-positive"}>
+                  <span>Маржа после налогов</span><strong>{money(totals.marginAfterTax)} ₽</strong>
                 </div>
-              ) : <div className="border border-zinc-300 bg-white">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-3">
+                <div><span>Рентабельность</span><strong>{marginPercent}</strong></div>
+                <details className="project-estimate__finance-settings">
+                  <summary>Налоги и комиссии</summary>
                   <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">Выбранная смета</div>
-                    <div className="mt-1 text-sm font-semibold text-zinc-600">
-                      {currentVersionMeta?.title?.trim() || "Текущая смета"}
-                    </div>
-                  </div>
-                  {currentVersionMeta?.includeInProjectTotals ? (
-                    <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-extrabold text-violet-800">
-                      входит в проект
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-extrabold text-zinc-600">
-                      не входит в проект
-                    </span>
-                  )}
-                </div>
-                <div className="grid border-t border-zinc-200 xl:grid-cols-[1.15fr_0.95fr_1fr] xl:divide-x xl:divide-zinc-200">
-                <div className="bg-violet-50/45 p-4">
-                  <div className="text-[11px] font-bold uppercase tracking-wide text-violet-800">Клиент</div>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Сумма по услугам</span>
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.clientSubtotal)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <EstimateFinanceToggle
-                        label={`Комиссия ${Math.round(PROJECT_ESTIMATE_COMMISSION_RATE * 100)}%`}
-                        checked={commissionEnabled}
-                        disabled={readOnly || busy}
-                        onChange={(value) => {
-                          setCommissionEnabled(value);
-                          markEstimateDraftDirty();
-                        }}
-                      />
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.commission)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <EstimateFinanceToggle
-                        label={`Налог клиенту ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
-                        checked={clientChargeTaxEnabled}
-                        disabled={readOnly || busy}
-                        onChange={(value) => {
-                          setClientChargeTaxEnabled(value);
-                          markEstimateDraftDirty();
-                        }}
-                      />
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.clientChargeTax)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <EstimateFinanceToggle label={vatLabel} checked={vatEnabled} disabled={readOnly || busy || (hasManualVat && !vatEnabled)} onChange={changeVat} />
-                      <span className="font-bold tabular-nums text-violet-950">{money(totals.vat)} ₽</span>
-                    </div>
+                    <EstimateFinanceToggle
+                      label={commissionLabel}
+                      checked={commissionEnabled}
+                      disabled={readOnly || busy}
+                      onChange={(value) => { setCommissionEnabled(value); markEstimateDraftDirty(); }}
+                    />
+                    <EstimateFinanceToggle
+                      label={clientChargeLabel}
+                      checked={clientChargeTaxEnabled}
+                      disabled={readOnly || busy}
+                      onChange={(value) => { setClientChargeTaxEnabled(value); markEstimateDraftDirty(); }}
+                    />
+                    <EstimateFinanceToggle
+                      label={vatLabel}
+                      checked={vatEnabled}
+                      disabled={readOnly || busy || (hasManualVat && !vatEnabled)}
+                      onChange={changeVat}
+                    />
                     {!vatEnabled && vatNotice ? <p className="text-xs text-amber-900">{vatNotice}</p> : null}
-                    <div className="flex items-center justify-between gap-3 border-t border-violet-200 pt-2 text-base">
-                      <span className="font-extrabold text-violet-950">Итого клиенту</span>
-                      <span className="font-black tabular-nums text-violet-950">{money(totals.revenueTotal)} ₽</span>
-                    </div>
+                    <EstimateFinanceToggle
+                      label={expenseTaxLabel}
+                      checked={clientTaxEnabled}
+                      disabled={readOnly || busy}
+                      onChange={(value) => { setClientTaxEnabled(value); markEstimateDraftDirty(); }}
+                    />
                   </div>
-                </div>
-                <div className="border-t border-zinc-200 bg-zinc-50/70 p-4 xl:border-t-0">
-                  <div className="text-[11px] font-bold uppercase tracking-wide text-zinc-700">Внутреннее</div>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Себестоимость</span>
-                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalSubtotal)} ₽</span>
-                    </div>
-                    {totals.cashInternalCostTax > 0 ? (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-zinc-600">Налог на наличку 3.5%</span>
-                        <span className="font-bold tabular-nums text-zinc-950">{money(totals.cashInternalCostTax)} ₽</span>
-                      </div>
-                    ) : null}
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-600">Расходы без налога 6%</span>
-                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.internalWithCashTax)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <EstimateFinanceToggle
-                        label={`Расходный налог ${Math.round(PROJECT_ESTIMATE_TAX_RATE * 100)}%`}
-                        checked={clientTaxEnabled}
-                        disabled={readOnly || busy}
-                        onChange={(value) => {
-                          setClientTaxEnabled(value);
-                          markEstimateDraftDirty();
-                        }}
-                      />
-                      <span className="font-bold tabular-nums text-zinc-950">{money(totals.tax6)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-zinc-200 pt-2">
-                      <span className="font-semibold text-zinc-700">Расходы всего</span>
-                      <span className="font-extrabold tabular-nums text-zinc-950">{money(totals.totalExpensesWithTax)} ₽</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-zinc-700">Валовая маржа</span>
-                      <span className="font-extrabold tabular-nums text-zinc-950">{money(totals.grossMargin)} ₽</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="border-t border-zinc-200 bg-emerald-50/55 p-4 xl:border-t-0">
-                  <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Маржа</div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    <div>
-                      <div className="text-xs font-semibold text-emerald-900">После налога</div>
-                      <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">{money(totals.marginAfterTax)} ₽</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-emerald-900">Рентабельность</div>
-                      <div className="mt-1 text-xl font-black tabular-nums text-emerald-950">
-                        {Number.isFinite(totals.marginAfterTaxPct) ? `${totals.marginAfterTaxPct.toFixed(0)}%` : "—"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                </details>
               </div>
-              </div>}
+
+              <details className="project-estimate__calculation">
+                <summary>
+                  Расчёт итогов
+                  <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m5 7.5 5 5 5-5" />
+                  </svg>
+                </summary>
+                <div className="project-estimate__calculation-grid">
+                  {calculationGroups.map((group) => (
+                    <section key={group.title}>
+                      <h3>{group.title}</h3>
+                      <dl>
+                        {group.rows.map(([label, amount, basis]) => (
+                          <div key={label}>
+                            <dt>{label}{basis ? <small>{basis}</small> : null}</dt>
+                            <dd>{amount == null ? "Выкл." : `${money(amount)} ₽`}</dd>
+                          </div>
+                        ))}
+                        <div className="project-estimate__calculation-total">
+                          <dt>{group.totalLabel}</dt>
+                          <dd>{money(group.total)} ₽</dd>
+                        </div>
+                      </dl>
+                    </section>
+                  ))}
+                </div>
+              </details>
 
               {!standalone && !workspaceMode && data.versions.length > 1 ? (
                 <div className="border border-emerald-200 bg-emerald-50/45 p-4">
@@ -3661,11 +3671,7 @@ function EstimatePanelEditor({
                     {titleDialog.mode === "RENAME" ? "Настройки сметы" : "Сметы проекта"}
                   </div>
                   <h2 id="estimate-title-dialog-heading" className="mt-2 text-2xl font-black tracking-tight text-zinc-950">
-                    {titleDialog.mode === "CREATE"
-                      ? "Новая смета"
-                      : titleDialog.mode === "DUPLICATE"
-                        ? "Копия текущей сметы"
-                        : "Переименовать смету"}
+                    {titleDialog.mode === "DUPLICATE" ? "Копия текущей сметы" : "Переименовать смету"}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-zinc-600">
                     {titleDialog.mode === "DUPLICATE"
@@ -3713,11 +3719,9 @@ function EstimatePanelEditor({
                     >
                       {busy
                         ? "Сохраняю…"
-                        : titleDialog.mode === "CREATE"
-                          ? "Создать смету"
-                          : titleDialog.mode === "DUPLICATE"
-                            ? "Создать копию"
-                            : "Сохранить название"}
+                        : titleDialog.mode === "DUPLICATE"
+                          ? "Создать копию"
+                          : "Сохранить название"}
                     </button>
                   </div>
                 </div>

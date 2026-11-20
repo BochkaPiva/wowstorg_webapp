@@ -384,8 +384,7 @@ export async function GET(req: Request) {
     const tax = financials.reduce((sum, item) => sum + item.tax, 0);
     const grossMargin = financials.reduce((sum, item) => sum + item.grossMargin, 0);
     const marginAfterTax = financials.reduce((sum, item) => sum + item.marginAfterTax, 0);
-    const revenueExcludingVat = revenueTotal - vat;
-    const marginAfterTaxPct = revenueExcludingVat > 0 ? Math.round((marginAfterTax / revenueExcludingVat) * 10000) / 100 : 0;
+    const marginAfterTaxPct = revenueTotal > 0 ? Math.round((marginAfterTax / revenueTotal) * 10000) / 100 : 0;
     return {
       clientSubtotal,
       internalSubtotal,

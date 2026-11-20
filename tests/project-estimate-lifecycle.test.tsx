@@ -76,6 +76,26 @@ async function loadRequisite() {
 }
 
 describe("project estimate lifecycle", () => {
+  it("creates the first estimate on click with the server default name and allows retry", async () => {
+    render();
+    await respond(latest(), { ...payload(), versions: [], current: null });
+    const create = element<HTMLButtonElement>(".project-estimate__create");
+    act(() => { create.click(); create.click(); });
+    const endpoint = `${path()}/versions`;
+    const request = latest(endpoint, "POST");
+    expect(mutation(request)).toEqual({});
+    expect(flights.filter(flight => flight.url === endpoint && flight.init?.method === "POST")).toHaveLength(1);
+    expect(create.disabled).toBe(true);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    await respond(request, { error: { message: "Повторите создание" } }, 503);
+    expect(element('[role="alert"]').textContent).toBe("Повторите создание");
+    act(() => create.click());
+    await respond(latest(endpoint, "POST"), { version: { versionNumber: 1, title: "Смета 1" } });
+    expect(latest().url).toContain("version=1");
+    await respond(latest(), payload());
+    expect(document.activeElement).toBe(element(".project-estimate__version"));
+  });
+
   it("autosaves VAT as a separate version setting and blocks enabling it over a manual VAT line", async () => {
     await load(payload(1, "НДС 5%"));
     const vatSwitch = () => [...container.querySelectorAll<HTMLButtonElement>('.project-estimate__finance-rail button[role="switch"]')]
@@ -86,6 +106,9 @@ describe("project estimate lifecycle", () => {
     expect(vatSwitch().disabled).toBe(false);
     act(() => vatSwitch().click());
     expect(vatSwitch().getAttribute("aria-checked")).toBe("true");
+    expect(vatSwitch().closest("label")?.textContent?.trim()).toBe("НДС 5%");
+    expect(element(".project-estimate__client-surcharge").textContent).toMatch(/НДС 5%5,00/);
+    expect(element<HTMLDetailsElement>(".project-estimate__calculation").open).toBe(false);
     await advance(1400);
     expect(mutation()).toMatchObject({ vatEnabled: true, clientChargeTaxEnabled: false, clientTaxEnabled: false });
     await respond(latest(path(), "PATCH"), { revision: 11 });

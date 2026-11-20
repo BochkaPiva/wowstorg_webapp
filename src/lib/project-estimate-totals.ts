@@ -69,12 +69,11 @@ export function calcProjectEstimateTotals(
   const revenueBeforeClientChargeTax = roundMoney(clientSubtotal + commission);
   const clientChargeTax = roundMoney(revenueBeforeClientChargeTax * clientChargeTaxRate);
   const vat = roundMoney(revenueBeforeClientChargeTax * resolvedRates.vatRate);
-  const revenueExcludingVat = roundMoney(revenueBeforeClientChargeTax + clientChargeTax);
-  const revenueTotal = roundMoney(revenueExcludingVat + vat);
+  const revenueTotal = roundMoney(revenueBeforeClientChargeTax + clientChargeTax + vat);
   const tax = roundMoney(revenueBeforeClientChargeTax * taxRate);
-  const grossMargin = roundMoney(revenueExcludingVat - internalExpensesTotal);
+  const grossMargin = roundMoney(revenueTotal - internalExpensesTotal);
   const marginAfterTax = roundMoney(grossMargin - tax);
-  const marginAfterTaxPct = revenueExcludingVat > 0 ? roundMoney((marginAfterTax / revenueExcludingVat) * 100) : 0;
+  const marginAfterTaxPct = revenueTotal > 0 ? roundMoney((marginAfterTax / revenueTotal) * 100) : 0;
 
   return {
     clientSubtotal,

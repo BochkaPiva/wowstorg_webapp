@@ -925,12 +925,12 @@ export async function buildProjectEstimateXlsx(args: {
       taxableClientFormula,
     );
     const vatFormula = percentOfExpression(financeRates.vatRate, taxableClientFormula);
-    const revenueExcludingVatFormula = addFormulaExpressions([
+    const revenueTotalFormula = addFormulaExpressions([
       projectClientFormula,
       commissionFormula,
       clientChargeTaxFormula,
+      vatFormula,
     ]);
-    const revenueTotalFormula = addFormulaExpressions([revenueExcludingVatFormula, vatFormula]);
     const nonCashTaxFormula = percentOfExpression(
       financeRates.taxRate,
       taxableClientFormula,
@@ -944,10 +944,9 @@ export async function buildProjectEstimateXlsx(args: {
       projectInternalFormula,
       nonCashTaxFormula,
       cashTaxFormula,
-      vatFormula,
     ]);
     const totalExpenses = roundMoney(
-      projectTotals.internalExpensesTotal + projectTotals.tax + projectTotals.vat,
+      projectTotals.internalExpensesTotal + projectTotals.tax,
     );
     const profitFormula = subtractFormulaExpressions(
       revenueTotalFormula,
@@ -1014,11 +1013,6 @@ export async function buildProjectEstimateXlsx(args: {
             formula: cashTaxFormula,
             result: projectTotals.cashInternalCostTax,
           },
-          ...(financeRates.vatRate > 0 ? [{
-            label: "НДС к уплате",
-            formula: vatFormula,
-            result: projectTotals.vat,
-          }] : []),
           {
             label: "Итого расходов",
             formula: totalExpensesFormula,
@@ -1043,7 +1037,7 @@ export async function buildProjectEstimateXlsx(args: {
           },
           {
             label: "Рентабельность",
-            formula: `IFERROR(${wrapFormulaExpr(profitFormula)}/${wrapFormulaExpr(revenueExcludingVatFormula)},0)`,
+            formula: `IFERROR(${wrapFormulaExpr(profitFormula)}/${wrapFormulaExpr(revenueTotalFormula)},0)`,
             result: projectTotals.marginAfterTaxPct / 100,
             numFmt: "0.00%",
             emphasis: true,

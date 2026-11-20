@@ -2817,17 +2817,85 @@ body.project-estimate-fill-dragging * {
 }
 
 .project-estimate__empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding: 28px 24px;
+  padding: clamp(10px, 2vw, 18px);
 }
-.project-estimate__empty > div { flex: 1 1 240px; }
-.project-estimate__empty h3 { margin: 0 0 8px; font-size: 18px; font-weight: 650; }
-.project-estimate__empty p { margin: 0; max-width: 52ch; font-size: 14px; line-height: 1.5; color: #68636d; }
-.project-estimate__empty > button { flex-shrink: 0; margin: 0; }
+
+.project-estimate__create {
+  display: grid;
+  width: 100%;
+  min-height: 164px;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  border: 1px dashed #b5a4c9;
+  border-radius: 12px;
+  padding: 20px 16px;
+  background: #faf8fd;
+  color: var(--wow-purple-dark, #30205f);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.project-estimate__create:not(:disabled):hover {
+  border-color: var(--wow-purple, #5e20bb);
+  background: #f1ebf9;
+}
+
+.project-estimate__create:not(:disabled):active { background: #e9dff4; }
+.project-estimate__create:focus-visible { outline: 2px solid var(--wow-purple, #5e20bb); outline-offset: 2px; }
+.project-estimate__create:disabled { cursor: wait; }
+.project-estimate__create-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: var(--wow-purple-soft, #eee7ff);
+  color: var(--wow-purple, #5e20bb);
+}
+.project-estimate__create-title { font-size: 16px; font-weight: 750; line-height: 1.25; }
+.project-estimate__create-hint { max-width: 44ch; color: #62536f; font-size: 13px; line-height: 1.45; }
+.project-estimate__create-error { margin: 12px 18px 0; color: var(--wow-danger, #a12b20); font-size: 13px; }
+
+.project-widget-empty { margin: 0; color: var(--wow-muted, #686863); font-size: 13px; line-height: 1.5; }
+
+.project-orders__bar {
+  display: flex;
+  min-height: 54px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 16px;
+  padding: 10px 14px;
+}
+.project-orders__bar[data-has-orders] { border-bottom: 1px solid #eae8ec; }
+.project-orders__bar > p { flex: 1 1 180px; }
+.project-orders__actions { display: flex; min-width: 0; flex-wrap: wrap; gap: 6px; }
+.project-orders__actions button {
+  min-height: 36px;
+  border: 1px solid var(--wow-line, #d4d4cf);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #fff;
+  color: var(--wow-ink-soft, #20201f);
+  font-size: 13px;
+  font-weight: 650;
+}
+.project-orders__actions button:hover { background: #f5f3f7; }
+.project-orders__actions button:first-child { border-color: #f2cc3f; background: var(--wow-yellow, #ffd21f); }
+.project-orders__actions button:first-child:hover { background: var(--wow-yellow-hover, #ffe36b); }
+@container project-page (max-width: 500px) {
+  .project-orders__bar { justify-content: flex-start; }
+}
+@media (pointer: coarse) {
+  .project-orders__actions button { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-estimate__create { transition: none; }
+}
 
 .project-estimate--workspace .project-estimate__toolbar {
   padding: 8px 10px;
@@ -3383,13 +3451,102 @@ body.project-estimate-fill-dragging * {
   bottom: calc(100% + 7px);
   z-index: 30;
   display: grid;
-  width: 250px;
-  gap: 10px;
+  width: min(250px, calc(100vw - 56px));
+  gap: 2px;
   border: 1px solid #deded9;
   border-radius: 8px;
   background: #fff;
-  padding: 12px;
+  padding: 6px 10px;
   box-shadow: 0 6px 8px rgb(24 24 27 / 10%);
+}
+
+.project-estimate__finance-settings > summary::-webkit-details-marker,
+.project-estimate__calculation > summary::-webkit-details-marker { display: none; }
+.project-estimate__finance-settings > summary:focus-visible,
+.project-estimate__calculation > summary:focus-visible,
+.project-estimate__finance-toggle button:focus-visible { outline: 2px solid var(--wow-purple, #5e20bb); outline-offset: 2px; }
+
+.project-estimate__finance-toggle {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 6px;
+  padding-inline: 6px;
+}
+.project-estimate__finance-toggle:has(button:not(:disabled)):hover { background: #f5f2f8; cursor: pointer; }
+.project-estimate__finance-toggle > span { color: #4f4557; font-size: 12px; }
+
+.project-estimate__client-surcharge {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 10px;
+  border: 1px solid #e4dced;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #faf8fd;
+  color: var(--wow-purple-dark, #30205f);
+  font-size: 13px;
+  font-weight: 700;
+}
+.project-estimate__client-surcharge > dd { margin: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.project-estimate__calculation {
+  margin: 0 10px 10px;
+  border: 1px solid #e1dfe5;
+  border-radius: 9px;
+  background: #fff;
+}
+.project-estimate__calculation > summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #443650;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+.project-estimate__calculation > summary:hover,
+.project-estimate__calculation[open] > summary { background: #f7f4f9; }
+.project-estimate__calculation[open] > summary { border-radius: 8px 8px 0 0; }
+.project-estimate__calculation[open] > summary svg { transform: rotate(180deg); }
+.project-estimate__calculation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 224px), 1fr));
+  gap: 1px;
+  border-top: 1px solid #e9e4ed;
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  background: #e9e4ed;
+}
+.project-estimate__calculation-grid > section { min-width: 0; padding: 12px; background: #fff; }
+.project-estimate__calculation-grid h3 { margin: 0 0 8px; color: #332640; font-size: 13px; font-weight: 750; }
+.project-estimate__calculation-grid dl { margin: 0; }
+.project-estimate__calculation-grid dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  color: #574d5f;
+  font-size: 12px;
+}
+.project-estimate__calculation-grid dd { margin: 0; color: #242126; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.project-estimate__calculation-grid small { display: block; margin-top: 2px; color: #695b74; font-size: 11px; }
+.project-estimate__calculation-grid dl > .project-estimate__calculation-total {
+  margin-top: 6px;
+  border-top: 1px solid #e9e4ed;
+  padding-top: 8px;
+  color: #332640;
+  font-weight: 750;
 }
 
 @media (max-width: 900px) {

@@ -1441,20 +1441,26 @@ export default function ProjectDetailPage() {
       ) : <div className="px-5 py-12 text-center text-sm text-zinc-500">История пока пуста.</div>;
     }
     if (type === "ORDERS") {
+      const orders = project.orders ?? [];
       return (
         <div>
-          {!readOnly ? (
-            <div className="flex flex-wrap gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-              <button type="button" onClick={openProjectCatalogEntry} className="rounded-md bg-yellow-400 px-3 py-2 text-xs font-extrabold text-zinc-950 hover:bg-yellow-300">Добавить реквизит</button>
-              <button type="button" onClick={() => void openLinkExistingModal()} className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-xs font-bold text-zinc-800 hover:border-zinc-950">Привязать заявку</button>
+          {!orders.length || !readOnly ? (
+            <div className="project-orders__bar" data-has-orders={orders.length ? true : undefined}>
+              {!orders.length ? <p className="project-widget-empty">Связанных заявок пока нет.</p> : null}
+              {!readOnly ? (
+                <div className="project-orders__actions">
+                  <button type="button" onClick={openProjectCatalogEntry}>Добавить реквизит</button>
+                  <button type="button" onClick={() => void openLinkExistingModal()}>Привязать заявку</button>
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {project.orders?.length ? project.orders.map((order) => (
+          {orders.map((order) => (
             <Link key={order.id} href={`/orders/${order.id}?from=project&returnTo=${encodeURIComponent(`/projects/${id}`)}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-zinc-100 px-4 py-3 text-sm last:border-b-0 hover:bg-zinc-50">
               <span className="min-w-0"><span className="block truncate font-bold text-zinc-950">{order.eventName?.trim() || `Заявка ${order.id.slice(0, 8)}`}</span><span className="mt-0.5 block text-xs text-zinc-500">{fmtDate(order.startDate)} — {fmtDate(order.endDate)}</span></span>
               <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-800">{orderStatusLabelRu[order.status] ?? order.status}</span>
             </Link>
-          )) : <div className="px-4 py-12 text-center text-sm text-zinc-500">Связанных заявок пока нет.</div>}
+          ))}
         </div>
       );
     }

@@ -212,6 +212,38 @@ describe("React debt: image and navigation identity", () => {
     expect(document.querySelector('[aria-label="Навигация"]')).toBeNull();
     expect(document.body.style.overflow).toBe("auto");
   });
+
+  it("dismisses floating panels while keeping settings clickable and inline details expanded", () => {
+    const onOutside = vi.fn();
+    render(
+      <AppShell title="Работа">
+        <details id="settings" data-ui-popup="settings" open><summary>Настройки</summary><button id="switch" type="button">Тумблер</button></details>
+        <details id="actions" data-ui-popup="actions"><summary>Действия</summary><button id="action" type="button">Выбрать</button></details>
+        <details id="inline" open><summary>Расчёт</summary><p>Показатели</p></details>
+        <button id="outside" type="button" onClick={onOutside}>Снаружи</button>
+      </AppShell>,
+    );
+    const settings = query<HTMLDetailsElement>("#settings");
+    const actions = query<HTMLDetailsElement>("#actions");
+    const outside = query("#outside");
+    click(query("#switch"));
+    expect(settings.open).toBe(true);
+    act(() => outside.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    click(outside);
+    expect(onOutside).toHaveBeenCalledTimes(1);
+    expect(settings.open).toBe(false);
+    expect(query<HTMLDetailsElement>("#inline").open).toBe(true);
+    const summary = query("#actions > summary");
+    click(summary);
+    const action = query("#action");
+    action.focus();
+    act(() => action.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(actions.open).toBe(false);
+    expect(document.activeElement).toBe(summary);
+    click(summary);
+    click(action);
+    expect(actions.open).toBe(false);
+  });
 });
 
 describe("React debt: client-only mini cart", () => {

@@ -326,15 +326,17 @@ function ProjectsContent() {
   }, [state.status, role]);
 
   React.useEffect(() => {
-    function onPointerDown(e: PointerEvent) {
-      const target = e.target as Node | null;
-      if (target && customerInputRef.current && !customerInputRef.current.contains(target)) {
-        setCustomerDropdownOpen(false);
-      }
+    if (!customerDropdownOpen) return;
+    function dismissOutside(event: Event) {
+      if (customerInputRef.current && !event.composedPath().includes(customerInputRef.current)) setCustomerDropdownOpen(false);
     }
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside, true);
+    };
+  }, [customerDropdownOpen]);
 
   function openCreateModal() {
     setCustomerDropdownOpen(false);
@@ -763,7 +765,13 @@ function ProjectsContent() {
                         />
                       </label>
 
-                      <div className="relative" ref={customerInputRef}>
+                      <div className="relative" ref={customerInputRef} onKeyDown={(event) => {
+                        if (event.key !== "Escape" || !customerDropdownOpen) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.currentTarget.querySelector("input")?.focus({ preventScroll: true });
+                        setCustomerDropdownOpen(false);
+                      }}>
                         <label htmlFor="project-customer" className="mb-1.5 block text-xs font-bold text-zinc-600">Заказчик</label>
                     <input
                       id="project-customer"
@@ -779,13 +787,15 @@ function ProjectsContent() {
                         setCustomerDropdownOpen(true);
                       }}
                       onFocus={() => setCustomerDropdownOpen(true)}
+                      aria-expanded={customerDropdownOpen}
+                      aria-haspopup="listbox"
                       className="h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 text-sm font-bold text-zinc-950 outline-none transition-colors duration-200 placeholder:text-zinc-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                       placeholder="Выберите или введите нового"
                       autoComplete="off"
                       required
                     />
                     {customerDropdownOpen ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-[0_18px_50px_rgba(17,24,39,0.16)]">
+                      <div className="ui-popover absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto" role="listbox" aria-label="Заказчики">
                         {customerFiltered.length === 0 ? (
                           <div className="px-4 py-3 text-sm font-medium text-zinc-500">
                             {customerInputTrim ? "Новый заказчик будет создан вместе с проектом" : "Список пуст"}
@@ -795,9 +805,11 @@ function ProjectsContent() {
                             <button
                               key={c.id}
                               type="button"
-                              className="block w-full px-4 py-2.5 text-left text-sm font-semibold text-zinc-800 transition-colors duration-150 hover:bg-violet-50"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
+                              className="ui-popover-item"
+                              role="option"
+                              aria-selected={c.id === customerId}
+                              onClick={() => {
+                                customerInputRef.current?.querySelector("input")?.focus({ preventScroll: true });
                                 setCustomerInput(c.name);
                                 setCustomerId(c.id);
                                 setCustomerDropdownOpen(false);

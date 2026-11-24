@@ -589,12 +589,15 @@ function ProposalEditor({ proposalId, embedded, actorUserId }: { proposalId: str
             <span className={styles.saveState} role="status" data-pending={unconfirmed && !paused || undefined}>{conflict ? "Конфликт версий" : paused || recovery ? "Нужна проверка" : unconfirmed || busy ? `Сохраняем${queued.length ? ` · ещё ${queued.length}` : ""}…` : "Сохранено"}</span>
             <button className={base.secondary} disabled={unconfirmed || busy || Boolean(recovery) || conflict} onClick={() => { if (openDrawer({ kind: "export" })) setMode("compose"); }}>Скачать КП</button>
             {proposal.owner?.type === "STANDALONE" ? <button className={base.primary} disabled={locked || unconfirmed} onClick={() => { if (openDrawer({ kind: "convert" })) setMode("compose"); }}>Создать проект</button> : <button className={base.primary} disabled={locked || unconfirmed || !items.some((item) => item.selectionRole === "PRIMARY")} onClick={() => { if (openDrawer({ kind: "transfer" })) { transferId.current = null; setMode("compose"); } }}>В смету</button>}
-            <details className={styles.actionMenu}><summary aria-label="Другие действия с КП"><MoreIcon /></summary><div>
-              <button disabled={locked} onClick={() => { if (openDrawer({ kind: "document" })) setMode("compose"); }}>Текст и название</button>
-              <button disabled={locked || !variant} onClick={copyVariant}>Создать копию варианта</button>
-              <Link href="/contractors">Каталог подрядчиков</Link>
-              <button disabled={unconfirmed || busy || Boolean(recovery) || conflict} onClick={() => { if (discardContext()) { setMode("preview"); setTimeout(() => window.print(), 0); } }}>Печать клиентского вида</button>
-            </div></details>
+            <details className={styles.actionMenu} data-ui-popup="actions">
+              <summary aria-label="Другие действия с КП"><MoreIcon /></summary>
+              <div className="ui-popover">
+                <button type="button" className="ui-popover-item" disabled={locked} onClick={() => { if (openDrawer({ kind: "document" })) setMode("compose"); }}>Текст и название</button>
+                <button type="button" className="ui-popover-item" disabled={locked || !variant} onClick={copyVariant}>Создать копию варианта</button>
+                <Link className="ui-popover-item" href="/contractors">Каталог подрядчиков</Link>
+                <button type="button" className="ui-popover-item" disabled={unconfirmed || busy || Boolean(recovery) || conflict} onClick={() => { if (discardContext()) { setMode("preview"); setTimeout(() => window.print(), 0); } }}>Печать клиентского вида</button>
+              </div>
+            </details>
           </div>
         </header>
         {error ? <div className={styles.recovery} role="alert"><span>{error}</span><div className={styles.recoveryActions}>{paused ? <button className={base.quiet} onClick={downloadRecovery}>Скачать локальную копию</button> : null}{!pending ? <button className={base.quiet} disabled={busy} onClick={() => void refresh()}>Загрузить с сервера</button> : null}</div></div> : null}
@@ -626,7 +629,13 @@ function ProposalEditor({ proposalId, embedded, actorUserId }: { proposalId: str
             {canvasSections.length ? canvasSections.map((section) => <section className={styles.eventSection} key={section.id} ref={(node) => { if (node) sectionElements.current.set(section.id, node); else sectionElements.current.delete(section.id); }}>
               <div className={styles.sectionHeading}><div><h2>{section.title}</h2><p>{section.items.length ? `${section.items.length} услуг` : "Услуги ещё не выбраны"}</p></div><div className={styles.sectionActions}>
                 <button className={styles.addService} disabled={locked} aria-label={`Подобрать услуги: ${section.title}`} onClick={(event) => void openCatalog(section.id, event.currentTarget)}><PlusIcon /><span>Подобрать</span></button>
-                <details className={styles.actionMenu}><summary aria-label={`Действия с разделом ${section.title}`}><MoreIcon /></summary><div><button disabled={locked} onClick={() => { setSectionId(section.id); setDrawer({ kind: "manual", sectionId: section.id }); }}>Своя услуга</button><button disabled={locked} onClick={() => { if (window.confirm(`Удалить раздел «${section.title}» и его услуги?`) && discardContext()) void mutate({ action: "REMOVE_SECTION", sectionId: section.id }, () => setSectionId("")); }}>Удалить раздел</button></div></details>
+                <details className={styles.actionMenu} data-ui-popup="actions">
+                  <summary aria-label={`Действия с разделом ${section.title}`}><MoreIcon /></summary>
+                  <div className="ui-popover">
+                    <button type="button" className="ui-popover-item" disabled={locked} onClick={() => { setSectionId(section.id); setDrawer({ kind: "manual", sectionId: section.id }); }}>Своя услуга</button>
+                    <button type="button" className="ui-popover-item text-red-700" disabled={locked} onClick={() => { if (window.confirm(`Удалить раздел «${section.title}» и его услуги?`) && discardContext()) void mutate({ action: "REMOVE_SECTION", sectionId: section.id }, () => setSectionId("")); }}>Удалить раздел</button>
+                  </div>
+                </details>
               </div></div>
               {!section.items.length ? <button className={styles.emptyAdd} disabled={locked} onClick={(event) => void openCatalog(section.id, event.currentTarget)}><PlusIcon /><span>Выбрать из каталога</span></button> : <div className={styles.itemList}>{section.items.map((item, index) => <div className={styles.itemRow} key={item.id} data-proposal-drop-kind="item" data-proposal-drop-id={item.id} data-drop={dropState("item", item.id)} data-moving={drag?.source === item.id || undefined}>
                 <ProposalMoveHandle kind="item" id={item.id} name={item.offerTitleSnapshot} disabled={locked || isQueuedId(item.id)} canUp={index > 0} canDown={index < section.items.length - 1} onTarget={dragTarget} onDrop={(drop) => dropItem(item.id, drop)} onStep={(direction) => moveItem(item.id, section.id, direction === -1 ? section.items[index - 1].id : section.items[index + 2]?.id ?? null)} />

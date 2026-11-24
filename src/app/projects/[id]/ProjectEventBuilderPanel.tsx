@@ -371,18 +371,17 @@ function EventBuilderEditor({ projectId, readOnly }: { projectId: string; readOn
           setSectionComposerOpen((value) => !value);
           setCatalogOpen(false);
         }}><PlusIcon /><span>Раздел</span></button> : null}
-        <details className={styles.moreMenu}>
+        <details className={styles.moreMenu} data-ui-popup="actions">
           <summary aria-label="Действия с вариантом"><MoreIcon /></summary>
-          <div className={styles.moreMenuPopover}>
-            {!readOnly ? <button onClick={(event) => {
-              event.currentTarget.closest("details")?.removeAttribute("open");
+          <div className={`ui-popover ${styles.moreMenuPopover}`}>
+            {!readOnly ? <button type="button" className="ui-popover-item" onClick={() => {
               void mutate({
                 action: "ADD_VARIANT",
                 title: `Вариант ${proposal.variants.length + 1}`,
                 sourceVariantId: activeVariant?.id,
               });
             }} disabled={busy}>Дублировать вариант</button> : null}
-            <Link href="/contractors">Открыть каталог подрядчиков</Link>
+            <Link className="ui-popover-item" href="/contractors">Открыть каталог подрядчиков</Link>
           </div>
         </details>
       </div>

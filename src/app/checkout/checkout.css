@@ -303,11 +303,6 @@ select.co-input {
   z-index: 50;
   max-height: 220px;
   overflow-y: auto;
-  border-radius: 14px;
-  border: 1px solid rgba(17, 24, 39, 0.1);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 10px 40px rgba(17, 24, 39, 0.12), 0 0 0 1px rgba(124, 58, 237, 0.06);
-  padding: 0.35rem 0;
 }
 .co-combobox-option {
   display: block;
@@ -757,13 +752,6 @@ select.co-input {
 
 .co-input,
 .co-textarea,
-.co-combobox-dropdown {
-  border-color: var(--wow-line, #d4d4cf);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: none;
-}
-
 .co-input:focus,
 .co-textarea:focus {
   border-color: var(--wow-purple, #5e20bb);
@@ -818,10 +806,6 @@ select.co-input {
 
 .cart-checkoutMain .co-input,
 .cart-checkoutMain .co-textarea,
-.cart-checkoutMain .co-combobox-dropdown {
-  border-radius: 8px;
-}
-
 .cart-checkoutMain .co-services.co-servicesDisclosure {
   padding: 0;
   border-radius: 8px;

@@ -103,9 +103,9 @@ export function OrderStatusStepper({
         </div>
 
         {!hideHelp ? (
-          <details className="order-progress__help">
+          <details className="order-progress__help" data-ui-popup="info">
             <summary aria-label="Что означает статус">?</summary>
-            <div>{STATUS_DETAIL[status]}</div>
+            <div className="ui-popover">{STATUS_DETAIL[status]}</div>
           </details>
         ) : null}
       </div> : null}

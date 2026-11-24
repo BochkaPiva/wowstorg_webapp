@@ -17,7 +17,7 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function render(id = "one") { act(() => root.render(<React.StrictMode><ProjectWorkspaceDashboard projectId={id} widgets={widgets} renderWidget={() => <input aria-label="Заметка" defaultValue="Локальный черновик" />} /></React.StrictMode>)); }
 function clickText(text: string) { const button = [...document.querySelectorAll("button")].find(entry => entry.textContent?.trim() === text)!; act(() => button.click()); }
-function menu() { act(() => document.querySelector<HTMLButtonElement>('.project-workspace-widget__controls button[aria-expanded]')!.click()); }
+function menu() { act(() => document.querySelector<HTMLElement>(".project-workspace-widget__controls summary")!.click()); }
 function storage(id: string, value: string) { act(() => { localStorage.setItem(`project-workspace-collapsed:${id}`, value); window.dispatchEvent(new StorageEvent("storage", { key: `project-workspace-collapsed:${id}` })); }); }
 
 describe("workspace local preference lifecycle", () => {

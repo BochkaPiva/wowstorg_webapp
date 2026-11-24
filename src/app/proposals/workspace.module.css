@@ -41,9 +41,7 @@
 .actionMenu summary::-webkit-details-marker { display: none; }
 .actionMenu svg, .inlinePlus svg, .addService svg, .emptyAdd svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .actionMenu summary:hover, .inlinePlus:hover, .actionMenu[open] summary { background: #eee9f4; color: #6125ad; }
-.actionMenu > div { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: 220px; max-width: 75vw; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 6px 24px #21122e26; }
-.actionMenu button, .actionMenu a { display: block; width: 100%; border: 0; background: transparent; padding: 12px; border-radius: 8px; color: #403748; font: inherit; font-size: 13px; text-align: left; cursor: pointer; text-decoration: none; }
-.actionMenu button:hover, .actionMenu a:hover { background: #f5efff; }
+.actionMenu > div { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(220px, 75vw); }
 .canvasToolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid #ebe7ee; color: #68636d; font-size: 12px; }
 .canvasToolbar > div { display: flex; gap: 4px; }
 .canvasToolbar button { border: 0; background: transparent; color: #68636d; padding: 8px 10px; border-radius: 8px; font: inherit; cursor: pointer; }

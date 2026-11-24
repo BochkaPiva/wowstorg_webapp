@@ -272,7 +272,7 @@ function OrderDownloadMenu({ order }: { order: OrderCard }) {
         ? createPortal(
             <div
               ref={menuRef}
-              className="my-order__downloadMenu"
+              className="ui-popover my-order__downloadMenu"
               role="menu"
               aria-label="Скачать документы заявки"
               style={{ top: position.top, left: position.left }}

@@ -16,7 +16,7 @@
 .datePicker {position:relative;}
 .datePicker summary {display:flex;align-items:center;gap:12px;cursor:pointer;background:#fff;border:1px solid var(--wow-line);border-radius:10px;padding:11px 14px;font-size:12px;font-weight:650;list-style:none;}
 .datePicker summary::-webkit-details-marker {display:none;}
-.datePopup {position:absolute;top:calc(100% + 8px);left:0;z-index:15;width:min(370px,calc(100vw - 64px));background:#fff;border:1px solid var(--wow-line);border-radius:12px;padding:16px;}
+.datePopup {position:absolute;top:calc(100% + 8px);left:0;z-index:15;width:min(370px,calc(100vw - 64px));padding:12px;}
 .datePicker:not([open]) .datePopup {display:none;}
 .button,.primary {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;border:1px solid var(--wow-line);border-radius:10px;padding:8px 14px;background:#fff;font-weight:650;color:var(--wow-ink-soft);font-size:13px;text-decoration:none;}
 .button:hover {background:#faf9f7;border-color:#aaa6b0;}

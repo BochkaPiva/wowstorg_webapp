@@ -63,8 +63,6 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
 }) {
   const definition = PROJECT_WIDGET_REGISTRY.find((item) => item.type === widget.type)!;
   const canExpand = widget.type !== "TASKS";
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
   const widgetRef = React.useRef<HTMLElement>(null);
   React.useEffect(() => {
     if (!expanded || !widgetRef.current) return;
@@ -77,7 +75,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
     const trap = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       if (node.querySelector("dialog:modal")) return;
-      const controls = Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length > 0);
+      const controls = Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),summary,a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(element => element.getClientRects().length > 0);
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus(); }
@@ -85,15 +83,6 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
     node.addEventListener("keydown", trap);
     return () => { node.removeEventListener("keydown", trap); siblings.forEach((element, index) => { element.inert = previousInert[index]; }); if (previousFocus?.isConnected) previousFocus.focus(); };
   }, [expanded]);
-
-  React.useEffect(() => {
-    if (!menuOpen) return;
-    const close = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    };
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
-  }, [menuOpen]);
 
   const widgetNode = (
     <section
@@ -115,7 +104,7 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
       aria-modal={expanded || undefined}
       aria-label={expanded ? definition.title : undefined}
     >
-      <header className="project-workspace-widget__header" data-menu-open={menuOpen || undefined}>
+      <header className="project-workspace-widget__header">
         {layout ? <button type="button" className="project-workspace-drag" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", widget.type); layout.onDragStart(); }} onDragEnd={layout.onDragEnd} onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); layout.onMove(event.key === "ArrowUp" ? -1 : 1); } }} aria-label={`Переместить блок ${definition.title}. Для клавиатуры используйте стрелки вверх и вниз`} title="Перетащите блок"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden><circle cx="5" cy="4" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="12" r="1"/></svg></button> : null}
         <div className="project-workspace-widget__identity">
           <span className="project-workspace-widget__icon"><WidgetIcon type={widget.type} /></span>
@@ -132,15 +121,18 @@ function WorkspaceWidget({ widget, collapsed, expanded, onToggleCollapsed, onTog
               {widget.type === "ESTIMATE" ? <span aria-hidden="true">{expanded ? "К проекту" : "На весь экран"}</span> : null}
             </button>
           ) : null}
-          {!expanded ? <div ref={menuRef} className="relative">
-            <button type="button" onClick={() => setMenuOpen((value) => !value)} className="project-workspace-widget__control" aria-label={`Действия: ${definition.title}`} aria-expanded={menuOpen}><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="3" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="9" cy="15" r="1.5" /></svg></button>
-            {menuOpen ? (
-              <div className="absolute right-0 top-9 z-[90] w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 text-xs shadow-[0_6px_8px_rgba(0,0,0,0.1)]">
-                <button type="button" onClick={() => { setMenuOpen(false); onToggleCollapsed(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">{collapsed ? "Развернуть содержимое" : "Свернуть содержимое"}</button>
-                <button type="button" onClick={() => { setMenuOpen(false); onConfigure(); }} className="block w-full px-3 py-2.5 text-left font-semibold text-zinc-800 hover:bg-zinc-50">Порядок, размер и видимость…</button>
-              </div>
-            ) : null}
-          </div> : null}
+          {!expanded ? <details className="relative" data-ui-popup="actions">
+            <summary className="project-workspace-widget__control" aria-label={`Действия: ${definition.title}`}><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="3" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="9" cy="15" r="1.5" /></svg></summary>
+            <div className="ui-popover absolute right-0 top-full z-[90] mt-1.5 w-56 max-w-[calc(100vw-32px)]">
+              <button type="button" onClick={onToggleCollapsed} className="ui-popover-item">{collapsed ? "Развернуть содержимое" : "Свернуть содержимое"}</button>
+              <button type="button" onClick={(event) => {
+                const popup = event.currentTarget.closest("details");
+                if (popup) popup.open = false;
+                popup?.querySelector<HTMLElement>("summary")?.focus({ preventScroll: true });
+                onConfigure();
+              }} className="ui-popover-item">Порядок, размер и видимость…</button>
+            </div>
+          </details> : null}
           </> : null}
         </div>
       </header>

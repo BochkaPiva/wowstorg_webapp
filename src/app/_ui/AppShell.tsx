@@ -133,6 +133,50 @@ export function AppShell({
   }, [router, state.status]);
 
   React.useEffect(() => {
+    const selector = "details[data-ui-popup][open]";
+
+    function dismissOutside(event: Event) {
+      const path = event.composedPath();
+      document.querySelectorAll<HTMLDetailsElement>(selector).forEach((popup) => {
+        if (!path.includes(popup)) popup.open = false;
+      });
+    }
+
+    function dismissOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const focused = document.activeElement;
+      const popup = focused?.closest<HTMLDetailsElement>(selector)
+        ?? (focused === document.body ? document.querySelector<HTMLDetailsElement>(selector) : null);
+      if (!popup) return;
+      event.preventDefault();
+      event.stopPropagation();
+      popup.open = false;
+      popup.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
+    }
+
+    function dismissAfterAction(event: MouseEvent) {
+      if (event.defaultPrevented || !(event.target instanceof Element)) return;
+      const action = event.target.closest("button:not(:disabled), a[href]");
+      const popup = action?.closest<HTMLDetailsElement>('details[data-ui-popup="actions"][open]');
+      if (!popup) return;
+      const restoreFocus = popup.contains(document.activeElement);
+      popup.open = false;
+      if (restoreFocus) popup.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
+    }
+
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside, true);
+    document.addEventListener("keydown", dismissOnEscape);
+    document.addEventListener("click", dismissAfterAction);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside, true);
+      document.removeEventListener("keydown", dismissOnEscape);
+      document.removeEventListener("click", dismissAfterAction);
+    };
+  }, []);
+
+  React.useEffect(() => {
     if (!navOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";

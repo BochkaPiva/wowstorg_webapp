@@ -1666,12 +1666,7 @@ export default function ProjectDetailPage() {
                 {!readOnly ? (
                   <details
                     className="project-detail-hero__mobile-actions"
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape" && event.currentTarget.open) {
-                        event.stopPropagation();
-                        closeMobileProjectActions(event.currentTarget);
-                      }
-                    }}
+                    data-ui-popup="actions"
                   >
                     <summary aria-label="Действия проекта">
                       <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -1680,16 +1675,16 @@ export default function ProjectDetailPage() {
                         <circle cx="16" cy="10" r="1.5" />
                       </svg>
                     </summary>
-                    <div>
+                    <div className="ui-popover">
                       {isWorkspaceV2 ? (
-                        <button type="button" onClick={(event) => {
+                        <button type="button" className="ui-popover-item" onClick={(event) => {
                           closeMobileProjectActions(event.currentTarget);
                           window.dispatchEvent(new CustomEvent("project-workspace:configure"));
                         }}>
                           Настроить карточку
                         </button>
                       ) : null}
-                      <button type="button" disabled={archiveBusy || !canArchiveProject} onClick={(event) => {
+                      <button type="button" className="ui-popover-item" disabled={archiveBusy || !canArchiveProject} onClick={(event) => {
                         closeMobileProjectActions(event.currentTarget);
                         openArchiveModal();
                       }}>

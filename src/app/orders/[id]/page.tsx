@@ -306,7 +306,7 @@ function OrderDocumentMenu({
               ref={menuRef}
               role="menu"
               aria-label="Документы заявки"
-              className="fixed z-50 w-72 overflow-hidden rounded-xl border border-zinc-200 bg-white p-1.5 shadow-sm"
+              className="ui-popover fixed z-50 w-72 overflow-hidden"
               style={{ top: position.top, left: position.left }}
             >
               {estimateAvailable ? (

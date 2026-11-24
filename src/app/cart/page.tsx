@@ -1,8 +1,6 @@
 "use client";
 
 import React from "react";
-import { createPortal } from "react-dom";
-import { BackLink } from "@/app/_ui/BackLink";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useClientReady } from "@/lib/use-client-ready";
@@ -27,6 +25,20 @@ import { billableRentalDaysFromDateOnly, type RentalPartOfDay } from "@/lib/rent
 import "./cart.css";
 import "../catalog/catalog.css";
 import "../checkout/checkout.css";
+
+function CartCatalogLink({ href }: { href: string }) {
+  return (
+    <Link href={href} className="cart-catalogLink">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.35" aria-hidden="true">
+        <rect x="2" y="2" width="4.5" height="4.5" rx="1" />
+        <rect x="9.5" y="2" width="4.5" height="4.5" rx="1" />
+        <rect x="2" y="9.5" width="4.5" height="4.5" rx="1" />
+        <rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1" />
+      </svg>
+      В каталог
+    </Link>
+  );
+}
 
 type CatalogItem = {
   id: string;
@@ -232,7 +244,7 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
   const [customerId, setCustomerId] = React.useState("");
   const [customerInput, setCustomerInput] = React.useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = React.useState(false);
-  const customerInputRef = React.useRef<HTMLInputElement>(null);
+  const customerPickerRef = React.useRef<HTMLDivElement>(null);
   const [eventName, setEventName] = React.useState("");
   const [comment, setComment] = React.useState("");
   const [deliveryEnabled, setDeliveryEnabled] = React.useState(false);
@@ -268,7 +280,6 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
 
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
-  const mounted = useClientReady();
 
   React.useEffect(() => {
     if (!quickParentId) return;
@@ -458,16 +469,16 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
 
   React.useEffect(() => {
     if (!customerDropdownOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      const el = e.target as Node;
-      if (
-        customerInputRef.current?.contains(el)
-      )
-        return;
-      setCustomerDropdownOpen(false);
+    function dismissOutside(event: Event) {
+      const picker = customerPickerRef.current;
+      if (picker && !event.composedPath().includes(picker)) setCustomerDropdownOpen(false);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("focusin", dismissOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("focusin", dismissOutside, true);
+    };
   }, [customerDropdownOpen]);
 
   React.useEffect(() => {
@@ -1011,6 +1022,17 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
     }
   }
 
+  const catalogParams = new URLSearchParams();
+  if (isQuickSupplement && quickParentId) {
+    catalogParams.set("quickParentId", quickParentId);
+  } else if (isProjectCart && projectId) {
+    catalogParams.set("projectId", projectId);
+    if (projectMode === "demo") catalogParams.set("projectMode", "demo");
+    if (estimateVersionId?.trim()) catalogParams.set("estimateVersionId", estimateVersionId.trim());
+    if (returnTo?.trim()) catalogParams.set("returnTo", returnTo.trim());
+  }
+  const catalogHref = catalogParams.size ? `/catalog?${catalogParams}` : "/catalog";
+
   return (
     <AppShell title="Корзина" backHref={isProjectCart && projectId ? (returnTo ?? `/projects/${projectId}`) : undefined}>
       <section className="cart-section">
@@ -1038,6 +1060,7 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
         ) : lines.length === 0 ? (
           <div className="cart-empty">
             <p className="cart-muted">Корзина пуста.</p>
+            <CartCatalogLink href={catalogHref} />
           </div>
         ) : (
           <>
@@ -1049,7 +1072,8 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
                 </div>
                 <strong>{lines.length} поз.</strong>
               </div>
-            <div className="cart-list-head">
+            <div className="cart-list-head cart-compositionActions">
+              <CartCatalogLink href={catalogHref} />
               <button
                 type="button"
                 className="cart-clearAll"
@@ -1398,7 +1422,13 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
                     <>
                       <div className="co-field co-field--customer">
                         <div className="co-label">Заказчик *</div>
-                        <div className="co-combobox" ref={customerInputRef}>
+                        <div className="co-combobox" ref={customerPickerRef} onKeyDown={(event) => {
+                          if (event.key !== "Escape" || !customerDropdownOpen) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          event.currentTarget.querySelector("input")?.focus({ preventScroll: true });
+                          setCustomerDropdownOpen(false);
+                        }}>
                           <input
                             type="text"
                             value={customerInput}
@@ -1420,9 +1450,7 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
                             onFocus={() => {
                               if (!isProjectCart) setCustomerDropdownOpen(true);
                             }}
-                            onBlur={() => {
-                              setTimeout(() => setCustomerDropdownOpen(false), 180);
-                            }}
+                            aria-label="Заказчик"
                             className="co-input"
                             placeholder="Выберите из списка или введите название заказчика"
                             autoComplete="off"
@@ -1431,7 +1459,7 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
                             aria-autocomplete="list"
                           />
                           {customerDropdownOpen ? (
-                            <div className="co-combobox-dropdown" role="listbox">
+                            <div className="ui-popover co-combobox-dropdown" role="listbox" aria-label="Заказчики">
                               {customerFiltered.length === 0 ? (
                                 <div className="co-combobox-empty">
                                   {customerInputTrim
@@ -1444,9 +1472,10 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
                                     key={c.id}
                                     type="button"
                                     role="option"
+                                    aria-selected={c.id === customerId}
                                     className="co-combobox-option"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
+                                    onClick={() => {
+                                      customerPickerRef.current?.querySelector("input")?.focus({ preventScroll: true });
                                       setCustomerInput(c.name);
                                       setCustomerId(c.id);
                                       setCustomerDropdownOpen(false);
@@ -1806,30 +1835,6 @@ function CartContent({ quickParentId, projectId, projectMode, initialEstimateVer
           );
         })() : null}
 
-        {mounted &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <BackLink
-              href={
-                isQuickSupplement
-                  ? `/catalog?quickParentId=${quickParentId}`
-                  : isProjectCart && projectId
-                    ? (() => {
-                        const params = new URLSearchParams();
-                        params.set("projectId", projectId);
-                        if (projectMode === "demo") params.set("projectMode", "demo");
-                        if (estimateVersionId?.trim()) params.set("estimateVersionId", estimateVersionId.trim());
-                        if (returnTo?.trim()) params.set("returnTo", returnTo.trim());
-                        return `/catalog?${params.toString()}`;
-                      })()
-                    : "/catalog"
-              }
-              className="cart-returnToCatalog"
-            >
-              Каталог
-            </BackLink>,
-            document.body
-          )}
       </section>
     </AppShell>
   );

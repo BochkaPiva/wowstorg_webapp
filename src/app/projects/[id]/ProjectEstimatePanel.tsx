@@ -315,9 +315,9 @@ const btnGhostXs =
 const inputFieldCompact =
   "rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200/50";
 const menuPanel =
-  "project-estimate-menu absolute right-0 top-full z-50 mt-2 w-[min(19rem,calc(100vw-2rem))]";
+  "ui-popover project-estimate-menu";
 const menuAction =
-  "project-estimate-menu__action flex w-full items-start justify-between gap-3 text-left disabled:cursor-not-allowed disabled:opacity-50";
+  "ui-popover-item project-estimate-menu__action";
 const sectionTone = {
   requisite: "border-zinc-200 bg-white",
   draftRequisite: "border-zinc-200 bg-white",
@@ -1277,28 +1277,52 @@ function EstimatePanelEditor({
     return () => window.removeEventListener("project-activity-refresh", onRefresh);
   }, [readEstimate, selectedVersion, projectId]);
 
-  React.useEffect(() => {
-    if (!versionPickerOpen && !actionsOpen && !downloadOpen) return;
-    function handlePointerDown(e: MouseEvent) {
-      const t = e.target as Node;
-      if (versionPickerWrapRef.current?.contains(t)) return;
-      if (actionsWrapRef.current?.contains(t)) return;
-      if (downloadWrapRef.current?.contains(t)) return;
-      setVersionPickerOpen(false);
-      setActionsOpen(false);
-      setDownloadOpen(false);
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      setVersionPickerOpen(false);
-      setActionsOpen(false);
-      setDownloadOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
+  React.useLayoutEffect(() => {
+    const anchor = versionPickerOpen
+      ? versionPickerWrapRef.current
+      : actionsOpen
+        ? actionsWrapRef.current
+        : downloadOpen ? downloadWrapRef.current : null;
+    const menu = anchor?.querySelector<HTMLElement>(".project-estimate-menu");
+    if (!anchor || !menu) return;
+    const setOpen = versionPickerOpen ? setVersionPickerOpen : actionsOpen ? setActionsOpen : setDownloadOpen;
+    const positionMenu = () => {
+      const rect = anchor.getBoundingClientRect();
+      const width = menu.offsetWidth;
+      const margin = 8;
+      const gap = 7;
+      const preferredLeft = versionPickerOpen ? rect.left : rect.right - width;
+      const left = Math.max(margin, Math.min(preferredLeft, document.documentElement.clientWidth - width - margin));
+      const spaceBelow = window.innerHeight - rect.bottom - gap - margin;
+      const spaceAbove = rect.top - gap - margin;
+      const above = menu.scrollHeight + 2 > spaceBelow && spaceAbove > spaceBelow;
+      menu.style.left = `${left - rect.left}px`;
+      menu.style.right = "auto";
+      menu.dataset.side = above ? "above" : "below";
+      menu.style.maxHeight = `${Math.max(48, Math.min(352, above ? spaceAbove : spaceBelow))}px`;
+    };
+    const handleOutside = (event: Event) => {
+      if (!event.composedPath().includes(anchor)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !event.composedPath().includes(anchor)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      anchor.querySelector<HTMLElement>(":scope > button")?.focus({ preventScroll: true });
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    document.addEventListener("scroll", positionMenu, { capture: true, passive: true });
+    document.addEventListener("pointerdown", handleOutside, true);
+    document.addEventListener("focusin", handleOutside, true);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("scroll", positionMenu, true);
+      document.removeEventListener("pointerdown", handleOutside, true);
+      document.removeEventListener("focusin", handleOutside, true);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [versionPickerOpen, actionsOpen, downloadOpen]);
 
@@ -2836,6 +2860,7 @@ function EstimatePanelEditor({
                   <button
                     type="button"
                     ref={(button) => onVersionButtonReady(button, data.current?.versionNumber ?? null)}
+                    aria-expanded={versionPickerOpen}
                     className="project-estimate__version inline-flex min-h-10 min-w-[15rem] items-center justify-between gap-3 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-left transition-colors hover:border-zinc-950"
                     onClick={() => {
                       setVersionPickerOpen((v) => !v);
@@ -2854,14 +2879,13 @@ function EstimatePanelEditor({
                     </svg>
                   </button>
                   {versionPickerOpen ? (
-                    <div className={`${menuPanel} left-0 right-auto min-w-[17rem]`}>
+                    <div className={`${menuPanel} project-estimate-menu--start`}>
                       {data.versions.map((v) => (
                         <button
                           key={v.id}
                           type="button"
-                          className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left ${
-                            vn === v.versionNumber ? "bg-violet-50 text-violet-950" : "text-zinc-800 hover:bg-zinc-50"
-                          }`}
+                          className={menuAction}
+                          aria-current={vn === v.versionNumber ? "true" : undefined}
                           onClick={() => {
                             setSelectedVersion(v.versionNumber);
                             setVersionPickerOpen(false);
@@ -2977,6 +3001,7 @@ function EstimatePanelEditor({
                       type="button"
                       className="project-workspace-action-button inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-800 transition-colors hover:border-zinc-950"
                       aria-label="Скачать смету"
+                      aria-expanded={downloadOpen}
                       onClick={() => {
                         setDownloadOpen((v) => !v);
                         setActionsOpen(false);
@@ -2988,16 +3013,18 @@ function EstimatePanelEditor({
                     </button>
                     {downloadOpen ? (
                       <div className={menuPanel}>
-                        <a href={exportHrefInternal} className={menuAction} target="_blank" rel="noreferrer">
+                        <a href={exportHrefInternal} className={menuAction} target="_blank" rel="noreferrer" onClick={() => setDownloadOpen(false)}>
+                          <span className="project-estimate-menu__icon"><DownloadIcon /></span>
                           <span>
                             <span className="block font-semibold">Внутренняя XLSX</span>
                             <span className="block text-xs text-zinc-500">Себестоимость, оплата, маржа</span>
                           </span>
                         </a>
-                        <a href={exportHrefClient} className={menuAction} target="_blank" rel="noreferrer">
+                        <a href={exportHrefClient} className={menuAction} target="_blank" rel="noreferrer" onClick={() => setDownloadOpen(false)}>
+                          <span className="project-estimate-menu__icon"><DownloadIcon /></span>
                           <span>
                             <span className="block font-semibold">Клиентская XLSX</span>
-                            <span className="block text-xs text-zinc-500">Только то, что уходит клиенту</span>
+                            <span className="block text-xs text-zinc-500">Позиции и цены для клиента</span>
                           </span>
                         </a>
                       </div>
@@ -3011,6 +3038,7 @@ function EstimatePanelEditor({
                   disabled={busy}
                   className="project-workspace-action-button inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-zinc-950 bg-zinc-950 px-3 text-sm font-bold text-white transition-colors hover:border-yellow-400 hover:bg-yellow-400 hover:text-zinc-950 disabled:opacity-50"
                   aria-label="Действия со сметой"
+                  aria-expanded={actionsOpen}
                   onClick={() => {
                     setActionsOpen((v) => !v);
                     setVersionPickerOpen(false);
@@ -3478,9 +3506,9 @@ function EstimatePanelEditor({
                   <span>Маржа после налогов</span><strong>{money(totals.marginAfterTax)} ₽</strong>
                 </div>
                 <div><span>Рентабельность</span><strong>{marginPercent}</strong></div>
-                <details className="project-estimate__finance-settings">
+                <details className="project-estimate__finance-settings" data-ui-popup="settings">
                   <summary>Налоги и комиссии</summary>
-                  <div>
+                  <div className="ui-popover">
                     <EstimateFinanceToggle
                       label={commissionLabel}
                       checked={commissionEnabled}
@@ -5278,7 +5306,7 @@ export function CompactEstimateTable({
               Дублировать
             </button>
             {selectedCount === 1 ? (
-              <details className="project-estimate-grid__more">
+              <details className="project-estimate-grid__more" data-ui-popup="actions">
                 <summary>Вставить строку</summary>
                 <div>
                 <button

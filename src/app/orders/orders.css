@@ -151,7 +151,7 @@
 .my-order__downloadButton[aria-expanded="true"] { border-color: #8b62b8; background: #f7f2fb; color: #5f2d80; }
 .my-order__downloadButton:focus-visible { outline: 3px solid rgba(107,50,202,.2); outline-offset: 2px; }
 .my-order__downloadButton svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.my-order__downloadMenu { position: fixed; z-index: 80; display: grid; width: min(260px, calc(100vw - 16px)); gap: 2px; padding: 6px; border: 1px solid #d8d4cf; border-radius: 12px; background: #fff; box-shadow: 0 4px 8px rgba(18,14,20,.16); }
+.my-order__downloadMenu { position: fixed; z-index: 80; display: grid; width: min(260px, calc(100vw - 16px)); gap: 2px; }
 .my-order__downloadMenu > a,
 .my-order__downloadMenuDisabled { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 54px; padding: 8px 10px; border-radius: 8px; color: #171717; text-decoration: none; }
 .my-order__downloadMenu > a:hover { background: #f5f0fa; color: #4f216f; }

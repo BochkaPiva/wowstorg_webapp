@@ -1716,36 +1716,6 @@
   }
 }
 
-/* Плавающая кнопка «В каталог» — слева, всегда видна */
-.cart-returnToCatalog { position: fixed; bottom: 24px; left: 24px; z-index: 9998; padding-inline: 12px; background: var(--wow-paper, #f4f4f0); }
-.cart-floatCatalog {
-  position: fixed;
-  bottom: 1.5rem;
-  left: 1.5rem;
-  z-index: 9998;
-  display: inline-flex;
-  align-items: center;
-  padding: 0.7rem 1rem;
-  border-radius: 16px;
-  background: linear-gradient(
-    135deg,
-    rgba(124, 58, 237, 0.95),
-    rgba(124, 58, 237, 0.85)
-  );
-  color: #fff;
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 0.9rem;
-  box-shadow: 0 8px 28px rgba(124, 58, 237, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  transition: transform 180ms ease, box-shadow 180ms ease;
-}
-.cart-floatCatalog:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(124, 58, 237, 0.5);
-  color: #fff;
-}
-
 /* Brand-aligned cart: operationally dense, visually tied to the client catalog. */
 .cart-title {
   color: var(--wow-ink, #0a0a0a);
@@ -1827,8 +1797,7 @@
 }
 
 .cart-btn-primary,
-.cart-related-add,
-.cart-floatCatalog {
+.cart-related-add {
   border-color: var(--wow-ink, #0a0a0a);
   border-radius: 10px;
   background: var(--wow-ink, #0a0a0a);
@@ -1837,8 +1806,7 @@
 }
 
 .cart-btn-primary:hover,
-.cart-related-add:hover:not(:disabled),
-.cart-floatCatalog:hover {
+.cart-related-add:hover:not(:disabled) {
   border-color: var(--wow-yellow, #ffd21f);
   background: var(--wow-yellow, #ffd21f);
   color: var(--wow-ink, #0a0a0a);
@@ -1990,6 +1958,35 @@ html {
 
 .cart-flowPanel .cart-list-head {
   margin: 0 0 0.35rem;
+}
+
+.cart-compositionActions {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.cart-catalogLink {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e0d8e8;
+  border-radius: 8px;
+  padding: 7px 11px;
+  color: var(--wow-purple-dark, #30205f);
+  background: #f8f4fb;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.cart-catalogLink svg { flex: none; color: var(--wow-purple, #5e20bb); }
+.cart-catalogLink:hover { border-color: #c7b7d5; background: #f0e9f7; }
+.cart-catalogLink:focus-visible { outline: 2px solid var(--wow-purple, #5e20bb); outline-offset: 2px; }
+.cart-empty .cart-catalogLink { margin-top: 12px; }
+@media (pointer: coarse) {
+  .cart-catalogLink { min-height: 44px; }
 }
 
 .cart-flowPanel .cart-list {
